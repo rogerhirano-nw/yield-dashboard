@@ -1,0 +1,26 @@
+name: Refresh Magnite cache
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 9 AM UTC = 5 AM ET daily
+  workflow_dispatch:        # lets you trigger manually from GitHub UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - run: python refresh_cache.py
+        env:
+          MAGNITE_KEY:          ${{ secrets.MAGNITE_KEY }}
+          MAGNITE_SECRET:       ${{ secrets.MAGNITE_SECRET }}
+          MAGNITE_PUBLISHER_ID: ${{ secrets.MAGNITE_PUBLISHER_ID }}
+          DATABASE_URL:         ${{ secrets.DATABASE_URL }}
