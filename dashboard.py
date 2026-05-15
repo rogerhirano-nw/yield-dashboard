@@ -240,8 +240,13 @@ with tab_deal:
             zero_imp = view.groupby("deal")["impressions"].sum()
             zero_imp = zero_imp[zero_imp == 0]
             if not zero_imp.empty:
-                names = ", ".join(zero_imp.index.tolist()[:5])
-                st.warning(f"{len(zero_imp)} deal(s) with 0 impressions in selected period: {names}")
+                st.warning(f"{len(zero_imp)} deal(s) with 0 impressions in the selected period.")
+                with st.expander("Show deals"):
+                    st.dataframe(
+                        zero_imp.reset_index().rename(columns={"deal": "Deal", "impressions": "Impressions"}),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
         col_deals, col_ae = st.columns(2)
         with col_deals:
