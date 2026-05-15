@@ -282,17 +282,29 @@ class GAMClient:
 
         def _pacing(row) -> Optional[float]:
             try:
-                li_start = pd.to_datetime(row["start_date"]).date()
-                li_end = pd.to_datetime(row["end_date"]).date()
-                total_days = max((li_end - li_start).days, 1)
-                elapsed = max((min(today, li_end) - li_start).days, 1)
                 goal = row["impressions_goal"]
                 delivered = row["impressions_delivered"]
-                if goal and goal > 0 and pd.notna(delivered):
-                    # Impression-based pacing
-                    return (delivered / goal) / (elapsed / total_days) * 100
-                # Elapsed-time pacing for campaigns with no impression goal
-                return elapsed / total_days * 100
+                has_goal = goal and goal > 0 and pd.notna(delivered)
+
+                raw_start = pd.to_datetime(row["start_date"])
+                raw_end   = pd.to_datetime(row["end_date"])
+                has_dates = pd.notna(raw_start) and pd.notna(raw_end)
+
+                if has_dates:
+                    li_start   = raw_start.date()
+                    li_end     = raw_end.date()
+                    total_days = max((li_end - li_start).days, 1)
+                    elapsed    = max((min(today, li_end) - li_start).days, 1)
+                    if has_goal:
+                        return (delivered / goal) / (elapsed / total_days) * 100
+                    # Elapsed-time pacing when no impression goal
+                    return elapsed / total_days * 100
+
+                # No end date (open-ended flight) — fall back to impression pacing only
+                if has_goal:
+                    return delivered / goal * 100
+
+                return None
             except Exception:
                 return None
 
