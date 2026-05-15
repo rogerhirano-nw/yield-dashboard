@@ -633,12 +633,15 @@ with tab_seller:
             .map(AE_NAMES)
         )
 
-        # Extract advertiser from line item name (index 7 in Newsweek taxonomy)
-        gam_df["advertiser"] = gam_df["line_item_name"].apply(
-            lambda name: parts[7].strip()
-            if isinstance(name, str) and len(parts := name.split("_")) > 7
-            else None
-        )
+        # Extract advertiser (index 7) and campaign (index 8) from line item name
+        def _li_part(name, idx):
+            if not isinstance(name, str):
+                return None
+            parts = name.split("_")
+            return parts[idx].strip() if len(parts) > idx else None
+
+        gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
+        gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8)
 
         f1, f2 = st.columns(2)
         with f1:
@@ -733,7 +736,7 @@ with tab_seller:
 
             display_cols = {
                 "line_item_name": "Line Item",
-                "order_name": "Order",
+                "campaign_name": "Campaign",
                 "seller_ae": "Seller",
                 "advertiser": "Advertiser",
                 "ad_format": "Format",
