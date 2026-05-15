@@ -191,6 +191,8 @@ with tab_deal:
                 key="deal_filter",
             )
 
+        deal_search = st.text_input("Search deals by name", placeholder="Type to filter…", key="deal_search")
+
         view = df[(df["date"] >= start) & (df["date"] <= end)]
         if types:
             view = view[view["deal_type"].isin(types)]
@@ -198,6 +200,8 @@ with tab_deal:
             view = view[view["seller_ae"].isin(aes)]
         if deals:
             view = view[view["deal"].isin(deals)]
+        if deal_search:
+            view = view[view["deal"].str.contains(deal_search, case=False, na=False)]
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Impressions", f"{view['impressions'].sum():,}")
