@@ -248,7 +248,25 @@ with tab_deal:
                     days_count = (view[view["deal"].isin(zero_imp.index)]
                                   .groupby("deal")["date"].nunique())
                     zero_df["Days with 0 impr."] = zero_df["Deal"].map(days_count).fillna(0).astype(int)
-                    st.dataframe(zero_df.sort_values("Days with 0 impr.", ascending=False), use_container_width=True, hide_index=True)
+                    deal_metrics = (view[view["deal"].isin(zero_imp.index)]
+                                    .groupby("deal")[["bid_requests", "bid_responses"]].sum())
+                    zero_df["bid_requests"]  = zero_df["Deal"].map(deal_metrics["bid_requests"]).fillna(0)
+                    zero_df["bid_responses"] = zero_df["Deal"].map(deal_metrics["bid_responses"]).fillna(0)
+
+                    def _status(row):
+                        if row["bid_requests"] == 0:
+                            return "Deal not being sent to buyer — check trafficking"
+                        if row["bid_responses"] == 0:
+                            return "Buyer hasn't accepted the deal"
+                        return "Accepted but not winning — check floor price or targeting"
+
+                    zero_df["Status"] = zero_df.apply(_status, axis=1)
+                    st.dataframe(
+                        zero_df[["Deal", "Seller", "Days with 0 impr.", "Status"]]
+                        .sort_values("Days with 0 impr.", ascending=False),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
         col_deals, col_ae = st.columns(2)
         with col_deals:
