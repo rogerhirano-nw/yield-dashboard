@@ -736,9 +736,9 @@ with tab_seller:
 
             display_cols = {
                 "advertiser": "Advertiser",
+                "seller_ae": "Seller",
                 "line_item_name": "Line Item",
                 "campaign_name": "Campaign",
-                "seller_ae": "Seller",
                 "ad_format": "Format",
                 "impressions_goal": "Goal",
                 "impressions_delivered": "Delivered",
