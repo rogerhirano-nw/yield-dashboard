@@ -245,7 +245,10 @@ with tab_deal:
                     zero_df = (zero_imp.reset_index()[["deal"]]
                                .rename(columns={"deal": "Deal"}))
                     zero_df["Seller"] = zero_df["Deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False).map(AE_NAMES).fillna("")
-                    st.dataframe(zero_df, use_container_width=True, hide_index=True)
+                    days_count = (view[view["deal"].isin(zero_imp.index)]
+                                  .groupby("deal")["date"].nunique())
+                    zero_df["Days with 0 impr."] = zero_df["Deal"].map(days_count).fillna(0).astype(int)
+                    st.dataframe(zero_df.sort_values("Days with 0 impr.", ascending=False), use_container_width=True, hide_index=True)
 
         col_deals, col_ae = st.columns(2)
         with col_deals:
