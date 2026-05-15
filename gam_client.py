@@ -160,6 +160,11 @@ class GAMClient:
             for col in df.columns
         ]
 
+        # GAM CSV_DUMP expresses all monetary values in micro-currency (1/1,000,000).
+        # Divide revenue column to get actual dollars.
+        if "ad_server_cpm_and_cpc_revenue" in df.columns:
+            df["ad_server_cpm_and_cpc_revenue"] = df["ad_server_cpm_and_cpc_revenue"] / 1_000_000
+
         return df
 
     # ------------------------------------------------------------------
@@ -187,11 +192,9 @@ class GAMClient:
 
             for li in result.results:
                 primary_goal = getattr(li, "primaryGoal", None)
-                impressions_goal = (
-                    int(primary_goal.units)
-                    if primary_goal and getattr(primary_goal, "units", None) is not None
-                    else None
-                )
+                _units = int(primary_goal.units) if primary_goal and getattr(primary_goal, "units", None) is not None else None
+                # GAM returns -1 for click-based or unlimited campaigns — treat as no goal
+                impressions_goal = _units if _units is not None and _units > 0 else None
 
                 def _gam_date_to_str(gd) -> Optional[str]:
                     if gd is None:

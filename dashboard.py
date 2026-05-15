@@ -608,27 +608,9 @@ with tab_seller:
 
         gam_df = gam_df.copy()
 
-        # Parse dates from report_start / report_end; fall back to start_date/end_date
-        for datecol in ("start_date", "end_date", "report_start", "report_end"):
+        for datecol in ("start_date", "end_date"):
             if datecol in gam_df.columns:
                 gam_df[datecol] = pd.to_datetime(gam_df[datecol], errors="coerce").dt.date
-
-        # Use report_start (the reporting window date) not the campaign flight start_date,
-        # so "Last 7 days" shows campaigns active in the reporting period, not those
-        # that started in the last 7 days.
-        if "report_start" in gam_df.columns:
-            gam_df["_display_date"] = gam_df["report_start"]
-        elif "start_date" in gam_df.columns:
-            gam_df["_display_date"] = gam_df["start_date"]
-        else:
-            gam_df["_display_date"] = date.today()
-
-        _dmin = gam_df["_display_date"].min()
-        _dmax = gam_df["_display_date"].max()
-        dmin_gam = _dmin if not pd.isna(_dmin) else date.today() - timedelta(days=7)
-        dmax_gam = _dmax if not pd.isna(_dmax) else date.today()
-
-        start_s, end_s = date_filter("seller", dmin_gam, dmax_gam)
 
         # Extract seller from order_name
         gam_df["seller_ae"] = (
@@ -648,12 +630,6 @@ with tab_seller:
             st.info("No sellers found in order_name — check that order names follow the Team-USA/INTL_Name pattern.")
         else:
             view_gam = gam_df[gam_df["seller_ae"] == selected_seller].copy()
-
-            # Date filter — coerce to Timestamp on both sides to avoid dtype mismatches
-            _dd = pd.to_datetime(view_gam["_display_date"], errors="coerce")
-            view_gam = view_gam[
-                (_dd >= pd.Timestamp(start_s)) & (_dd <= pd.Timestamp(end_s))
-            ]
 
             # ---------- Summary metrics ----------
             total_impr = view_gam["impressions_delivered"].sum() if "impressions_delivered" in view_gam else 0
