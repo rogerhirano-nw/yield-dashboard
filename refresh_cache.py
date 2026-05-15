@@ -185,6 +185,7 @@ def _load_dotenv() -> None:
 
 def main() -> None:
     _load_dotenv()
+    logger.info("refresh_cache v3 — Magnite date_range=%s", next(iter(REPORTS.values()))["date_range"])
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
     account_id = os.environ["MAGNITE_PUBLISHER_ID"]
