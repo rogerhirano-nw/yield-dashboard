@@ -762,6 +762,8 @@ with tab_seller:
                 "campaign_name": "Campaign",
                 "line_item_name": "Line Item",
                 "ad_format": "Format",
+                "start_date": "Start Date",
+                "end_date": "End Date",
                 "impressions_goal": "Goal",
                 "cpm_rate": "CPM Rate",
                 "lifetime_impressions_delivered": "Delivered",
