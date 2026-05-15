@@ -64,7 +64,7 @@ REPORTS = {
         "date_range": "last_7_days",
     },
     "by_deal_daily": {
-        "dimensions": ["date", "deal", "deal_id"],
+        "dimensions": ["date", "deal", "deal_id", "partner", "ad_format"],
         "metrics": [
             "bid_requests",
             "bid_responses",
@@ -93,8 +93,15 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
 
     with _engine().begin() as conn:
-        if table in sa_inspect(conn).get_table_names():
-            conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
+        existing_tables = sa_inspect(conn).get_table_names()
+        if table in existing_tables:
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            new_cols = set(df.columns)
+            if existing_cols != new_cols:
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            else:
+                conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
         df.to_sql(table, conn, if_exists="append", index=False)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)

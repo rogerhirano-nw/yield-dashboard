@@ -239,12 +239,12 @@ with tab_deal:
         df = df.copy()
         df["date"] = pd.to_datetime(df["date"]).dt.date
 
-        # Normalize open market rows (null deal or deal_id=0)
-        open_market_mask = (
-            df["deal"].isna()
-            | (df["deal"].astype(str).str.strip(" -/").str.upper() == "NA")
-            | (df["deal_id"].astype(str).str.strip() == "0")
+        # Revenue source from deal_id (0 = Open Market, >0 = Deal)
+        df["revenue_source"] = df["deal_id"].astype(str).str.strip().apply(
+            lambda x: "Open Market" if x == "0" else "Deal"
         )
+        # Normalize open market deal name
+        open_market_mask = df["revenue_source"] == "Open Market"
         df.loc[open_market_mask, "deal"] = "Open Market"
 
         # Seller AE from deal name
@@ -256,17 +256,41 @@ with tab_deal:
         dmin, dmax = df["date"].min(), df["date"].max()
         start, end = date_filter("deal", dmin, dmax)
 
-        f1, f2 = st.columns(2)
+        f1, f2, f3, f4 = st.columns(4)
         with f1:
+            rev_sources = st.multiselect(
+                "Revenue source",
+                sorted(df["revenue_source"].dropna().unique()),
+                key="deal_rev_source_filter",
+            )
+        with f2:
+            dsps = st.multiselect(
+                "DSP",
+                sorted(df["partner"].dropna().unique()) if "partner" in df.columns else [],
+                key="deal_dsp_filter",
+            )
+        with f3:
+            formats = st.multiselect(
+                "Format",
+                sorted(df["ad_format"].dropna().unique()) if "ad_format" in df.columns else [],
+                key="deal_format_filter",
+            )
+        with f4:
             aes = st.multiselect(
                 "Filter by Seller",
                 sorted(df["seller_ae"].dropna().unique()),
                 key="deal_ae_filter",
             )
-        with f2:
-            deal_search = st.text_input("Search deals by name", placeholder="Type to filter…", key="deal_search")
+
+        deal_search = st.text_input("Search deals by name", placeholder="Type to filter…", key="deal_search")
 
         view = df[(df["date"] >= start) & (df["date"] <= end)]
+        if rev_sources:
+            view = view[view["revenue_source"].isin(rev_sources)]
+        if dsps:
+            view = view[view["partner"].isin(dsps)]
+        if formats:
+            view = view[view["ad_format"].isin(formats)]
         if aes:
             view = view[view["seller_ae"].isin(aes)]
         if deal_search:
@@ -317,10 +341,17 @@ with tab_deal:
                         hide_index=True,
                     )
 
-        col_deals, col_ae = st.columns(2)
+        col_src, col_deals, col_ae = st.columns(3)
+        with col_src:
+            st.subheader("Revenue by source")
+            src_rev = (
+                view.groupby("revenue_source")["publisher_gross_revenue"]
+                .sum().sort_values(ascending=True).rename("Revenue ($)")
+            )
+            st.bar_chart(src_rev, height=280, horizontal=True)
+        pmp_view = view[view["revenue_source"] == "Deal"]
         with col_deals:
             st.subheader("Top 10 deals by revenue")
-            pmp_view = view[view["deal"] != "Open Market"]
             top10_deals = (
                 pmp_view.groupby("deal")["publisher_gross_revenue"]
                 .sum().nlargest(10).reset_index()
@@ -347,6 +378,9 @@ with tab_deal:
                 "_pulled_at": None,
                 "seller_ae": None,
                 "deal": st.column_config.TextColumn("Marketplace Deal Name"),
+                "revenue_source": st.column_config.TextColumn("Revenue Source"),
+                "partner": st.column_config.TextColumn("DSP"),
+                "ad_format": st.column_config.TextColumn("Format"),
                 "bid_requests": st.column_config.NumberColumn(format="localized"),
                 "bid_responses": st.column_config.NumberColumn(format="localized"),
                 "impressions": st.column_config.NumberColumn(format="localized"),
