@@ -241,17 +241,22 @@ class GAMClient:
 
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
-        Fetch lifetime cumulative impressions per line item.
-        Used for pacing so we compare total-delivered vs total-goal,
-        not just the rolling 7-day window.
+        Fetch cumulative impressions per line item over a 2-year window.
+        Used for pacing — covers all realistic active campaign durations.
+        GAM does not support dateRangeType=LIFETIME for impression reports.
         """
         report_service = self._report_service()
+
+        end = date.today() - timedelta(days=1)
+        start = end - timedelta(days=730)  # 2-year window
 
         report_job = {
             "reportQuery": {
                 "dimensions": ["LINE_ITEM_ID"],
                 "columns": ["AD_SERVER_IMPRESSIONS"],
-                "dateRangeType": "LIFETIME",
+                "dateRangeType": "CUSTOM_DATE",
+                "startDate": self._gam_date(start),
+                "endDate": self._gam_date(end),
                 "reportCurrency": "USD",
             }
         }
