@@ -812,10 +812,14 @@ with tab_seller:
 
             styled_df = table_df.style
             if "Viewability %" in table_df.columns:
-                styled_df = styled_df.map(
-                    lambda v: "color: red" if isinstance(v, (int, float)) and not pd.isna(v) and v < 70 else "",
-                    subset=["Viewability %"],
-                )
+                def _viewability_color(v):
+                    if not isinstance(v, (int, float)) or pd.isna(v):
+                        return ""
+                    if v >= 70:
+                        return "color: hsl(120, 60%, 35%)"
+                    hue = int(max(0.0, v) / 70.0 * 120)
+                    return f"color: hsl({hue}, 70%, 38%)"
+                styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
             if "Pacing %" in table_df.columns:
                 def _pacing_color(v):
                     if not isinstance(v, (int, float)) or pd.isna(v):
