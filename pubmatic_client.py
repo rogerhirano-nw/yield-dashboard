@@ -172,9 +172,9 @@ class PubmaticClient:
         bid_responses, win_rate, vcr, viewability, ctr, source.
         """
         params = {
-            "fromDate":   start_date.strftime("%Y%m%d"),
-            "toDate":     end_date.strftime("%Y%m%d"),
-            "dimensions": "date,deal",
+            "fromDate":   start_date.strftime("%Y-%m-%d"),
+            "toDate":     end_date.strftime("%Y-%m-%d"),
+            "dimensions": "date",
             "metrics":    "impressions,revenue",
         }
 

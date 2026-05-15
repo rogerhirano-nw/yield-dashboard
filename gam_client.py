@@ -29,7 +29,7 @@ from googleads.oauth2 import GoogleServiceAccountClient
 
 logger = logging.getLogger(__name__)
 
-_API_VERSION = "v202311"
+_API_VERSION = "v202605"
 _SCOPES = "https://www.googleapis.com/auth/dfp"
 
 
