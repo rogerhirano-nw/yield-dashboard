@@ -178,7 +178,7 @@ class PubmaticClient:
             "startDate":  start_date.strftime("%Y-%m-%d"),
             "endDate":    end_date.strftime("%Y-%m-%d"),
             "dimensions": "date,dealId",
-            "metrics":    "AD_IMPRESSION,NET_REVENUE,BID_REQUEST,BID_RESPONSE",
+            "metrics":    "IMPRESSION,NET_REVENUE,BID_REQUEST,BID_RESPONSE",
         }
 
         rows: list[dict] = []
