@@ -619,8 +619,10 @@ with tab_seller:
         else:
             gam_df["_display_date"] = date.today()
 
-        dmin_gam = gam_df["_display_date"].min() or date.today() - timedelta(days=7)
-        dmax_gam = gam_df["_display_date"].max() or date.today()
+        _dmin = gam_df["_display_date"].min()
+        _dmax = gam_df["_display_date"].max()
+        dmin_gam = _dmin if not pd.isna(_dmin) else date.today() - timedelta(days=7)
+        dmax_gam = _dmax if not pd.isna(_dmax) else date.today()
 
         start_s, end_s = date_filter("seller", dmin_gam, dmax_gam)
 
