@@ -768,6 +768,7 @@ with tab_seller:
                 "cpm_rate": "CPM Rate",
                 "lifetime_impressions_delivered": "Delivered",
                 "remaining_impressions": "Remaining",
+                "ad_server_clicks": "Clicks",
                 "pacing_pct": "Pacing %",
                 "ad_server_active_view_viewable_impressions_rate": "Viewability %",
                 "ad_server_ctr": "CTR %",
@@ -793,6 +794,8 @@ with tab_seller:
                 col_config["Delivered"] = st.column_config.NumberColumn(format="localized")
             if "Remaining" in table_df.columns:
                 col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
+            if "Clicks" in table_df.columns:
+                col_config["Clicks"] = st.column_config.NumberColumn(format="localized")
             if "Pacing %" in table_df.columns:
                 col_config["Pacing %"] = st.column_config.NumberColumn(format="%.1f%%")
             if "Viewability %" in table_df.columns:
