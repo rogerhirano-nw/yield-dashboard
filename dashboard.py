@@ -620,6 +620,7 @@ with tab_seller:
 
         gam_df = gam_df.copy()
         gam_df = gam_df[gam_df["line_item_name"].str.startswith("Newsweek_Direct", na=False)]
+        gam_df = gam_df[~gam_df["order_name"].str.startswith("Newsweek_Test", na=False)]
 
         for datecol in ("start_date", "end_date"):
             if datecol in gam_df.columns:
