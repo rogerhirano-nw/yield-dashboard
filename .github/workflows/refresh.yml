@@ -26,3 +26,7 @@ jobs:
           DATABASE_URL:               ${{ secrets.DATABASE_URL }}
           GAM_NETWORK_ID:             ${{ secrets.GAM_NETWORK_ID }}
           GAM_SERVICE_ACCOUNT_JSON:   ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          PUBMATIC_PUBLISHER_ID:      ${{ secrets.PUBMATIC_PUBLISHER_ID }}
+          PUBMATIC_TOKEN:             ${{ secrets.PUBMATIC_TOKEN }}
+          PUBMATIC_REFRESH_TOKEN:     ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
+          PUBMATIC_EMAIL:             ${{ secrets.PUBMATIC_EMAIL }}

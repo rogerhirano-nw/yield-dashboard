@@ -25,6 +25,7 @@ from sqlalchemy import inspect as sa_inspect, text
 
 from client import MagniteClient
 from gam_client import GAMClient
+from pubmatic_client import PubmaticClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -133,6 +134,36 @@ def refresh_gam() -> int:
     return len(df)
 
 
+def refresh_pubmatic() -> int:
+    """Pull Pubmatic PMP deal data for the last 7 days and write to deals_pubmatic."""
+    logger.info("Refreshing deals_pubmatic (Pubmatic)")
+    client = PubmaticClient()
+
+    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
+    seven_days_ago = yesterday - timedelta(days=6)
+
+    df = client.run_deal_report(seven_days_ago, yesterday)
+    if df.empty:
+        logger.warning("Pubmatic report came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table  = "deals_pubmatic"
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            conn.execute(
+                text(f'DELETE FROM "{table}" WHERE date >= :cutoff'),
+                {"cutoff": cutoff},
+            )
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -170,6 +201,11 @@ def main() -> None:
         total += refresh_gam()
     except Exception:
         logger.exception("Refresh failed for campaigns_gam — continuing")
+
+    try:
+        total += refresh_pubmatic()
+    except Exception:
+        logger.exception("Refresh failed for deals_pubmatic — continuing")
 
 
 if __name__ == "__main__":
