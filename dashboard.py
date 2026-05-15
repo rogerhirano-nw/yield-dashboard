@@ -242,15 +242,18 @@ with tab_deal:
                 names = ", ".join(zero_imp.index.tolist()[:5])
                 st.warning(f"{len(zero_imp)} deal(s) with 0 impressions in selected period: {names}")
 
-        col_trend, col_ae = st.columns(2)
-        with col_trend:
-            st.subheader("Daily revenue")
-            daily = view.groupby("date")["publisher_gross_revenue"].sum().rename("Revenue ($)")
-            st.line_chart(daily, height=220)
+        col_deals, col_ae = st.columns(2)
+        with col_deals:
+            st.subheader("Top 10 deals by revenue")
+            top10_deals = (view.groupby("deal")["publisher_gross_revenue"]
+                           .sum().nlargest(10).sort_values(ascending=True)
+                           .rename("Revenue ($)"))
+            st.bar_chart(top10_deals, height=280, horizontal=True)
         with col_ae:
             st.subheader("Revenue by AE")
-            ae_rev = view.groupby("seller_ae")["publisher_gross_revenue"].sum().sort_values(ascending=False)
-            st.bar_chart(ae_rev, height=220)
+            ae_rev = (view.groupby("seller_ae")["publisher_gross_revenue"]
+                      .sum().sort_values(ascending=True).rename("Revenue ($)"))
+            st.bar_chart(ae_rev, height=280, horizontal=True)
 
         st.dataframe(
             view.sort_values("publisher_gross_revenue", ascending=False),
@@ -315,18 +318,34 @@ with tab_dsp:
                 names = ", ".join([f"{p} ({v:.1f}%)" for p, v in low_win.items()])
                 st.warning(f"Low win rate (<10%): {names}")
 
-        col_trend, col_win = st.columns(2)
-        with col_trend:
-            st.subheader("Revenue trend – top 5 DSPs")
-            top5 = view.groupby("partner")["publisher_gross_revenue"].sum().nlargest(5).index
-            trend = (view[view["partner"].isin(top5)]
-                     .groupby(["date", "partner"])["publisher_gross_revenue"]
-                     .sum().unstack(fill_value=0))
-            st.line_chart(trend, height=220)
-        with col_win:
-            st.subheader("Win rate by DSP (%)")
-            win_chart = win_by_dsp.sort_values(ascending=False)
-            st.bar_chart(win_chart, height=220)
+        col_top, col_issues = st.columns(2)
+        with col_top:
+            st.subheader("Top 10 DSPs by revenue")
+            top10_rev = (view.groupby("partner")["publisher_gross_revenue"]
+                         .sum().nlargest(10).sort_values(ascending=True)
+                         .rename("Revenue ($)"))
+            st.bar_chart(top10_rev, height=280, horizontal=True)
+        with col_issues:
+            st.subheader("DSPs to watch — low win rate")
+            dsp_summary = (view.groupby("partner")
+                           .agg(revenue=("publisher_gross_revenue", "sum"),
+                                win_rate=("win_rate", "mean"))
+                           .query("revenue > 0")
+                           .sort_values("revenue", ascending=False)
+                           .head(20))
+            flagged = dsp_summary[dsp_summary["win_rate"] < 15].sort_values("revenue", ascending=False)
+            if flagged.empty:
+                st.success("No DSPs with revenue + low win rate issues.")
+            else:
+                st.dataframe(
+                    flagged.reset_index().rename(columns={
+                        "partner": "DSP",
+                        "revenue": "Revenue ($)",
+                        "win_rate": "Win Rate (%)",
+                    }).style.format({"Revenue ($)": "${:,.2f}", "Win Rate (%)": "{:.1f}%"}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
         st.dataframe(
             view.sort_values("publisher_gross_revenue", ascending=False),
