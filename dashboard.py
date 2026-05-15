@@ -240,7 +240,7 @@ with tab_deal:
             zero_imp = view.groupby("deal")["impressions"].sum()
             zero_imp = zero_imp[zero_imp == 0]
             if not zero_imp.empty:
-                st.warning(f"{len(zero_imp)} deal(s) with 0 impressions in the selected period.")
+                st.warning(f"⚠️ {len(zero_imp)} deal(s) are active but recorded 0 impressions in the selected period — may need attention.")
                 with st.expander("Show deals"):
                     st.dataframe(
                         zero_imp.reset_index().rename(columns={"deal": "Deal", "impressions": "Impressions"}),
