@@ -613,8 +613,12 @@ with tab_seller:
             if datecol in gam_df.columns:
                 gam_df[datecol] = pd.to_datetime(gam_df[datecol], errors="coerce").dt.date
 
-        # Build a display date column for the date_filter helper
-        if "start_date" in gam_df.columns:
+        # Use report_start (the reporting window date) not the campaign flight start_date,
+        # so "Last 7 days" shows campaigns active in the reporting period, not those
+        # that started in the last 7 days.
+        if "report_start" in gam_df.columns:
+            gam_df["_display_date"] = gam_df["report_start"]
+        elif "start_date" in gam_df.columns:
             gam_df["_display_date"] = gam_df["start_date"]
         else:
             gam_df["_display_date"] = date.today()
