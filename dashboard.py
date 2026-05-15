@@ -507,16 +507,26 @@ with tab_pubmatic:
         dmin, dmax = pm_df["date"].min(), pm_df["date"].max()
         start, end = date_filter("pubmatic", dmin, dmax)
 
-        f1, f2 = st.columns(2)
+        f1, f2, f3, f4 = st.columns(4)
         with f1:
             dsp_opts = sorted(pm_df["dsp"].dropna().unique()) if "dsp" in pm_df.columns else []
             sel_dsps = st.multiselect("DSP", dsp_opts, key="pm_dsp_filter")
         with f2:
-            pm_search = st.text_input("Search deals", placeholder="Type to filter…", key="pm_deal_search")
+            deal_type_opts = sorted(pm_df["deal"].dropna().str.extract(r"Newsweek_([^_]+)", expand=False).dropna().unique()) if "deal" in pm_df.columns else []
+            sel_deal_types = st.multiselect("Deal type", deal_type_opts, key="pm_deal_type_filter")
+        with f3:
+            publisher_deal_opts = sorted(pm_df["publisher_deal_id"].dropna().unique()) if "publisher_deal_id" in pm_df.columns else []
+            sel_pub_deals = st.multiselect("Publisher deal ID", publisher_deal_opts, key="pm_pub_deal_filter")
+
+        pm_search = st.text_input("Search deals by name", placeholder="Type to filter…", key="pm_deal_search")
 
         view = pm_df[(pm_df["date"] >= start) & (pm_df["date"] <= end)]
         if sel_dsps:
             view = view[view["dsp"].isin(sel_dsps)]
+        if sel_deal_types:
+            view = view[view["deal"].str.extract(r"Newsweek_([^_]+)", expand=False).isin(sel_deal_types)]
+        if sel_pub_deals:
+            view = view[view["publisher_deal_id"].isin(sel_pub_deals)]
         if pm_search:
             view = view[view["deal_label"].str.contains(pm_search, case=False, na=False)]
 
