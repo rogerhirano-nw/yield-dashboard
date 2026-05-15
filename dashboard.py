@@ -869,7 +869,6 @@ with tab_seller:
                 non_zero_bid_responses=("non_zero_bid_responses", "sum"),
             )
             .reset_index()
-            .sort_values("revenue", ascending=False)
             .rename(columns={
                 "ssp": "SSP",
                 "seller_ae": "Seller",
@@ -884,13 +883,65 @@ with tab_seller:
             })
         )
 
+        # Add Magnite PG deals (Programmatic Guaranteed lives in by_deal_daily)
+        _mag_pg_summary = pd.DataFrame()
+        try:
+            _mag_df = load("by_deal_daily").copy()
+            if not _mag_df.empty and "deal" in _mag_df.columns:
+                _parsed = _mag_df["deal"].apply(_parse_deal)
+                _mag_df = pd.concat([_mag_df, _parsed], axis=1)
+                _pg = _mag_df[_mag_df["deal_type_label"] == "Programmatic Guaranteed"].copy()
+                if not _pg.empty:
+                    _pg["ssp"] = "Magnite"
+                    _pg["seller_ae"] = (
+                        _pg["deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                        .map(AE_NAMES)
+                    )
+                    if selected_seller != "All":
+                        _pg = _pg[_pg["seller_ae"] == selected_seller]
+                    if not _pg.empty:
+                        _pg_agg = (
+                            _pg.groupby(["ssp", "deal", "partner", "seller_ae"], dropna=False)
+                            .agg(
+                                paid_impressions=("paid_impression", "sum"),
+                                revenue=("publisher_gross_revenue", "sum"),
+                                ecpm=("ecpm", "mean"),
+                                total_requests=("bid_requests", "sum"),
+                                non_zero_bid_responses=("bid_responses", "sum"),
+                            )
+                            .reset_index()
+                        )
+                        _pg_agg["win_rate"] = (
+                            (_pg_agg["paid_impressions"] / _pg_agg["total_requests"] * 100)
+                            .where(_pg_agg["total_requests"] > 0)
+                        )
+                        _mag_pg_summary = _pg_agg.rename(columns={
+                            "ssp": "SSP",
+                            "seller_ae": "Seller",
+                            "deal": "Deal",
+                            "partner": "DSP",
+                            "paid_impressions": "Paid Impressions",
+                            "revenue": "Revenue",
+                            "ecpm": "eCPM",
+                            "win_rate": "Win Rate %",
+                            "total_requests": "Total Requests",
+                            "non_zero_bid_responses": "Bid Responses",
+                        })
+        except Exception:
+            pass
+
+        combined_pmp = (
+            pd.concat([pmp_summary, _mag_pg_summary], ignore_index=True)
+            if not _mag_pg_summary.empty else pmp_summary
+        ).sort_values("Revenue", ascending=False)
+
         pm1, pm2, pm3 = st.columns(3)
-        pm1.metric("Paid impressions", f"{pmp_df['paid_impressions'].sum():,.0f}")
-        pm2.metric("Revenue", f"${pmp_df['revenue'].sum():,.2f}")
-        pm3.metric("Avg eCPM", f"${pmp_df['ecpm'].mean():,.2f}" if len(pmp_df) else "—")
+        pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
+        pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
+        pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
         st.dataframe(
-            pmp_summary,
+            combined_pmp,
             use_container_width=True,
             hide_index=True,
             column_config={
