@@ -644,12 +644,26 @@ with tab_seller:
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8)
         gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
 
+        # Load Pubmatic sellers so they appear in the shared filter
+        try:
+            _pmp_sellers_df = load("deals_pubmatic")
+            _pmp_sellers = (
+                _pmp_sellers_df["deal"]
+                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                .map(AE_NAMES)
+                .dropna()
+                .unique()
+            ) if not _pmp_sellers_df.empty and "deal" in _pmp_sellers_df.columns else []
+        except Exception:
+            _pmp_sellers = []
+
+        all_sellers = sorted(set(gam_df["seller_ae"].dropna().unique()) | set(_pmp_sellers))
+
         f1, f2, f3 = st.columns(3)
         with f1:
-            sellers = sorted(gam_df["seller_ae"].dropna().unique())
             selected_seller = st.selectbox(
                 "Seller",
-                options=["All"] + sellers,
+                options=["All"] + all_sellers,
                 key="seller_select",
             )
         with f2:
