@@ -755,8 +755,16 @@ with tab_seller:
             if "Revenue" in table_df.columns:
                 col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
 
+            if "Viewability %" in table_df.columns:
+                styled_df = table_df.style.map(
+                    lambda v: "color: red" if isinstance(v, (int, float)) and not pd.isna(v) and v < 70 else "",
+                    subset=["Viewability %"],
+                )
+            else:
+                styled_df = table_df.style
+
             st.dataframe(
-                table_df,
+                styled_df,
                 use_container_width=True,
                 hide_index=True,
                 column_config=col_config,
