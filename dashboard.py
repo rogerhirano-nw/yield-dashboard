@@ -660,7 +660,7 @@ with tab_seller:
             m1.metric("Impressions", f"{int(total_impr):,}")
             m2.metric("Revenue", f"${total_rev:,.2f}")
             m3.metric("Avg Pacing %", f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—")
-            m4.metric("Avg Viewability", f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—")
+            m4.metric("Avg Viewability", f"{avg_viewability * 100:.1f}%" if pd.notna(avg_viewability) else "—")
             m5.metric("Avg VCR", f"{avg_vcr:.1f}%" if pd.notna(avg_vcr) else "—")
             m6.metric("Avg CTR", f"{avg_ctr * 100:.2f}%" if pd.notna(avg_ctr) else "—")
 
@@ -697,10 +697,11 @@ with tab_seller:
                     axis=1,
                 )
 
-            # CTR is stored as a ratio (0–1); convert to percentage for display
-            if "ad_server_ctr" in view_gam.columns:
-                view_gam = view_gam.copy()
-                view_gam["ad_server_ctr"] = view_gam["ad_server_ctr"] * 100
+            # CTR and viewability are stored as ratios (0–1); convert to percentage for display
+            for _ratio_col in ("ad_server_ctr", "ad_server_active_view_viewable_impressions_rate"):
+                if _ratio_col in view_gam.columns:
+                    view_gam = view_gam.copy()
+                    view_gam[_ratio_col] = view_gam[_ratio_col] * 100
 
             # Extract format from line item name
             view_gam = view_gam.copy()
