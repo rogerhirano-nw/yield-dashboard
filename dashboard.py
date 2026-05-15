@@ -642,8 +642,9 @@ with tab_seller:
 
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8)
+        gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
 
-        f1, f2 = st.columns(2)
+        f1, f2, f3 = st.columns(3)
         with f1:
             sellers = sorted(gam_df["seller_ae"].dropna().unique())
             selected_seller = st.selectbox(
@@ -658,10 +659,19 @@ with tab_seller:
                 options=advertiser_opts,
                 key="gam_advertiser_filter",
             )
+        with f3:
+            format_opts = sorted(gam_df["ad_format"].dropna().unique())
+            selected_formats = st.multiselect(
+                "Format",
+                options=format_opts,
+                key="gam_format_filter",
+            )
 
         view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
         if selected_advertisers:
             view_gam = view_gam[view_gam["advertiser"].isin(selected_advertisers)]
+        if selected_formats:
+            view_gam = view_gam[view_gam["ad_format"].isin(selected_formats)]
 
         if view_gam.empty:
             st.info("No campaigns found for the selected seller.")
@@ -723,14 +733,6 @@ with tab_seller:
                 if _ratio_col in view_gam.columns:
                     view_gam = view_gam.copy()
                     view_gam[_ratio_col] = view_gam[_ratio_col] * 100
-
-            # Extract format from line item name
-            view_gam = view_gam.copy()
-            view_gam["ad_format"] = view_gam["line_item_name"].apply(
-                lambda name: next(
-                    (p for p in str(name).split("_") if p.strip() in KNOWN_FORMATS), None
-                ) if pd.notna(name) else None
-            )
 
             has_vcr = "vcr" in view_gam.columns and view_gam["vcr"].notna().any()
 
