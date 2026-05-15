@@ -240,8 +240,12 @@ with tab_deal:
             zero_imp = view.groupby("deal")["impressions"].sum()
             zero_imp = zero_imp[zero_imp == 0]
             if not zero_imp.empty:
-                for deal_name in zero_imp.index.tolist():
-                    st.warning(f"⚠️ **0 impressions — needs attention:** {deal_name}")
+                st.warning(f"⚠️ {len(zero_imp)} deal(s) with 0 impressions — needs attention.")
+                with st.expander("View deals"):
+                    zero_df = (zero_imp.reset_index()[["deal"]]
+                               .rename(columns={"deal": "Deal"}))
+                    zero_df["Seller"] = zero_df["Deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False).map(AE_NAMES).fillna("")
+                    st.dataframe(zero_df, use_container_width=True, hide_index=True)
 
         col_deals, col_ae = st.columns(2)
         with col_deals:
