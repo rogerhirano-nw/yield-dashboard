@@ -33,16 +33,15 @@ logger = logging.getLogger(__name__)
 _BASE_URL      = "https://api.pubmatic.com/v1/analytics/data/publisher"
 _REFRESH_URL   = "https://api.pubmatic.com/v1/developer-integrations/developer/refreshToken"
 _TOKEN_MAX_AGE = 55   # days — refresh 5 days before the 60-day expiry
-_PAGE_SIZE     = 1000
 
 
 class PubmaticClient:
 
     def __init__(self) -> None:
-        self.publisher_id       = os.environ["PUBMATIC_PUBLISHER_ID"]
-        self._email             = os.environ["PUBMATIC_EMAIL"]
+        self.publisher_id        = os.environ["PUBMATIC_PUBLISHER_ID"]
+        self._email              = os.environ["PUBMATIC_EMAIL"]
         self._seed_refresh_token = os.environ["PUBMATIC_REFRESH_TOKEN"]
-        self._access_token      = self._load_or_refresh_token()
+        self._access_token       = self._load_or_refresh_token()
 
     # ------------------------------------------------------------------
     # Token management
@@ -110,7 +109,6 @@ class PubmaticClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        # Pubmatic returns the new token under one of these keys
         new_token = (
             data.get("accessToken")
             or data.get("access_token")
@@ -149,18 +147,42 @@ class PubmaticClient:
             "Content-Type":  "application/json",
         }
 
-    def _get_page(self, params: dict, page: int) -> dict:
+    def _fetch(self, params: dict) -> list[dict]:
+        """
+        Call the analytics endpoint and unpack the columnar response into
+        a list of dicts. displayValue entries are merged in as _name fields.
+        """
         resp = requests.get(
             f"{_BASE_URL}/{self.publisher_id}",
             headers=self._headers(),
-            params={**params, "page": page, "limit": _PAGE_SIZE},
+            params=params,
             timeout=60,
         )
         logger.info("Pubmatic response status: %s — URL: %s", resp.status_code, resp.url)
         if not resp.ok:
             logger.error("Pubmatic error body: %s", resp.text[:500])
         resp.raise_for_status()
-        return resp.json()
+
+        data    = resp.json()
+        columns = data.get("columns") or []
+        rows    = data.get("rows")    or []
+        dv      = data.get("displayValue") or {}
+
+        if not columns or not rows:
+            logger.info("Pubmatic: empty result (columns=%s rows=%d)", columns, len(rows))
+            return []
+
+        records = []
+        for row in rows:
+            record = dict(zip(columns, row))
+            # Merge human-readable names for ID dimensions (e.g. dealMetaId → deal name)
+            for col, id_map in dv.items():
+                if col in record:
+                    record[f"{col}_name"] = id_map.get(str(record[col]))
+            records.append(record)
+
+        logger.info("Pubmatic: fetched %d rows", len(records))
+        return records
 
     # ------------------------------------------------------------------
     # Deal report
@@ -170,57 +192,38 @@ class PubmaticClient:
         """
         Fetch PMP deal analytics for the given date range.
 
-        Returns DataFrame with columns: date, deal, deal_id, partner_id,
-        impressions, paid_impressions, revenue, ecpm, bid_requests,
-        bid_responses, win_rate, vcr, viewability, ctr, source.
+        Returns DataFrame with columns: date, deal_meta_id, deal,
+        publisher_deal_id, dsp_id, dsp, paid_impressions, revenue,
+        ecpm, non_zero_bid_responses, win_rate, total_requests, source.
         """
         params = {
-            "startDate":  start_date.strftime("%Y-%m-%d"),
-            "endDate":    end_date.strftime("%Y-%m-%d"),
-            "dimensions": "date,dealId",
-            "metrics":    "paidImpressions,revenue,ecpm,bidRequests,bidResponses",
+            # Pubmatic requires timestamp format; end at 23:59 to include full day
+            "fromDate":   start_date.strftime("%Y-%m-%dT00:00"),
+            "toDate":     end_date.strftime("%Y-%m-%dT23:59"),
+            "dateUnit":   "date",
+            "dimensions": "date,dealMetaId,publisherDealId,dspId",
+            "metrics":    "paidImpressions,revenue,ecpm,nonZeroBidResponses,winRate,totalRequests",
         }
 
-        rows: list[dict] = []
-        page = 1
-        while True:
-            data  = self._get_page(params, page)
-            items = data.get("items") or data.get("data") or []
-            if not items:
-                break
-            rows.extend(items)
-
-            meta        = data.get("metaData") or data.get("metadata") or {}
-            total_pages = (
-                meta.get("totalPages")
-                or meta.get("total_pages")
-                or meta.get("totalPage")
-                or 1
-            )
-            if page >= int(total_pages):
-                break
-            page += 1
-
-        if not rows:
+        records = self._fetch(params)
+        if not records:
             return pd.DataFrame()
 
-        df = pd.DataFrame(rows)
+        df = pd.DataFrame(records)
 
         rename = {
-            "date":           "date",
-            "deal":           "deal",
-            "dealId":         "deal_id",
-            "partnerId":      "partner_id",
-            "impressions":    "impressions",
-            "paidImpressions":"paid_impressions",
-            "revenue":        "revenue",
-            "ecpm":           "ecpm",
-            "bidRequests":    "bid_requests",
-            "bidResponses":   "bid_responses",
-            "winRate":        "win_rate",
-            "vcr":            "vcr",
-            "viewability":    "viewability",
-            "ctr":            "ctr",
+            "date":                  "date",
+            "dealMetaId":            "deal_meta_id",
+            "dealMetaId_name":       "deal",
+            "publisherDealId":       "publisher_deal_id",
+            "dspId":                 "dsp_id",
+            "dspId_name":            "dsp",
+            "paidImpressions":       "paid_impressions",
+            "revenue":               "revenue",
+            "ecpm":                  "ecpm",
+            "nonZeroBidResponses":   "non_zero_bid_responses",
+            "winRate":               "win_rate",
+            "totalRequests":         "total_requests",
         }
         df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
         df["source"] = "pubmatic"
