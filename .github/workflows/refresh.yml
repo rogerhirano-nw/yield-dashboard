@@ -5,6 +5,9 @@ on:
     - cron: '0 9 * * *'   # 9 AM UTC = 5 AM ET daily
   workflow_dispatch:        # lets you trigger manually from GitHub UI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
