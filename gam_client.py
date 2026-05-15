@@ -30,7 +30,7 @@ from googleads.oauth2 import GoogleServiceAccountClient
 logger = logging.getLogger(__name__)
 
 _API_VERSION = "v202311"
-_SCOPES = ["https://www.googleapis.com/auth/dfp"]
+_SCOPES = "https://www.googleapis.com/auth/dfp"
 
 
 def _snake(name: str) -> str:
