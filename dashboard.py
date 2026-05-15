@@ -743,6 +743,7 @@ with tab_seller:
                 "line_item_name": "Line Item",
                 "ad_format": "Format",
                 "impressions_goal": "Goal",
+                "cpm_rate": "CPM Rate",
                 "impressions_delivered": "Delivered",
                 "remaining_impressions": "Remaining",
                 "pacing_pct": "Pacing %",
@@ -764,6 +765,8 @@ with tab_seller:
             col_config = {}
             if "Goal" in table_df.columns:
                 col_config["Goal"] = st.column_config.NumberColumn(format="localized")
+            if "CPM Rate" in table_df.columns:
+                col_config["CPM Rate"] = st.column_config.NumberColumn(format="dollar")
             if "Delivered" in table_df.columns:
                 col_config["Delivered"] = st.column_config.NumberColumn(format="localized")
             if "Remaining" in table_df.columns:

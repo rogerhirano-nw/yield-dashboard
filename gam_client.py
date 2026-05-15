@@ -204,6 +204,15 @@ class GAMClient:
                     except Exception:
                         return str(gd)
 
+                # CPM rate from costPerUnit (stored in microcurrency)
+                cost_type = str(getattr(li, "costType", ""))
+                cost_per_unit = getattr(li, "costPerUnit", None)
+                cpm_rate = (
+                    int(cost_per_unit.microAmount) / 1_000_000
+                    if cost_per_unit and cost_type == "CPM"
+                    else None
+                )
+
                 rows.append(
                     {
                         "line_item_id": str(li.id),
@@ -211,6 +220,7 @@ class GAMClient:
                         "order_id": str(li.orderId),
                         "order_name": getattr(li, "orderName", None),
                         "impressions_goal": impressions_goal,
+                        "cpm_rate": cpm_rate,
                         "start_date": _gam_date_to_str(getattr(li, "startDateTime", None)),
                         "end_date": _gam_date_to_str(getattr(li, "endDateTime", None)),
                         "status": str(li.status),
