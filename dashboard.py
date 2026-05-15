@@ -130,6 +130,32 @@ with tab_site:
         c2.metric("Impressions", f"{view['impressions'].sum():,}")
         c3.metric("Gross revenue", f"${view['publisher_gross_revenue'].sum():,.2f}")
 
+        # WoW alert
+        if len(view) > 0:
+            max_d = view["date"].max()
+            r7 = view[view["date"] > max_d - timedelta(days=7)]["publisher_gross_revenue"].sum()
+            p7 = view[(view["date"] <= max_d - timedelta(days=7)) & (view["date"] > max_d - timedelta(days=14))]["publisher_gross_revenue"].sum()
+            if p7 > 0:
+                pct = (r7 - p7) / p7 * 100
+                if pct <= -10:
+                    st.warning(f"Revenue down {abs(pct):.1f}% vs prior week (${r7:,.0f} vs ${p7:,.0f})")
+                elif pct >= 10:
+                    st.success(f"Revenue up {pct:.1f}% vs prior week (${r7:,.0f} vs ${p7:,.0f})")
+
+        col_trend, col_funnel = st.columns([2, 1])
+        with col_trend:
+            st.subheader("Daily revenue")
+            daily = view.groupby("date")["publisher_gross_revenue"].sum().rename("Revenue ($)")
+            st.line_chart(daily, height=220)
+        with col_funnel:
+            st.subheader("Bid funnel")
+            funnel = pd.Series({
+                "Ad requests": view["ad_requests"].sum(),
+                "Bid requests": view["bid_requests"].sum(),
+                "Impressions": view["impressions"].sum(),
+            })
+            st.bar_chart(funnel, height=220)
+
         st.dataframe(
             view,
             use_container_width=True,
@@ -208,6 +234,24 @@ with tab_deal:
         c2.metric("Gross revenue", f"${view['publisher_gross_revenue'].sum():,.2f}")
         c3.metric("Net revenue", f"${view['seller_net_revenue'].sum():,.2f}")
 
+        # Deals with no impressions
+        if len(view) > 0:
+            zero_imp = view.groupby("deal")["impressions"].sum()
+            zero_imp = zero_imp[zero_imp == 0]
+            if not zero_imp.empty:
+                names = ", ".join(zero_imp.index.tolist()[:5])
+                st.warning(f"{len(zero_imp)} deal(s) with 0 impressions in selected period: {names}")
+
+        col_trend, col_ae = st.columns(2)
+        with col_trend:
+            st.subheader("Daily revenue")
+            daily = view.groupby("date")["publisher_gross_revenue"].sum().rename("Revenue ($)")
+            st.line_chart(daily, height=220)
+        with col_ae:
+            st.subheader("Revenue by AE")
+            ae_rev = view.groupby("seller_ae")["publisher_gross_revenue"].sum().sort_values(ascending=False)
+            st.bar_chart(ae_rev, height=220)
+
         st.dataframe(
             view.sort_values("publisher_gross_revenue", ascending=False),
             use_container_width=True,
@@ -262,6 +306,27 @@ with tab_dsp:
         c1.metric("Impressions", f"{view['impressions'].sum():,}")
         c2.metric("Gross revenue", f"${view['publisher_gross_revenue'].sum():,.2f}")
         c3.metric("Auctions won", f"{view['auctions_won'].sum():,}")
+
+        # Low win rate alert
+        if len(view) > 0:
+            win_by_dsp = view.groupby("partner")["win_rate"].mean()
+            low_win = win_by_dsp[win_by_dsp < 10].sort_values()
+            if not low_win.empty:
+                names = ", ".join([f"{p} ({v:.1f}%)" for p, v in low_win.items()])
+                st.warning(f"Low win rate (<10%): {names}")
+
+        col_trend, col_win = st.columns(2)
+        with col_trend:
+            st.subheader("Revenue trend – top 5 DSPs")
+            top5 = view.groupby("partner")["publisher_gross_revenue"].sum().nlargest(5).index
+            trend = (view[view["partner"].isin(top5)]
+                     .groupby(["date", "partner"])["publisher_gross_revenue"]
+                     .sum().unstack(fill_value=0))
+            st.line_chart(trend, height=220)
+        with col_win:
+            st.subheader("Win rate by DSP (%)")
+            win_chart = win_by_dsp.sort_values(ascending=False)
+            st.bar_chart(win_chart, height=220)
 
         st.dataframe(
             view.sort_values("publisher_gross_revenue", ascending=False),
