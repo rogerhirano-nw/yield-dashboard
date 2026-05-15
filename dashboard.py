@@ -12,6 +12,7 @@ of Magnite's queue.
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 
 import pandas as pd
 import sqlalchemy
@@ -21,6 +22,44 @@ import streamlit as st
 def _engine() -> sqlalchemy.Engine:
     url = st.secrets.get("DATABASE_URL", os.environ.get("DATABASE_URL", ""))
     return sqlalchemy.create_engine(url)
+
+
+PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
+
+
+def _preset_range(preset: str, dmin: date, dmax: date) -> tuple[date, date]:
+    today = date.today()
+    if preset == "Yesterday":
+        d = today - timedelta(days=1)
+        return d, d
+    if preset == "Last 7 days":
+        return today - timedelta(days=7), today - timedelta(days=1)
+    if preset == "Month to date":
+        return today.replace(day=1), today - timedelta(days=1)
+    if preset == "Last quarter":
+        m = today.month
+        y = today.year
+        if m <= 3:
+            return date(y - 1, 10, 1), date(y - 1, 12, 31)
+        elif m <= 6:
+            return date(y, 1, 1), date(y, 3, 31)
+        elif m <= 9:
+            return date(y, 4, 1), date(y, 6, 30)
+        else:
+            return date(y, 7, 1), date(y, 9, 30)
+    if preset == "Year to date":
+        return date(today.year, 1, 1), today - timedelta(days=1)
+    return dmin, dmax  # Custom
+
+
+def date_filter(key: str, dmin: date, dmax: date) -> tuple[date, date]:
+    preset = st.selectbox("Date range", PRESETS, index=0, key=f"{key}_preset")
+    if preset == "Custom":
+        dr = st.date_input("Custom range", value=(dmin, dmax), min_value=dmin, max_value=dmax, key=f"{key}_custom")
+        start, end = dr if isinstance(dr, tuple) and len(dr) == 2 else (dmin, dmax)
+    else:
+        start, end = _preset_range(preset, dmin, dmax)
+    return max(start, dmin), min(end, dmax)
 
 DEAL_TYPE_NAMES = {
     "PA": "Private Auction",
@@ -68,12 +107,7 @@ with tab_site:
         df["date"] = pd.to_datetime(df["date"]).dt.date
         dmin, dmax = df["date"].min(), df["date"].max()
 
-        date_range = st.date_input(
-            "Date range",
-            value=(dmin, dmax),
-            min_value=dmin,
-            max_value=dmax,
-        )
+        start, end = date_filter("site", dmin, dmax)
 
         f1, f2, f3 = st.columns(3)
         with f1:
@@ -83,10 +117,7 @@ with tab_site:
         with f3:
             devices = st.multiselect("Filter device types", sorted(df["device_type_name_v1"].dropna().unique()))
 
-        view = df
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start, end = date_range
-            view = view[(view["date"] >= start) & (view["date"] <= end)]
+        view = df[(df["date"] >= start) & (df["date"] <= end)]
         if sites:
             view = view[view["site"].isin(sites)]
         if sizes:
@@ -138,13 +169,7 @@ with tab_deal:
         df["deal_type"] = df["deal_type"].map(DEAL_TYPE_NAMES).fillna(df["deal_type"])
         dmin, dmax = df["date"].min(), df["date"].max()
 
-        date_range = st.date_input(
-            "Date range",
-            value=(dmin, dmax),
-            min_value=dmin,
-            max_value=dmax,
-            key="deal_date_range",
-        )
+        start, end = date_filter("deal", dmin, dmax)
 
         f1, f2, f3 = st.columns(3)
         with f1:
@@ -166,10 +191,7 @@ with tab_deal:
                 key="deal_filter",
             )
 
-        view = df
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start, end = date_range
-            view = view[(view["date"] >= start) & (view["date"] <= end)]
+        view = df[(df["date"] >= start) & (df["date"] <= end)]
         if types:
             view = view[view["deal_type"].isin(types)]
         if aes:
@@ -210,13 +232,7 @@ with tab_dsp:
         df["date"] = pd.to_datetime(df["date"]).dt.date
         dmin, dmax = df["date"].min(), df["date"].max()
 
-        date_range = st.date_input(
-            "Date range",
-            value=(dmin, dmax),
-            min_value=dmin,
-            max_value=dmax,
-            key="dsp_date_range",
-        )
+        start, end = date_filter("dsp", dmin, dmax)
 
         f1, f2 = st.columns(2)
         with f1:
@@ -232,10 +248,7 @@ with tab_dsp:
                 key="dsp_site_filter",
             )
 
-        view = df
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start, end = date_range
-            view = view[(view["date"] >= start) & (view["date"] <= end)]
+        view = df[(df["date"] >= start) & (df["date"] <= end)]
         if partners:
             view = view[view["partner"].isin(partners)]
         if sites_dsp:
