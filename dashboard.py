@@ -150,7 +150,7 @@ def load(table: str) -> pd.DataFrame:
         return pd.read_sql(f"SELECT * FROM {table}", conn)
 
 
-tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_seller = st.tabs(["By Site / Size", "By DSP", "By Deal", "Pubmatic PMP", "Seller View"])
+tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_seller = st.tabs(["By Site / Size", "By DSP", "By Deal", "Pubmatic PMP", "Campaigns"])
 
 with tab_site:
     df = load("by_site_size_daily")
