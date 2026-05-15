@@ -58,7 +58,7 @@ class MagniteClient:
     account_id: str
     base_url: str = BASE_URL
     # Polling cadence — start gentle to be a good neighbor.
-    poll_interval_seconds: int = 10
+    poll_interval_seconds: int = 30
     poll_timeout_seconds: int = 1800  # 30 minutes
     # Auto-retry on 429 (queue full, max 5 parallel reports).
     retry_429_seconds: int = 60
