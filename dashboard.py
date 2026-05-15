@@ -150,7 +150,7 @@ def load(table: str) -> pd.DataFrame:
         return pd.read_sql(f"SELECT * FROM {table}", conn)
 
 
-tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_seller = st.tabs(["By Site / Size", "By DSP", "By Deal", "Pubmatic PMP", "Campaigns"])
+tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_seller = st.tabs(["By Site / Size", "By DSP", "Magnite Deals", "Pubmatic PMP", "Campaigns"])
 
 with tab_site:
     df = load("by_site_size_daily")
@@ -592,13 +592,14 @@ with tab_pubmatic:
         )
 
 with tab_seller:
-    import re as _re
+    # ── Table 1: Direct campaigns from GAM ──────────────────────────────
+    st.subheader("Direct Campaigns")
 
     try:
         gam_df = load("campaigns_gam")
     except Exception:
+        gam_df = pd.DataFrame()
         st.info("No GAM data yet. The campaigns_gam table will be created on the next scheduled refresh.")
-        st.stop()
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate campaigns_gam.")
@@ -622,15 +623,15 @@ with tab_seller:
         sellers = sorted(gam_df["seller_ae"].dropna().unique())
         selected_seller = st.selectbox(
             "Seller",
-            options=sellers,
+            options=["All"] + sellers,
             key="seller_select",
-        ) if sellers else None
+        )
 
-        if not selected_seller:
-            st.info("No sellers found in order_name — check that order names follow the Team-USA/INTL_Name pattern.")
+        view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
+
+        if view_gam.empty:
+            st.info("No campaigns found for the selected seller.")
         else:
-            view_gam = gam_df[gam_df["seller_ae"] == selected_seller].copy()
-
             # ---------- Summary metrics ----------
             total_impr = view_gam["impressions_delivered"].sum() if "impressions_delivered" in view_gam else 0
             total_rev  = view_gam["ad_server_cpm_and_cpc_revenue"].sum() if "ad_server_cpm_and_cpc_revenue" in view_gam else 0
@@ -676,6 +677,7 @@ with tab_seller:
             display_cols = {
                 "line_item_name": "Line Item",
                 "order_name": "Order",
+                "seller_ae": "Seller",
                 "impressions_goal": "Goal",
                 "impressions_delivered": "Delivered",
                 "pacing_pct": "Pacing %",
@@ -714,3 +716,69 @@ with tab_seller:
                 hide_index=True,
                 column_config=col_config,
             )
+
+    st.divider()
+
+    # ── Table 2: PMP deals from Pubmatic ────────────────────────────────
+    st.subheader("PMP Deals")
+
+    try:
+        pmp_df = load("deals_pubmatic")
+    except Exception:
+        pmp_df = pd.DataFrame()
+        st.info("No Pubmatic PMP data yet — run refresh_cache.py to populate deals_pubmatic.")
+
+    if pmp_df.empty:
+        st.info("No Pubmatic PMP data yet.")
+    else:
+        pmp_df = pmp_df.copy()
+        pmp_df["date"] = pd.to_datetime(pmp_df["date"]).dt.date
+
+        if "deal" not in pmp_df.columns:
+            pmp_df["deal"] = None
+        if "publisher_deal_id" not in pmp_df.columns:
+            pmp_df["publisher_deal_id"] = None
+        pmp_df["deal_label"] = pmp_df["deal"].fillna(pmp_df["publisher_deal_id"]).fillna(pmp_df["deal_meta_id"].astype(str))
+
+        pmp_summary = (
+            pmp_df.groupby(["deal_label", "dsp"], dropna=False)
+            .agg(
+                paid_impressions=("paid_impressions", "sum"),
+                revenue=("revenue", "sum"),
+                ecpm=("ecpm", "mean"),
+                win_rate=("win_rate", "mean"),
+                total_requests=("total_requests", "sum"),
+                non_zero_bid_responses=("non_zero_bid_responses", "sum"),
+            )
+            .reset_index()
+            .sort_values("revenue", ascending=False)
+            .rename(columns={
+                "deal_label": "Deal",
+                "dsp": "DSP",
+                "paid_impressions": "Paid Impressions",
+                "revenue": "Revenue",
+                "ecpm": "eCPM",
+                "win_rate": "Win Rate %",
+                "total_requests": "Total Requests",
+                "non_zero_bid_responses": "Bid Responses",
+            })
+        )
+
+        pm1, pm2, pm3 = st.columns(3)
+        pm1.metric("Paid impressions", f"{pmp_df['paid_impressions'].sum():,.0f}")
+        pm2.metric("Revenue", f"${pmp_df['revenue'].sum():,.2f}")
+        pm3.metric("Avg eCPM", f"${pmp_df['ecpm'].mean():,.2f}" if len(pmp_df) else "—")
+
+        st.dataframe(
+            pmp_summary,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Paid Impressions": st.column_config.NumberColumn(format="localized"),
+                "Revenue": st.column_config.NumberColumn(format="dollar"),
+                "eCPM": st.column_config.NumberColumn(format="dollar"),
+                "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
+                "Total Requests": st.column_config.NumberColumn(format="localized"),
+                "Bid Responses": st.column_config.NumberColumn(format="localized"),
+            },
+        )
