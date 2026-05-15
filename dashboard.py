@@ -250,7 +250,7 @@ with tab_deal:
                            .rename("Revenue ($)"))
             st.bar_chart(top10_deals, height=280, horizontal=True)
         with col_ae:
-            st.subheader("Revenue by AE")
+            st.subheader("Revenue by Seller")
             ae_rev = (view.groupby("seller_ae")["publisher_gross_revenue"]
                       .sum().sort_values(ascending=True).rename("Revenue ($)"))
             st.bar_chart(ae_rev, height=280, horizontal=True)
