@@ -396,7 +396,12 @@ with tab_dsp:
 with tab_seller:
     import re as _re
 
-    gam_df = load("campaigns_gam")
+    try:
+        gam_df = load("campaigns_gam")
+    except Exception:
+        st.info("No GAM data yet. The campaigns_gam table will be created on the next scheduled refresh.")
+        st.stop()
+
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate campaigns_gam.")
     else:
