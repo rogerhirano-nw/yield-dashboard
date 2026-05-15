@@ -140,8 +140,8 @@ AE_NAMES = {
     "House": "House",
 }
 
-st.set_page_config(page_title="Newsweek × Magnite", layout="wide")
-st.title("Magnite DV+ — Performance")
+st.set_page_config(page_title="Overall Performance", layout="wide")
+st.title("Overall Performance")
 
 
 @st.cache_data(ttl=300)
