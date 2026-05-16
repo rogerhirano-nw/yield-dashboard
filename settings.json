@@ -1,0 +1,83 @@
+{
+  "ssps": [
+    {
+      "name": "GAM",
+      "enabled": true,
+      "table": "campaigns_gam",
+      "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
+      "columns": {
+        "Deal":             "order_name",
+        "Deal Type":        "[auto]",
+        "DSP":              "",
+        "Format":           "[auto]",
+        "Seller":           "salesperson",
+        "Paid Impressions": "lifetime_impressions_delivered",
+        "Revenue":          "ad_server_cpm_and_cpc_revenue",
+        "eCPM":             "cpm_rate",
+        "Win Rate %":       "",
+        "Total Requests":   "",
+        "Bid Responses":    ""
+      }
+    },
+    {
+      "name": "Magnite",
+      "enabled": true,
+      "table": "by_deal_daily",
+      "deal_types": ["Private Auction", "Preferred Deal", "Private Marketplace"],
+      "columns": {
+        "Deal":             "deal",
+        "Deal Type":        "[auto]",
+        "DSP":              "partner",
+        "Format":           "ad_format",
+        "Seller":           "[auto]",
+        "Paid Impressions": "paid_impression",
+        "Revenue":          "publisher_gross_revenue",
+        "eCPM":             "ecpm",
+        "Win Rate %":       "[computed: impressions / requests]",
+        "Total Requests":   "bid_requests",
+        "Bid Responses":    "bid_responses"
+      }
+    },
+    {
+      "name": "Pubmatic",
+      "enabled": true,
+      "table": "deals_pubmatic",
+      "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed", "Private Marketplace"],
+      "columns": {
+        "Deal":             "deal",
+        "Deal Type":        "[auto]",
+        "DSP":              "dsp",
+        "Format":           "ad_format",
+        "Seller":           "[auto]",
+        "Paid Impressions": "paid_impressions",
+        "Revenue":          "revenue",
+        "eCPM":             "ecpm",
+        "Win Rate %":       "win_rate",
+        "Total Requests":   "total_requests",
+        "Bid Responses":    "non_zero_bid_responses"
+      }
+    }
+  ],
+  "ae_names": {
+    "AShah":     "Amit Shah",
+    "BKaretny":  "Ben Karetny",
+    "BRobinson": "Brian Robinson",
+    "DDivack":   "Dana Divack",
+    "DVarvaro":  "Danielle Varvaro",
+    "ILee":      "Ivy Lee",
+    "Ivy":       "Ivy Lee",
+    "JAmalfi":   "Julie Amalfi",
+    "JGentile":  "Jeremy Gentile",
+    "KWebb":     "House",
+    "RShore":    "Rob Shore",
+    "SCarroll":  "Summer Carroll",
+    "THern":     "Theresa Hern",
+    "House":     "House"
+  },
+  "deal_type_codes": {
+    "PA":  "Private Auction",
+    "PD":  "Preferred Deal",
+    "PG":  "Programmatic Guaranteed",
+    "PMP": "Private Marketplace"
+  }
+}

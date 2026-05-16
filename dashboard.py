@@ -11,17 +11,97 @@ of Magnite's queue.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import date, timedelta
+from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import sqlalchemy
 import streamlit as st
 
+# ── Settings ─────────────────────────────────────────────────────────────────
+
+_SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+_DEFAULT_SETTINGS: dict = {
+    "ssps": [
+        {
+            "name": "GAM", "enabled": True, "table": "campaigns_gam",
+            "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
+            "columns": {
+                "Deal": "order_name", "Deal Type": "[auto]", "DSP": "",
+                "Format": "[auto]", "Seller": "salesperson",
+                "Paid Impressions": "lifetime_impressions_delivered",
+                "Revenue": "ad_server_cpm_and_cpc_revenue", "eCPM": "cpm_rate",
+                "Win Rate %": "", "Total Requests": "", "Bid Responses": "",
+            },
+        },
+        {
+            "name": "Magnite", "enabled": True, "table": "by_deal_daily",
+            "deal_types": ["Private Auction", "Preferred Deal", "Private Marketplace"],
+            "columns": {
+                "Deal": "deal", "Deal Type": "[auto]", "DSP": "partner",
+                "Format": "ad_format", "Seller": "[auto]",
+                "Paid Impressions": "paid_impression",
+                "Revenue": "publisher_gross_revenue", "eCPM": "ecpm",
+                "Win Rate %": "[computed: impressions / requests]",
+                "Total Requests": "bid_requests", "Bid Responses": "bid_responses",
+            },
+        },
+        {
+            "name": "Pubmatic", "enabled": True, "table": "deals_pubmatic",
+            "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed", "Private Marketplace"],
+            "columns": {
+                "Deal": "deal", "Deal Type": "[auto]", "DSP": "dsp",
+                "Format": "ad_format", "Seller": "[auto]",
+                "Paid Impressions": "paid_impressions",
+                "Revenue": "revenue", "eCPM": "ecpm",
+                "Win Rate %": "win_rate", "Total Requests": "total_requests",
+                "Bid Responses": "non_zero_bid_responses",
+            },
+        },
+    ],
+    "ae_names": {
+        "AShah": "Amit Shah", "BKaretny": "Ben Karetny", "BRobinson": "Brian Robinson",
+        "DDivack": "Dana Divack", "DVarvaro": "Danielle Varvaro",
+        "ILee": "Ivy Lee", "Ivy": "Ivy Lee", "JAmalfi": "Julie Amalfi",
+        "JGentile": "Jeremy Gentile", "KWebb": "House", "RShore": "Rob Shore",
+        "SCarroll": "Summer Carroll", "THern": "Theresa Hern", "House": "House",
+    },
+    "deal_type_codes": {
+        "PA": "Private Auction", "PD": "Preferred Deal",
+        "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace",
+    },
+}
+
+
+def _load_settings() -> dict:
+    if _SETTINGS_PATH.exists():
+        try:
+            with open(_SETTINGS_PATH) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return _DEFAULT_SETTINGS
+
+
+def _save_settings(data: dict) -> None:
+    with open(_SETTINGS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+    st.cache_data.clear()
+
+
+_cfg = _load_settings()
+_ssp_enabled: dict[str, bool] = {s["name"]: s.get("enabled", True) for s in _cfg["ssps"]}
+
 
 def _engine() -> sqlalchemy.Engine:
-    url = st.secrets.get("DATABASE_URL", os.environ.get("DATABASE_URL", ""))
+    try:
+        url = st.secrets["DATABASE_URL"]
+    except Exception:
+        url = os.environ.get("DATABASE_URL", "")
     return sqlalchemy.create_engine(url)
 
 
@@ -62,12 +142,7 @@ def date_filter(key: str, dmin: date, dmax: date) -> tuple[date, date]:
         start, end = _preset_range(preset, dmin, dmax)
     return max(start, dmin), min(end, dmax)
 
-DEAL_TYPE_NAMES = {
-    "PA":  "Private Auction",
-    "PD":  "Preferred Deal",
-    "PG":  "Programmatic Guaranteed",
-    "PMP": "Private Marketplace",
-}
+DEAL_TYPE_NAMES = _cfg["deal_type_codes"]
 
 KNOWN_FORMATS = {"Display", "Native", "Video", "CTV", "OLV", "Banner"}
 
@@ -123,22 +198,7 @@ def _parse_deal(deal: str) -> pd.Series:
         "floor_price":     floor_price,
     })
 
-AE_NAMES = {
-    "AShah": "Amit Shah",
-    "BKaretny": "Ben Karetny",
-    "BRobinson": "Brian Robinson",
-    "DDivack": "Dana Divack",
-    "DVarvaro": "Danielle Varvaro",
-    "ILee": "Ivy Lee",
-    "Ivy": "Ivy Lee",
-    "JAmalfi": "Julie Amalfi",
-    "JGentile": "Jeremy Gentile",
-    "KWebb": "House",
-    "RShore": "Rob Shore",
-    "SCarroll": "Summer Carroll",
-    "THern": "Theresa Hern",
-    "House": "House",
-}
+AE_NAMES = _cfg["ae_names"]
 
 st.set_page_config(page_title="Overall Performance", layout="wide")
 st.title("Overall Performance")
@@ -150,7 +210,9 @@ def load(table: str) -> pd.DataFrame:
         return pd.read_sql(f"SELECT * FROM {table}", conn)
 
 
-tab_seller, tab_site, tab_dsp, tab_deal, tab_pubmatic = st.tabs(["Campaigns", "By Site / Size", "By DSP", "Magnite Deals", "Pubmatic Deals"])
+tab_seller, tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_settings = st.tabs([
+    "Campaigns", "By Site / Size", "By DSP", "Magnite Deals", "Pubmatic Deals", "⚙ Settings",
+])
 
 with tab_site:
     df = load("by_site_size_daily")
@@ -632,18 +694,34 @@ with tab_seller:
             if numcol in gam_df.columns:
                 gam_df[numcol] = pd.to_numeric(gam_df[numcol], errors="coerce")
 
-        # Extract seller — try order_name first, fall back to line_item_name
-        gam_df["seller_ae"] = (
-            gam_df["order_name"]
-            .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-            .map(AE_NAMES)
-        )
-        _li_seller = (
-            gam_df["line_item_name"]
-            .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-            .map(AE_NAMES)
-        )
-        gam_df["seller_ae"] = gam_df["seller_ae"].fillna(_li_seller)
+        # Extract seller — prefer GAM salesperson field, fall back to name regex
+        if "salesperson" in gam_df.columns and gam_df["salesperson"].notna().any():
+            gam_df["seller_ae"] = gam_df["salesperson"]
+            _null_mask = gam_df["seller_ae"].isna()
+            if _null_mask.any():
+                _regex_seller = (
+                    gam_df.loc[_null_mask, "order_name"]
+                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                    .map(AE_NAMES)
+                )
+                _li_seller = (
+                    gam_df.loc[_null_mask, "line_item_name"]
+                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                    .map(AE_NAMES)
+                )
+                gam_df.loc[_null_mask, "seller_ae"] = _regex_seller.fillna(_li_seller)
+        else:
+            gam_df["seller_ae"] = (
+                gam_df["order_name"]
+                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                .map(AE_NAMES)
+            )
+            _li_seller = (
+                gam_df["line_item_name"]
+                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                .map(AE_NAMES)
+            )
+            gam_df["seller_ae"] = gam_df["seller_ae"].fillna(_li_seller)
 
         # Extract advertiser (index 7) and campaign (index 8) from line item name
         def _li_part(name, idx):
@@ -852,13 +930,14 @@ with tab_seller:
     st.subheader("PMP Deals")
 
     try:
-        pmp_df = load("deals_pubmatic")
+        pmp_df = load("deals_pubmatic") if _ssp_enabled.get("Pubmatic", True) else pd.DataFrame()
     except Exception:
         pmp_df = pd.DataFrame()
         st.info("No Pubmatic PMP data yet — run refresh_cache.py to populate deals_pubmatic.")
 
     if pmp_df.empty:
-        st.info("No Pubmatic PMP data yet.")
+        if _ssp_enabled.get("Pubmatic", True):
+            st.info("No Pubmatic PMP data yet.")
     else:
         pmp_df = pmp_df.copy()
         pmp_df["date"] = pd.to_datetime(pmp_df["date"]).dt.date
@@ -894,17 +973,22 @@ with tab_seller:
             list(pmp_df["ad_format"].dropna().unique()) if "ad_format" in pmp_df.columns else []
         ) | set(_mag_formats))
 
+        _pmp_ssps_available = [s["name"] for s in _cfg["ssps"] if s.get("enabled", True)]
+        _pmp_deal_types_available = sorted(set(
+            dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
+        ))
+
         _pf1, _pf2, _pf3, _pf4 = st.columns(4)
         with _pf1:
             sel_pmp_deal_types = st.multiselect(
                 "Deal Type",
-                ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
+                _pmp_deal_types_available,
                 key="campaigns_pmp_deal_type_filter",
             )
         with _pf2:
             sel_pmp_ssps = st.multiselect(
                 "SSP",
-                ["GAM", "Magnite", "Pubmatic"],
+                _pmp_ssps_available,
                 key="campaigns_pmp_ssp_filter",
             )
         with _pf3:
@@ -953,9 +1037,9 @@ with tab_seller:
 
         # Add GAM PA / PD / PG deals (all managed in Google Ad Manager)
         _gam_summary = pd.DataFrame()
-        _gam_deal_types = [t for t in (sel_pmp_deal_types or ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"])
-                           if t in ("Private Auction", "Preferred Deal", "Programmatic Guaranteed")]
-        if _gam_deal_types:
+        _gam_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "GAM"), [])
+        _gam_deal_types = [t for t in (sel_pmp_deal_types or _gam_cfg_deal_types) if t in _gam_cfg_deal_types]
+        if _gam_deal_types and _ssp_enabled.get("GAM", True):
             try:
                 _gam_raw = load("campaigns_gam").copy()
                 if not _gam_raw.empty and "order_name" in _gam_raw.columns:
@@ -966,11 +1050,21 @@ with tab_seller:
                     _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
                     if not _gam_deals.empty:
                         _gam_deals["ssp"] = "GAM"
-                        _gam_deals["seller_ae"] = (
-                            _gam_deals["order_name"]
-                            .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                            .map(AE_NAMES)
-                        )
+                        if "salesperson" in _gam_deals.columns and _gam_deals["salesperson"].notna().any():
+                            _gam_deals["seller_ae"] = _gam_deals["salesperson"]
+                            _null_mask = _gam_deals["seller_ae"].isna()
+                            if _null_mask.any():
+                                _gam_deals.loc[_null_mask, "seller_ae"] = (
+                                    _gam_deals.loc[_null_mask, "order_name"]
+                                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                                    .map(AE_NAMES)
+                                )
+                        else:
+                            _gam_deals["seller_ae"] = (
+                                _gam_deals["order_name"]
+                                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                                .map(AE_NAMES)
+                            )
                         if selected_seller != "All":
                             _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
                         for _col in ("lifetime_impressions_delivered", "ad_server_cpm_and_cpc_revenue", "cpm_rate"):
@@ -1005,8 +1099,9 @@ with tab_seller:
 
         # Add Magnite PA / PD / PMP deals (PG only comes from GAM)
         _magnite_summary = pd.DataFrame()
-        _mag_types = [t for t in (sel_pmp_deal_types or ["Private Auction", "Preferred Deal", "Private Marketplace"]) if t != "Programmatic Guaranteed"]
-        if _mag_types:
+        _mag_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "Magnite"), [])
+        _mag_types = [t for t in (sel_pmp_deal_types or _mag_cfg_deal_types) if t in _mag_cfg_deal_types]
+        if _mag_types and _ssp_enabled.get("Magnite", True):
             try:
                 _mag_df = load("by_deal_daily").copy()
                 if not _mag_df.empty and "deal" in _mag_df.columns:
@@ -1051,8 +1146,65 @@ with tab_seller:
             except Exception:
                 pass
 
+        # Generic loader for any custom SSP added via the Settings tab
+        _custom_summaries = []
+        _builtin_ssps = {"GAM", "Magnite", "Pubmatic"}
+        for _ssp_cfg in _cfg["ssps"]:
+            _ssp_name = _ssp_cfg["name"]
+            if _ssp_name in _builtin_ssps or not _ssp_cfg.get("enabled", True):
+                continue
+            try:
+                _custom_df = load(_ssp_cfg["table"]).copy()
+                if _custom_df.empty:
+                    continue
+                _col_map = _ssp_cfg.get("columns", {})
+                _rename = {}
+                _field_to_internal = {
+                    "Deal": "Deal", "Deal Type": "Deal Type", "DSP": "DSP",
+                    "Format": "Format", "Seller": "Seller",
+                    "Paid Impressions": "paid_imp_raw", "Revenue": "rev_raw",
+                    "eCPM": "ecpm_raw", "Win Rate %": "wr_raw",
+                    "Total Requests": "tr_raw", "Bid Responses": "br_raw",
+                }
+                for field, src in _col_map.items():
+                    if src and src not in ("[auto]", "") and not src.startswith("[computed") and src in _custom_df.columns:
+                        _rename[src] = _field_to_internal.get(field, field)
+                _custom_df = _custom_df.rename(columns=_rename)
+                _custom_df["SSP"] = _ssp_name
+                if _col_map.get("Deal Type") == "[auto]" and "Deal" in _custom_df.columns:
+                    _custom_df["Deal Type"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
+                if _col_map.get("Format") == "[auto]" and "Deal" in _custom_df.columns:
+                    _custom_df["Format"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["ad_format"])
+                if _col_map.get("Seller") == "[auto]" and "Deal" in _custom_df.columns:
+                    _custom_df["Seller"] = (
+                        _custom_df["Deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False).map(AE_NAMES)
+                    )
+                _active_types = sel_pmp_deal_types or _ssp_cfg.get("deal_types", [])
+                if _active_types and "Deal Type" in _custom_df.columns:
+                    _custom_df = _custom_df[_custom_df["Deal Type"].isin(_active_types)]
+                if selected_seller != "All" and "Seller" in _custom_df.columns:
+                    _custom_df = _custom_df[_custom_df["Seller"] == selected_seller]
+                if _custom_df.empty:
+                    continue
+                _grp_cols = [c for c in ["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller"] if c in _custom_df.columns]
+                _agg_spec = {}
+                for _metric, _raw, _how in [
+                    ("Paid Impressions", "paid_imp_raw", "sum"), ("Revenue", "rev_raw", "sum"),
+                    ("Total Requests", "tr_raw", "sum"), ("Bid Responses", "br_raw", "sum"),
+                    ("eCPM", "ecpm_raw", "mean"), ("Win Rate %", "wr_raw", "mean"),
+                ]:
+                    if _raw in _custom_df.columns:
+                        _custom_df[_raw] = pd.to_numeric(_custom_df[_raw], errors="coerce")
+                        _agg_spec[_metric] = (_raw, _how)
+                if _agg_spec:
+                    _custom_summaries.append(
+                        _custom_df.groupby(_grp_cols, dropna=False).agg(**_agg_spec).reset_index()
+                    )
+            except Exception:
+                pass
+
         combined_pmp = pd.concat(
-            [df for df in [pmp_summary, _magnite_summary, _gam_summary] if not df.empty],
+            [df for df in [pmp_summary, _magnite_summary, _gam_summary] + _custom_summaries if not df.empty],
             ignore_index=True,
         ).sort_values("Revenue", ascending=False)
 
@@ -1081,3 +1233,176 @@ with tab_seller:
                 "Bid Responses": st.column_config.NumberColumn(format="localized"),
             },
         )
+
+# ── Settings tab ─────────────────────────────────────────────────────────────
+
+with tab_settings:
+    st.subheader("Dashboard Settings")
+    st.caption(
+        "Configure data sources and column mappings for each SSP. "
+        "Changes take effect immediately after saving. "
+        "Add a new SSP by inserting a row in the Sources table and filling in its column mapping."
+    )
+
+    _s = _load_settings()  # fresh read so edits are based on current file
+
+    _CANONICAL_FIELDS = [
+        "Deal", "Deal Type", "DSP", "Format", "Seller",
+        "Paid Impressions", "Revenue", "eCPM",
+        "Win Rate %", "Total Requests", "Bid Responses",
+    ]
+    _ALL_DEAL_TYPES = [
+        "Private Auction", "Preferred Deal",
+        "Programmatic Guaranteed", "Private Marketplace",
+    ]
+
+    # ── Section 1: SSP Sources ──────────────────────────────────────────
+    st.markdown("#### Data Sources")
+    st.caption(
+        "Each row is one SSP. **Deal Types** controls which deal types that SSP contributes to the PMP table. "
+        "Disabling an SSP hides it from all filters and tables."
+    )
+
+    _ssp_rows = [
+        {
+            "SSP Name":       s["name"],
+            "Enabled":        s.get("enabled", True),
+            "Database Table": s["table"],
+            "Deal Types":     ", ".join(s.get("deal_types", [])),
+        }
+        for s in _s["ssps"]
+    ]
+    _ssp_edit = st.data_editor(
+        pd.DataFrame(_ssp_rows),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_ssps",
+        column_config={
+            "SSP Name":       st.column_config.TextColumn("SSP Name", required=True),
+            "Enabled":        st.column_config.CheckboxColumn("Enabled"),
+            "Database Table": st.column_config.TextColumn(
+                "Database Table",
+                help="SQLite/Postgres table populated by refresh_cache.py",
+            ),
+            "Deal Types": st.column_config.TextColumn(
+                "Deal Types",
+                help="Comma-separated list — e.g. Private Auction, Preferred Deal",
+            ),
+        },
+    )
+
+    # ── Section 2: Column Mapping ───────────────────────────────────────
+    st.markdown("#### Column Mapping")
+    st.caption(
+        "Each column is one SSP; each row is a canonical display field. "
+        "Enter the **source column name** from that SSP's database table. "
+        "`[auto]` = computed from deal name. `[computed: ...]` = derived metric. Leave blank if not available."
+    )
+
+    _edited_ssp_names = [
+        str(row["SSP Name"]).strip()
+        for _, row in _ssp_edit.iterrows()
+        if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
+    ]
+    _existing_col_maps = {s["name"]: s.get("columns", {}) for s in _s["ssps"]}
+
+    _map_data: dict[str, list] = {"Field": _CANONICAL_FIELDS}
+    for _sn in _edited_ssp_names:
+        _cm = _existing_col_maps.get(_sn, {})
+        _map_data[_sn] = [_cm.get(f, "") for f in _CANONICAL_FIELDS]
+
+    _map_col_cfg: dict = {
+        "Field": st.column_config.TextColumn("Field", disabled=True),
+    }
+    for _sn in _edited_ssp_names:
+        _map_col_cfg[_sn] = st.column_config.TextColumn(
+            _sn,
+            help=f"Source column from the {_sn} table. Use [auto] for fields parsed from deal name.",
+        )
+
+    _map_edit = st.data_editor(
+        pd.DataFrame(_map_data),
+        use_container_width=True,
+        hide_index=True,
+        key="settings_colmap",
+        column_config=_map_col_cfg,
+        disabled=["Field"],
+    )
+
+    # ── Section 3: Seller / AE Names ────────────────────────────────────
+    st.markdown("#### Seller Names")
+    st.caption("Maps short AE codes (from order and deal names) to full display names.")
+
+    _ae_rows = [{"Code": k, "Full Name": v} for k, v in sorted(_s["ae_names"].items())]
+    _ae_edit = st.data_editor(
+        pd.DataFrame(_ae_rows) if _ae_rows else pd.DataFrame(columns=["Code", "Full Name"]),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_ae",
+        column_config={
+            "Code":      st.column_config.TextColumn("Code", required=True, help="e.g. JAmalfi"),
+            "Full Name": st.column_config.TextColumn("Full Name", required=True, help="e.g. Julie Amalfi"),
+        },
+    )
+
+    # ── Section 4: Deal Type Codes ───────────────────────────────────────
+    st.markdown("#### Deal Type Codes")
+    st.caption("Maps abbreviations in deal/order names to display labels.")
+
+    _dt_rows = [{"Code": k, "Label": v} for k, v in sorted(_s["deal_type_codes"].items())]
+    _dt_edit = st.data_editor(
+        pd.DataFrame(_dt_rows) if _dt_rows else pd.DataFrame(columns=["Code", "Label"]),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_dt",
+        column_config={
+            "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. PA, PD, PG, PMP"),
+            "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
+        },
+    )
+
+    # ── Save ─────────────────────────────────────────────────────────────
+    st.divider()
+    if st.button("💾  Save Settings", type="primary"):
+        try:
+            _new_ssps = []
+            for _, _row in _ssp_edit.iterrows():
+                _ssp_name = str(_row.get("SSP Name", "")).strip()
+                if not _ssp_name:
+                    continue
+                _col_map_new: dict[str, str] = {}
+                if _ssp_name in _map_edit.columns:
+                    for _, _mrow in _map_edit.iterrows():
+                        _field = _mrow["Field"]
+                        _src   = str(_mrow[_ssp_name]).strip() if pd.notna(_mrow[_ssp_name]) else ""
+                        _col_map_new[_field] = _src
+                else:
+                    _col_map_new = _existing_col_maps.get(_ssp_name, {})
+                _dt_raw = str(_row.get("Deal Types", "")).strip()
+                _new_ssps.append({
+                    "name":       _ssp_name,
+                    "enabled":    bool(_row.get("Enabled", True)),
+                    "table":      str(_row.get("Database Table", "")).strip(),
+                    "deal_types": [t.strip() for t in _dt_raw.split(",") if t.strip()],
+                    "columns":    _col_map_new,
+                })
+
+            _new_ae = {
+                str(r["Code"]).strip(): str(r["Full Name"]).strip()
+                for _, r in _ae_edit.iterrows()
+                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+            }
+            _new_dt = {
+                str(r["Code"]).strip(): str(r["Label"]).strip()
+                for _, r in _dt_edit.iterrows()
+                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+            }
+
+            _save_settings({"ssps": _new_ssps, "ae_names": _new_ae, "deal_type_codes": _new_dt})
+            st.success("Settings saved — reloading dashboard…")
+            st.rerun()
+        except Exception as _e:
+            st.error(f"Failed to save: {_e}")

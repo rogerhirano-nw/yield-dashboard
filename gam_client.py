@@ -171,13 +171,40 @@ class GAMClient:
     # Line items
     # ------------------------------------------------------------------
 
+    def _get_order_salespersons(self) -> dict:
+        """Return {order_id_str: salesperson_name} for all orders with a salesperson set."""
+        order_service = self._order_service()
+        statement = ad_manager.StatementBuilder(version=_API_VERSION)
+        statement.Limit(500)
+        statement.Offset(0)
+
+        result_map = {}
+        while True:
+            result = order_service.getOrdersByStatement(statement.ToStatement())
+            if not getattr(result, "results", None):
+                break
+            for order in result.results:
+                sp = getattr(order, "salesperson", None)
+                if sp:
+                    name = getattr(sp, "name", None)
+                    if name:
+                        result_map[str(order.id)] = name
+            if result.totalResultSetSize <= statement.offset + len(result.results):
+                break
+            statement.Offset(statement.offset + 500)
+
+        logger.info("GAM: loaded salesperson for %d orders", len(result_map))
+        return result_map
+
     def get_active_line_items(self) -> pd.DataFrame:
         """
         Fetch READY and DELIVERING line items with their metadata.
 
         Returns DataFrame with: line_item_id, line_item_name, order_id,
-        order_name, impressions_goal, start_date, end_date, status.
+        order_name, impressions_goal, start_date, end_date, status, salesperson.
         """
+        salesperson_map = self._get_order_salespersons()
+
         li_service = self._line_item_service()
         statement = ad_manager.StatementBuilder(version=_API_VERSION)
         statement.Where("status IN ('READY', 'DELIVERING')")
@@ -215,17 +242,19 @@ class GAMClient:
                     else None
                 )
 
+                order_id_str = str(li.orderId)
                 rows.append(
                     {
                         "line_item_id": str(li.id),
                         "line_item_name": li.name,
-                        "order_id": str(li.orderId),
+                        "order_id": order_id_str,
                         "order_name": getattr(li, "orderName", None),
                         "impressions_goal": impressions_goal,
                         "cpm_rate": cpm_rate,
                         "start_date": _gam_date_to_str(getattr(li, "startDateTime", None)),
                         "end_date": _gam_date_to_str(getattr(li, "endDateTime", None)),
                         "status": str(li.status),
+                        "salesperson": salesperson_map.get(order_id_str),
                     }
                 )
 
