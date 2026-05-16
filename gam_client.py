@@ -243,39 +243,31 @@ class GAMClient:
             & ~df_pd_pg["programmatic_deal_id"].astype(str).str.strip().isin(["0", ""])
         ]
 
-        # --- PA: try FIRST_LOOK_PRICING_RULE_NAME ---
-        df_fl_raw = self._run_report(
-            dimensions=["DATE", "FIRST_LOOK_PRICING_RULE_ID", "FIRST_LOOK_PRICING_RULE_NAME",
+        # Diagnostic 1: all programmatic channels (no deal dimension) — tells us if PA exists at all.
+        df_channels = self._run_report(
+            dimensions=["PROGRAMMATIC_CHANNEL_NAME"],
+            metrics=_metrics,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        logger.info("ALL channels: %s",
+                    df_channels[["programmatic_channel_name", "ad_server_impressions"]].to_dict("records")
+                    if not df_channels.empty else [])
+
+        # Diagnostic 2: AUCTION_PACKAGE_DEAL dimension.
+        df_ap = self._run_report(
+            dimensions=["DATE", "AUCTION_PACKAGE_DEAL_ID", "AUCTION_PACKAGE_DEAL",
                         "PROGRAMMATIC_CHANNEL_NAME"],
             metrics=_metrics,
             start_date=start_date,
             end_date=end_date,
         )
-        logger.info("FIRST_LOOK raw rows=%d, channel=%s, names=%s",
-                    len(df_fl_raw),
-                    df_fl_raw["programmatic_channel_name"].value_counts().to_dict() if "programmatic_channel_name" in df_fl_raw.columns else "?",
-                    df_fl_raw["first_look_pricing_rule_name"].dropna().unique().tolist()[:10] if "first_look_pricing_rule_name" in df_fl_raw.columns else "?")
+        logger.info("AUCTION_PACKAGE rows=%d, channels=%s, names=%s",
+                    len(df_ap),
+                    df_ap["programmatic_channel_name"].value_counts().to_dict() if "programmatic_channel_name" in df_ap.columns else "?",
+                    df_ap["auction_package_deal"].dropna().unique().tolist()[:10] if "auction_package_deal" in df_ap.columns else "?")
 
-        df_fl_raw = df_fl_raw.rename(columns={
-            "first_look_pricing_rule_name": "programmatic_deal_name",
-            "first_look_pricing_rule_id": "programmatic_deal_id",
-            "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
-        })
-
-        # Keep Private Auction rows even when the rule name is blank / "(Not applicable)".
-        # FIRST_LOOK rows without a name are still real PA traffic — label them "Private Auction".
-        if "programmatic_channel_name" in df_fl_raw.columns:
-            df_pa = df_fl_raw[df_fl_raw["programmatic_channel_name"] == "Private Auction"].copy()
-        else:
-            df_pa = df_fl_raw[
-                ~df_fl_raw["programmatic_deal_id"].astype(str).str.strip().isin(["0", ""])
-            ].copy()
-
-        _blank = (
-            df_pa["programmatic_deal_name"].isna()
-            | df_pa["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)"])
-        )
-        df_pa.loc[_blank, "programmatic_deal_name"] = "Private Auction"
+        df_pa = pd.DataFrame(columns=df_pd_pg.columns)
 
         df = pd.concat([df_pd_pg, df_pa], ignore_index=True)
         logger.info("GAM deals report: %d PD/PG rows + %d PA (first-look) rows = %d total",
