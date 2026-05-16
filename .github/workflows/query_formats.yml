@@ -1,0 +1,52 @@
+name: Query Unique Format Values
+
+on:
+  workflow_dispatch:
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install sqlalchemy psycopg2-binary pandas
+
+      - name: Query unique format values per SSP
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os
+          import pandas as pd
+          import sqlalchemy
+          from sqlalchemy import text
+
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+
+          queries = {
+              "magnite_deal_daily":  "SELECT DISTINCT ad_format FROM magnite_deal_daily WHERE ad_format IS NOT NULL ORDER BY ad_format",
+              "gam_pmp_deals":       "SELECT DISTINCT ad_format FROM gam_pmp_deals WHERE ad_format IS NOT NULL ORDER BY ad_format",
+              "pubmatic_deals":      "SELECT DISTINCT ad_format FROM pubmatic_deals WHERE ad_format IS NOT NULL ORDER BY ad_format",
+          }
+
+          all_values = set()
+          for table, sql in queries.items():
+              try:
+                  with engine.connect() as conn:
+                      rows = conn.execute(text(sql)).fetchall()
+                  values = [r[0] for r in rows if r[0] and str(r[0]).strip()]
+                  print(f"\n{table} ({len(values)} unique):")
+                  for v in values:
+                      print(f"  {repr(v)}")
+                  all_values.update(values)
+              except Exception as e:
+                  print(f"\n{table}: ERROR — {e}")
+
+          print(f"\n── All unique format values across all tables ({len(all_values)}) ──")
+          for v in sorted(all_values):
+              print(f"  {repr(v)}")
+          PYEOF
