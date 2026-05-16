@@ -216,15 +216,15 @@ class GAMClient:
 
     def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
-        Pull all programmatic deals including PA.
+        Pull PD and PG deals from GAM via DEAL_ID + DEAL_NAME.
 
-        PA deals flow through the Newsweek_OpenExchange order and only surface
-        when ORDER_NAME is included alongside PROGRAMMATIC_CHANNEL_NAME.
-        PD/PG deals are captured via DEAL_ID + DEAL_NAME.
-        Both sets are unioned into one DataFrame.
+        NOTE: The GAM REST API v1 does not expose Private Auction deal names.
+        The PROGRAMMATIC_CHANNEL_NAME dimension returns '' for PA rows — the
+        same empty string it returns for Direct, House Ads, and OpenExchange.
+        There is no API dimension combination that surfaces Newsweek_PA_* deal
+        names from GAM. PA is sourced exclusively from magnite_deal_daily.
         """
-        # ── Pull 1: PD / PG via DEAL_ID + DEAL_NAME ──────────────────────
-        df_deals = self._run_report(
+        df = self._run_report(
             dimensions=["DATE", "DEAL_ID", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
             start_date=start_date,
@@ -234,46 +234,14 @@ class GAMClient:
             "deal_id": "programmatic_deal_id",
             "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
         })
-        df_deals = df_deals[
-            df_deals["programmatic_deal_name"].notna()
-            & ~df_deals["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)"])
-            & ~df_deals["programmatic_deal_id"].astype(str).str.strip().isin(["0", "", "(Not applicable)"])
+        df = df[
+            df["programmatic_deal_name"].notna()
+            & ~df["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)"])
+            & ~df["programmatic_deal_id"].astype(str).str.strip().isin(["0", "", "(Not applicable)"])
         ]
-
-        # ── Pull 2: PA via ORDER_NAME + DEAL_NAME + PROGRAMMATIC_CHANNEL_NAME ──
-        # PA deals flow through Newsweek_OpenExchange; DEAL_NAME returns the
-        # SSP deal name (e.g. Newsweek_PA_*) which is not exposed via DEAL_ID alone.
-        df_pa = self._run_report(
-            dimensions=["DATE", "ORDER_NAME", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
-            metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
-            start_date=start_date,
-            end_date=end_date,
-        ).rename(columns={
-            "deal_name": "programmatic_deal_name",
-            "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
-        })
-        df_pa = df_pa[
-            df_pa["programmatic_channel_name"].astype(str).str.strip()
-            .isin(["Private Auction", "PRIVATE_AUCTION"])
-            & df_pa["programmatic_deal_name"].notna()
-            & ~df_pa["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)", "-"])
-        ]
-        if not df_pa.empty:
-            df_pa["programmatic_deal_id"] = None  # no GAM deal ID for SSP-managed PA deals
-
-        # ── Union ─────────────────────────────────────────────────────────
-        df = pd.concat([df_deals, df_pa], ignore_index=True) if not df_pa.empty else df_deals
-
-        logger.info(
-            "GAM deals report: %d rows total — channels=%s",
-            len(df),
-            df["programmatic_channel_name"].value_counts().to_dict() if not df.empty else {},
-        )
-        logger.info(
-            "GAM PA rows from ORDER_NAME pull: %d (deals: %s)",
-            len(df_pa),
-            df_pa["programmatic_deal_name"].unique().tolist()[:10] if not df_pa.empty else [],
-        )
+        logger.info("GAM deals report: %d rows, channels=%s",
+                    len(df),
+                    df["programmatic_channel_name"].value_counts().to_dict() if not df.empty else {})
         return df
 
     # ------------------------------------------------------------------
