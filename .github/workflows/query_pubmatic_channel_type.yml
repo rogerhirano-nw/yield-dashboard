@@ -1,0 +1,55 @@
+name: Query Pubmatic channelTypeId Dimension
+
+on:
+  workflow_dispatch:
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Test channelTypeId and dealCategoryId
+        env:
+          DATABASE_URL:           ${{ secrets.DATABASE_URL }}
+          PUBMATIC_PUBLISHER_ID:  ${{ secrets.PUBMATIC_PUBLISHER_ID }}
+          PUBMATIC_TOKEN:         ${{ secrets.PUBMATIC_TOKEN }}
+          PUBMATIC_REFRESH_TOKEN: ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
+          PUBMATIC_EMAIL:         ${{ secrets.PUBMATIC_EMAIL }}
+        run: |
+          python - <<'PYEOF'
+          from datetime import date, timedelta
+          from pubmatic_client import PubmaticClient
+
+          client = PubmaticClient()
+          yesterday = date.today() - timedelta(days=1)
+          seven_days_ago = yesterday - timedelta(days=6)
+
+          for dim in ["channelTypeId", "dealCategoryId"]:
+              try:
+                  params = {
+                      "fromDate":   seven_days_ago.strftime("%Y-%m-%dT00:00"),
+                      "toDate":     yesterday.strftime("%Y-%m-%dT23:59"),
+                      "dateUnit":   "date",
+                      "dimensions": f"dealMetaId,{dim}",
+                      "metrics":    "paidImpressions",
+                  }
+                  records = client._fetch(params)
+                  if records:
+                      raw_ids    = sorted({str(r.get(dim, ""))         for r in records if r.get(dim) is not None})
+                      raw_names  = sorted({str(r.get(f"{dim}_name", "")) for r in records if r.get(f"{dim}_name")})
+                      print(f"\n✓ '{dim}' WORKS")
+                      print(f"  ID values:   {raw_ids}")
+                      print(f"  Name values: {raw_names}")
+                      print(f"  Sample row:  {records[0]}")
+                  else:
+                      print(f"\n'{dim}' accepted but returned 0 rows")
+              except Exception as e:
+                  print(f"\n✗ '{dim}' failed: {e}")
+          PYEOF
