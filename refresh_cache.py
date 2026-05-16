@@ -66,11 +66,8 @@ REPORTS = {
     "magnite_deal_daily": {
         "dimensions": ["date", "deal", "deal_id", "partner", "ad_format"],
         "metrics": [
-            "ad_requests",
             "bid_requests",
             "bid_responses",
-            "auctions",
-            "auctions_won",
             "impressions",
             "paid_impression",
             "publisher_gross_revenue",
