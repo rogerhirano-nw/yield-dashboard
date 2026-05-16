@@ -632,12 +632,18 @@ with tab_seller:
             if numcol in gam_df.columns:
                 gam_df[numcol] = pd.to_numeric(gam_df[numcol], errors="coerce")
 
-        # Extract seller from order_name
+        # Extract seller — try order_name first, fall back to line_item_name
         gam_df["seller_ae"] = (
             gam_df["order_name"]
             .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
             .map(AE_NAMES)
         )
+        _li_seller = (
+            gam_df["line_item_name"]
+            .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+            .map(AE_NAMES)
+        )
+        gam_df["seller_ae"] = gam_df["seller_ae"].fillna(_li_seller)
 
         # Extract advertiser (index 7) and campaign (index 8) from line item name
         def _li_part(name, idx):
