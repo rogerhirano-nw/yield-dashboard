@@ -1485,7 +1485,7 @@ with tab_settings:
         "Delivered", "Impressions (1d)", "Remaining", "Clicks",
         "Pacing %", "Viewability %", "CTR %", "Revenue", "VCR %",
     ]
-    _DIRECT_COMPUTED = ["seller_ae", "advertiser", "campaign_name", "ad_format", "remaining_impressions"]
+    _DIRECT_COMPUTED = ["seller_ae", "salesperson", "advertiser", "campaign_name", "ad_format", "remaining_impressions"]
 
     _existing_direct_maps = {s["name"]: s.get("columns", {}) for s in _s.get("direct_sources", [])}
     _direct_src_names = [
