@@ -1,0 +1,15 @@
+name: Query GAM data
+on:
+  workflow_dispatch:
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install sqlalchemy psycopg2-binary
+      - run: python query_gam.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
