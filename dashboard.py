@@ -1308,10 +1308,22 @@ with tab_seller:
         except Exception:
             pass
 
-    combined_pmp = pd.concat(
-        [df for df in [pmp_summary, _magnite_summary, _gam_summary] + _custom_summaries if not df.empty],
-        ignore_index=True,
-    ).sort_values("Revenue", ascending=False)
+    _parts = [df for df in [pmp_summary, _magnite_summary, _gam_summary] + _custom_summaries if not df.empty]
+    if _parts:
+        combined_pmp = pd.concat(_parts, ignore_index=True).sort_values("Revenue", ascending=False)
+    else:
+        combined_pmp = pd.DataFrame(columns=["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller",
+                                              "Paid Impressions", "Revenue", "eCPM",
+                                              "Win Rate %", "Total Requests", "Bid Responses"])
+
+    with st.expander("Debug: data source counts", expanded=False):
+        st.write({
+            "Pubmatic rows": len(pmp_summary),
+            "Magnite rows": len(_magnite_summary),
+            "GAM rows": len(_gam_summary),
+            "Magnite deal types": _magnite_summary["Deal Type"].value_counts().to_dict() if not _magnite_summary.empty else {},
+            "GAM deal types": _gam_summary["Deal Type"].value_counts().to_dict() if not _gam_summary.empty else {},
+        })
 
     if sel_pmp_ssps:
         combined_pmp = combined_pmp[combined_pmp["SSP"].isin(sel_pmp_ssps)]
@@ -1320,24 +1332,27 @@ with tab_seller:
     if sel_pmp_formats:
         combined_pmp = combined_pmp[combined_pmp["Format"].isin(sel_pmp_formats)]
 
-    pm1, pm2, pm3 = st.columns(3)
-    pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
-    pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
-    pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
+    if combined_pmp.empty:
+        st.info("No PMP deal data found. Check the Debug expander above for source counts, or run a data refresh.")
+    else:
+        pm1, pm2, pm3 = st.columns(3)
+        pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
+        pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
+        pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
-    st.dataframe(
-        combined_pmp,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Paid Impressions": st.column_config.NumberColumn(format="localized"),
-            "Revenue": st.column_config.NumberColumn(format="dollar"),
-            "eCPM": st.column_config.NumberColumn(format="dollar"),
-            "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
-            "Total Requests": st.column_config.NumberColumn(format="localized"),
-            "Bid Responses": st.column_config.NumberColumn(format="localized"),
-        },
-    )
+        st.dataframe(
+            combined_pmp,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Paid Impressions": st.column_config.NumberColumn(format="localized"),
+                "Revenue": st.column_config.NumberColumn(format="dollar"),
+                "eCPM": st.column_config.NumberColumn(format="dollar"),
+                "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
+                "Total Requests": st.column_config.NumberColumn(format="localized"),
+                "Bid Responses": st.column_config.NumberColumn(format="localized"),
+            },
+        )
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
