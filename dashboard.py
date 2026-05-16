@@ -1143,14 +1143,6 @@ with tab_seller:
             })
         )
 
-        # GAM line_item_type → canonical deal type label
-        _GAM_LI_TYPE_MAP = {
-            "PREFERRED_DEAL":           "Preferred Deal",
-            "PROGRAMMATIC_GUARANTEED":  "Programmatic Guaranteed",
-            "AD_EXCHANGE":              "Private Auction",
-            "PRICE_PRIORITY":           "Private Auction",
-        }
-
         # Add GAM PA / PD / PG deals (all managed in Google Ad Manager)
         _gam_summary = pd.DataFrame()
         _gam_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "GAM"), [])
@@ -1160,9 +1152,10 @@ with tab_seller:
                 _gam_raw = load("gam_campaigns").copy()
                 if not _gam_raw.empty and "order_name" in _gam_raw.columns:
                     _gam_raw = _gam_raw[~_gam_raw["order_name"].str.startswith("Newsweek_Test", na=False)]
-                    # Use line_item_type if available; fall back to parsing order_name
-                    if "line_item_type" in _gam_raw.columns and _gam_raw["line_item_type"].notna().any():
-                        _gam_raw["deal_type_label"] = _gam_raw["line_item_type"].map(_GAM_LI_TYPE_MAP)
+                    # Use PROGRAMMATIC_CHANNEL from the report — it is the authoritative
+                    # source ("Private Auction", "Preferred Deal", etc.)
+                    if "programmatic_channel" in _gam_raw.columns:
+                        _gam_raw["deal_type_label"] = _gam_raw["programmatic_channel"]
                     else:
                         _gam_raw["deal_type_label"] = _gam_raw["order_name"].apply(
                             lambda d: _parse_deal(d)["deal_type_label"]

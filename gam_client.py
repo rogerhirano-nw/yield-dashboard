@@ -105,6 +105,7 @@ class GAMClient:
                     "LINE_ITEM_NAME",
                     "ORDER_ID",
                     "ORDER_NAME",
+                    "PROGRAMMATIC_CHANNEL",
                 ],
                 "columns": [
                     "AD_SERVER_IMPRESSIONS",
@@ -381,7 +382,10 @@ class GAMClient:
             if _col in df_delivery.columns:
                 agg_spec[_col] = (_col, "mean")
 
-        agg = df_delivery.groupby("line_item_id", as_index=False).agg(**agg_spec)
+        _grp_dims = ["line_item_id"]
+        if "programmatic_channel" in df_delivery.columns:
+            _grp_dims.append("programmatic_channel")
+        agg = df_delivery.groupby(_grp_dims, as_index=False).agg(**agg_spec)
 
         # Yesterday's impressions only (most recent date in the report window)
         latest_date = df_delivery["date"].max()
