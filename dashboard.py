@@ -1168,9 +1168,18 @@ with tab_seller:
                     _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
                         lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
                     )
-                _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
-                    lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
-                )
+                # Prefer API-supplied format; fall back to deal-name scanning
+                if "ad_format" not in _gam_raw.columns or _gam_raw["ad_format"].isna().all():
+                    _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
+                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
+                    )
+                else:
+                    _gam_raw["ad_format"] = _gam_raw["ad_format"].where(
+                        _gam_raw["ad_format"].notna() & (_gam_raw["ad_format"].astype(str).str.strip() != ""),
+                        _gam_raw["deal_name"].apply(
+                            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
+                        )
+                    )
                 # Prefer API-supplied buyer name; fall back to deal-name position 4
                 if "dsp" not in _gam_raw.columns or _gam_raw["dsp"].isna().all():
                     _gam_raw["dsp"] = _gam_raw["deal_name"].apply(
