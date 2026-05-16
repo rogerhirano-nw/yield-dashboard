@@ -182,11 +182,15 @@ class GAMClient:
 
     def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
-        Run a GAM report dimensioned by DEAL_ID + DEAL_NAME for the given window.
+        Run a GAM Historical report dimensioned by DEAL_ID + DEAL_NAME.
 
-        Returns one row per (date, deal) with impressions and revenue.
-        Rows where deal_id is empty/0 represent open-exchange inventory (no deal)
-        and are filtered out before returning.
+        CSV_DUMP silently drops deal dimensions; we use TSV_EXCEL instead which
+        preserves them. The TSV_EXCEL output has a multi-line metadata header
+        before the actual data table — we skip lines until we find the tab-delimited
+        header row, then parse from there.
+
+        Returns one row per (date, deal) filtered to rows that have a deal name
+        (i.e. PA/PD/PG — open-exchange rows have an empty deal name).
         """
         report_service = self._report_service()
         report_job = {
@@ -226,33 +230,49 @@ class GAMClient:
         if status != "COMPLETED":
             raise RuntimeError(f"GAM deals report {job_id} ended with status {status!r}")
 
-        url = report_service.getReportDownloadURL(job_id, "CSV_DUMP")
         import urllib.request
+        # TSV_EXCEL preserves dimension columns that CSV_DUMP silently drops
+        url = report_service.getReportDownloadURL(job_id, "TSV_EXCEL")
         with urllib.request.urlopen(url) as resp:
             raw = resp.read()
         if raw[:2] == b"\x1f\x8b":
             import gzip
             raw = gzip.decompress(raw)
 
-        df = pd.read_csv(io.BytesIO(raw))
-        df.columns = [_snake(re.sub(r"^(?:Dimension|Column)\.", "", col)) for col in df.columns]
+        text = raw.decode("utf-8", errors="replace")
+        logger.info("GAM deals TSV_EXCEL first 500 chars: %s", text[:500])
 
-        logger.info("GAM deals report: raw columns = %s", list(df.columns))
+        # TSV_EXCEL has metadata lines before the table; find the tab-delimited header
+        lines = text.splitlines()
+        header_idx = next(
+            (i for i, ln in enumerate(lines) if "\t" in ln and ("Date" in ln or "Dimension" in ln or "Deal" in ln)),
+            None,
+        )
+        if header_idx is None:
+            logger.warning("GAM deals report: could not find header row in TSV output")
+            return pd.DataFrame()
+
+        tsv_block = "\n".join(lines[header_idx:])
+        df = pd.read_csv(io.StringIO(tsv_block), sep="\t")
+
+        # Normalise column names
+        df.columns = [_snake(re.sub(r"^(?:Dimension|Column)\.", "", col)) for col in df.columns]
+        logger.info("GAM deals TSV columns = %s", list(df.columns))
         logger.info("GAM deals report: %d raw rows", len(df))
 
         for _money_col in ("ad_server_cpm_and_cpc_revenue", "ad_server_average_ecpm"):
             if _money_col in df.columns:
-                df[_money_col] = df[_money_col] / 1_000_000
+                df[_money_col] = pd.to_numeric(df[_money_col], errors="coerce") / 1_000_000
 
-        # Drop rows with no deal (open-exchange impressions not part of a deal)
-        id_col = next((c for c in df.columns if "deal_id" in c), None)
+        # Drop rows with no deal name (open-exchange impressions)
         name_col = next((c for c in df.columns if "deal_name" in c or c == "deal"), None)
+        id_col   = next((c for c in df.columns if "deal_id"   in c), None)
+        if name_col:
+            df = df[df[name_col].notna() & (df[name_col].astype(str).str.strip().isin(["", "(Not applicable)"]) == False)]
         if id_col:
             df = df[df[id_col].notna() & (df[id_col].astype(str).str.strip() != "0")]
-        if name_col:
-            df = df[df[name_col].notna() & (df[name_col].astype(str).str.strip() != "")]
 
-        logger.info("GAM deals report: %d rows after filtering out no-deal rows", len(df))
+        logger.info("GAM deals report: %d rows after filtering no-deal rows", len(df))
         return df
 
     # ------------------------------------------------------------------
