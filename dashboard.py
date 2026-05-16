@@ -1037,85 +1037,64 @@ with tab_seller:
     # ── Table 2: PMP deals from Pubmatic ────────────────────────────────
     st.subheader("PMP Deals")
 
+    # Build filter controls unconditionally — they must render even when Pubmatic is absent.
+    _pmp_ssps_available = [s["name"] for s in _cfg["ssps"] if s.get("enabled", True)]
+    _pmp_deal_types_available = sorted(set(
+        dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
+    ))
+    _pf1, _pf2, _pf3, _pf4 = st.columns(4)
+    with _pf1:
+        sel_pmp_deal_types = st.multiselect(
+            "Deal Type",
+            _pmp_deal_types_available,
+            key="campaigns_pmp_deal_type_filter",
+        )
+    with _pf2:
+        sel_pmp_ssps = st.multiselect(
+            "SSP",
+            _pmp_ssps_available,
+            key="campaigns_pmp_ssp_filter",
+        )
+    with _pf3:
+        sel_pmp_dsps = st.multiselect(
+            "DSP",
+            [],  # populated below after Magnite data is loaded
+            key="campaigns_pmp_dsp_filter",
+        )
+    with _pf4:
+        sel_pmp_formats = st.multiselect(
+            "Format",
+            [],  # populated below
+            key="campaigns_pmp_format_filter",
+        )
+
+    # ── Pubmatic ──────────────────────────────────────────────────────────
+    pmp_summary = pd.DataFrame()
     try:
         pmp_df = load("pubmatic_deals") if _ssp_enabled.get("Pubmatic", True) else pd.DataFrame()
     except Exception:
         pmp_df = pd.DataFrame()
-        st.info("No Pubmatic PMP data yet — run refresh_cache.py to populate pubmatic_deals.")
-
     if pmp_df.empty:
         if _ssp_enabled.get("Pubmatic", True):
-            st.info("No Pubmatic PMP data yet.")
+            st.info("No Pubmatic PMP data yet — run refresh_cache.py to populate pubmatic_deals.")
     else:
         pmp_df = pmp_df.copy()
         pmp_df["date"] = pd.to_datetime(pmp_df["date"]).dt.date
-
         if "deal" not in pmp_df.columns:
             pmp_df["deal"] = None
         if "publisher_deal_id" not in pmp_df.columns:
             pmp_df["publisher_deal_id"] = None
         pmp_df["deal_label"] = pmp_df["deal"].fillna(pmp_df["publisher_deal_id"]).fillna(pmp_df["deal_meta_id"].astype(str))
-
-        # Apply the same seller filter as the Direct Campaigns table
         pmp_df["seller_ae"] = (
             pmp_df["deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
             .map(AE_NAMES)
         )
         if selected_seller != "All":
             pmp_df = pmp_df[pmp_df["seller_ae"] == selected_seller]
-
-        # Parse deal type from deal name
-        pmp_df["deal_type_label"] = pmp_df["deal"].apply(
-            lambda d: _parse_deal(d)["deal_type_label"]
-        )
-
-        try:
-            _mag_side = load("magnite_deal_daily")
-            _mag_dsps = list(_mag_side["partner"].dropna().unique())
-            _mag_formats = list(_mag_side["ad_format"].dropna().unique()) if "ad_format" in _mag_side.columns else []
-        except Exception:
-            _mag_dsps = []
-            _mag_formats = []
-        _dsp_opts = sorted(set(list(pmp_df["dsp"].dropna().unique()) + _mag_dsps))
-        _fmt_opts = sorted(set(
-            list(pmp_df["ad_format"].dropna().unique()) if "ad_format" in pmp_df.columns else []
-        ) | set(_mag_formats))
-
-        _pmp_ssps_available = [s["name"] for s in _cfg["ssps"] if s.get("enabled", True)]
-        _pmp_deal_types_available = sorted(set(
-            dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
-        ))
-
-        _pf1, _pf2, _pf3, _pf4 = st.columns(4)
-        with _pf1:
-            sel_pmp_deal_types = st.multiselect(
-                "Deal Type",
-                _pmp_deal_types_available,
-                key="campaigns_pmp_deal_type_filter",
-            )
-        with _pf2:
-            sel_pmp_ssps = st.multiselect(
-                "SSP",
-                _pmp_ssps_available,
-                key="campaigns_pmp_ssp_filter",
-            )
-        with _pf3:
-            sel_pmp_dsps = st.multiselect(
-                "DSP",
-                _dsp_opts,
-                key="campaigns_pmp_dsp_filter",
-            )
-        with _pf4:
-            sel_pmp_formats = st.multiselect(
-                "Format",
-                _fmt_opts,
-                key="campaigns_pmp_format_filter",
-            )
+        pmp_df["deal_type_label"] = pmp_df["deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
         if sel_pmp_deal_types:
             pmp_df = pmp_df[pmp_df["deal_type_label"].isin(sel_pmp_deal_types)]
-
         pmp_df["ssp"] = "Pubmatic"
-
         pmp_summary = (
             pmp_df.groupby(["ssp", "deal_label", "deal_type_label", "ad_format", "dsp", "seller_ae"], dropna=False)
             .agg(
@@ -1128,18 +1107,11 @@ with tab_seller:
             )
             .reset_index()
             .rename(columns={
-                "ssp": "SSP",
-                "seller_ae": "Seller",
-                "deal_label": "Deal",
-                "deal_type_label": "Deal Type",
-                "ad_format": "Format",
-                "dsp": "DSP",
-                "paid_impressions": "Paid Impressions",
-                "revenue": "Revenue",
-                "ecpm": "eCPM",
-                "win_rate": "Win Rate %",
-                "total_requests": "Total Requests",
-                "non_zero_bid_responses": "Bid Responses",
+                "ssp": "SSP", "seller_ae": "Seller", "deal_label": "Deal",
+                "deal_type_label": "Deal Type", "ad_format": "Format", "dsp": "DSP",
+                "paid_impressions": "Paid Impressions", "revenue": "Revenue",
+                "ecpm": "eCPM", "win_rate": "Win Rate %",
+                "total_requests": "Total Requests", "non_zero_bid_responses": "Bid Responses",
             })
         )
 
