@@ -1173,7 +1173,7 @@ with tab_seller:
                     )
                     if col_cfg in ("[auto]", "N/A", "", None) or col_cfg not in df.columns:
                         return _auto
-                    _from_api = df[col_cfg].astype(str).str.strip().replace("", None)
+                    _from_api = df[col_cfg].str.strip().replace("", None)
                     return _from_api.where(_from_api.notna(), _auto)
 
                 _gam_raw["ad_format"] = _with_fallback(_gam_raw, _gam_col_map.get("Format", "[auto]"), "ad_format")

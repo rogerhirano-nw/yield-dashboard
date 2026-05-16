@@ -234,9 +234,13 @@ class GAMClient:
             "inventory_format_name": "ad_format",
             "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
         })
+        # Strip whitespace from all string columns so duplicates don't appear in DSP/Format filters
+        for _col in df.select_dtypes(include="object").columns:
+            df[_col] = df[_col].str.strip()
+
         df = df[
             df["programmatic_deal_name"].notna()
-            & ~df["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)"])
+            & ~df["programmatic_deal_name"].isin(["", "(Not applicable)"])
         ]
         logger.info("GAM deals report: %d rows, channels=%s",
                     len(df),
