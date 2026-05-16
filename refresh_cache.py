@@ -199,12 +199,33 @@ def _load_dotenv() -> None:
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
+_TABLE_RENAMES = {
+    "by_site_size_daily": "magnite_site_daily",
+    "by_dsp_daily":       "magnite_dsp_daily",
+    "by_deal_daily":      "magnite_deal_daily",
+    "campaigns_gam":      "gam_campaigns",
+    "deals_pubmatic":     "pubmatic_deals",
+}
+
+
+def migrate_table_names() -> None:
+    """One-time rename of old table names to the new {source}_{content} convention."""
+    with _engine().begin() as conn:
+        existing = set(sa_inspect(conn).get_table_names())
+        for old, new in _TABLE_RENAMES.items():
+            if old in existing and new not in existing:
+                conn.execute(text(f'ALTER TABLE "{old}" RENAME TO "{new}"'))
+                logger.info("Renamed table %s → %s", old, new)
+
+
 def main() -> None:
     _load_dotenv()
     logger.info("refresh_cache v3 — Magnite date_range=%s", next(iter(REPORTS.values()))["date_range"])
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
     account_id = os.environ["MAGNITE_PUBLISHER_ID"]
+
+    migrate_table_names()
 
     client = MagniteClient(
         api_key=api_key,

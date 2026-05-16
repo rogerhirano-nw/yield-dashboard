@@ -36,11 +36,27 @@ import pandas as pd
 import sqlalchemy
 import streamlit as st
 
+def _load_dotenv() -> None:
+    env_file = Path(__file__).parent / ".env"
+    if not env_file.exists():
+        return
+    for _line in env_file.read_text().splitlines():
+        _line = _line.strip()
+        if not _line or _line.startswith("#") or "=" not in _line:
+            continue
+        _k, _v = _line.split("=", 1)
+        os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
+_load_dotenv()
+
+
 def _engine() -> sqlalchemy.Engine:
     try:
         url = st.secrets["DATABASE_URL"]
     except Exception:
         url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        raise RuntimeError("DATABASE_URL is not set. Add it to .env or Streamlit secrets.")
     return sqlalchemy.create_engine(url)
 
 
@@ -281,8 +297,11 @@ st.title("Overall Performance")
 
 @st.cache_data(ttl=300)
 def load(table: str) -> pd.DataFrame:
-    with _engine().connect() as conn:
-        return pd.read_sql(f"SELECT * FROM {table}", conn)
+    try:
+        with _engine().connect() as conn:
+            return pd.read_sql(f'SELECT * FROM "{table}"', conn)
+    except Exception:
+        return pd.DataFrame()
 
 
 tab_seller, tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_settings = st.tabs([
