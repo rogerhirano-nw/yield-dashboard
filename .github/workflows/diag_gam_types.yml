@@ -1,0 +1,13 @@
+name: Diag GAM types
+on: workflow_dispatch
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: python diag_gam_types.py
