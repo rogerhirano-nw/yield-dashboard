@@ -253,6 +253,13 @@ class GAMClient:
             df = df[~df["programmatic_deal_id"].astype(str).str.strip().isin(["0", ""])]
 
         logger.info("GAM deals report: %d rows after filtering no-deal rows", len(df))
+        if not df.empty:
+            logger.info("GAM deals channel breakdown: %s",
+                        df["programmatic_channel_name"].value_counts().to_dict()
+                        if "programmatic_channel_name" in df.columns else "no channel col")
+            logger.info("GAM deals sample names: %s",
+                        df["programmatic_deal_name"].dropna().head(10).tolist()
+                        if "programmatic_deal_name" in df.columns else "no name col")
         return df
 
     # ------------------------------------------------------------------
