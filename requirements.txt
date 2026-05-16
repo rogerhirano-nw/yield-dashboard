@@ -4,6 +4,6 @@ streamlit
 sqlalchemy
 psycopg2-binary
 altair
-googleads
+google-ads-admanager
 google-auth
 agentmail
