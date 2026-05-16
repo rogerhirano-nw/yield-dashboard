@@ -275,11 +275,6 @@ def main() -> None:
         logger.exception("Refresh failed for gam_campaigns — continuing")
 
     try:
-        total += refresh_gam_pmp_deals()
-    except Exception:
-        logger.exception("Refresh failed for gam_pmp_deals — continuing")
-
-    try:
         total += refresh_pubmatic()
     except Exception:
         logger.exception("Refresh failed for pubmatic_deals — continuing")

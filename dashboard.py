@@ -1175,16 +1175,20 @@ with tab_seller:
                     if sel_pmp_deal_types:
                         _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
                     if not _gam_deals.empty:
-                        _rev_col = "ad_server_cpm_and_cpc_revenue"
-                        _imp_col = "ad_server_impressions"
-                        _ecpm_col = "ad_server_average_ecpm"
+                        # Support both API column names and uploaded report column names
+                        _rev_col  = next((c for c in ("revenue", "ad_server_cpm_and_cpc_revenue") if c in _gam_deals.columns), None)
+                        _imp_col  = next((c for c in ("impressions", "ad_server_impressions") if c in _gam_deals.columns), None)
+                        _ecpm_col = next((c for c in ("ecpm", "ad_server_average_ecpm") if c in _gam_deals.columns), None)
+                        for _c in (_rev_col, _imp_col, _ecpm_col):
+                            if _c:
+                                _gam_deals[_c] = pd.to_numeric(_gam_deals[_c], errors="coerce")
+                        _agg_kwargs = {}
+                        if _imp_col:  _agg_kwargs["paid_impressions"] = (_imp_col, "sum")
+                        if _rev_col:  _agg_kwargs["revenue"]          = (_rev_col, "sum")
+                        if _ecpm_col: _agg_kwargs["ecpm"]             = (_ecpm_col, "mean")
                         _gam_agg = (
                             _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
-                            .agg(
-                                paid_impressions=(_imp_col, "sum") if _imp_col in _gam_deals.columns else ("deal_name", "count"),
-                                revenue=(_rev_col, "sum") if _rev_col in _gam_deals.columns else ("deal_name", "count"),
-                                ecpm=(_ecpm_col, "mean") if _ecpm_col in _gam_deals.columns else ("deal_name", "count"),
-                            )
+                            .agg(**_agg_kwargs)
                             .reset_index()
                         )
                         _gam_agg["SSP"] = "GAM"
@@ -1614,6 +1618,86 @@ with tab_settings:
             "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
         },
     )
+
+    # ── Section 5: GAM Deal Report Upload ────────────────────────────────
+    st.divider()
+    st.markdown("#### Upload GAM Deal Report")
+    st.caption(
+        "GAM's programmatic API doesn't expose deal-level breakdown for Private Auction. "
+        "Export the report manually from GAM (Historical → Programmatic channel + Deal dimensions), "
+        "then upload the Excel file here to populate the PMP Deals table."
+    )
+    _uploaded = st.file_uploader(
+        "Upload GAM PMP report (.xlsx)",
+        type=["xlsx"],
+        key="gam_pmp_upload",
+        help="GAM Historical report with Programmatic channel, Deal, Order dimensions",
+    )
+    if _uploaded is not None:
+        try:
+            import openpyxl as _openpyxl  # noqa: F401
+            _xl = pd.read_excel(_uploaded, sheet_name=None)
+            # Find the data sheet (not the Properties sheet)
+            _data_sheet = next(
+                (s for s in _xl if s.lower() not in ("properties", "cover")), None
+            )
+            if _data_sheet is None:
+                st.error("Could not find a data sheet in the uploaded file.")
+            else:
+                _gam_upload_df = _xl[_data_sheet].copy()
+                # Normalise column names
+                _gam_upload_df.columns = [
+                    _snake(re.sub(r"[^a-zA-Z0-9]+", "_", str(c)).strip("_"))
+                    for c in _gam_upload_df.columns
+                ]
+                # Identify key columns by pattern
+                _prog_col  = next((c for c in _gam_upload_df.columns if "programmatic" in c), None)
+                _deal_col  = next((c for c in _gam_upload_df.columns if c == "deal" or c.endswith("_deal")), None)
+                _order_col = next((c for c in _gam_upload_df.columns if "order" in c), None)
+                _impr_col  = next((c for c in _gam_upload_df.columns if "impression" in c and "comparison" not in c and "change" not in c), None)
+                _rev_col   = next((c for c in _gam_upload_df.columns if "revenue" in c and "comparison" not in c and "change" not in c), None)
+                _ecpm_col  = next((c for c in _gam_upload_df.columns if "ecpm" in c and "comparison" not in c and "change" not in c), None)
+
+                st.write(f"Detected columns — channel: `{_prog_col}`, deal: `{_deal_col}`, order: `{_order_col}`, impressions: `{_impr_col}`, revenue: `{_rev_col}`")
+
+                if _deal_col:
+                    _out = pd.DataFrame({
+                        "date":            pd.Timestamp.now(tz="UTC").date().isoformat(),
+                        "deal_name":       _gam_upload_df[_deal_col],
+                        "programmatic_channel": _gam_upload_df[_prog_col] if _prog_col else None,
+                        "order_name":      _gam_upload_df[_order_col] if _order_col else None,
+                        "impressions":     pd.to_numeric(_gam_upload_df[_impr_col], errors="coerce") if _impr_col else None,
+                        "revenue":         pd.to_numeric(_gam_upload_df[_rev_col], errors="coerce") if _rev_col else None,
+                        "ecpm":            pd.to_numeric(_gam_upload_df[_ecpm_col], errors="coerce") if _ecpm_col else None,
+                    })
+                    _out = _out[_out["deal_name"].notna() & (_out["deal_name"].astype(str).str.startswith("Newsweek_"))]
+                    _out["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+                    _out["source"] = "gam_upload"
+
+                    st.dataframe(_out.head(20), use_container_width=True, hide_index=True)
+                    st.write(f"**{len(_out)} deal rows detected**")
+
+                    if st.button("📥  Import into gam_pmp_deals table", type="primary", key="gam_upload_confirm"):
+                        try:
+                            with _engine().begin() as _conn:
+                                _conn.execute(sqlalchemy.text(
+                                    'CREATE TABLE IF NOT EXISTS gam_pmp_deals '
+                                    '(date TEXT, deal_name TEXT, programmatic_channel TEXT, '
+                                    'order_name TEXT, impressions REAL, revenue REAL, ecpm REAL, '
+                                    '_pulled_at TEXT, source TEXT)'
+                                ))
+                                _conn.execute(sqlalchemy.text(
+                                    "DELETE FROM gam_pmp_deals WHERE source = 'gam_upload'"
+                                ))
+                            _out.to_sql("gam_pmp_deals", _engine(), if_exists="append", index=False)
+                            st.success(f"Imported {len(_out)} rows into gam_pmp_deals. Reload the Campaigns tab to see PA deals.")
+                            st.cache_data.clear()
+                        except Exception as _ue:
+                            st.error(f"Import failed: {_ue}")
+                else:
+                    st.warning("Could not identify the Deal column in the uploaded file.")
+        except Exception as _ue:
+            st.error(f"Failed to parse file: {_ue}")
 
     # ── Save ─────────────────────────────────────────────────────────────
     st.divider()
