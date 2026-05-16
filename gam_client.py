@@ -41,18 +41,23 @@ def _snake(name: str) -> str:
 
 
 def _rv(rv) -> object:
-    """Extract a scalar from a proto-plus ReportValue oneof."""
-    # proto-plus wraps protobuf; WhichOneof lives on the underlying pb message.
+    """Extract a scalar from a proto-plus ReportValue (oneof named 'value')."""
     pb = type(rv).pb(rv)
-    kind = pb.WhichOneof("kind")
-    if kind == "int_value":
+    field = pb.WhichOneof("value")
+    if field == "int_value":
         return pb.int_value
-    if kind == "double_value":
+    if field == "double_value":
         return pb.double_value
-    if kind == "string_value":
+    if field == "string_value":
         return pb.string_value
-    if kind == "bool_value":
+    if field == "bool_value":
         return pb.bool_value
+    if field == "int_list_value":
+        return list(pb.int_list_value.values)
+    if field == "double_list_value":
+        return list(pb.double_list_value.values)
+    if field == "string_list_value":
+        return list(pb.string_list_value.values)
     return None
 
 
