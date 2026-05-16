@@ -295,12 +295,16 @@ st.set_page_config(page_title="Overall Performance", layout="wide")
 st.title("Overall Performance")
 
 
+_load_errors: dict[str, str] = {}  # table → error message, populated by load()
+
+
 @st.cache_data(ttl=300)
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
             return pd.read_sql(f'SELECT * FROM "{table}"', conn)
-    except Exception:
+    except Exception as _e:
+        _load_errors[table] = str(_e)
         return pd.DataFrame()
 
 
@@ -1316,14 +1320,21 @@ with tab_seller:
                                               "Paid Impressions", "Revenue", "eCPM",
                                               "Win Rate %", "Total Requests", "Bid Responses"])
 
-    with st.expander("Debug: data source counts", expanded=False):
-        st.write({
-            "Pubmatic rows": len(pmp_summary),
-            "Magnite rows": len(_magnite_summary),
-            "GAM rows": len(_gam_summary),
-            "Magnite deal types": _magnite_summary["Deal Type"].value_counts().to_dict() if not _magnite_summary.empty else {},
-            "GAM deal types": _gam_summary["Deal Type"].value_counts().to_dict() if not _gam_summary.empty else {},
-        })
+    with st.expander("🔍 Debug: PMP data sources", expanded=False):
+        _dbg = {
+            "Pubmatic rows (pre-filter)": len(pmp_summary),
+            "Magnite rows (pre-filter)": len(_magnite_summary),
+            "GAM rows (pre-filter)": len(_gam_summary),
+            "Magnite deal types": _magnite_summary["Deal Type"].value_counts().to_dict() if not _magnite_summary.empty else "EMPTY",
+            "GAM deal types": _gam_summary["Deal Type"].value_counts().to_dict() if not _gam_summary.empty else "EMPTY",
+            "Active SSP filter": sel_pmp_ssps or "none",
+            "Active Deal Type filter": sel_pmp_deal_types or "none",
+            "Active DSP filter": sel_pmp_dsps or "none",
+            "Active Format filter": sel_pmp_formats or "none",
+        }
+        if _load_errors:
+            _dbg["DB LOAD ERRORS"] = _load_errors
+        st.json(_dbg)
 
     if sel_pmp_ssps:
         combined_pmp = combined_pmp[combined_pmp["SSP"].isin(sel_pmp_ssps)]
