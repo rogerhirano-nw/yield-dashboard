@@ -1046,6 +1046,9 @@ with tab_seller:
     _pmp_deal_types_available = sorted(set(
         dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
     ))
+    # DSP / Format options come from the previous render via session_state (two-pass pattern).
+    _pmp_dsps_opts   = st.session_state.get("_pmp_dsps_opts", [])
+    _pmp_formats_opts = st.session_state.get("_pmp_formats_opts", [])
     _pf1, _pf2, _pf3, _pf4 = st.columns(4)
     with _pf1:
         sel_pmp_deal_types = st.multiselect(
@@ -1058,19 +1061,21 @@ with tab_seller:
             "SSP",
             _pmp_ssps_available,
             key="campaigns_pmp_ssp_filter",
+            help="Private Auction → Magnite | Preferred Deal → Magnite or GAM | PG → GAM",
         )
     with _pf3:
         sel_pmp_dsps = st.multiselect(
             "DSP",
-            [],  # populated below after Magnite data is loaded
+            _pmp_dsps_opts,
             key="campaigns_pmp_dsp_filter",
         )
     with _pf4:
         sel_pmp_formats = st.multiselect(
             "Format",
-            [],  # populated below
+            _pmp_formats_opts,
             key="campaigns_pmp_format_filter",
         )
+    st.caption("PA = Magnite SSP · PD = Magnite or GAM · PG = GAM")
 
     # ── Pubmatic ──────────────────────────────────────────────────────────
     pmp_summary = pd.DataFrame()
@@ -1319,6 +1324,10 @@ with tab_seller:
         combined_pmp = pd.DataFrame(columns=["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller",
                                               "Paid Impressions", "Revenue", "eCPM",
                                               "Win Rate %", "Total Requests", "Bid Responses"])
+
+    # Persist DSP / Format options for next render (two-pass pattern — filters are rendered above).
+    st.session_state["_pmp_dsps_opts"]    = sorted(combined_pmp["DSP"].dropna().unique().tolist())
+    st.session_state["_pmp_formats_opts"] = sorted(combined_pmp["Format"].dropna().unique().tolist())
 
     with st.expander("🔍 Debug: PMP data sources", expanded=False):
         _dbg = {
