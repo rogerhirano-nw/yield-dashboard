@@ -1154,10 +1154,27 @@ with tab_seller:
                 _deal_col = next((c for c in _gam_raw.columns if "deal_name" in c or c == "deal"), None)
                 if not _gam_raw.empty and _deal_col:
                     _gam_raw = _gam_raw.rename(columns={_deal_col: "deal_name"})
-                    # Classify by deal name prefix (Newsweek_PA_, Newsweek_PD_, Newsweek_PG_)
-                    _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
-                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-                    )
+
+                    # Use programmatic_channel_name directly when available (REST API provides it).
+                    # Fall back to _parse_deal() for manually uploaded rows.
+                    _ch_col = next((c for c in _gam_raw.columns if "channel" in c.lower()), None)
+                    _channel_map = {
+                        "Private Auction": "Private Auction",
+                        "Preferred Deal": "Preferred Deal",
+                        "Programmatic Guaranteed": "Programmatic Guaranteed",
+                    }
+                    if _ch_col:
+                        _gam_raw["deal_type_label"] = (
+                            _gam_raw[_ch_col]
+                            .map(_channel_map)
+                            .fillna(_gam_raw["deal_name"].apply(
+                                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
+                            ))
+                        )
+                    else:
+                        _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
+                            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
+                        )
                     _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
                         lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
                     )
