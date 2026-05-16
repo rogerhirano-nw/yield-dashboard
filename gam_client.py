@@ -216,28 +216,25 @@ class GAMClient:
 
     def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
-        Pull PD and PG deals from GAM via DEAL_ID + DEAL_NAME.
+        Pull PA / PD / PG deals from GAM via ORDER_NAME + DEAL_NAME.
 
-        NOTE: The GAM REST API v1 does not expose Private Auction deal names.
-        The PROGRAMMATIC_CHANNEL_NAME dimension returns '' for PA rows — the
-        same empty string it returns for Direct, House Ads, and OpenExchange.
-        There is no API dimension combination that surfaces Newsweek_PA_* deal
-        names from GAM. PA is sourced exclusively from magnite_deal_daily.
+        Using ORDER_NAME instead of DEAL_ID because PA deals carry a valid DEAL_NAME
+        (e.g. Newsweek_PA_*) but their DEAL_ID is 0 in the API — filtering on non-zero
+        DEAL_ID silently drops all PA rows. DEAL_NAME alone is the authoritative key;
+        deal type is classified from the name by _parse_deal() in the dashboard.
         """
         df = self._run_report(
-            dimensions=["DATE", "DEAL_ID", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
+            dimensions=["DATE", "ORDER_NAME", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
             start_date=start_date,
             end_date=end_date,
         ).rename(columns={
             "deal_name": "programmatic_deal_name",
-            "deal_id": "programmatic_deal_id",
             "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
         })
         df = df[
             df["programmatic_deal_name"].notna()
             & ~df["programmatic_deal_name"].astype(str).str.strip().isin(["", "(Not applicable)"])
-            & ~df["programmatic_deal_id"].astype(str).str.strip().isin(["0", "", "(Not applicable)"])
         ]
         logger.info("GAM deals report: %d rows, channels=%s",
                     len(df),

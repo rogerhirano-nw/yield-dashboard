@@ -80,6 +80,11 @@
     "PG":  "Programmatic Guaranteed",
     "PMP": "Private Marketplace"
   },
+  "deal_type_aliases": {
+    "Preferred Deals": "Preferred Deal",
+    "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
+    "Private Marketplace Deal": "Private Marketplace"
+  },
   "direct_sources": [
     {
       "name": "GAM Direct",

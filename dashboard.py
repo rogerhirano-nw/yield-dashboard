@@ -113,6 +113,11 @@ _DEFAULT_SETTINGS: dict = {
         "PA": "Private Auction", "PD": "Preferred Deal",
         "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace",
     },
+    "deal_type_aliases": {
+        "Preferred Deals": "Preferred Deal",
+        "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
+        "Private Marketplace Deal": "Private Marketplace",
+    },
     "direct_sources": [
         {
             "name": "GAM Direct",
@@ -1049,7 +1054,7 @@ with tab_seller:
     # DSP / Format options come from the previous render via session_state (two-pass pattern).
     _pmp_dsps_opts   = st.session_state.get("_pmp_dsps_opts", [])
     _pmp_formats_opts = st.session_state.get("_pmp_formats_opts", [])
-    _pf1, _pf2, _pf3, _pf4 = st.columns(4)
+    _pf1, _pf2, _pf3, _pf4, _pf5 = st.columns([1, 1, 1, 1, 0.6])
     with _pf1:
         sel_pmp_deal_types = st.multiselect(
             "Deal Type",
@@ -1061,7 +1066,7 @@ with tab_seller:
             "SSP",
             _pmp_ssps_available,
             key="campaigns_pmp_ssp_filter",
-            help="Private Auction → Magnite | Preferred Deal → Magnite or GAM | PG → GAM",
+            help="PA → Magnite | PD → Magnite or GAM | PG → GAM",
         )
     with _pf3:
         sel_pmp_dsps = st.multiselect(
@@ -1075,7 +1080,14 @@ with tab_seller:
             _pmp_formats_opts,
             key="campaigns_pmp_format_filter",
         )
-    st.caption("PA = Magnite SSP · PD = Magnite or GAM · PG = GAM")
+    with _pf5:
+        st.write("")  # align button with multiselect labels
+        if st.button("Reset filters", key="pmp_reset_filters"):
+            for _k in ("campaigns_pmp_deal_type_filter", "campaigns_pmp_ssp_filter",
+                       "campaigns_pmp_dsp_filter", "campaigns_pmp_format_filter"):
+                st.session_state.pop(_k, None)
+            st.rerun()
+    st.caption("PA = Magnite · PD = Magnite or GAM · PG = GAM")
 
     # ── Pubmatic ──────────────────────────────────────────────────────────
     pmp_summary = pd.DataFrame()
@@ -1139,11 +1151,11 @@ with tab_seller:
                 # Use programmatic_channel_name directly when available (REST API provides it).
                 # Fall back to _parse_deal() for manually uploaded rows.
                 _ch_col = next((c for c in _gam_raw.columns if "channel" in c.lower()), None)
-                _channel_map = {
-                    "Private Auction": "Private Auction",
-                    "Preferred Deal": "Preferred Deal",
-                    "Programmatic Guaranteed": "Programmatic Guaranteed",
-                }
+                # Build normalization map from settings: canonical values map to themselves,
+                # aliases (e.g. API variants like "Preferred Deals") map to canonical.
+                _canonical_types = set(_cfg.get("deal_type_codes", {}).values())
+                _channel_map = {dt: dt for dt in _canonical_types}
+                _channel_map.update(_cfg.get("deal_type_aliases", {}))
                 if _ch_col:
                     _gam_raw["deal_type_label"] = (
                         _gam_raw[_ch_col]
@@ -1527,7 +1539,39 @@ with tab_settings:
         disabled=["Field"],
     )
 
-    # ── Section 3: Direct Campaign Sources ──────────────────────────────
+    # ── Section 3: Deal Type Value Aliases ──────────────────────────────
+    st.markdown("#### Deal Type Value Aliases")
+    st.caption(
+        "Map raw values returned by SSP APIs to canonical deal type labels. "
+        "For example, GAM's REST API returns \"Preferred Deals\" (plural) — alias it to "
+        "\"Preferred Deal\" so it matches the canonical label used across all SSPs."
+    )
+    _alias_rows = [
+        {"Raw Value": k, "Canonical Deal Type": v}
+        for k, v in _s.get("deal_type_aliases", {}).items()
+    ]
+    _alias_edit = st.data_editor(
+        pd.DataFrame(_alias_rows) if _alias_rows else pd.DataFrame(
+            columns=["Raw Value", "Canonical Deal Type"]
+        ),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_deal_type_aliases",
+        column_config={
+            "Raw Value": st.column_config.TextColumn(
+                "Raw Value", help="Exact string returned by the SSP API", required=True
+            ),
+            "Canonical Deal Type": st.column_config.SelectboxColumn(
+                "Canonical Deal Type",
+                options=list(_s.get("deal_type_codes", {}).values()),
+                help="Canonical label used in the dashboard",
+                required=True,
+            ),
+        },
+    )
+
+    # ── Section 4: Direct Campaign Sources ──────────────────────────────
     st.markdown("#### Direct Campaign Sources")
     st.caption(
         "Each row is a direct-sold data source. **Line Item Prefix** filters the table to only direct campaigns. "
@@ -1804,9 +1848,17 @@ with tab_settings:
                     "columns":          _dcol_map,
                 })
 
+            _new_aliases = {
+                str(r["Raw Value"]).strip(): str(r["Canonical Deal Type"]).strip()
+                for _, r in _alias_edit.iterrows()
+                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                and pd.notna(r.get("Canonical Deal Type")) and str(r["Canonical Deal Type"]).strip()
+            }
+
             _save_settings({
                 "ssps": _new_ssps, "ae_names": _new_ae,
-                "deal_type_codes": _new_dt, "direct_sources": _new_direct,
+                "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
+                "direct_sources": _new_direct,
             })
             st.success("Settings saved — reloading dashboard…")
             st.rerun()
