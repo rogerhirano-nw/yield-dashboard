@@ -1115,229 +1115,229 @@ with tab_seller:
             })
         )
 
-        # Add GAM PA / PD / PG deals from the dedicated gam_pmp_deals table
-        _gam_summary = pd.DataFrame()
-        _gam_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "GAM"), [])
-        _gam_deal_types = [t for t in (sel_pmp_deal_types or _gam_cfg_deal_types) if t in _gam_cfg_deal_types]
-        if _gam_deal_types and _ssp_enabled.get("GAM", True):
-            try:
-                _gam_raw = load("gam_pmp_deals").copy()
-                # Identify the deal name column (DEAL_NAME → deal_name after snake_case)
-                _deal_col = next((c for c in _gam_raw.columns if "deal_name" in c or c == "deal"), None)
-                if not _gam_raw.empty and _deal_col:
-                    _gam_raw = _gam_raw.rename(columns={_deal_col: "deal_name"})
+    # Add GAM PA / PD / PG deals from the dedicated gam_pmp_deals table
+    _gam_summary = pd.DataFrame()
+    _gam_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "GAM"), [])
+    _gam_deal_types = [t for t in (sel_pmp_deal_types or _gam_cfg_deal_types) if t in _gam_cfg_deal_types]
+    if _gam_deal_types and _ssp_enabled.get("GAM", True):
+        try:
+            _gam_raw = load("gam_pmp_deals").copy()
+            # Identify the deal name column (DEAL_NAME → deal_name after snake_case)
+            _deal_col = next((c for c in _gam_raw.columns if "deal_name" in c or c == "deal"), None)
+            if not _gam_raw.empty and _deal_col:
+                _gam_raw = _gam_raw.rename(columns={_deal_col: "deal_name"})
 
-                    # Use programmatic_channel_name directly when available (REST API provides it).
-                    # Fall back to _parse_deal() for manually uploaded rows.
-                    _ch_col = next((c for c in _gam_raw.columns if "channel" in c.lower()), None)
-                    _channel_map = {
-                        "Private Auction": "Private Auction",
-                        "Preferred Deal": "Preferred Deal",
-                        "Programmatic Guaranteed": "Programmatic Guaranteed",
-                    }
-                    if _ch_col:
-                        _gam_raw["deal_type_label"] = (
-                            _gam_raw[_ch_col]
-                            .map(_channel_map)
-                            .fillna(_gam_raw["deal_name"].apply(
-                                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-                            ))
-                        )
-                    else:
-                        _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
-                            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-                        )
-                    _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
-                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
-                    )
-                    _gam_raw["seller_ae"] = (
-                        _gam_raw["deal_name"]
-                        .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                        .map(AE_NAMES)
-                    )
-                    _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
-                    if selected_seller != "All":
-                        _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
-                    for _col in ("ad_server_impressions", "ad_server_cpm_and_cpc_revenue", "ad_server_average_ecpm"):
-                        if _col in _gam_deals.columns:
-                            _gam_deals[_col] = pd.to_numeric(_gam_deals[_col], errors="coerce")
-                    if sel_pmp_deal_types:
-                        _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
-                    if not _gam_deals.empty:
-                        # Support both API column names and uploaded report column names
-                        _rev_col  = next((c for c in ("revenue", "ad_server_cpm_and_cpc_revenue") if c in _gam_deals.columns), None)
-                        _imp_col  = next((c for c in ("impressions", "ad_server_impressions") if c in _gam_deals.columns), None)
-                        _ecpm_col = next((c for c in ("ecpm", "ad_server_average_ecpm") if c in _gam_deals.columns), None)
-                        for _c in (_rev_col, _imp_col, _ecpm_col):
-                            if _c:
-                                _gam_deals[_c] = pd.to_numeric(_gam_deals[_c], errors="coerce")
-                        _agg_kwargs = {}
-                        if _imp_col:  _agg_kwargs["paid_impressions"] = (_imp_col, "sum")
-                        if _rev_col:  _agg_kwargs["revenue"]          = (_rev_col, "sum")
-                        if _ecpm_col: _agg_kwargs["ecpm"]             = (_ecpm_col, "mean")
-                        _gam_agg = (
-                            _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
-                            .agg(**_agg_kwargs)
-                            .reset_index()
-                        )
-                        _gam_agg["SSP"] = "GAM"
-                        _gam_agg["DSP"] = None
-                        _gam_agg["Win Rate %"] = None
-                        _gam_agg["Total Requests"] = None
-                        _gam_agg["Bid Responses"] = None
-                        _gam_summary = _gam_agg.rename(columns={
-                            "seller_ae": "Seller",
-                            "deal_name": "Deal",
-                            "deal_type_label": "Deal Type",
-                            "ad_format": "Format",
-                            "paid_impressions": "Paid Impressions",
-                            "revenue": "Revenue",
-                            "ecpm": "eCPM",
-                        })
-            except Exception:
-                pass
-
-        # Add Magnite PA / PD / PMP deals (PG only comes from GAM)
-        _magnite_summary = pd.DataFrame()
-        _mag_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "Magnite"), [])
-        _mag_types = [t for t in (sel_pmp_deal_types or _mag_cfg_deal_types) if t in _mag_cfg_deal_types]
-        if _mag_types and _ssp_enabled.get("Magnite", True):
-            try:
-                _mag_df = load("magnite_deal_daily").copy()
-                if not _mag_df.empty and "deal" in _mag_df.columns:
-                    _mag_df["deal_type_label"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
-                    _mag_df = _mag_df[_mag_df["deal_type_label"].isin(_mag_types)]
-                    _mag_df["ssp"] = "Magnite"
-                    _mag_df["seller_ae"] = (
-                        _mag_df["deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                        .map(AE_NAMES)
-                    )
-                    # Magnite deal API doesn't return partner/ad_format — derive from deal name.
-                    if "ad_format" not in _mag_df.columns:
-                        _mag_df["ad_format"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["ad_format"])
-                    if "partner" not in _mag_df.columns:
-                        _mag_df["partner"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["dsp"])
-                    if selected_seller != "All":
-                        _mag_df = _mag_df[_mag_df["seller_ae"] == selected_seller]
-                    if not _mag_df.empty:
-                        _mag_agg = (
-                            _mag_df.groupby(["ssp", "deal", "deal_type_label", "ad_format", "partner", "seller_ae"], dropna=False)
-                            .agg(
-                                paid_impressions=("paid_impression", "sum"),
-                                revenue=("publisher_gross_revenue", "sum"),
-                                ecpm=("ecpm", "mean"),
-                                total_requests=("bid_requests", "sum"),
-                                non_zero_bid_responses=("bid_responses", "sum"),
-                            )
-                            .reset_index()
-                        )
-                        _mag_agg["Win Rate %"] = (
-                            (_mag_agg["paid_impressions"] / _mag_agg["total_requests"] * 100)
-                            .where(_mag_agg["total_requests"] > 0)
-                        )
-                        _magnite_summary = _mag_agg.rename(columns={
-                            "ssp": "SSP",
-                            "seller_ae": "Seller",
-                            "deal": "Deal",
-                            "deal_type_label": "Deal Type",
-                            "ad_format": "Format",
-                            "partner": "DSP",
-                            "paid_impressions": "Paid Impressions",
-                            "revenue": "Revenue",
-                            "ecpm": "eCPM",
-                            "total_requests": "Total Requests",
-                            "non_zero_bid_responses": "Bid Responses",
-                        })
-            except Exception as _mag_exc:
-                st.warning(f"Magnite PMP load error: {_mag_exc}")
-
-        # Generic loader for any custom SSP added via the Settings tab
-        _custom_summaries = []
-        _builtin_ssps = {"GAM", "Magnite", "Pubmatic"}
-        for _ssp_cfg in _cfg["ssps"]:
-            _ssp_name = _ssp_cfg["name"]
-            if _ssp_name in _builtin_ssps or not _ssp_cfg.get("enabled", True):
-                continue
-            try:
-                _custom_df = load(_ssp_cfg["table"]).copy()
-                if _custom_df.empty:
-                    continue
-                _col_map = _ssp_cfg.get("columns", {})
-                _rename = {}
-                _field_to_internal = {
-                    "Deal": "Deal", "Deal Type": "Deal Type", "DSP": "DSP",
-                    "Format": "Format", "Seller": "Seller",
-                    "Paid Impressions": "paid_imp_raw", "Revenue": "rev_raw",
-                    "eCPM": "ecpm_raw", "Win Rate %": "wr_raw",
-                    "Total Requests": "tr_raw", "Bid Responses": "br_raw",
+                # Use programmatic_channel_name directly when available (REST API provides it).
+                # Fall back to _parse_deal() for manually uploaded rows.
+                _ch_col = next((c for c in _gam_raw.columns if "channel" in c.lower()), None)
+                _channel_map = {
+                    "Private Auction": "Private Auction",
+                    "Preferred Deal": "Preferred Deal",
+                    "Programmatic Guaranteed": "Programmatic Guaranteed",
                 }
-                for field, src in _col_map.items():
-                    if src and src not in ("[auto]", "") and not src.startswith("[computed") and src in _custom_df.columns:
-                        _rename[src] = _field_to_internal.get(field, field)
-                _custom_df = _custom_df.rename(columns=_rename)
-                _custom_df["SSP"] = _ssp_name
-                if _col_map.get("Deal Type") == "[auto]" and "Deal" in _custom_df.columns:
-                    _custom_df["Deal Type"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
-                if _col_map.get("Format") == "[auto]" and "Deal" in _custom_df.columns:
-                    _custom_df["Format"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["ad_format"])
-                if _col_map.get("Seller") == "[auto]" and "Deal" in _custom_df.columns:
-                    _custom_df["Seller"] = (
-                        _custom_df["Deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False).map(AE_NAMES)
+                if _ch_col:
+                    _gam_raw["deal_type_label"] = (
+                        _gam_raw[_ch_col]
+                        .map(_channel_map)
+                        .fillna(_gam_raw["deal_name"].apply(
+                            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
+                        ))
                     )
-                _active_types = sel_pmp_deal_types or _ssp_cfg.get("deal_types", [])
-                if _active_types and "Deal Type" in _custom_df.columns:
-                    _custom_df = _custom_df[_custom_df["Deal Type"].isin(_active_types)]
-                if selected_seller != "All" and "Seller" in _custom_df.columns:
-                    _custom_df = _custom_df[_custom_df["Seller"] == selected_seller]
-                if _custom_df.empty:
-                    continue
-                _grp_cols = [c for c in ["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller"] if c in _custom_df.columns]
-                _agg_spec = {}
-                for _metric, _raw, _how in [
-                    ("Paid Impressions", "paid_imp_raw", "sum"), ("Revenue", "rev_raw", "sum"),
-                    ("Total Requests", "tr_raw", "sum"), ("Bid Responses", "br_raw", "sum"),
-                    ("eCPM", "ecpm_raw", "mean"), ("Win Rate %", "wr_raw", "mean"),
-                ]:
-                    if _raw in _custom_df.columns:
-                        _custom_df[_raw] = pd.to_numeric(_custom_df[_raw], errors="coerce")
-                        _agg_spec[_metric] = (_raw, _how)
-                if _agg_spec:
-                    _custom_summaries.append(
-                        _custom_df.groupby(_grp_cols, dropna=False).agg(**_agg_spec).reset_index()
+                else:
+                    _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
+                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
                     )
-            except Exception:
-                pass
+                _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
+                    lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
+                )
+                _gam_raw["seller_ae"] = (
+                    _gam_raw["deal_name"]
+                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                    .map(AE_NAMES)
+                )
+                _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
+                if selected_seller != "All":
+                    _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
+                for _col in ("ad_server_impressions", "ad_server_cpm_and_cpc_revenue", "ad_server_average_ecpm"):
+                    if _col in _gam_deals.columns:
+                        _gam_deals[_col] = pd.to_numeric(_gam_deals[_col], errors="coerce")
+                if sel_pmp_deal_types:
+                    _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
+                if not _gam_deals.empty:
+                    # Support both API column names and uploaded report column names
+                    _rev_col  = next((c for c in ("revenue", "ad_server_cpm_and_cpc_revenue") if c in _gam_deals.columns), None)
+                    _imp_col  = next((c for c in ("impressions", "ad_server_impressions") if c in _gam_deals.columns), None)
+                    _ecpm_col = next((c for c in ("ecpm", "ad_server_average_ecpm") if c in _gam_deals.columns), None)
+                    for _c in (_rev_col, _imp_col, _ecpm_col):
+                        if _c:
+                            _gam_deals[_c] = pd.to_numeric(_gam_deals[_c], errors="coerce")
+                    _agg_kwargs = {}
+                    if _imp_col:  _agg_kwargs["paid_impressions"] = (_imp_col, "sum")
+                    if _rev_col:  _agg_kwargs["revenue"]          = (_rev_col, "sum")
+                    if _ecpm_col: _agg_kwargs["ecpm"]             = (_ecpm_col, "mean")
+                    _gam_agg = (
+                        _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
+                        .agg(**_agg_kwargs)
+                        .reset_index()
+                    )
+                    _gam_agg["SSP"] = "GAM"
+                    _gam_agg["DSP"] = None
+                    _gam_agg["Win Rate %"] = None
+                    _gam_agg["Total Requests"] = None
+                    _gam_agg["Bid Responses"] = None
+                    _gam_summary = _gam_agg.rename(columns={
+                        "seller_ae": "Seller",
+                        "deal_name": "Deal",
+                        "deal_type_label": "Deal Type",
+                        "ad_format": "Format",
+                        "paid_impressions": "Paid Impressions",
+                        "revenue": "Revenue",
+                        "ecpm": "eCPM",
+                    })
+        except Exception:
+            pass
 
-        combined_pmp = pd.concat(
-            [df for df in [pmp_summary, _magnite_summary, _gam_summary] + _custom_summaries if not df.empty],
-            ignore_index=True,
-        ).sort_values("Revenue", ascending=False)
+    # Add Magnite PA / PD / PMP deals (PG only comes from GAM)
+    _magnite_summary = pd.DataFrame()
+    _mag_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "Magnite"), [])
+    _mag_types = [t for t in (sel_pmp_deal_types or _mag_cfg_deal_types) if t in _mag_cfg_deal_types]
+    if _mag_types and _ssp_enabled.get("Magnite", True):
+        try:
+            _mag_df = load("magnite_deal_daily").copy()
+            if not _mag_df.empty and "deal" in _mag_df.columns:
+                _mag_df["deal_type_label"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
+                _mag_df = _mag_df[_mag_df["deal_type_label"].isin(_mag_types)]
+                _mag_df["ssp"] = "Magnite"
+                _mag_df["seller_ae"] = (
+                    _mag_df["deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                    .map(AE_NAMES)
+                )
+                # Magnite deal API doesn't return partner/ad_format — derive from deal name.
+                if "ad_format" not in _mag_df.columns:
+                    _mag_df["ad_format"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["ad_format"])
+                if "partner" not in _mag_df.columns:
+                    _mag_df["partner"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["dsp"])
+                if selected_seller != "All":
+                    _mag_df = _mag_df[_mag_df["seller_ae"] == selected_seller]
+                if not _mag_df.empty:
+                    _mag_agg = (
+                        _mag_df.groupby(["ssp", "deal", "deal_type_label", "ad_format", "partner", "seller_ae"], dropna=False)
+                        .agg(
+                            paid_impressions=("paid_impression", "sum"),
+                            revenue=("publisher_gross_revenue", "sum"),
+                            ecpm=("ecpm", "mean"),
+                            total_requests=("bid_requests", "sum"),
+                            non_zero_bid_responses=("bid_responses", "sum"),
+                        )
+                        .reset_index()
+                    )
+                    _mag_agg["Win Rate %"] = (
+                        (_mag_agg["paid_impressions"] / _mag_agg["total_requests"] * 100)
+                        .where(_mag_agg["total_requests"] > 0)
+                    )
+                    _magnite_summary = _mag_agg.rename(columns={
+                        "ssp": "SSP",
+                        "seller_ae": "Seller",
+                        "deal": "Deal",
+                        "deal_type_label": "Deal Type",
+                        "ad_format": "Format",
+                        "partner": "DSP",
+                        "paid_impressions": "Paid Impressions",
+                        "revenue": "Revenue",
+                        "ecpm": "eCPM",
+                        "total_requests": "Total Requests",
+                        "non_zero_bid_responses": "Bid Responses",
+                    })
+        except Exception as _mag_exc:
+            st.warning(f"Magnite PMP load error: {_mag_exc}")
 
-        if sel_pmp_ssps:
-            combined_pmp = combined_pmp[combined_pmp["SSP"].isin(sel_pmp_ssps)]
-        if sel_pmp_dsps:
-            combined_pmp = combined_pmp[combined_pmp["DSP"].isin(sel_pmp_dsps)]
-        if sel_pmp_formats:
-            combined_pmp = combined_pmp[combined_pmp["Format"].isin(sel_pmp_formats)]
+    # Generic loader for any custom SSP added via the Settings tab
+    _custom_summaries = []
+    _builtin_ssps = {"GAM", "Magnite", "Pubmatic"}
+    for _ssp_cfg in _cfg["ssps"]:
+        _ssp_name = _ssp_cfg["name"]
+        if _ssp_name in _builtin_ssps or not _ssp_cfg.get("enabled", True):
+            continue
+        try:
+            _custom_df = load(_ssp_cfg["table"]).copy()
+            if _custom_df.empty:
+                continue
+            _col_map = _ssp_cfg.get("columns", {})
+            _rename = {}
+            _field_to_internal = {
+                "Deal": "Deal", "Deal Type": "Deal Type", "DSP": "DSP",
+                "Format": "Format", "Seller": "Seller",
+                "Paid Impressions": "paid_imp_raw", "Revenue": "rev_raw",
+                "eCPM": "ecpm_raw", "Win Rate %": "wr_raw",
+                "Total Requests": "tr_raw", "Bid Responses": "br_raw",
+            }
+            for field, src in _col_map.items():
+                if src and src not in ("[auto]", "") and not src.startswith("[computed") and src in _custom_df.columns:
+                    _rename[src] = _field_to_internal.get(field, field)
+            _custom_df = _custom_df.rename(columns=_rename)
+            _custom_df["SSP"] = _ssp_name
+            if _col_map.get("Deal Type") == "[auto]" and "Deal" in _custom_df.columns:
+                _custom_df["Deal Type"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
+            if _col_map.get("Format") == "[auto]" and "Deal" in _custom_df.columns:
+                _custom_df["Format"] = _custom_df["Deal"].apply(lambda d: _parse_deal(d)["ad_format"])
+            if _col_map.get("Seller") == "[auto]" and "Deal" in _custom_df.columns:
+                _custom_df["Seller"] = (
+                    _custom_df["Deal"].str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False).map(AE_NAMES)
+                )
+            _active_types = sel_pmp_deal_types or _ssp_cfg.get("deal_types", [])
+            if _active_types and "Deal Type" in _custom_df.columns:
+                _custom_df = _custom_df[_custom_df["Deal Type"].isin(_active_types)]
+            if selected_seller != "All" and "Seller" in _custom_df.columns:
+                _custom_df = _custom_df[_custom_df["Seller"] == selected_seller]
+            if _custom_df.empty:
+                continue
+            _grp_cols = [c for c in ["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller"] if c in _custom_df.columns]
+            _agg_spec = {}
+            for _metric, _raw, _how in [
+                ("Paid Impressions", "paid_imp_raw", "sum"), ("Revenue", "rev_raw", "sum"),
+                ("Total Requests", "tr_raw", "sum"), ("Bid Responses", "br_raw", "sum"),
+                ("eCPM", "ecpm_raw", "mean"), ("Win Rate %", "wr_raw", "mean"),
+            ]:
+                if _raw in _custom_df.columns:
+                    _custom_df[_raw] = pd.to_numeric(_custom_df[_raw], errors="coerce")
+                    _agg_spec[_metric] = (_raw, _how)
+            if _agg_spec:
+                _custom_summaries.append(
+                    _custom_df.groupby(_grp_cols, dropna=False).agg(**_agg_spec).reset_index()
+                )
+        except Exception:
+            pass
 
-        pm1, pm2, pm3 = st.columns(3)
-        pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
-        pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
-        pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
+    combined_pmp = pd.concat(
+        [df for df in [pmp_summary, _magnite_summary, _gam_summary] + _custom_summaries if not df.empty],
+        ignore_index=True,
+    ).sort_values("Revenue", ascending=False)
 
-        st.dataframe(
-            combined_pmp,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Paid Impressions": st.column_config.NumberColumn(format="localized"),
-                "Revenue": st.column_config.NumberColumn(format="dollar"),
-                "eCPM": st.column_config.NumberColumn(format="dollar"),
-                "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
-                "Total Requests": st.column_config.NumberColumn(format="localized"),
-                "Bid Responses": st.column_config.NumberColumn(format="localized"),
-            },
-        )
+    if sel_pmp_ssps:
+        combined_pmp = combined_pmp[combined_pmp["SSP"].isin(sel_pmp_ssps)]
+    if sel_pmp_dsps:
+        combined_pmp = combined_pmp[combined_pmp["DSP"].isin(sel_pmp_dsps)]
+    if sel_pmp_formats:
+        combined_pmp = combined_pmp[combined_pmp["Format"].isin(sel_pmp_formats)]
+
+    pm1, pm2, pm3 = st.columns(3)
+    pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
+    pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
+    pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
+
+    st.dataframe(
+        combined_pmp,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Paid Impressions": st.column_config.NumberColumn(format="localized"),
+            "Revenue": st.column_config.NumberColumn(format="dollar"),
+            "eCPM": st.column_config.NumberColumn(format="dollar"),
+            "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
+            "Total Requests": st.column_config.NumberColumn(format="localized"),
+            "Bid Responses": st.column_config.NumberColumn(format="localized"),
+        },
+    )
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
