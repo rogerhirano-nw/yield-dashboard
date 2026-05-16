@@ -79,5 +79,33 @@
     "PD":  "Preferred Deal",
     "PG":  "Programmatic Guaranteed",
     "PMP": "Private Marketplace"
-  }
+  },
+  "direct_sources": [
+    {
+      "name": "GAM Direct",
+      "enabled": true,
+      "table": "campaigns_gam",
+      "line_item_prefix": "Newsweek_Direct",
+      "columns": {
+        "Seller":           "seller_ae",
+        "Advertiser":       "advertiser",
+        "Campaign":         "campaign_name",
+        "Line Item":        "line_item_name",
+        "Format":           "ad_format",
+        "Start Date":       "start_date",
+        "End Date":         "end_date",
+        "Goal":             "impressions_goal",
+        "CPM Rate":         "cpm_rate",
+        "Delivered":        "lifetime_impressions_delivered",
+        "Impressions (1d)": "impressions_1d",
+        "Remaining":        "remaining_impressions",
+        "Clicks":           "ad_server_clicks",
+        "Pacing %":         "pacing_pct",
+        "Viewability %":    "ad_server_active_view_viewable_impressions_rate",
+        "CTR %":            "ad_server_ctr",
+        "Revenue":          "ad_server_cpm_and_cpc_revenue",
+        "VCR %":            "vcr"
+      }
+    }
+  ]
 }

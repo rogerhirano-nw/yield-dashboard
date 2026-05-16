@@ -82,6 +82,34 @@ _DEFAULT_SETTINGS: dict = {
         "PA": "Private Auction", "PD": "Preferred Deal",
         "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace",
     },
+    "direct_sources": [
+        {
+            "name": "GAM Direct",
+            "enabled": True,
+            "table": "campaigns_gam",
+            "line_item_prefix": "Newsweek_Direct",
+            "columns": {
+                "Seller":        "seller_ae",
+                "Advertiser":    "advertiser",
+                "Campaign":      "campaign_name",
+                "Line Item":     "line_item_name",
+                "Format":        "ad_format",
+                "Start Date":    "start_date",
+                "End Date":      "end_date",
+                "Goal":          "impressions_goal",
+                "CPM Rate":      "cpm_rate",
+                "Delivered":     "lifetime_impressions_delivered",
+                "Impressions (1d)": "impressions_1d",
+                "Remaining":     "remaining_impressions",
+                "Clicks":        "ad_server_clicks",
+                "Pacing %":      "pacing_pct",
+                "Viewability %": "ad_server_active_view_viewable_impressions_rate",
+                "CTR %":         "ad_server_ctr",
+                "Revenue":       "ad_server_cpm_and_cpc_revenue",
+                "VCR %":         "vcr",
+            },
+        },
+    ],
 }
 
 
@@ -713,7 +741,9 @@ with tab_seller:
         st.caption(f"Last refresh: {last_pull}")
 
         gam_df = gam_df.copy()
-        gam_df = gam_df[gam_df["line_item_name"].str.startswith("Newsweek_Direct", na=False)]
+        _direct_src = next((s for s in _cfg.get("direct_sources", []) if s.get("enabled", True)), None)
+        _direct_prefix = _direct_src.get("line_item_prefix", "Newsweek_Direct") if _direct_src else "Newsweek_Direct"
+        gam_df = gam_df[gam_df["line_item_name"].str.startswith(_direct_prefix, na=False)]
         gam_df = gam_df[~gam_df["order_name"].str.startswith("Newsweek_Test", na=False)]
 
         for datecol in ("start_date", "end_date"):
@@ -875,26 +905,30 @@ with tab_seller:
                 or ("ad_format" in view_gam.columns and view_gam["ad_format"].str.lower().eq("video").any())
             )
 
-            display_cols = {
-                "seller_ae": "Seller",
-                "advertiser": "Advertiser",
-                "campaign_name": "Campaign",
-                "line_item_name": "Line Item",
-                "ad_format": "Format",
-                "start_date": "Start Date",
-                "end_date": "End Date",
-                "impressions_goal": "Goal",
-                "cpm_rate": "CPM Rate",
-                "lifetime_impressions_delivered": "Delivered",
-                "impressions_1d": "Impressions (1d)",
-                "remaining_impressions": "Remaining",
-                "ad_server_clicks": "Clicks",
-                "pacing_pct": "Pacing %",
-                "ad_server_active_view_viewable_impressions_rate": "Viewability %",
-                "ad_server_ctr": "CTR %",
-                "ad_server_cpm_and_cpc_revenue": "Revenue",
-            }
-            if has_vcr:
+            _direct_col_map = _direct_src.get("columns", {}) if _direct_src else {}
+            if _direct_col_map:
+                # Build source_col → display_name from settings (preserving order)
+                display_cols = {
+                    src: name
+                    for name, src in _direct_col_map.items()
+                    if src and src not in ("N/A", "")
+                }
+            else:
+                display_cols = {
+                    "seller_ae": "Seller", "advertiser": "Advertiser",
+                    "campaign_name": "Campaign", "line_item_name": "Line Item",
+                    "ad_format": "Format", "start_date": "Start Date",
+                    "end_date": "End Date", "impressions_goal": "Goal",
+                    "cpm_rate": "CPM Rate",
+                    "lifetime_impressions_delivered": "Delivered",
+                    "impressions_1d": "Impressions (1d)",
+                    "remaining_impressions": "Remaining",
+                    "ad_server_clicks": "Clicks", "pacing_pct": "Pacing %",
+                    "ad_server_active_view_viewable_impressions_rate": "Viewability %",
+                    "ad_server_ctr": "CTR %",
+                    "ad_server_cpm_and_cpc_revenue": "Revenue",
+                }
+            if has_vcr and "vcr" not in display_cols:
                 display_cols["vcr"] = "VCR %"
 
             available_cols = [c for c in display_cols if c in view_gam.columns]
@@ -1288,8 +1322,8 @@ with tab_settings:
         "Programmatic Guaranteed", "Private Marketplace",
     ]
 
-    # ── Section 1: SSP Sources ──────────────────────────────────────────
-    st.markdown("#### Data Sources")
+    # ── Section 1: PMP Data Sources ─────────────────────────────────────
+    st.markdown("#### PMP Data Sources")
     st.caption(
         "Each row is one SSP. **Deal Types** controls which deal types that SSP contributes to the PMP table. "
         "Disabling an SSP hides it from all filters and tables."
@@ -1400,7 +1434,113 @@ with tab_settings:
         disabled=["Field"],
     )
 
-    # ── Section 3: Seller Mapping ────────────────────────────────────────
+    # ── Section 3: Direct Campaign Sources ──────────────────────────────
+    st.markdown("#### Direct Campaign Sources")
+    st.caption(
+        "Each row is a direct-sold data source. **Line Item Prefix** filters the table to only direct campaigns. "
+        "Disabling a source hides it from the Direct Campaigns table."
+    )
+
+    _direct_rows = [
+        {
+            "Source Name":      s["name"],
+            "Enabled":          s.get("enabled", True),
+            "Database Table":   s["table"],
+            "Line Item Prefix": s.get("line_item_prefix", ""),
+        }
+        for s in _s.get("direct_sources", [])
+    ]
+    _direct_edit = st.data_editor(
+        pd.DataFrame(_direct_rows) if _direct_rows else pd.DataFrame(
+            columns=["Source Name", "Enabled", "Database Table", "Line Item Prefix"]
+        ),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_direct_sources",
+        column_config={
+            "Source Name":      st.column_config.TextColumn("Source Name", required=True),
+            "Enabled":          st.column_config.CheckboxColumn("Enabled"),
+            "Database Table":   st.column_config.TextColumn(
+                "Database Table",
+                help="Table populated by refresh_cache.py (e.g. campaigns_gam)",
+            ),
+            "Line Item Prefix": st.column_config.TextColumn(
+                "Line Item Prefix",
+                help="Filter to line items whose name starts with this value (e.g. Newsweek_Direct)",
+            ),
+        },
+    )
+
+    st.markdown("##### Direct Campaign Metrics and Dimensions Mapping")
+    st.caption(
+        "Map each display field to its source column in the database table. "
+        "Computed columns (seller_ae, advertiser, campaign_name, ad_format) are derived by the dashboard — "
+        "select them as-is or map to a raw column."
+    )
+
+    _DIRECT_FIELDS = [
+        "Seller", "Advertiser", "Campaign", "Line Item", "Format",
+        "Start Date", "End Date", "Goal", "CPM Rate",
+        "Delivered", "Impressions (1d)", "Remaining", "Clicks",
+        "Pacing %", "Viewability %", "CTR %", "Revenue", "VCR %",
+    ]
+    _DIRECT_COMPUTED = ["seller_ae", "advertiser", "campaign_name", "ad_format", "remaining_impressions"]
+
+    _existing_direct_maps = {s["name"]: s.get("columns", {}) for s in _s.get("direct_sources", [])}
+    _direct_src_names = [
+        str(r["Source Name"]).strip()
+        for _, r in _direct_edit.iterrows()
+        if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
+    ]
+    _direct_table_map = {
+        str(r["Source Name"]).strip(): str(r.get("Database Table", "")).strip()
+        for _, r in _direct_edit.iterrows()
+        if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
+    }
+
+    _direct_ssp_opts: dict = {}
+    for _dsn in _direct_src_names:
+        _dtbl = _direct_table_map.get(_dsn, "")
+        _dreal = _table_cols(_dtbl)
+        _dopts = ["N/A"] + _DIRECT_COMPUTED + [c for c in _dreal if c not in (["N/A"] + _DIRECT_COMPUTED)]
+        for _f in _DIRECT_FIELDS:
+            _cur = _existing_direct_maps.get(_dsn, {}).get(_f, "")
+            if _cur and _cur not in _dopts:
+                _dopts.append(_cur)
+        _direct_ssp_opts[_dsn] = _dopts
+
+    _direct_map_rows = []
+    for _f in _DIRECT_FIELDS:
+        _row2: dict = {"Field": _f}
+        for _dsn in _direct_src_names:
+            _raw = _existing_direct_maps.get(_dsn, {}).get(_f, "") or ""
+            _row2[_dsn] = _raw if _raw else "N/A"
+        _direct_map_rows.append(_row2)
+
+    _direct_map_col_cfg: dict = {
+        "Field": st.column_config.TextColumn("Field", disabled=True, width="small"),
+    }
+    for _dsn in _direct_src_names:
+        _dtbl = _direct_table_map.get(_dsn, "")
+        _direct_map_col_cfg[_dsn] = st.column_config.SelectboxColumn(
+            _dsn,
+            options=_direct_ssp_opts[_dsn],
+            width="medium",
+            help=f"Source column from `{_dtbl}`. Computed columns: seller_ae, advertiser, campaign_name, ad_format.",
+            required=False,
+        )
+
+    _direct_map_edit = st.data_editor(
+        pd.DataFrame(_direct_map_rows) if _direct_map_rows else pd.DataFrame(columns=["Field"]),
+        use_container_width=True,
+        hide_index=True,
+        key="settings_direct_colmap",
+        column_config=_direct_map_col_cfg,
+        disabled=["Field"],
+    )
+
+    # ── Section 4: Seller Mapping ────────────────────────────────────────
     st.markdown("#### Seller Mapping")
     st.caption("Maps short AE codes (from order and deal names) to full display names.")
 
@@ -1470,7 +1610,30 @@ with tab_settings:
                 if pd.notna(r.get("Code")) and str(r["Code"]).strip()
             }
 
-            _save_settings({"ssps": _new_ssps, "ae_names": _new_ae, "deal_type_codes": _new_dt})
+            _new_direct = []
+            for _, _row in _direct_edit.iterrows():
+                _dsrc_name = str(_row.get("Source Name", "")).strip()
+                if not _dsrc_name:
+                    continue
+                if _dsrc_name in _direct_map_edit.columns:
+                    _dcol_map = {}
+                    for _, _mr in _direct_map_edit.iterrows():
+                        _src = str(_mr[_dsrc_name]).strip() if pd.notna(_mr[_dsrc_name]) else "N/A"
+                        _dcol_map[str(_mr["Field"])] = "" if _src == "N/A" else _src
+                else:
+                    _dcol_map = _existing_direct_maps.get(_dsrc_name, {})
+                _new_direct.append({
+                    "name":             _dsrc_name,
+                    "enabled":          bool(_row.get("Enabled", True)),
+                    "table":            str(_row.get("Database Table", "")).strip(),
+                    "line_item_prefix": str(_row.get("Line Item Prefix", "")).strip(),
+                    "columns":          _dcol_map,
+                })
+
+            _save_settings({
+                "ssps": _new_ssps, "ae_names": _new_ae,
+                "deal_type_codes": _new_dt, "direct_sources": _new_direct,
+            })
             st.success("Settings saved — reloading dashboard…")
             st.rerun()
         except Exception as _e:
