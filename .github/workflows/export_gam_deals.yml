@@ -1,0 +1,79 @@
+name: Export GAM Deals CSV
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Export all GAM deals to CSV
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          python - <<'PYEOF'
+          from datetime import date, timedelta
+          import pandas as pd
+          from gam_client import GAMClient
+
+          gam = GAMClient()
+          yesterday      = date.today() - timedelta(days=1)
+          thirty_days_ago = yesterday - timedelta(days=29)
+
+          # Pull ALL deal data — no name filter, all channels, last 30 days
+          df = gam._run_report(
+              dimensions=["DATE", "DEAL_ID", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
+              metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
+              start_date=thirty_days_ago,
+              end_date=yesterday,
+          ).rename(columns={
+              "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
+          })
+
+          print(f"Total raw rows: {len(df)}")
+          print(f"Channels: {df['programmatic_channel_name'].value_counts().to_dict()}")
+
+          # All rows with any non-zero deal_id
+          all_deals = df[~df["deal_id"].astype(str).str.strip().isin(["0", ""])].copy()
+          print(f"Rows with non-zero deal_id: {len(all_deals)}")
+          print(f"Unique deal_ids: {all_deals['deal_id'].nunique()}")
+
+          # Aggregate by deal for the summary CSV
+          summary = (
+              all_deals.groupby(
+                  ["programmatic_channel_name", "deal_id", "deal_name"],
+                  dropna=False,
+              )
+              .agg(
+                  impressions=("ad_server_impressions", "sum"),
+                  revenue=("ad_server_cpm_and_cpc_revenue", "sum"),
+                  avg_ecpm=("ad_server_average_ecpm", "mean"),
+                  days_active=("date", "nunique"),
+              )
+              .reset_index()
+              .sort_values("impressions", ascending=False)
+          )
+
+          summary.to_csv("gam_deals_all.csv", index=False)
+          all_deals.to_csv("gam_deals_daily.csv", index=False)
+          print("Wrote gam_deals_all.csv and gam_deals_daily.csv")
+          print(summary.to_string(index=False))
+          PYEOF
+
+      - name: Upload CSVs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gam-deals-export
+          path: |
+            gam_deals_all.csv
+            gam_deals_daily.csv
+          retention-days: 7
