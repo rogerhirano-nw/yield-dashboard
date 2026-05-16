@@ -356,25 +356,12 @@ class GAMClient:
             "ad_server_clicks": ("ad_server_clicks", "sum"),
             "ad_server_ctr": ("ad_server_ctr", "mean"),
             "ad_server_cpm_and_cpc_revenue": ("ad_server_cpm_and_cpc_revenue", "sum"),
-            "ad_server_average_ecpm": ("ad_server_average_ecpm", "mean"),
-            "ad_server_active_view_viewable_impressions": (
-                "ad_server_active_view_viewable_impressions", "sum",
-            ),
-            "ad_server_active_view_viewable_impressions_rate": (
-                "ad_server_active_view_viewable_impressions_rate", "mean",
-            ),
-            "ad_server_active_view_measurable_impressions": (
-                "ad_server_active_view_measurable_impressions", "sum",
-            ),
-            "ad_server_active_view_measurable_impressions_rate": (
-                "ad_server_active_view_measurable_impressions_rate", "mean",
-            ),
-            "ad_server_active_view_eligible_impressions": (
-                "ad_server_active_view_eligible_impressions", "sum",
-            ),
         }
-        # Video columns are absent when there are no video line items in the period
-        _video_sum_cols = [
+        # All remaining columns are optional — only aggregate if present in the report
+        _optional_sum = [
+            "ad_server_active_view_viewable_impressions",
+            "ad_server_active_view_measurable_impressions",
+            "ad_server_active_view_eligible_impressions",
             "video_interaction_video_starts",
             "video_interaction_video_first_quartile",
             "video_interaction_video_midpoint",
@@ -382,9 +369,17 @@ class GAMClient:
             "video_interaction_video_completions",
             "video_interaction_video_skips",
         ]
-        for _vc in _video_sum_cols:
-            if _vc in df_delivery.columns:
-                agg_spec[_vc] = (_vc, "sum")
+        _optional_mean = [
+            "ad_server_average_ecpm",
+            "ad_server_active_view_viewable_impressions_rate",
+            "ad_server_active_view_measurable_impressions_rate",
+        ]
+        for _col in _optional_sum:
+            if _col in df_delivery.columns:
+                agg_spec[_col] = (_col, "sum")
+        for _col in _optional_mean:
+            if _col in df_delivery.columns:
+                agg_spec[_col] = (_col, "mean")
 
         agg = df_delivery.groupby("line_item_id", as_index=False).agg(**agg_spec)
 

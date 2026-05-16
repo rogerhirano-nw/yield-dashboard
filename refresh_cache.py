@@ -77,8 +77,6 @@ REPORTS = {
             "seller_net_revenue",
             "ecpm",
             "win_rate",
-            "bid_rate",
-            "fill_rate",
         ],
         "date_range": "last_7",
     },
