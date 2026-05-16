@@ -1327,9 +1327,9 @@ with tab_settings:
     # ── Section 2: Column Mapping ───────────────────────────────────────
     st.markdown("#### Column Mapping")
     st.caption(
-        "Click a cell in the **Source Column** to edit it. "
-        "Enter the exact column name from that SSP's database table. "
-        "Special values: `[auto]` = parsed from the deal name; leave blank = not available from this source."
+        "Each row is a canonical display field; each column is an SSP. "
+        "Use the dropdown in each cell to pick the matching source column from that SSP's table. "
+        "**N/A** = not available. **[auto]** = computed from the deal name (type, format, seller)."
     )
 
     _edited_ssp_names = [
@@ -1344,37 +1344,61 @@ with tab_settings:
         if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
     }
 
-    # One expander per SSP — much easier to edit than a wide matrix
-    _col_editors: dict = {}
+    # Fetch the actual column names from each SSP's table so dropdowns show real options
+    _SPECIAL_OPTS = ["N/A", "[auto]"]
+
+    def _table_cols(table: str) -> list:
+        try:
+            with _engine().connect() as _c:
+                _r = _c.execute(sqlalchemy.text(f'SELECT * FROM "{table}" LIMIT 0'))
+                return [col for col in _r.keys() if not col.startswith("_")]
+        except Exception:
+            return []
+
+    # Build options list per SSP: special values + real columns + any currently-stored custom values
+    _ssp_opts: dict = {}
     for _sn in _edited_ssp_names:
-        _table_label = _ssp_table_map.get(_sn, "")
-        _label = f"{_sn}  —  table: `{_table_label}`" if _table_label else _sn
-        with st.expander(_label, expanded=True):
-            _cm = _existing_col_maps.get(_sn, {})
-            _ssp_map_df = pd.DataFrame([
-                {"Field": f, "Source Column": _cm.get(f, "")}
-                for f in _CANONICAL_FIELDS
-            ])
-            _col_editors[_sn] = st.data_editor(
-                _ssp_map_df,
-                use_container_width=True,
-                hide_index=True,
-                key=f"settings_colmap_{_sn}",
-                column_config={
-                    "Field": st.column_config.TextColumn(
-                        "Field", disabled=True, width="medium",
-                    ),
-                    "Source Column": st.column_config.TextColumn(
-                        "Source Column",
-                        width="large",
-                        help=(
-                            f"Column name in the `{_table_label}` table. "
-                            "Use [auto] for fields computed from the deal name (deal type, format, seller). "
-                            "Leave blank if this SSP doesn't provide this field."
-                        ),
-                    ),
-                },
-            )
+        _tbl = _ssp_table_map.get(_sn, "")
+        _real_cols = _table_cols(_tbl)
+        _opts = _SPECIAL_OPTS + [c for c in _real_cols if c not in _SPECIAL_OPTS]
+        # Ensure any currently-stored value is always a valid option
+        for _f in _CANONICAL_FIELDS:
+            _cur = _existing_col_maps.get(_sn, {}).get(_f, "")
+            if _cur and _cur not in _opts:
+                _opts.append(_cur)
+        _ssp_opts[_sn] = _opts
+
+    # Build matrix DataFrame
+    _map_rows = []
+    for _f in _CANONICAL_FIELDS:
+        _row: dict = {"Field": _f}
+        for _sn in _edited_ssp_names:
+            _raw = _existing_col_maps.get(_sn, {}).get(_f, "") or ""
+            _row[_sn] = _raw if _raw else "N/A"
+        _map_rows.append(_row)
+    _map_df = pd.DataFrame(_map_rows)
+
+    _map_col_cfg: dict = {
+        "Field": st.column_config.TextColumn("Field", disabled=True, width="small"),
+    }
+    for _sn in _edited_ssp_names:
+        _tbl = _ssp_table_map.get(_sn, "")
+        _map_col_cfg[_sn] = st.column_config.SelectboxColumn(
+            _sn,
+            options=_ssp_opts[_sn],
+            width="medium",
+            help=f"Source column from `{_tbl}`. N/A = not available. [auto] = parsed from deal name.",
+            required=False,
+        )
+
+    _map_edit = st.data_editor(
+        _map_df,
+        use_container_width=True,
+        hide_index=True,
+        key="settings_colmap",
+        column_config=_map_col_cfg,
+        disabled=["Field"],
+    )
 
     # ── Section 3: Seller / AE Names ────────────────────────────────────
     st.markdown("#### Seller Names")
@@ -1419,11 +1443,11 @@ with tab_settings:
                 _ssp_name = str(_row.get("SSP Name", "")).strip()
                 if not _ssp_name:
                     continue
-                if _ssp_name in _col_editors:
-                    _col_map_new = {
-                        str(_mr["Field"]): (str(_mr["Source Column"]).strip() if pd.notna(_mr["Source Column"]) else "")
-                        for _, _mr in _col_editors[_ssp_name].iterrows()
-                    }
+                if _ssp_name in _map_edit.columns:
+                    _col_map_new = {}
+                    for _, _mr in _map_edit.iterrows():
+                        _src = str(_mr[_ssp_name]).strip() if pd.notna(_mr[_ssp_name]) else "N/A"
+                        _col_map_new[str(_mr["Field"])] = "" if _src == "N/A" else _src
                 else:
                     _col_map_new = _existing_col_maps.get(_ssp_name, {})
                 _dt_raw = str(_row.get("Deal Types", "")).strip()
