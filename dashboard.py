@@ -1152,14 +1152,21 @@ with tab_seller:
                 _gam_raw = load("gam_campaigns").copy()
                 if not _gam_raw.empty and "order_name" in _gam_raw.columns:
                     _gam_raw = _gam_raw[~_gam_raw["order_name"].str.startswith("Newsweek_Test", na=False)]
-                    # Use PROGRAMMATIC_CHANNEL from the report — it is the authoritative
-                    # source ("Private Auction", "Preferred Deal", etc.)
-                    if "programmatic_channel" in _gam_raw.columns:
-                        _gam_raw["deal_type_label"] = _gam_raw["programmatic_channel"]
-                    else:
-                        _gam_raw["deal_type_label"] = _gam_raw["order_name"].apply(
-                            lambda d: _parse_deal(d)["deal_type_label"]
-                        )
+
+                    def _gam_pmp_type(row) -> str | None:
+                        lt = str(row.get("line_item_type", "") or "")
+                        if lt == "PREFERRED_DEAL":
+                            return "Preferred Deal"
+                        if lt == "PROGRAMMATIC_GUARANTEED":
+                            return "Programmatic Guaranteed"
+                        # Private Auction: AdX line item following Newsweek_PA_ naming
+                        if lt == "AD_EXCHANGE":
+                            parsed = _parse_deal(str(row.get("order_name", "") or ""))["deal_type_label"]
+                            if parsed == "Private Auction":
+                                return "Private Auction"
+                        return None  # open exchange or unmapped — exclude from PMP table
+
+                    _gam_raw["deal_type_label"] = _gam_raw.apply(_gam_pmp_type, axis=1)
                     _gam_raw["ad_format"] = _gam_raw["order_name"].apply(
                         lambda d: _parse_deal(d)["ad_format"]
                     )
