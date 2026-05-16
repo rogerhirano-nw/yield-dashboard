@@ -147,6 +147,38 @@ def refresh_gam() -> int:
     return len(df)
 
 
+def refresh_gam_pmp_deals() -> int:
+    """Pull GAM PMP deal data (PA / PD / PG) by deal name and write to gam_pmp_deals."""
+    logger.info("Refreshing gam_pmp_deals (GAM deals report)")
+    gam = GAMClient()
+
+    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
+    seven_days_ago = yesterday - timedelta(days=6)
+
+    df = gam.run_deals_report(seven_days_ago, yesterday)
+    if df.empty:
+        logger.warning("GAM deals report came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table  = "gam_pmp_deals"
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            else:
+                conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 def refresh_pubmatic() -> int:
     """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
@@ -241,6 +273,11 @@ def main() -> None:
         total += refresh_gam()
     except Exception:
         logger.exception("Refresh failed for gam_campaigns — continuing")
+
+    try:
+        total += refresh_gam_pmp_deals()
+    except Exception:
+        logger.exception("Refresh failed for gam_pmp_deals — continuing")
 
     try:
         total += refresh_pubmatic()

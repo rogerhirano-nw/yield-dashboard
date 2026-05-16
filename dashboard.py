@@ -1143,87 +1143,64 @@ with tab_seller:
             })
         )
 
-        # Add GAM PA / PD / PG deals (all managed in Google Ad Manager)
+        # Add GAM PA / PD / PG deals from the dedicated gam_pmp_deals table
         _gam_summary = pd.DataFrame()
         _gam_cfg_deal_types = next((s["deal_types"] for s in _cfg["ssps"] if s["name"] == "GAM"), [])
         _gam_deal_types = [t for t in (sel_pmp_deal_types or _gam_cfg_deal_types) if t in _gam_cfg_deal_types]
         if _gam_deal_types and _ssp_enabled.get("GAM", True):
             try:
-                _gam_raw = load("gam_campaigns").copy()
-                if not _gam_raw.empty and "order_name" in _gam_raw.columns:
-                    _gam_raw = _gam_raw[~_gam_raw["order_name"].str.startswith("Newsweek_Test", na=False)]
-
-                    def _gam_pmp_type(row) -> str | None:
-                        lt = str(row.get("line_item_type", "") or "")
-                        if lt == "PREFERRED_DEAL":
-                            return "Preferred Deal"
-                        if lt == "PROGRAMMATIC_GUARANTEED":
-                            return "Programmatic Guaranteed"
-                        # Private Auction: PRICE_PRIORITY (or AD_EXCHANGE) with PA naming
-                        if lt in ("PRICE_PRIORITY", "AD_EXCHANGE"):
-                            parsed = _parse_deal(str(row.get("order_name", "") or ""))["deal_type_label"]
-                            if parsed == "Private Auction":
-                                return "Private Auction"
-                        return None  # open exchange or unmapped — exclude from PMP table
-
-                    _gam_raw["deal_type_label"] = _gam_raw.apply(_gam_pmp_type, axis=1)
-                    _gam_raw["ad_format"] = _gam_raw["order_name"].apply(
-                        lambda d: _parse_deal(d)["ad_format"]
+                _gam_raw = load("gam_pmp_deals").copy()
+                # Identify the deal name column (DEAL_NAME → deal_name after snake_case)
+                _deal_col = next((c for c in _gam_raw.columns if "deal_name" in c or c == "deal"), None)
+                if not _gam_raw.empty and _deal_col:
+                    _gam_raw = _gam_raw.rename(columns={_deal_col: "deal_name"})
+                    # Classify by deal name prefix (Newsweek_PA_, Newsweek_PD_, Newsweek_PG_)
+                    _gam_raw["deal_type_label"] = _gam_raw["deal_name"].apply(
+                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
                     )
-                    # Exclude direct line items (those are shown in the Direct Campaigns table)
-                    _direct_prefix = next(
-                        (s.get("line_item_prefix", "") for s in _cfg.get("direct_sources", []) if s.get("enabled", True)),
-                        "Newsweek_Direct",
+                    _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
+                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
                     )
-                    if _direct_prefix:
-                        _gam_raw = _gam_raw[~_gam_raw["line_item_name"].str.startswith(_direct_prefix, na=False)]
+                    _gam_raw["seller_ae"] = (
+                        _gam_raw["deal_name"]
+                        .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                        .map(AE_NAMES)
+                    )
                     _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
+                    if selected_seller != "All":
+                        _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
+                    for _col in ("ad_server_impressions", "ad_server_cpm_and_cpc_revenue", "ad_server_average_ecpm"):
+                        if _col in _gam_deals.columns:
+                            _gam_deals[_col] = pd.to_numeric(_gam_deals[_col], errors="coerce")
+                    if sel_pmp_deal_types:
+                        _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
                     if not _gam_deals.empty:
-                        _gam_deals["ssp"] = "GAM"
-                        if "salesperson" in _gam_deals.columns and _gam_deals["salesperson"].notna().any():
-                            _gam_deals["seller_ae"] = _gam_deals["salesperson"]
-                            _null_mask = _gam_deals["seller_ae"].isna()
-                            if _null_mask.any():
-                                _gam_deals.loc[_null_mask, "seller_ae"] = (
-                                    _gam_deals.loc[_null_mask, "order_name"]
-                                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                                    .map(AE_NAMES)
-                                )
-                        else:
-                            _gam_deals["seller_ae"] = (
-                                _gam_deals["order_name"]
-                                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                                .map(AE_NAMES)
+                        _rev_col = "ad_server_cpm_and_cpc_revenue"
+                        _imp_col = "ad_server_impressions"
+                        _ecpm_col = "ad_server_average_ecpm"
+                        _gam_agg = (
+                            _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
+                            .agg(
+                                paid_impressions=(_imp_col, "sum") if _imp_col in _gam_deals.columns else ("deal_name", "count"),
+                                revenue=(_rev_col, "sum") if _rev_col in _gam_deals.columns else ("deal_name", "count"),
+                                ecpm=(_ecpm_col, "mean") if _ecpm_col in _gam_deals.columns else ("deal_name", "count"),
                             )
-                        if selected_seller != "All":
-                            _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
-                        for _col in ("lifetime_impressions_delivered", "ad_server_cpm_and_cpc_revenue", "cpm_rate"):
-                            if _col in _gam_deals.columns:
-                                _gam_deals[_col] = pd.to_numeric(_gam_deals[_col], errors="coerce")
-                        if not _gam_deals.empty:
-                            _gam_agg = (
-                                _gam_deals.groupby(["ssp", "order_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
-                                .agg(
-                                    paid_impressions=("lifetime_impressions_delivered", "sum"),
-                                    revenue=("ad_server_cpm_and_cpc_revenue", "sum"),
-                                    ecpm=("cpm_rate", "mean"),
-                                )
-                                .reset_index()
-                            )
-                            _gam_agg["DSP"] = None
-                            _gam_agg["Win Rate %"] = None
-                            _gam_agg["Total Requests"] = None
-                            _gam_agg["Bid Responses"] = None
-                            _gam_summary = _gam_agg.rename(columns={
-                                "ssp": "SSP",
-                                "seller_ae": "Seller",
-                                "order_name": "Deal",
-                                "deal_type_label": "Deal Type",
-                                "ad_format": "Format",
-                                "paid_impressions": "Paid Impressions",
-                                "revenue": "Revenue",
-                                "ecpm": "eCPM",
-                            })
+                            .reset_index()
+                        )
+                        _gam_agg["SSP"] = "GAM"
+                        _gam_agg["DSP"] = None
+                        _gam_agg["Win Rate %"] = None
+                        _gam_agg["Total Requests"] = None
+                        _gam_agg["Bid Responses"] = None
+                        _gam_summary = _gam_agg.rename(columns={
+                            "seller_ae": "Seller",
+                            "deal_name": "Deal",
+                            "deal_type_label": "Deal Type",
+                            "ad_format": "Format",
+                            "paid_impressions": "Paid Impressions",
+                            "revenue": "Revenue",
+                            "ecpm": "eCPM",
+                        })
             except Exception:
                 pass
 

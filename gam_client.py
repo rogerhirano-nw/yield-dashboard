@@ -177,6 +177,85 @@ class GAMClient:
         return df
 
     # ------------------------------------------------------------------
+    # Programmatic deal report (PA / PD / PG by deal name)
+    # ------------------------------------------------------------------
+
+    def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Run a GAM report dimensioned by DEAL_ID + DEAL_NAME for the given window.
+
+        Returns one row per (date, deal) with impressions and revenue.
+        Rows where deal_id is empty/0 represent open-exchange inventory (no deal)
+        and are filtered out before returning.
+        """
+        report_service = self._report_service()
+        report_job = {
+            "reportQuery": {
+                "dimensions": [
+                    "DATE",
+                    "DEAL_ID",
+                    "DEAL_NAME",
+                ],
+                "columns": [
+                    "AD_SERVER_IMPRESSIONS",
+                    "AD_SERVER_CPM_AND_CPC_REVENUE",
+                    "AD_SERVER_AVERAGE_ECPM",
+                    "AD_SERVER_CLICKS",
+                    "AD_SERVER_CTR",
+                ],
+                "dateRangeType": "CUSTOM_DATE",
+                "startDate": self._gam_date(start_date),
+                "endDate": self._gam_date(end_date),
+                "reportCurrency": "USD",
+            }
+        }
+
+        report_job_result = report_service.runReportJob(report_job)
+        job_id = report_job_result["id"]
+        logger.info("GAM deals report job submitted, id=%s", job_id)
+
+        status   = "IN_PROGRESS"
+        deadline = time.time() + 600
+        while status == "IN_PROGRESS":
+            if time.time() > deadline:
+                raise RuntimeError(f"GAM deals report {job_id} timed out")
+            time.sleep(10)
+            status = report_service.getReportJobStatus(job_id)
+            logger.info("GAM deals report %s status: %s", job_id, status)
+
+        if status != "COMPLETED":
+            raise RuntimeError(f"GAM deals report {job_id} ended with status {status!r}")
+
+        url = report_service.getReportDownloadURL(job_id, "CSV_DUMP")
+        import urllib.request
+        with urllib.request.urlopen(url) as resp:
+            raw = resp.read()
+        if raw[:2] == b"\x1f\x8b":
+            import gzip
+            raw = gzip.decompress(raw)
+
+        df = pd.read_csv(io.BytesIO(raw))
+        df.columns = [_snake(re.sub(r"^(?:Dimension|Column)\.", "", col)) for col in df.columns]
+
+        logger.info("GAM deals report: raw columns = %s", list(df.columns))
+        logger.info("GAM deals report: %d raw rows", len(df))
+
+        for _money_col in ("ad_server_cpm_and_cpc_revenue", "ad_server_average_ecpm"):
+            if _money_col in df.columns:
+                df[_money_col] = df[_money_col] / 1_000_000
+
+        # Drop rows with no deal (open-exchange impressions not part of a deal)
+        id_col = next((c for c in df.columns if "deal_id" in c), None)
+        name_col = next((c for c in df.columns if "deal_name" in c or c == "deal"), None)
+        if id_col:
+            df = df[df[id_col].notna() & (df[id_col].astype(str).str.strip() != "0")]
+        if name_col:
+            df = df[df[name_col].notna() & (df[name_col].astype(str).str.strip() != "")]
+
+        logger.info("GAM deals report: %d rows after filtering out no-deal rows", len(df))
+        return df
+
+    # ------------------------------------------------------------------
     # Line items
     # ------------------------------------------------------------------
 
