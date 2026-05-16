@@ -114,6 +114,7 @@
     "TTD": "The Trade Desk",
     "ZetaGlobal": "Zeta DSP"
   },
+  "format_aliases": {},
   "deal_type_aliases": {
     "Preferred Deals": "Preferred Deal",
     "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
