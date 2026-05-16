@@ -1645,18 +1645,19 @@ with tab_settings:
                 st.error("Could not find a data sheet in the uploaded file.")
             else:
                 _gam_upload_df = _xl[_data_sheet].copy()
-                # Normalise column names
-                _gam_upload_df.columns = [
-                    _snake(re.sub(r"[^a-zA-Z0-9]+", "_", str(c)).strip("_"))
-                    for c in _gam_upload_df.columns
-                ]
+                # Normalise column names (no _snake helper in dashboard — do it inline)
+                import re as _re2
+                def _norm_col(s):
+                    s = _re2.sub(r"[^a-zA-Z0-9]+", "_", str(s)).strip("_").lower()
+                    return s
+                _gam_upload_df.columns = [_norm_col(c) for c in _gam_upload_df.columns]
                 # Identify key columns by pattern
                 _prog_col  = next((c for c in _gam_upload_df.columns if "programmatic" in c), None)
                 _deal_col  = next((c for c in _gam_upload_df.columns if c == "deal" or c.endswith("_deal")), None)
                 _order_col = next((c for c in _gam_upload_df.columns if "order" in c), None)
                 _impr_col  = next((c for c in _gam_upload_df.columns if "impression" in c and "comparison" not in c and "change" not in c), None)
                 _rev_col   = next((c for c in _gam_upload_df.columns if "revenue" in c and "comparison" not in c and "change" not in c), None)
-                _ecpm_col  = next((c for c in _gam_upload_df.columns if "ecpm" in c and "comparison" not in c and "change" not in c), None)
+                _ecpm_col  = next((c for c in _gam_upload_df.columns if ("ecpm" in c or "e_cpm" in c) and "comparison" not in c and "change" not in c), None)
 
                 st.write(f"Detected columns — channel: `{_prog_col}`, deal: `{_deal_col}`, order: `{_order_col}`, impressions: `{_impr_col}`, revenue: `{_rev_col}`")
 
