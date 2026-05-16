@@ -1171,6 +1171,18 @@ with tab_seller:
                 _gam_raw["ad_format"] = _gam_raw["deal_name"].apply(
                     lambda d: _parse_deal(str(d) if pd.notna(d) else "")["ad_format"]
                 )
+                # Prefer API-supplied buyer name; fall back to deal-name position 4
+                if "dsp" not in _gam_raw.columns or _gam_raw["dsp"].isna().all():
+                    _gam_raw["dsp"] = _gam_raw["deal_name"].apply(
+                        lambda d: _parse_deal(str(d) if pd.notna(d) else "")["dsp"]
+                    )
+                else:
+                    _gam_raw["dsp"] = _gam_raw["dsp"].where(
+                        _gam_raw["dsp"].notna() & (_gam_raw["dsp"].astype(str).str.strip() != ""),
+                        _gam_raw["deal_name"].apply(
+                            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["dsp"]
+                        )
+                    )
                 _gam_raw["seller_ae"] = (
                     _gam_raw["deal_name"]
                     .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
@@ -1197,12 +1209,11 @@ with tab_seller:
                     if _rev_col:  _agg_kwargs["revenue"]          = (_rev_col, "sum")
                     if _ecpm_col: _agg_kwargs["ecpm"]             = (_ecpm_col, "mean")
                     _gam_agg = (
-                        _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "seller_ae"], dropna=False)
+                        _gam_deals.groupby(["deal_name", "deal_type_label", "ad_format", "dsp", "seller_ae"], dropna=False)
                         .agg(**_agg_kwargs)
                         .reset_index()
                     )
                     _gam_agg["SSP"] = "GAM"
-                    _gam_agg["DSP"] = None
                     _gam_agg["Win Rate %"] = None
                     _gam_agg["Total Requests"] = None
                     _gam_agg["Bid Responses"] = None
@@ -1211,6 +1222,7 @@ with tab_seller:
                         "deal_name": "Deal",
                         "deal_type_label": "Deal Type",
                         "ad_format": "Format",
+                        "dsp": "DSP",
                         "paid_impressions": "Paid Impressions",
                         "revenue": "Revenue",
                         "ecpm": "eCPM",

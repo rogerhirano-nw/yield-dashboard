@@ -224,12 +224,13 @@ class GAMClient:
         deal type is classified from the name by _parse_deal() in the dashboard.
         """
         df = self._run_report(
-            dimensions=["DATE", "ORDER_NAME", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
+            dimensions=["DATE", "ORDER_NAME", "DEAL_NAME", "DEAL_BUYER_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
             start_date=start_date,
             end_date=end_date,
         ).rename(columns={
             "deal_name": "programmatic_deal_name",
+            "deal_buyer_name": "dsp",
             "ad_server_revenue": "ad_server_cpm_and_cpc_revenue",
         })
         df = df[
