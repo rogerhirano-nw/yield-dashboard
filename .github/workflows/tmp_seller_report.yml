@@ -1,0 +1,45 @@
+name: Temp seller report
+on:
+  workflow_dispatch:
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install sqlalchemy psycopg2-binary
+      - env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os, re, sqlalchemy
+          from sqlalchemy import text
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as conn:
+              r = conn.execute(text("""
+                  SELECT DISTINCT
+                      order_name,
+                      salesperson,
+                      COUNT(*) as line_items
+                  FROM gam_campaigns
+                  WHERE order_name LIKE 'Newsweek_Direct%'
+                  GROUP BY order_name, salesperson
+                  ORDER BY order_name
+              """))
+              rows = [dict(row._mapping) for row in r]
+
+          def parse(val):
+              if not isinstance(val, str) or not val.strip():
+                  return ''
+              m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
+              return m.group(1).strip() if m else val.strip()
+
+          print("order_name,salesperson_raw,parsed_name,line_items")
+          for row in rows:
+              sp = row['salesperson'] or ''
+              parsed = parse(sp)
+              print(f'"{row["order_name"]}","{sp}","{parsed}",{row["line_items"]}')
+          PYEOF
