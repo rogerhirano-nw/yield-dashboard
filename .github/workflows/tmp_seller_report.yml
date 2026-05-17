@@ -15,33 +15,14 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           python - <<'PYEOF'
-          import os, re, sqlalchemy
+          import os, sqlalchemy
           from sqlalchemy import text
           engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
           with engine.connect() as conn:
-              r = conn.execute(text("""
-                  SELECT
-                      line_item_name,
-                      salesperson,
-                      status,
-                      COUNT(*) as line_items
-                  FROM gam_campaigns
-                  GROUP BY line_item_name, salesperson, status
-                  ORDER BY salesperson NULLS LAST, line_item_name
-              """))
-              rows = [dict(row._mapping) for row in r]
-
-          def parse(val):
-              if not isinstance(val, str) or not val.strip():
-                  return ''
-              m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
-              return m.group(1).strip() if m else val.strip()
-
-          print("line_item_name,salesperson_raw,parsed_name,status,line_items")
-          for row in rows:
-              sp = row['salesperson'] or ''
-              parsed = parse(sp)
-              name = (row['line_item_name'] or '').replace('"', '""')
-              status = row['status'] or ''
-              print(f'"{name}","{sp}","{parsed}","{status}",{row["line_items"]}')
+              r = conn.execute(text(
+                  "SELECT status, COUNT(*) as n FROM gam_campaigns GROUP BY status ORDER BY n DESC"
+              ))
+              print("status,count")
+              for row in r:
+                  print(f'"{row[0]}",{row[1]}')
           PYEOF
