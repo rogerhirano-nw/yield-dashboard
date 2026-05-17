@@ -1070,10 +1070,11 @@ with tab_seller:
     _pmp_deal_types_available = sorted(set(
         dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
     ))
-    # DSP / Format options come from the previous render via session_state (two-pass pattern).
-    _pmp_dsps_opts   = st.session_state.get("_pmp_dsps_opts", [])
-    _pmp_formats_opts = st.session_state.get("_pmp_formats_opts", [])
-    _pf1, _pf2, _pf3, _pf4, _pf5 = st.columns([1, 1, 1, 1, 0.6])
+    # DSP / Format / Deal Source options come from the previous render via session_state (two-pass pattern).
+    _pmp_dsps_opts        = st.session_state.get("_pmp_dsps_opts", [])
+    _pmp_formats_opts     = st.session_state.get("_pmp_formats_opts", [])
+    _pmp_deal_sources_opts = st.session_state.get("_pmp_deal_sources_opts", [])
+    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6 = st.columns([1, 1, 1, 1, 1, 0.6])
     with _pf1:
         sel_pmp_deal_types = st.multiselect(
             "Deal Type",
@@ -1100,10 +1101,17 @@ with tab_seller:
             key="campaigns_pmp_format_filter",
         )
     with _pf5:
+        sel_pmp_deal_sources = st.multiselect(
+            "Deal Source",
+            _pmp_deal_sources_opts,
+            key="campaigns_pmp_deal_source_filter",
+        )
+    with _pf6:
         st.write("")  # align button with multiselect labels
         if st.button("Reset filters", key="pmp_reset_filters"):
             for _k in ("campaigns_pmp_deal_type_filter", "campaigns_pmp_ssp_filter",
-                       "campaigns_pmp_dsp_filter", "campaigns_pmp_format_filter"):
+                       "campaigns_pmp_dsp_filter", "campaigns_pmp_format_filter",
+                       "campaigns_pmp_deal_source_filter"):
                 st.session_state.pop(_k, None)
             st.rerun()
     st.caption("PA = Magnite · PD = Magnite or GAM · PG = GAM")
@@ -1402,9 +1410,10 @@ with tab_seller:
     if _format_aliases and "Format" in combined_pmp.columns:
         combined_pmp["Format"] = combined_pmp["Format"].replace(_format_aliases)
 
-    # Persist DSP / Format options for next render (two-pass pattern — filters are rendered above).
-    st.session_state["_pmp_dsps_opts"]    = sorted(combined_pmp["DSP"].dropna().unique().tolist())
-    st.session_state["_pmp_formats_opts"] = sorted(combined_pmp["Format"].dropna().unique().tolist())
+    # Persist DSP / Format / Deal Source options for next render (two-pass pattern — filters are rendered above).
+    st.session_state["_pmp_dsps_opts"]         = sorted(combined_pmp["DSP"].dropna().unique().tolist())
+    st.session_state["_pmp_formats_opts"]      = sorted(combined_pmp["Format"].dropna().unique().tolist())
+    st.session_state["_pmp_deal_sources_opts"] = sorted(combined_pmp["Deal Source"].dropna().unique().tolist()) if "Deal Source" in combined_pmp.columns else []
 
     with st.expander("🔍 Debug: PMP data sources", expanded=False):
         _dbg = {
@@ -1417,6 +1426,7 @@ with tab_seller:
             "Active Deal Type filter": sel_pmp_deal_types or "none",
             "Active DSP filter": sel_pmp_dsps or "none",
             "Active Format filter": sel_pmp_formats or "none",
+            "Active Deal Source filter": sel_pmp_deal_sources or "none",
         }
         if _load_errors:
             _dbg["DB LOAD ERRORS"] = _load_errors
@@ -1430,6 +1440,8 @@ with tab_seller:
         combined_pmp = combined_pmp[combined_pmp["DSP"].isin(sel_pmp_dsps)]
     if sel_pmp_formats:
         combined_pmp = combined_pmp[combined_pmp["Format"].isin(sel_pmp_formats)]
+    if sel_pmp_deal_sources and "Deal Source" in combined_pmp.columns:
+        combined_pmp = combined_pmp[combined_pmp["Deal Source"].isin(sel_pmp_deal_sources)]
 
     if combined_pmp.empty:
         # Give a specific reason when we can detect it.
