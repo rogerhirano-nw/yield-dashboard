@@ -164,6 +164,7 @@ _DEFAULT_SETTINGS: dict = {
         "Private Marketplace Deal": "Private Marketplace",
     },
     "excluded_advertiser_patterns": [r"\[nw\]"],
+    "default_statuses": ["Delivering", "Upcoming"],
     "direct_sources": [
         {
             "name": "GAM Direct",
@@ -744,7 +745,12 @@ with tab_pubmatic:
             dsp_opts = sorted(pm_df["dsp"].dropna().unique()) if "dsp" in pm_df.columns else []
             sel_dsps = st.multiselect("DSP", dsp_opts, key="pm_dsp_filter")
         with f2:
-            deal_type_opts = sorted(pm_df["deal"].dropna().str.extract(r"Newsweek_([^_]+)", expand=False).dropna().unique()) if "deal" in pm_df.columns else []
+            _pm_dt_aliases = _cfg.get("deal_type_aliases", {})
+            if "deal_type" in pm_df.columns:
+                _pm_dt_labels = pm_df["deal_type"].dropna().replace(_pm_dt_aliases)
+                deal_type_opts = sorted(_pm_dt_labels.unique().tolist())
+            else:
+                deal_type_opts = []
             sel_deal_types = st.multiselect("Deal type", deal_type_opts, key="pm_deal_type_filter")
         with f3:
             format_opts = sorted(pm_df["ad_format"].dropna().unique()) if "ad_format" in pm_df.columns else []
@@ -755,8 +761,8 @@ with tab_pubmatic:
         view = pm_df[(pm_df["date"] >= start) & (pm_df["date"] <= end)]
         if sel_dsps:
             view = view[view["dsp"].isin(sel_dsps)]
-        if sel_deal_types:
-            view = view[view["deal"].str.extract(r"Newsweek_([^_]+)", expand=False).isin(sel_deal_types)]
+        if sel_deal_types and "deal_type" in view.columns:
+            view = view[view["deal_type"].replace(_pm_dt_aliases).isin(sel_deal_types)]
         if sel_formats and "ad_format" in view.columns:
             view = view[view["ad_format"].isin(sel_formats)]
         if pm_search:
@@ -959,13 +965,16 @@ with tab_seller:
             )
         with f4:
             status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
-            _status_defaults = [s for s in ["Delivering", "Upcoming"] if s in status_opts]
-            _cur_status = st.session_state.get("gam_status_filter")
-            if not _cur_status or not any(s in status_opts for s in _cur_status):
+            _cfg_defaults = _cfg.get("default_statuses", ["Delivering", "Upcoming"])
+            _status_defaults = [s for s in _cfg_defaults if s in status_opts]
+            _STATUS_VER = "2"
+            if st.session_state.get("_status_ver") != _STATUS_VER and _status_defaults:
                 st.session_state["gam_status_filter"] = _status_defaults
+                st.session_state["_status_ver"] = _STATUS_VER
             selected_statuses = st.multiselect(
                 "Status",
                 options=status_opts,
+                default=_status_defaults,
                 key="gam_status_filter",
             )
 
@@ -1861,6 +1870,16 @@ with tab_settings:
             column_config={"Pattern": st.column_config.TextColumn("Pattern", help="Regex or plain string matched against the advertiser name")},
         )
 
+        st.markdown("##### Default Status Filter")
+        st.caption("Statuses pre-selected when the Direct Campaigns table first loads.")
+        _all_known_statuses = ["Delivering", "Upcoming", "Completed", "Paused", "Paused inventory released", "Inactive"]
+        _default_statuses_edit = st.multiselect(
+            "Default statuses",
+            options=_all_known_statuses,
+            default=_s.get("default_statuses", ["Delivering", "Upcoming"]),
+            key="settings_default_statuses",
+        )
+
         st.markdown("##### Direct Campaign Metrics and Dimensions Mapping")
         st.caption(
             "Map each display field to its source column in the database table. "
@@ -2140,6 +2159,7 @@ with tab_settings:
                 "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
                 "deal_source_aliases": _new_deal_source_aliases,
                 "excluded_advertiser_patterns": _new_excl_patterns,
+                "default_statuses": list(_default_statuses_edit),
                 "direct_sources": _new_direct,
             })
             st.cache_data.clear()
