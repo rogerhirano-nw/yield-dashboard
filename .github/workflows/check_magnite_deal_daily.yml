@@ -1,0 +1,50 @@
+name: Check magnite_deal_daily columns
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Inspect magnite_deal_daily
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os
+          import sqlalchemy
+          from sqlalchemy import text
+
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as conn:
+              # List columns
+              result = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'magnite_deal_daily' ORDER BY ordinal_position"))
+              cols = [r[0] for r in result]
+              print("Columns:", cols)
+
+              # Sample rows showing revenue_source
+              result2 = conn.execute(text(
+                  "SELECT deal, revenue_source, demand_type_ad_resp FROM magnite_deal_daily LIMIT 10"
+                  if "revenue_source" in cols else
+                  "SELECT deal FROM magnite_deal_daily LIMIT 5"
+              ))
+              print("\nSample rows:")
+              for row in result2:
+                  print(dict(row._mapping))
+
+              # Distinct revenue_source values
+              if "revenue_source" in cols:
+                  result3 = conn.execute(text(
+                      "SELECT revenue_source, COUNT(*) as cnt FROM magnite_deal_daily GROUP BY revenue_source ORDER BY cnt DESC"
+                  ))
+                  print("\nDistinct revenue_source values:")
+                  for row in result3:
+                      print(dict(row._mapping))
+          PYEOF
