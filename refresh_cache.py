@@ -80,15 +80,15 @@ REPORTS = {
     # demand_type_ad_resp and revenue_source are "Demand Fields" — incompatible with auction
     # metrics (bid_requests, bid_responses, impressions). Pull separately with ad metrics only
     # and join to magnite_deal_daily in the dashboard.
+    # No date dimension — this is a lookup table (deal_id → demand_type + revenue_source).
+    # last_30 maximises coverage: deals with zero impressions in the past 7 days still appear.
     "magnite_deal_demand": {
-        "dimensions": ["date", "deal", "deal_id", "demand_type_ad_resp", "revenue_source"],
+        "dimensions": ["deal", "deal_id", "demand_type_ad_resp", "revenue_source"],
         "metrics": [
             "paid_impression",
             "publisher_gross_revenue",
-            "seller_net_revenue",
-            "ecpm",
         ],
-        "date_range": "last_7",
+        "date_range": "last_30",
     },
     # Add Prebid-specific reports here once you've confirmed the column names
     # against the logged-in Prebid Analytics API docs, and set dataset="prebid".
