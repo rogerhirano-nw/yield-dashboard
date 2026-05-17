@@ -16,12 +16,12 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
-          # Diagnostic: figure out why Private Auction GAM deals never show up.
-          #   (1) Run the deals report with NO deal_name filter and inspect what
-          #       comes back for PA channel — confirms whether GAM returns PA
-          #       rows with empty deal_name (which the current filter drops).
-          #   (2) Try the PA REST list call and print the full exception so we
-          #       know what "Invalid request" actually means.
+          # Diagnostic v3: full picture for PA in GAM.
+          #   (A) list_private_auction_deals — introspect the request schema and
+          #       try every shape that field allows; capture full tracebacks.
+          #   (B) Probe DEAL_ID dimensions in the deals report — does GAM return
+          #       PA traffic with a usable PROGRAMMATIC_DEAL_ID / DEAL_ID even
+          #       when DEAL_NAME is "(Not applicable)"?
           from datetime import date, timedelta
           import traceback
           from gam_client import GAMClient, admanager_v1
@@ -98,39 +98,93 @@ jobs:
                       print(f"  OK — {len(auctions)} auctions returned")
                       for a in auctions[:5]:
                           print(f"    name={getattr(a, 'name', None)} display={getattr(a, 'display_name', None)} archived={getattr(a, 'archived', None)}")
-                      # Now probe list_private_auction_deals on the first few non-archived auctions
-                      # — this is the actual call that crashes refresh_gam_private_auctions.
+                      # Introspect ListPrivateAuctionDealsRequest schema — what
+                      # fields does it actually accept? Then try every reasonable
+                      # request shape and capture full tracebacks (the previous
+                      # "Invalid request" message had no detail).
+                      print()
+                      print("--- ListPrivateAuctionDealsRequest schema introspection ---")
+                      ReqCls = admanager_v1.ListPrivateAuctionDealsRequest
+                      try:
+                          # proto-plus messages expose pb() with DESCRIPTOR
+                          desc = ReqCls.pb(ReqCls()).DESCRIPTOR
+                          print(f"  request fields: {[f.name for f in desc.fields]}")
+                      except Exception:
+                          print(f"  (couldn't introspect via DESCRIPTOR) dir: {[x for x in dir(ReqCls()) if not x.startswith('_')][:20]}")
+                      print(f"  pad_client methods: {[m for m in dir(gam._pad_client) if 'private_auction_deal' in m.lower() or 'list' in m.lower()][:10]}")
+
                       print()
                       print("--- probing list_private_auction_deals (inner call) ---")
                       non_archived = [a for a in auctions if not getattr(a, "archived", False)]
                       print(f"  non-archived auctions: {len(non_archived)} / {len(auctions)}")
-                      for a in non_archived[:5]:
-                          print(f"\n  auction: {a.name}  ({(a.display_name or '')[:60]})")
-                          for dl_label, dl_kwargs in [
-                              ("parent only",            dict(parent=a.name)),
-                              ("parent + page_size=200", dict(parent=a.name, page_size=200)),
-                          ]:
-                              try:
-                                  dreq = admanager_v1.ListPrivateAuctionDealsRequest(**dl_kwargs)
-                                  deals = list(gam._pad_client.list_private_auction_deals(dreq))
-                                  print(f"    [{dl_label}] OK — {len(deals)} deals")
-                                  for d in deals[:2]:
-                                      print(f"      deal: name={getattr(d, 'name', None)} display={getattr(d, 'display_name', None)} status={getattr(d, 'status', None)}")
-                                  break
-                              except Exception as de:
-                                  print(f"    [{dl_label}] FAILED: {type(de).__name__}: {de}")
-                                  dd = getattr(de, "details", None)
-                                  if callable(dd):
-                                      try: print(f"      details(): {dd()}")
-                                      except Exception: pass
-                                  for attr in ("code", "debug_error_string"):
-                                      v = getattr(de, attr, None)
-                                      if callable(v):
-                                          try: v = v()
-                                          except Exception: pass
-                                      if v is not None:
-                                          print(f"      {attr}: {v}")
-                      break  # stop on first success of list_private_auctions
+                      first_auction = non_archived[0]
+                      print(f"  using first auction: {first_auction.name}")
+                      variants = [
+                          ("parent=auction.name",                          dict(parent=first_auction.name)),
+                          ("parent=network",                               dict(parent=gam._parent)),
+                          ("parent=network + filter on auction name",      dict(parent=gam._parent, filter=f'privateAuction="{first_auction.name}"')),
+                          ("parent=network + filter privateAuctionName",   dict(parent=gam._parent, filter=f'privateAuctionName="{first_auction.name}"')),
+                          ("parent=network + page_size=200",               dict(parent=gam._parent, page_size=200)),
+                      ]
+                      for dl_label, dl_kwargs in variants:
+                          print(f"\n  [{dl_label}]  kwargs={dl_kwargs}")
+                          try:
+                              dreq = ReqCls(**dl_kwargs)
+                          except Exception as ce:
+                              print(f"    SKIP — request ctor rejected fields: {type(ce).__name__}: {ce}")
+                              continue
+                          try:
+                              deals = list(gam._pad_client.list_private_auction_deals(dreq))
+                              print(f"    OK — {len(deals)} deals")
+                              for d in deals[:3]:
+                                  print(f"      deal: name={getattr(d, 'name', None)} display={getattr(d, 'display_name', None)} external_deal_id={getattr(d, 'external_deal_id', None)}")
+                              break
+                          except Exception as de:
+                              print(f"    FAILED: {type(de).__name__}: {de}")
+                              tb = traceback.format_exc().splitlines()
+                              for line in tb[-6:]:
+                                  print(f"      {line}")
+                      print()
+                      print("=" * 70)
+                      print("PART 3: Deals report with DEAL_ID — does PA show up there?")
+                      print("=" * 70)
+                      # Test whether GAM exposes a usable deal id (PROGRAMMATIC_DEAL_ID / DEAL_ID)
+                      # for the rows that came back as channel="" / deal_name="(Not applicable)".
+                      # If yes, we have a path: drop the deal-name filter and key on the id.
+                      for dim_set_label, dims in [
+                          ("with PROGRAMMATIC_DEAL_ID",
+                              ["DATE", "PROGRAMMATIC_CHANNEL_NAME", "PROGRAMMATIC_DEAL_ID", "DEAL_NAME", "ORDER_NAME"]),
+                          ("with DEAL_ID instead",
+                              ["DATE", "PROGRAMMATIC_CHANNEL_NAME", "DEAL_ID", "DEAL_NAME", "ORDER_NAME"]),
+                      ]:
+                          print(f"\n--- {dim_set_label} ---")
+                          try:
+                              df3 = gam._run_report(
+                                  dimensions=dims,
+                                  metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
+                                  start_date=start,
+                                  end_date=yesterday,
+                              )
+                              print(f"  total rows: {len(df3)}, columns: {list(df3.columns)}")
+                              # group by channel and look at deal-id presence
+                              id_col = "programmatic_deal_id" if "programmatic_deal_id" in df3.columns else "deal_id" if "deal_id" in df3.columns else None
+                              if id_col is None:
+                                  print("  (no id column found in result)")
+                                  continue
+                              df3["_chan"] = df3["programmatic_channel_name"].fillna("").replace("", "(empty)")
+                              df3["_id_str"] = df3[id_col].astype(str)
+                              for ch, sub in df3.groupby("_chan"):
+                                  total = len(sub)
+                                  is_zero = (sub["_id_str"].isin(["0", "0.0", ""])).sum()
+                                  unique_ids = sub.loc[~sub["_id_str"].isin(["0", "0.0", ""]), "_id_str"].nunique()
+                                  print(f"    {ch}: rows={total} zero/empty_id={is_zero} unique_nonzero_ids={unique_ids}")
+                              empty_chan = df3[df3["_chan"] == "(empty)"]
+                              if not empty_chan.empty:
+                                  print(f"  sample empty-channel rows ({len(empty_chan)} total):")
+                                  print(empty_chan[["date", "_chan", id_col, "deal_name", "order_name", "ad_server_impressions"]].head(8).to_string())
+                          except Exception:
+                              traceback.print_exc()
+                      break  # stop after Part 3
                   except Exception as e:
                       print(f"  FAILED: {type(e).__name__}: {e}")
                       details = getattr(e, "details", None)
