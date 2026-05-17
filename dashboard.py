@@ -1291,6 +1291,16 @@ with tab_seller:
                     .drop_duplicates(subset=["deal_id"])
                 )
                 _mag_df = _mag_df.merge(_demand_lookup, on="deal_id", how="left")
+            # For deals with no match in magnite_deal_demand, derive revenue_source from
+            # the deal name: position-3 == "Magnite" → Magnite Deals, else Publisher Deals.
+            if "revenue_source" in _mag_df.columns:
+                _rs_map = {"Publisher": "Publisher Deals", "Magnite": "Magnite Deals"}
+                _rs_fb = _mag_df["revenue_source"].isna()
+                if _rs_fb.any():
+                    _mag_df.loc[_rs_fb, "revenue_source"] = (
+                        _mag_df.loc[_rs_fb, "deal"]
+                        .apply(lambda d: _rs_map.get(_parse_deal(d)["revenue_source"], "Publisher Deals"))
+                    )
             if not _mag_df.empty and "deal" in _mag_df.columns:
                 _dt_aliases = _cfg.get("deal_type_aliases", {})
                 # _parse_deal() is primary; demand_type_ad_resp is fallback for unrecognized deal names.
