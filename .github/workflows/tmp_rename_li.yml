@@ -58,13 +58,21 @@ jobs:
               if "Infinity" not in old_name and "infinity" not in old_name:
                   continue
               new_name = re.sub(r"Infinity", "Infiniti", old_name).replace("infinity", "infiniti")
-              print(f"  Will rename: {old_name!r} -> {new_name!r}")
               li.name = new_name
-              to_update.append(li)
+              to_update.append((old_name, new_name, li))
 
-          if to_update:
-              result = li_service.updateLineItems(to_update)
-              print(f"\nSuccessfully renamed {len(result)} line items.")
-          else:
+          if not to_update:
               print("\nNo line items found with 'Infinity' in the name.")
+          else:
+              print(f"Renaming {len(to_update)} items one by one...")
+              renamed, failed = [], []
+              for old_name, new_name, li in to_update:
+                  try:
+                      li_service.updateLineItems([li])
+                      renamed.append(new_name)
+                      print(f"OK: {old_name!r} -> {new_name!r}")
+                  except Exception as e:
+                      failed.append(old_name)
+                      print(f"FAIL: {old_name!r}: {str(e)[:200]}")
+              print(f"\nDone. Renamed {len(renamed)}, failed {len(failed)}.")
           PYEOF
