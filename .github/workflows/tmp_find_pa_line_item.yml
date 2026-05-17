@@ -4,7 +4,7 @@ on:
 jobs:
   find:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,108 +16,136 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
-          # Find a Newsweek PA entity. The name pattern Newsweek_PA_* is the
-          # PA AUCTION display name in GAM, not a line item. So:
-          #   1. Locate the auction by display_name (PrivateAuctionService).
-          #   2. Find its deals via PrivateAuctionDeals (network parent).
-          #   3. Search line items whose name contains distinctive tokens from
-          #      the auction (Ford-Always-On + Automotive + THern), and dump
-          #      their targeting proto — this also tells us how GAM references
-          #      PA deals in line item targeting (Track B signal).
-          #   4. Pull last-7-day delivery for any matching line items into CSV.
-          import csv, json, re, sys
+          # Comprehensive PA lookup for the Ford / Always-On auction.
+          # Previous diagnostic stopped at "no match" because:
+          #   - the deal->auction join used the wrong proto field name
+          #     (snake-case is private_auction_id, the bare numeric id),
+          #   - the LI search by display-name tokens missed cases where the
+          #     publisher names LIs by buyer/advertiser, not auction.
+          #
+          # This run:
+          #   1. Locate auction 2710186 by display_name.
+          #   2. Dump its full proto.
+          #   3. Find all deals whose private_auction_id == "2710186".
+          #   4. Pull every LI's targeting proto and find ones that reference
+          #      either the auction id or any of its external_deal_ids.
+          #   5. Run delivery report for all matched LIs and emit a CSV.
+          import csv, json, re, sys, traceback
           from datetime import date, timedelta
           from gam_client import GAMClient, admanager_v1
+          import pandas as pd
 
           TARGET = "Newsweek_PA_Automotive_Adx_DV360_WPP_Mindshare_Ford Motor Company_Ford-Always-On_US_Display_$3_Team-USA_THern"
-          print(f"Target: {TARGET}\n")
-          # Distinctive tokens for fuzzy line-item search.
-          TOKENS = ["Ford-Always-On", "Newsweek_PA_Automotive_Adx_DV360_WPP_Mindshare", "Ford Motor Company"]
+          AUCTION_ID = "2710186"
+          print(f"Target auction: {TARGET}")
+          print(f"Auction id:    {AUCTION_ID}\n")
 
           gam = GAMClient()
 
-          # --- 1. Locate the auction by display_name. -----------------------
-          print("=" * 70); print("1. Find PA auction by display_name"); print("=" * 70)
+          # --- 1. Auction ---------------------------------------------------
+          print("=" * 70); print("1. Auction"); print("=" * 70)
           matched_auction = None
-          auction_count = 0
-          for auction in gam._pa_client.list_private_auctions(
+          for a in gam._pa_client.list_private_auctions(
               admanager_v1.ListPrivateAuctionsRequest(parent=gam._parent)
           ):
-              auction_count += 1
-              dn = auction.display_name or ""
-              if dn == TARGET:
-                  matched_auction = auction
+              if (a.display_name or "") == TARGET or a.name.endswith(f"/{AUCTION_ID}"):
+                  matched_auction = a
                   break
-              if "Ford-Always-On" in dn and "Automotive" in dn:
-                  print(f"  near-match: {dn} (archived={getattr(auction, 'archived', None)})")
-                  if matched_auction is None:
-                      matched_auction = auction
-          print(f"  scanned {auction_count} auctions; matched: {matched_auction.display_name if matched_auction else None}")
+          if matched_auction is None:
+              print("  NOT FOUND — exiting"); sys.exit(0)
+          print(f"  name:         {matched_auction.name}")
+          print(f"  display_name: {matched_auction.display_name}")
+          print(f"  archived:     {getattr(matched_auction, 'archived', None)}")
+          try:
+              from google.protobuf import json_format
+              a_dict = json_format.MessageToDict(matched_auction.__class__.pb(matched_auction))
+              print(f"  full proto:\n{json.dumps(a_dict, indent=4)}")
+          except Exception as e:
+              print(f"  (proto dump failed: {e})")
 
-          # --- 2. Deals under the matched auction. --------------------------
-          ext_deal_ids = set()
-          if matched_auction is not None:
-              print()
-              print("=" * 70); print("2. PA deals under this auction"); print("=" * 70)
-              print(f"  auction.name: {matched_auction.name}")
-              print(f"  archived:     {getattr(matched_auction, 'archived', None)}")
-              auction_ref = matched_auction.name
-              # All deals network-wide; filter to this auction.
-              all_deals = list(gam._pad_client.list_private_auction_deals(
-                  admanager_v1.ListPrivateAuctionDealsRequest(parent=gam._parent)
-              ))
-              for d in all_deals:
-                  if getattr(d, "private_auction", "") == auction_ref:
-                      eid = str(getattr(d, "external_deal_id", "") or "")
-                      ext_deal_ids.add(eid)
-                      print(f"    deal: name={d.name} external_deal_id={eid} status={getattr(d, 'status', None)} floor=${getattr(d, 'floor_price', None)}")
-              print(f"  deals under this auction: {len(ext_deal_ids)} (external_deal_ids)")
-              # If we didn't find a parent match (proto field name might differ), dump
-              # all fields of the first deal so we can see what does reference the auction.
-              if not ext_deal_ids and all_deals:
-                  print("  (no deals matched on .private_auction; first deal's fields:)")
+          # --- 2. Deals under this auction ----------------------------------
+          print()
+          print("=" * 70); print("2. Deals under this auction"); print("=" * 70)
+          all_deals = list(gam._pad_client.list_private_auction_deals(
+              admanager_v1.ListPrivateAuctionDealsRequest(parent=gam._parent)
+          ))
+          print(f"  network-wide deals: {len(all_deals)}")
+          target_deals = []
+          for d in all_deals:
+              # Try every plausible field name.
+              for fld in ("private_auction_id", "privateAuctionId", "private_auction", "auction_id"):
+                  v = getattr(d, fld, None)
+                  if v:
+                      v_str = str(v)
+                      if v_str == AUCTION_ID or v_str.endswith(f"/{AUCTION_ID}"):
+                          target_deals.append((d, fld, v_str))
+                          break
+          print(f"  deals matching auction {AUCTION_ID}: {len(target_deals)}")
+          ext_deal_ids: list[str] = []
+          for d, fld, v in target_deals:
+              eid = str(getattr(d, "external_deal_id", "") or "")
+              ext_deal_ids.append(eid)
+              print(f"    via .{fld}={v}: deal {d.name}  external_deal_id={eid}  status={getattr(d, 'status', None)}  floor={getattr(d, 'floor_price', None)}")
+          if not target_deals:
+              # Show field shape of one deal so we know what we're dealing with
+              if all_deals:
                   d = all_deals[0]
                   try:
                       from google.protobuf import json_format
-                      print(json.dumps(json_format.MessageToDict(d.__class__.pb(d)), indent=2)[:1500])
+                      print(f"  (no match — first deal proto for shape reference:)")
+                      print(json.dumps(json_format.MessageToDict(d.__class__.pb(d)), indent=4)[:1500])
                   except Exception as e:
-                      print(f"    introspection error: {e}")
-          else:
-              print("  no matching auction; will still try line-item search by tokens.")
+                      print(f"  introspection error: {e}")
 
-          # --- 3. Line item search + targeting dump. ------------------------
+          # --- 3. Find line items targeting this auction or its deals -------
           print()
-          print("=" * 70); print("3. Search line items by distinctive tokens"); print("=" * 70)
-          li_matches = []
+          print("=" * 70); print("3. Scan all line items for targeting references"); print("=" * 70)
+          needles = set([AUCTION_ID, *ext_deal_ids]) - {""}
+          print(f"  scanning for any LI whose targeting JSON contains: {needles}")
+          li_hits = []  # list of (li, matched_needle)
           scanned = 0
+          targeting_samples = []  # keep first few targeting protos for shape
           for li in gam._li_client.list_line_items(
               admanager_v1.ListLineItemsRequest(parent=gam._parent)
           ):
               scanned += 1
-              name = li.display_name or ""
-              if any(tok in name for tok in TOKENS):
-                  li_matches.append(li)
-          print(f"  scanned {scanned} line items; {len(li_matches)} match(es)")
-          for li in li_matches[:5]:
-              print(f"\n  --- LI: {li.display_name} ---")
-              print(f"    name: {li.name}")
-              print(f"    type: {getattr(li, 'line_item_type', None)}  start={getattr(li, 'start_time', None)}  end={getattr(li, 'end_time', None)}")
+              if scanned % 2000 == 0:
+                  print(f"    ... scanned {scanned}")
               try:
                   from google.protobuf import json_format
                   tgt = json_format.MessageToDict(li.__class__.pb(li).targeting)
-                  print(f"    targeting:\n{json.dumps(tgt, indent=6)[:3000]}")
-              except Exception as e:
-                  print(f"    (targeting dump failed: {e})")
+                  tgt_json = json.dumps(tgt)
+              except Exception:
+                  continue
+              for n in needles:
+                  if n and n in tgt_json:
+                      li_hits.append((li, n, tgt))
+                      break
+              if scanned <= 3 and getattr(li, "targeting", None):
+                  targeting_samples.append((li.display_name, tgt))
+          print(f"  scanned {scanned} line items; matches: {len(li_hits)}")
+          for li, needle, tgt in li_hits[:10]:
+              print(f"\n  --- LI: {li.display_name} (matched on '{needle}') ---")
+              print(f"    name: {li.name}")
+              print(f"    type: {getattr(li, 'line_item_type', None)}")
+              print(f"    targeting: {json.dumps(tgt, indent=6)[:2500]}")
 
-          # --- 4. Delivery report for matching line items. -------------------
-          import pandas as pd
+          if not li_hits and targeting_samples:
+              print()
+              print("  (no matches — sample targeting JSON from first 3 LIs for shape reference:)")
+              for name, t in targeting_samples:
+                  print(f"\n  -- {name} --")
+                  print(json.dumps(t, indent=4)[:1500])
+
+          # --- 4. Delivery report for matched LIs ---------------------------
           print()
-          print("=" * 70); print("4. Delivery report (last 7 days) for matching LIs"); print("=" * 70)
+          print("=" * 70); print("4. Delivery report (last 7 days)"); print("=" * 70)
           li_ids = []
-          for li in li_matches:
+          for li, *_ in li_hits:
               m = re.search(r"/lineItems/(\d+)$", li.name)
-              if m: li_ids.append(m.group(1))
-          print(f"  searching delivery for line_item_ids: {li_ids}")
+              if m:
+                  li_ids.append(m.group(1))
+          print(f"  matched line_item_ids: {li_ids}")
           yesterday = date.today() - timedelta(days=1)
           start = yesterday - timedelta(days=6)
           df = gam.run_delivery_report(start, yesterday)
