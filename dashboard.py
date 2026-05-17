@@ -1486,6 +1486,15 @@ with tab_seller:
     if _deal_source_aliases and "Deal Source" in combined_pmp.columns:
         combined_pmp["Deal Source"] = combined_pmp["Deal Source"].replace(_deal_source_aliases)
 
+    # Fill missing Deal Source with the per-SSP default configured in Settings -> PMP Data Sources.
+    _ssp_ds_defaults = {s["name"]: s.get("deal_source_default", "") for s in _cfg.get("ssps", [])}
+    if any(_ssp_ds_defaults.values()):
+        if "Deal Source" not in combined_pmp.columns:
+            combined_pmp["Deal Source"] = None
+        _ds_blank = combined_pmp["Deal Source"].isna() | (combined_pmp["Deal Source"].astype(str).str.strip() == "")
+        _ds_fill = combined_pmp.loc[_ds_blank, "SSP"].map(_ssp_ds_defaults).replace("", None)
+        combined_pmp.loc[_ds_blank, "Deal Source"] = _ds_fill
+
     # Persist DSP / Format / Deal Source options for next render (two-pass pattern — filters are rendered above).
     st.session_state["_pmp_dsps_opts"]         = sorted(combined_pmp["DSP"].dropna().unique().tolist())
     st.session_state["_pmp_formats_opts"]      = sorted(combined_pmp["Format"].dropna().unique().tolist())
@@ -1597,10 +1606,11 @@ with tab_settings:
 
         _ssp_rows = [
             {
-                "SSP Name":       s["name"],
-                "Enabled":        s.get("enabled", True),
-                "Database Table": s["table"],
-                "Deal Types":     ", ".join(s.get("deal_types", [])),
+                "SSP Name":            s["name"],
+                "Enabled":             s.get("enabled", True),
+                "Database Table":      s["table"],
+                "Deal Types":          ", ".join(s.get("deal_types", [])),
+                "Default Deal Source": s.get("deal_source_default", ""),
             }
             for s in _s["ssps"]
         ]
@@ -1620,6 +1630,11 @@ with tab_settings:
                 "Deal Types": st.column_config.TextColumn(
                     "Deal Types",
                     help="Comma-separated list — e.g. Private Auction, Preferred Deal",
+                ),
+                "Default Deal Source": st.column_config.TextColumn(
+                    "Default Deal Source",
+                    help="Fills the Deal Source column for rows where the SSP's data has none. "
+                         "Example: GAM has no deal_source column, so set this to 'Publisher'.",
                 ),
             },
         )
@@ -2056,13 +2071,17 @@ with tab_settings:
                 else:
                     _col_map_new = _existing_col_maps.get(_ssp_name, {})
                 _dt_raw = str(_row.get("Deal Types", "")).strip()
-                _new_ssps.append({
+                _ds_default = str(_row.get("Default Deal Source", "") or "").strip()
+                _new_ssp_entry = {
                     "name":       _ssp_name,
                     "enabled":    bool(_row.get("Enabled", True)),
                     "table":      str(_row.get("Database Table", "")).strip(),
                     "deal_types": [t.strip() for t in _dt_raw.split(",") if t.strip()],
                     "columns":    _col_map_new,
-                })
+                }
+                if _ds_default:
+                    _new_ssp_entry["deal_source_default"] = _ds_default
+                _new_ssps.append(_new_ssp_entry)
 
             _new_ae = {
                 str(r["Code"]).strip(): str(r["Full Name"]).strip()

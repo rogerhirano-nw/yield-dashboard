@@ -4,6 +4,7 @@
       "name": "GAM",
       "enabled": true,
       "table": "gam_pmp_deals",
+      "deal_source_default": "Publisher",
       "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
       "columns": {
         "Deal":             "programmatic_deal_name",
