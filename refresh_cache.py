@@ -195,6 +195,21 @@ def refresh_gam_pmp_deals() -> int:
     return len(df)
 
 
+def refresh_gam_private_auctions() -> int:
+    """Fetch PA deal metadata from the GAM REST API and write to gam_pa_metadata."""
+    logger.info("Refreshing gam_pa_metadata (GAM Private Auctions)")
+    gam = GAMClient()
+    df = gam.get_private_auctions()
+    if df.empty:
+        logger.warning("No PA deal metadata found — nothing to write")
+        return 0
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    with _engine().begin() as conn:
+        df.to_sql("gam_pa_metadata", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to gam_pa_metadata", len(df))
+    return len(df)
+
+
 def refresh_pubmatic() -> int:
     """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
@@ -294,6 +309,11 @@ def main() -> None:
         total += refresh_gam_pmp_deals()
     except Exception:
         logger.exception("Refresh failed for gam_pmp_deals — continuing")
+
+    try:
+        total += refresh_gam_private_auctions()
+    except Exception:
+        logger.exception("Refresh failed for gam_pa_metadata — continuing")
 
     try:
         total += refresh_pubmatic()

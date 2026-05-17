@@ -102,6 +102,12 @@ class GAMClient:
         self._order_client = admanager_v1.OrderServiceClient(credentials=creds)
         self._user_client = admanager_v1.UserServiceClient(credentials=creds)
         self._parent = f"networks/{self.network_id}"
+        if hasattr(admanager_v1, "PrivateAuctionServiceClient"):
+            self._pa_client = admanager_v1.PrivateAuctionServiceClient(credentials=creds)
+            self._pad_client = admanager_v1.PrivateAuctionDealServiceClient(credentials=creds)
+        else:
+            self._pa_client = None
+            self._pad_client = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -390,6 +396,53 @@ class GAMClient:
             info = order_info.get(r.pop("_order_ref"), {})
             rows.append({**r, "order_name": info.get("order_name"), "salesperson": info.get("salesperson")})
         return pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Private Auction deal metadata
+    # ------------------------------------------------------------------
+
+    def get_private_auctions(self) -> pd.DataFrame:
+        """
+        Fetch Private Auction deal metadata via networks.privateAuctions REST API.
+
+        Lists all non-archived private auctions and their deals.
+        Returns DataFrame with: auction_name, deal_name, external_deal_id,
+        buyer_account_id, floor_price_usd, deal_status, end_time.
+        """
+        _cols = [
+            "auction_name", "deal_name", "external_deal_id",
+            "buyer_account_id", "floor_price_usd", "deal_status", "end_time",
+        ]
+        if self._pa_client is None:
+            logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
+            return pd.DataFrame(columns=_cols)
+
+        rows = []
+        auction_count = 0
+        for auction in self._pa_client.list_private_auctions(
+            admanager_v1.ListPrivateAuctionsRequest(parent=self._parent)
+        ):
+            if getattr(auction, "archived", False):
+                continue
+            auction_count += 1
+            auction_ref = auction.name
+            auction_display = auction.display_name or ""
+
+            for deal in self._pad_client.list_private_auction_deals(
+                admanager_v1.ListPrivateAuctionDealsRequest(parent=auction_ref)
+            ):
+                rows.append({
+                    "auction_name":     auction_display,
+                    "deal_name":        deal.display_name or None,
+                    "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
+                    "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
+                    "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
+                    "deal_status":      _enum_name(deal.status) if getattr(deal, "status", None) else None,
+                    "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
+                })
+
+        logger.info("GAM private auctions: %d deals across %d non-archived auctions", len(rows), auction_count)
+        return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
     # Combined pacing report

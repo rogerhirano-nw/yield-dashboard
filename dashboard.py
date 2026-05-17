@@ -1334,6 +1334,17 @@ with tab_seller:
                         .agg(**_agg_kwargs)
                         .reset_index()
                     )
+                    # Enrich with PA deal metadata (floor price, status) from gam_pa_metadata
+                    try:
+                        _pa_meta = load("gam_pa_metadata")
+                        if not _pa_meta.empty and "deal_name" in _pa_meta.columns:
+                            _pa_lookup = (
+                                _pa_meta[["deal_name", "floor_price_usd", "deal_status"]]
+                                .drop_duplicates("deal_name")
+                            )
+                            _gam_agg = _gam_agg.merge(_pa_lookup, on="deal_name", how="left")
+                    except Exception:
+                        pass
                     _gam_agg["SSP"] = "GAM"
                     _gam_agg["Win Rate %"] = None
                     _gam_agg["Total Requests"] = None
@@ -1342,6 +1353,7 @@ with tab_seller:
                         "seller_ae": "Seller", "deal_name": "Deal",
                         "deal_type_label": "Deal Type", "ad_format": "Format", "dsp": "DSP",
                         "paid_impressions": "Paid Impressions", "revenue": "Revenue", "ecpm": "eCPM",
+                        "floor_price_usd": "Floor CPM", "deal_status": "Deal Status",
                     })
         except Exception:
             pass
@@ -1528,6 +1540,7 @@ with tab_seller:
             "Pubmatic rows (pre-filter)": len(pmp_summary),
             "Magnite rows (pre-filter)": len(_magnite_summary),
             "GAM rows (pre-filter)": len(_gam_summary),
+            "GAM PA metadata rows": len(load("gam_pa_metadata")) if not load("gam_pa_metadata").empty else 0,
             "Magnite deal types": _magnite_summary["Deal Type"].value_counts().to_dict() if not _magnite_summary.empty else "EMPTY",
             "GAM deal types": _gam_summary["Deal Type"].value_counts().to_dict() if not _gam_summary.empty else "EMPTY",
             "Active SSP filter": sel_pmp_ssps or "none",
@@ -1577,6 +1590,7 @@ with tab_seller:
         pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
         _pmp_col_order = ["Seller", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
+                          "Deal Status", "Floor CPM",
                           "Paid Impressions", "Revenue", "eCPM",
                           "Win Rate %", "Total Requests", "Bid Responses"]
         combined_pmp = combined_pmp[[c for c in _pmp_col_order if c in combined_pmp.columns]]
@@ -1586,6 +1600,8 @@ with tab_seller:
             use_container_width=True,
             hide_index=True,
             column_config={
+                "Deal Status": st.column_config.TextColumn("Deal Status"),
+                "Floor CPM": st.column_config.NumberColumn("Floor CPM", format="dollar"),
                 "Paid Impressions": st.column_config.NumberColumn(format="localized"),
                 "Revenue": st.column_config.NumberColumn(format="dollar"),
                 "eCPM": st.column_config.NumberColumn(format="dollar"),
