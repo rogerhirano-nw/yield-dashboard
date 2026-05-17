@@ -167,7 +167,7 @@ _DEFAULT_SETTINGS: dict = {
             "name": "GAM Direct",
             "enabled": True,
             "table": "gam_campaigns",
-            "line_item_prefix": "Newsweek_Direct",
+            "order_name_prefix": "Newsweek_Direct",
             "columns": {
                 "Seller":        "seller_ae",
                 "Advertiser":    "advertiser",
@@ -850,8 +850,8 @@ with tab_seller:
 
         gam_df = gam_df.copy()
         _direct_src = next((s for s in _cfg.get("direct_sources", []) if s.get("enabled", True)), None)
-        _direct_prefix = _direct_src.get("line_item_prefix", "Newsweek_Direct") if _direct_src else "Newsweek_Direct"
-        gam_df = gam_df[gam_df["line_item_name"].str.startswith(_direct_prefix, na=False)]
+        _direct_prefix = _direct_src.get("order_name_prefix", "Newsweek_Direct") if _direct_src else "Newsweek_Direct"
+        gam_df = gam_df[gam_df["order_name"].str.startswith(_direct_prefix, na=False)]
         gam_df = gam_df[~gam_df["order_name"].str.startswith("Newsweek_Test", na=False)]
 
         for datecol in ("start_date", "end_date"):
@@ -1776,37 +1776,37 @@ with tab_settings:
     # ── Section 7: Direct Campaign Sources ──────────────────────────────
     st.markdown("#### Direct Campaign Sources")
     st.caption(
-        "Each row is a direct-sold data source. **Line Item Prefix** filters the table to only direct campaigns. "
+        "Each row is a direct-sold data source. **Order Name Prefix** filters the table to only direct campaigns. "
         "Disabling a source hides it from the Direct Campaigns table."
     )
 
     _direct_rows = [
         {
-            "Source Name":      s["name"],
-            "Enabled":          s.get("enabled", True),
-            "Database Table":   s["table"],
-            "Line Item Prefix": s.get("line_item_prefix", ""),
+            "Source Name":       s["name"],
+            "Enabled":           s.get("enabled", True),
+            "Database Table":    s["table"],
+            "Order Name Prefix": s.get("order_name_prefix", ""),
         }
         for s in _s.get("direct_sources", [])
     ]
     _direct_edit = st.data_editor(
         pd.DataFrame(_direct_rows) if _direct_rows else pd.DataFrame(
-            columns=["Source Name", "Enabled", "Database Table", "Line Item Prefix"]
+            columns=["Source Name", "Enabled", "Database Table", "Order Name Prefix"]
         ),
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
         key="settings_direct_sources",
         column_config={
-            "Source Name":      st.column_config.TextColumn("Source Name", required=True),
-            "Enabled":          st.column_config.CheckboxColumn("Enabled"),
-            "Database Table":   st.column_config.TextColumn(
+            "Source Name":       st.column_config.TextColumn("Source Name", required=True),
+            "Enabled":           st.column_config.CheckboxColumn("Enabled"),
+            "Database Table":    st.column_config.TextColumn(
                 "Database Table",
                 help="Table populated by refresh_cache.py (e.g. gam_campaigns)",
             ),
-            "Line Item Prefix": st.column_config.TextColumn(
-                "Line Item Prefix",
-                help="Filter to line items whose name starts with this value (e.g. Newsweek_Direct)",
+            "Order Name Prefix": st.column_config.TextColumn(
+                "Order Name Prefix",
+                help="Filter to orders whose name starts with this value (e.g. Newsweek_Direct)",
             ),
         },
     )
@@ -2046,7 +2046,7 @@ with tab_settings:
                     "name":             _dsrc_name,
                     "enabled":          bool(_row.get("Enabled", True)),
                     "table":            str(_row.get("Database Table", "")).strip(),
-                    "line_item_prefix": str(_row.get("Line Item Prefix", "")).strip(),
+                    "order_name_prefix": str(_row.get("Order Name Prefix", "")).strip(),
                     "columns":          _dcol_map,
                 })
 

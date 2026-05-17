@@ -134,7 +134,7 @@
       "name": "GAM Direct",
       "enabled": true,
       "table": "gam_campaigns",
-      "line_item_prefix": "Newsweek_Direct",
+      "order_name_prefix": "Newsweek_Direct",
       "columns": {
         "Seller":           "seller_ae",
         "Advertiser":       "advertiser",
