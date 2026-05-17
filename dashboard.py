@@ -962,11 +962,10 @@ with tab_seller:
             status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
             _cfg_defaults = _cfg.get("default_statuses", ["Delivering", "Upcoming"])
             _status_defaults = [s for s in _cfg_defaults if s in status_opts]
-            if "gam_status_filter_v3" not in st.session_state:
-                st.session_state["gam_status_filter_v3"] = _status_defaults
             selected_statuses = st.multiselect(
                 "Status",
                 options=status_opts,
+                default=_status_defaults,
                 key="gam_status_filter_v3",
             )
 
