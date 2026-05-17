@@ -262,7 +262,7 @@ class GAMClient:
         start = end - timedelta(days=730)
 
         df = self._run_report(
-            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME", "LINE_ITEM_SALESPERSON"],
+            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME", "LINE_ITEM_SALESPERSON", "ORDER_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS"],
             start_date=start,
             end_date=end,
@@ -272,6 +272,7 @@ class GAMClient:
             "ad_server_impressions": "lifetime_impressions_delivered",
             "line_item_computed_status_name": "status_api",
             "line_item_salesperson": "salesperson_api",
+            "order_name": "order_name_api",
         })
 
     # ------------------------------------------------------------------
@@ -427,6 +428,11 @@ class GAMClient:
         if "salesperson_api" in merged.columns:
             merged["salesperson"] = merged["salesperson_api"].fillna(merged["salesperson"])
             merged = merged.drop(columns=["salesperson_api"])
+        if "order_name_api" in merged.columns:
+            merged["order_name"] = merged["order_name_api"].where(
+                merged["order_name_api"].notna(), merged["order_name"]
+            )
+            merged = merged.drop(columns=["order_name_api"])
 
         # VCR
         _vcr_starts = "video_interaction_video_starts"

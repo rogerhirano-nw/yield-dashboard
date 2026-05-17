@@ -16,47 +16,32 @@ jobs:
         run: |
           python - <<'PYEOF'
           import os, re, sqlalchemy
-          from sqlalchemy import text, inspect
+          from sqlalchemy import text
           engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
-          insp = inspect(engine)
           with engine.connect() as conn:
-              # All columns in gam_campaigns
-              cols = [c['name'] for c in insp.get_columns('gam_campaigns')]
-              print("gam_campaigns columns:", cols)
-
-              # Total row count
-              cnt = conn.execute(text("SELECT COUNT(*) FROM gam_campaigns")).scalar()
-              print("Total rows:", cnt)
-
-              # Sample distinct order_name prefixes (first 20 chars)
               r = conn.execute(text("""
-                  SELECT DISTINCT LEFT(order_name, 30) as pfx, COUNT(*) as n
+                  SELECT
+                      line_item_name,
+                      salesperson,
+                      status,
+                      COUNT(*) as line_items
                   FROM gam_campaigns
-                  GROUP BY pfx ORDER BY n DESC LIMIT 30
+                  GROUP BY line_item_name, salesperson, status
+                  ORDER BY salesperson NULLS LAST, line_item_name
               """))
-              print("\nTop order_name prefixes (first 30 chars):")
-              for row in r:
-                  print(f"  {row[0]!r}: {row[1]}")
+              rows = [dict(row._mapping) for row in r]
 
-              # Now the real report — filter by whatever prefix is used
-              r2 = conn.execute(text("""
-                  SELECT DISTINCT order_name, salesperson, COUNT(*) as line_items
-                  FROM gam_campaigns
-                  GROUP BY order_name, salesperson
-                  ORDER BY order_name
-                  LIMIT 50
-              """))
-              rows2 = [dict(row._mapping) for row in r2]
+          def parse(val):
+              if not isinstance(val, str) or not val.strip():
+                  return ''
+              m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
+              return m.group(1).strip() if m else val.strip()
 
-              def parse(val):
-                  if not isinstance(val, str) or not val.strip():
-                      return ''
-                  m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
-                  return m.group(1).strip() if m else val.strip()
-
-              print("\norder_name,salesperson_raw,parsed_name,line_items")
-              for row in rows2:
-                  sp = row['salesperson'] or ''
-                  parsed = parse(sp)
-                  print(f'"{row["order_name"]}","{sp}","{parsed}",{row["line_items"]}')
+          print("line_item_name,salesperson_raw,parsed_name,status,line_items")
+          for row in rows:
+              sp = row['salesperson'] or ''
+              parsed = parse(sp)
+              name = (row['line_item_name'] or '').replace('"', '""')
+              status = row['status'] or ''
+              print(f'"{name}","{sp}","{parsed}","{status}",{row["line_items"]}')
           PYEOF
