@@ -10,71 +10,61 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install google-ads-admanager google-auth requests
+      - run: pip install googleads
       - env:
           GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
-          import os, json, re
-          import requests
-          from google.oauth2 import service_account
-          from google.auth.transport.requests import AuthorizedSession
-          from google.ads import admanager_v1
+          import os, json, re, tempfile
+          from googleads import ad_manager, oauth2
 
-          creds = service_account.Credentials.from_service_account_info(
-              json.loads(os.environ["GAM_SERVICE_ACCOUNT_JSON"]),
-              scopes=["https://www.googleapis.com/auth/admanager"],
+          key_data = json.loads(os.environ["GAM_SERVICE_ACCOUNT_JSON"])
+          network_code = os.environ["GAM_NETWORK_ID"]
+          ORDER_ID = 4057788230
+
+          with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+              json.dump(key_data, f)
+              key_file = f.name
+
+          oauth2_client = oauth2.GoogleServiceAccountClient(
+              key_file,
+              "https://www.googleapis.com/auth/dfp"
           )
-          network_id = os.environ["GAM_NETWORK_ID"]
-          session = AuthorizedSession(creds)
-          BASE = "https://admanager.googleapis.com/v1"
+          client = ad_manager.AdManagerClient(
+              oauth2_client, "NWRenamer/1.0", network_code=network_code
+          )
+          li_service = client.GetService("LineItemService", version="v202502")
 
-          client = admanager_v1.LineItemServiceClient(credentials=creds)
-          parent = f"networks/{network_id}"
-          order_resource = f"networks/{network_id}/orders/4057788230"
+          sb = ad_manager.StatementBuilder()
+          sb.Where("orderId = :orderId")
+          sb.WithBindVariable("orderId", ORDER_ID)
 
-          # First, verify GET works on a line item to confirm URL format
-          first_li = None
-          all_li = []
-          for li in client.list_line_items(
-              admanager_v1.ListLineItemsRequest(
-                  parent=parent,
-                  filter=f'order = "{order_resource}"',
-              )
-          ):
-              all_li.append(li)
-              if first_li is None:
-                  first_li = li
+          all_lis = []
+          while True:
+              resp = li_service.getLineItemsByStatement(sb.ToStatement())
+              if not hasattr(resp, "results") or not resp.results:
+                  break
+              all_lis.extend(resp.results)
+              sb.offset += sb.limit
+              if sb.offset >= resp.totalResultSetSize:
+                  break
 
-          print(f"Found {len(all_li)} line items in order.")
-          if first_li:
-              print(f"Sample li.name: {first_li.name!r}")
-              get_url = f"{BASE}/{first_li.name}"
-              print(f"Testing GET {get_url}")
-              r = session.get(get_url)
-              print(f"GET status: {r.status_code}, body[:200]: {r.text[:200]}")
+          print(f"Found {len(all_lis)} total line items in order {ORDER_ID}.")
 
-          renamed = []
-          skipped = []
-          for li in all_li:
-              old_name = li.display_name or ""
+          to_update = []
+          for li in all_lis:
+              old_name = li.name or ""
               if "Infinity" not in old_name and "infinity" not in old_name:
-                  skipped.append(old_name)
                   continue
               new_name = re.sub(r"Infinity", "Infiniti", old_name).replace("infinity", "infiniti")
-              patch_url = f"{BASE}/{li.name}"
-              resp = session.patch(
-                  patch_url,
-                  params={"updateMask": "displayName"},
-                  json={"displayName": new_name},
-              )
-              if resp.ok:
-                  renamed.append((old_name, new_name))
-                  print(f"RENAMED: {old_name!r} -> {new_name!r}")
-              else:
-                  print(f"ERROR {resp.status_code} PATCH {patch_url}")
-                  print(f"  Response: {resp.text[:300]}")
+              print(f"  Will rename: {old_name!r} -> {new_name!r}")
+              li.name = new_name
+              to_update.append(li)
 
-          print(f"\nDone. Renamed {len(renamed)}, skipped {len(skipped)} (no match).")
+          if to_update:
+              result = li_service.updateLineItems(to_update)
+              print(f"\nSuccessfully renamed {len(result)} line items.")
+          else:
+              print("\nNo line items found with 'Infinity' in the name.")
           PYEOF
