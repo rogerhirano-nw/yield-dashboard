@@ -99,6 +99,8 @@ class GAMClient:
         )
         self._report_client = admanager_v1.ReportServiceClient(credentials=creds)
         self._li_client = admanager_v1.LineItemServiceClient(credentials=creds)
+        self._order_client = admanager_v1.OrderServiceClient(credentials=creds)
+        self._user_client = admanager_v1.UserServiceClient(credentials=creds)
         self._parent = f"networks/{self.network_id}"
 
     # ------------------------------------------------------------------
@@ -262,7 +264,7 @@ class GAMClient:
         start = end - timedelta(days=730)
 
         df = self._run_report(
-            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME", "ORDER_SALESPERSON", "ORDER_NAME"],
+            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS"],
             start_date=start,
             end_date=end,
@@ -271,8 +273,6 @@ class GAMClient:
         return df.rename(columns={
             "ad_server_impressions": "lifetime_impressions_delivered",
             "line_item_computed_status_name": "status_api",
-            "order_salesperson": "salesperson_api",
-            "order_name": "order_name_api",
         })
 
     # ------------------------------------------------------------------
@@ -285,6 +285,40 @@ class GAMClient:
         "start_date", "end_date", "status", "salesperson",
     ]
 
+    def _fetch_order_info(self, order_resource_names: set[str]) -> dict[str, dict]:
+        """
+        Given a set of order resource names, return a dict mapping each to
+        {"order_name": str | None, "salesperson": str | None}.
+
+        Fetches each order individually and resolves the salesperson user's
+        display_name, caching user lookups to avoid redundant calls.
+        """
+        user_cache: dict[str, Optional[str]] = {}
+        result: dict[str, dict] = {}
+        for order_ref in order_resource_names:
+            if not order_ref:
+                continue
+            try:
+                order = self._order_client.get_order(
+                    admanager_v1.GetOrderRequest(name=order_ref)
+                )
+                sp_ref = order.salesperson or ""
+                if sp_ref not in user_cache:
+                    try:
+                        user = self._user_client.get_user(
+                            admanager_v1.GetUserRequest(name=sp_ref)
+                        )
+                        user_cache[sp_ref] = user.display_name or None
+                    except Exception:
+                        user_cache[sp_ref] = None
+                result[order_ref] = {
+                    "order_name": order.display_name or None,
+                    "salesperson": user_cache.get(sp_ref),
+                }
+            except Exception:
+                result[order_ref] = {"order_name": None, "salesperson": None}
+        return result
+
     def get_active_line_items(self) -> pd.DataFrame:
         """
         Fetch active line items with their metadata.
@@ -296,27 +330,27 @@ class GAMClient:
         today = date.today()
         cutoff = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
 
-        rows = []
+        # First pass: collect all line items and unique order resource names.
+        raw_rows = []
+        order_refs: set[str] = set()
         for li in self._li_client.list_line_items(
             admanager_v1.ListLineItemsRequest(
                 parent=self._parent,
                 filter=f'endTime > "{cutoff}"',
             )
         ):
-            # Parse numeric IDs from resource name strings
             li_id_m = re.search(r"/lineItems/(\d+)$", li.name)
             li_id = li_id_m.group(1) if li_id_m else li.name
 
             order_ref = str(getattr(li, "order", "") or "")
             ord_id_m = re.search(r"/orders/(\d+)", order_ref)
             ord_id = ord_id_m.group(1) if ord_id_m else order_ref
+            order_refs.add(order_ref)
 
-            # Impression goal
             goal = getattr(li, "goal", None) or getattr(li, "primary_goal", None)
             units = int(goal.units) if goal and getattr(goal, "units", None) else None
             impressions_goal = units if units and units > 0 else None
 
-            # CPM rate
             rate = getattr(li, "rate", None)
             cpm_rate = _money(rate) if rate else None
 
@@ -334,23 +368,27 @@ class GAMClient:
             else:
                 li_status = ""
 
-            rows.append({
+            raw_rows.append({
                 "line_item_id": li_id,
                 "line_item_name": getattr(li, "display_name", None),
                 "order_id": ord_id,
-                "order_name": None,
+                "_order_ref": order_ref,
                 "line_item_type": _enum_name(getattr(li, "line_item_type", "") or ""),
                 "impressions_goal": impressions_goal,
                 "cpm_rate": cpm_rate,
                 "start_date": start_str,
                 "end_date": end_str,
                 "status": li_status,
-                "salesperson": None,
             })
 
-        logger.info("GAM: fetched %d line items (endTime > %s)", len(rows), cutoff)
-        if not rows:
-            return pd.DataFrame(columns=self._LI_COLUMNS)
+        # Second pass: fetch order metadata (name + salesperson) for all unique orders.
+        order_info = self._fetch_order_info(order_refs)
+        logger.info("GAM: fetched %d line items across %d orders", len(raw_rows), len(order_refs))
+
+        rows = []
+        for r in raw_rows:
+            info = order_info.get(r.pop("_order_ref"), {})
+            rows.append({**r, "order_name": info.get("order_name"), "salesperson": info.get("salesperson")})
         return pd.DataFrame(rows)
 
     # ------------------------------------------------------------------
@@ -429,14 +467,6 @@ class GAMClient:
             # paused or not yet live — a truly delivering line item would have impression data.
             merged.loc[_had_no_api_status & (merged["status"] == "Delivering"), "status"] = "Paused"
             merged = merged.drop(columns=["status_api"])
-        if "salesperson_api" in merged.columns:
-            merged["salesperson"] = merged["salesperson_api"].fillna(merged["salesperson"])
-            merged = merged.drop(columns=["salesperson_api"])
-        if "order_name_api" in merged.columns:
-            merged["order_name"] = merged["order_name_api"].where(
-                merged["order_name_api"].notna(), merged["order_name"]
-            )
-            merged = merged.drop(columns=["order_name_api"])
 
         # VCR
         _vcr_starts = "video_interaction_video_starts"
