@@ -403,11 +403,18 @@ class GAMClient:
 
     def get_private_auctions(self) -> pd.DataFrame:
         """
-        Fetch Private Auction deal metadata via networks.privateAuctions REST API.
+        Fetch Private Auction deal metadata via the GAM REST API.
 
-        Lists all non-archived private auctions and their deals.
-        Returns DataFrame with: auction_name, deal_name, external_deal_id,
-        buyer_account_id, floor_price_usd, deal_status, end_time.
+        ListPrivateAuctionDeals takes the network as parent (not an auction).
+        One call returns every PA deal on the network; auction display names
+        come from a separate ListPrivateAuctions call and are joined in via
+        each deal's `private_auction` reference.
+
+        Returns DataFrame with one row per PA deal: auction_name, deal_name,
+        external_deal_id, buyer_account_id, floor_price_usd, deal_status,
+        end_time. Note: this is inventory metadata only — GAM's reporting
+        API does not expose PA delivery (impressions/revenue) at the deal
+        level, so this can't be joined to gam_pmp_deals for revenue stats.
         """
         _cols = [
             "auction_name", "deal_name", "external_deal_id",
@@ -417,31 +424,31 @@ class GAMClient:
             logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
             return pd.DataFrame(columns=_cols)
 
-        rows = []
-        auction_count = 0
+        auctions_by_name: dict[str, str] = {}
         for auction in self._pa_client.list_private_auctions(
             admanager_v1.ListPrivateAuctionsRequest(parent=self._parent)
         ):
             if getattr(auction, "archived", False):
                 continue
-            auction_count += 1
-            auction_ref = auction.name
-            auction_display = auction.display_name or ""
+            auctions_by_name[auction.name] = auction.display_name or ""
 
-            for deal in self._pad_client.list_private_auction_deals(
-                admanager_v1.ListPrivateAuctionDealsRequest(parent=auction_ref)
-            ):
-                rows.append({
-                    "auction_name":     auction_display,
-                    "deal_name":        deal.display_name or None,
-                    "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
-                    "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
-                    "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
-                    "deal_status":      _enum_name(deal.status) if getattr(deal, "status", None) else None,
-                    "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
-                })
+        rows = []
+        for deal in self._pad_client.list_private_auction_deals(
+            admanager_v1.ListPrivateAuctionDealsRequest(parent=self._parent)
+        ):
+            auction_ref = getattr(deal, "private_auction", "") or ""
+            rows.append({
+                "auction_name":     auctions_by_name.get(auction_ref, ""),
+                "deal_name":        deal.display_name or None,
+                "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
+                "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
+                "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
+                "deal_status":      _enum_name(deal.status) if getattr(deal, "status", None) else None,
+                "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
+            })
 
-        logger.info("GAM private auctions: %d deals across %d non-archived auctions", len(rows), auction_count)
+        logger.info("GAM private auction deals: %d deals across %d non-archived auctions",
+                    len(rows), len(auctions_by_name))
         return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------

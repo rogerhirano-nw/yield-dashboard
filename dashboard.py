@@ -1616,6 +1616,38 @@ with tab_seller:
             },
         )
 
+        # Inventory-only view: GAM's report API doesn't expose Private Auction
+        # delivery at the deal level, so PA can't appear above. This shows what
+        # PA inventory exists on the network (auctions + their deals, floors,
+        # statuses, buyers) sourced from the PA REST API.
+        try:
+            _pa_inventory = load("gam_pa_metadata")
+            if not _pa_inventory.empty:
+                with st.expander(f"GAM Private Auction inventory ({len(_pa_inventory)} deals, no delivery data)", expanded=False):
+                    st.caption(
+                        "Inventory metadata only — GAM does not report delivery for PA at the deal level. "
+                        "Use this to see which PA deals exist, their floors, and buyer / status."
+                    )
+                    _pa_display = _pa_inventory.rename(columns={
+                        "auction_name":     "Auction",
+                        "deal_name":        "Deal",
+                        "external_deal_id": "External Deal ID",
+                        "buyer_account_id": "Buyer Account",
+                        "floor_price_usd":  "Floor CPM",
+                        "deal_status":      "Status",
+                        "end_time":         "End",
+                    })
+                    st.dataframe(
+                        _pa_display,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Floor CPM": st.column_config.NumberColumn(format="dollar"),
+                        },
+                    )
+        except Exception:
+            pass
+
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
 with tab_settings:
