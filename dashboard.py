@@ -70,6 +70,7 @@ _DEFAULT_SETTINGS: dict = {
         {
             "name": "GAM", "enabled": True, "table": "gam_pmp_deals",
             "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
+            "deal_source_default": "Publisher",
             "columns": {
                 "Deal": "programmatic_deal_name", "Deal Type": "[auto]", "DSP": "dsp",
                 "Format": "ad_format", "Seller": "[auto]",
@@ -225,6 +226,28 @@ def _load_settings() -> dict:
             patched.append({**src, "columns": merged_cols})
         return {**cfg, "direct_sources": patched}
 
+    def _patch_ssp_defaults(cfg: dict) -> dict:
+        """Backfill per-SSP fields (e.g. deal_source_default) from settings.json onto DB-loaded ssps.
+
+        Without this, adding a new SSP-level field to settings.json (like the GAM=Publisher
+        deal-source rule from PR #10) is silently dropped for any environment whose DB snapshot
+        predates the field — DB values always win in _load_settings, so user-edited fields
+        survive while genuinely-new keys flow through.
+        """
+        file_by_name: dict = {}
+        if _SETTINGS_PATH.exists():
+            try:
+                with open(_SETTINGS_PATH) as _pf:
+                    file_by_name = {s["name"]: s for s in json.load(_pf).get("ssps", [])}
+            except Exception:
+                file_by_name = {}
+        default_by_name = {s["name"]: s for s in _DEFAULT_SETTINGS.get("ssps", [])}
+        patched = []
+        for ssp in cfg.get("ssps", []):
+            base = {**default_by_name.get(ssp["name"], {}), **file_by_name.get(ssp["name"], {})}
+            patched.append({**base, **ssp})
+        return {**cfg, "ssps": patched}
+
     # Primary: database (survives redeployments on Streamlit Cloud)
     try:
         with _engine().connect() as conn:
@@ -232,14 +255,14 @@ def _load_settings() -> dict:
                 sqlalchemy.text("SELECT value FROM dashboard_settings WHERE key = 'main'")
             ).fetchone()
             if row:
-                return _patch_direct_columns(_with_defaults(json.loads(row[0])))
+                return _patch_ssp_defaults(_patch_direct_columns(_with_defaults(json.loads(row[0]))))
     except Exception:
         pass
     # Fallback: local file (useful for first-run and local dev)
     if _SETTINGS_PATH.exists():
         try:
             with open(_SETTINGS_PATH) as f:
-                return _with_defaults(json.load(f))
+                return _patch_ssp_defaults(_with_defaults(json.load(f)))
         except Exception:
             pass
     return _DEFAULT_SETTINGS
