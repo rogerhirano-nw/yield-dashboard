@@ -282,9 +282,6 @@ class GAMClient:
         """
         Fetch active line items with their metadata.
 
-        The REST API LineItem resource does not expose a status field,
-        so we filter by endTime >= 30 days ago to approximate active items.
-
         Returns DataFrame with: line_item_id, line_item_name, order_id,
         order_name, line_item_type, impressions_goal, cpm_rate,
         start_date, end_date, status, salesperson.
@@ -327,7 +324,7 @@ class GAMClient:
                 "cpm_rate": cpm_rate,
                 "start_date": _ts_to_date(getattr(li, "start_time", None)),
                 "end_date": _ts_to_date(getattr(li, "end_time", None)),
-                "status": None,
+                "status": _enum_name(getattr(li, "status", "") or ""),
                 "salesperson": None,
             })
 
