@@ -887,33 +887,22 @@ with tab_seller:
             m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
             return m.group(1).strip() if m else val.strip()
 
-        if "salesperson" in gam_df.columns and gam_df["salesperson"].notna().any():
-            gam_df["seller_ae"] = gam_df["salesperson"].apply(_parse_gam_salesperson)
-            _null_mask = gam_df["seller_ae"].isna()
-            if _null_mask.any():
-                _regex_seller = (
-                    gam_df.loc[_null_mask, "order_name"]
-                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                    .map(AE_NAMES)
-                )
-                _li_seller = (
-                    gam_df.loc[_null_mask, "line_item_name"]
-                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                    .map(AE_NAMES)
-                )
-                gam_df.loc[_null_mask, "seller_ae"] = _regex_seller.fillna(_li_seller)
-        else:
-            gam_df["seller_ae"] = (
-                gam_df["order_name"]
-                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                .map(AE_NAMES)
-            )
-            _li_seller = (
-                gam_df["line_item_name"]
-                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                .map(AE_NAMES)
-            )
-            gam_df["seller_ae"] = gam_df["seller_ae"].fillna(_li_seller)
+        # Normalize salesperson in place so "Seller" shows short name regardless of
+        # which column the settings point to (salesperson or seller_ae).
+        _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+        if "salesperson" in gam_df.columns:
+            gam_df["salesperson"] = gam_df["salesperson"].apply(_parse_gam_salesperson)
+
+        _parsed_sp = gam_df["salesperson"] if "salesperson" in gam_df.columns else pd.Series(dtype=str)
+        _null_mask = _parsed_sp.isna()
+
+        _regex_seller = (
+            gam_df["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+        )
+        _li_seller = (
+            gam_df["line_item_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+        )
+        gam_df["seller_ae"] = _parsed_sp.where(~_null_mask, _regex_seller.fillna(_li_seller))
 
         # Extract advertiser (index 7) and campaign (index 8) from line item name
         def _li_part(name, idx):
@@ -971,7 +960,8 @@ with tab_seller:
         with f4:
             status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
             _status_defaults = [s for s in ["Delivering", "Upcoming"] if s in status_opts]
-            if "gam_status_filter" not in st.session_state:
+            _cur_status = st.session_state.get("gam_status_filter")
+            if not _cur_status or not any(s in status_opts for s in _cur_status):
                 st.session_state["gam_status_filter"] = _status_defaults
             selected_statuses = st.multiselect(
                 "Status",
