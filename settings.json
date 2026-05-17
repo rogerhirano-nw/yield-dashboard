@@ -118,6 +118,9 @@
     "Banner": "Display",
     "In-stream video": "Video"
   },
+  "deal_source_aliases": {
+    "Publisher Deals": "Publisher"
+  },
   "deal_type_aliases": {
     "PMP": "Private Auction",
     "PMP Preferred": "Preferred Deal",

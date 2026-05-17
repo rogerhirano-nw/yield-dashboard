@@ -151,6 +151,9 @@ _DEFAULT_SETTINGS: dict = {
         "Banner": "Display",
         "In-stream video": "Video",
     },
+    "deal_source_aliases": {
+        "Publisher Deals": "Publisher",
+    },
     "deal_type_aliases": {
         "PMP": "Private Auction",
         "PMP Preferred": "Preferred Deal",
@@ -1410,6 +1413,10 @@ with tab_seller:
     if _format_aliases and "Format" in combined_pmp.columns:
         combined_pmp["Format"] = combined_pmp["Format"].replace(_format_aliases)
 
+    _deal_source_aliases = _cfg.get("deal_source_aliases", {})
+    if _deal_source_aliases and "Deal Source" in combined_pmp.columns:
+        combined_pmp["Deal Source"] = combined_pmp["Deal Source"].replace(_deal_source_aliases)
+
     # Persist DSP / Format / Deal Source options for next render (two-pass pattern — filters are rendered above).
     st.session_state["_pmp_dsps_opts"]         = sorted(combined_pmp["DSP"].dropna().unique().tolist())
     st.session_state["_pmp_formats_opts"]      = sorted(combined_pmp["Format"].dropna().unique().tolist())
@@ -1696,7 +1703,31 @@ with tab_settings:
         },
     )
 
-    # ── Section 6: Direct Campaign Sources ──────────────────────────────
+    # ── Section 6: Deal Source Aliases ──────────────────────────────────
+    st.markdown("#### Deal Source Aliases")
+    st.caption(
+        "Normalize Deal Source names that differ across SSPs (e.g. Magnite's 'Publisher Deals' → 'Publisher'). "
+        "Applied globally after combining all SSP data."
+    )
+    _deal_source_alias_rows = [
+        {"Raw Value": k, "Canonical Deal Source Name": v}
+        for k, v in _s.get("deal_source_aliases", {}).items()
+    ]
+    _deal_source_alias_edit = st.data_editor(
+        pd.DataFrame(_deal_source_alias_rows) if _deal_source_alias_rows else pd.DataFrame(
+            columns=["Raw Value", "Canonical Deal Source Name"]
+        ),
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="settings_deal_source_aliases",
+        column_config={
+            "Raw Value":                 st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
+            "Canonical Deal Source Name": st.column_config.TextColumn("Canonical Deal Source Name", help="Preferred display name", required=True),
+        },
+    )
+
+    # ── Section 7: Direct Campaign Sources ──────────────────────────────
     st.markdown("#### Direct Campaign Sources")
     st.caption(
         "Each row is a direct-sold data source. **Line Item Prefix** filters the table to only direct campaigns. "
@@ -1991,11 +2022,18 @@ with tab_settings:
                 if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
                 and pd.notna(r.get("Canonical Format Name")) and str(r["Canonical Format Name"]).strip()
             }
+            _new_deal_source_aliases = {
+                str(r["Raw Value"]).strip(): str(r["Canonical Deal Source Name"]).strip()
+                for _, r in _deal_source_alias_edit.iterrows()
+                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                and pd.notna(r.get("Canonical Deal Source Name")) and str(r["Canonical Deal Source Name"]).strip()
+            }
 
             _save_settings({
                 "ssps": _new_ssps, "ae_names": _new_ae,
                 "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
                 "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
+                "deal_source_aliases": _new_deal_source_aliases,
                 "direct_sources": _new_direct,
             })
             st.cache_data.clear()
