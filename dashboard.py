@@ -154,6 +154,8 @@ _DEFAULT_SETTINGS: dict = {
     "deal_type_aliases": {
         "PMP": "Private Auction",
         "PMP Preferred": "Preferred Deal",
+        "Marketplace Deal": "Private Marketplace",
+        "Auction Package": "Private Marketplace",
         "Preferred Deals": "Preferred Deal",
         "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
         "Private Marketplace Deal": "Private Marketplace",
@@ -1258,7 +1260,17 @@ with tab_seller:
         try:
             _mag_df = load("magnite_deal_daily").copy()
             if not _mag_df.empty and "deal" in _mag_df.columns:
-                _mag_df["deal_type_label"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
+                _dt_aliases = _cfg.get("deal_type_aliases", {})
+                if "demand_type_ad_resp" in _mag_df.columns:
+                    _mag_df["deal_type_label"] = _mag_df["demand_type_ad_resp"].map(
+                        lambda v: _dt_aliases.get(v, v) if pd.notna(v) and str(v).strip() not in ("", "-N/A-") else None
+                    )
+                    _fb = _mag_df["deal_type_label"].isna()
+                    _mag_df.loc[_fb, "deal_type_label"] = _mag_df.loc[_fb, "deal"].apply(
+                        lambda d: _parse_deal(d)["deal_type_label"]
+                    )
+                else:
+                    _mag_df["deal_type_label"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["deal_type_label"])
                 _mag_df = _mag_df[_mag_df["deal_type_label"].isin(_mag_types)]
                 _mag_df["ssp"] = "Magnite"
                 _mag_df["seller_ae"] = (

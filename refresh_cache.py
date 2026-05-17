@@ -64,7 +64,7 @@ REPORTS = {
         "date_range": "last_7",
     },
     "magnite_deal_daily": {
-        "dimensions": ["date", "deal", "deal_id"],  # partner/ad_format not returned by API; derived from deal name in dashboard
+        "dimensions": ["date", "deal", "deal_id", "demand_type_ad_resp"],  # partner/ad_format not returned by API; derived from deal name in dashboard
         "metrics": [
             "bid_requests",
             "bid_responses",

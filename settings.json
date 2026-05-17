@@ -121,6 +121,8 @@
   "deal_type_aliases": {
     "PMP": "Private Auction",
     "PMP Preferred": "Preferred Deal",
+    "Marketplace Deal": "Private Marketplace",
+    "Auction Package": "Private Marketplace",
     "Preferred Deals": "Preferred Deal",
     "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
     "Private Marketplace Deal": "Private Marketplace"
