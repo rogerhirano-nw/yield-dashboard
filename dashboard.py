@@ -204,6 +204,23 @@ def _load_settings() -> dict:
                 result[k] = v
         return result
 
+    def _patch_direct_columns(cfg: dict) -> dict:
+        """Add any direct_sources columns present in settings.json but absent from cfg (e.g. DB has stale copy)."""
+        if not _SETTINGS_PATH.exists():
+            return cfg
+        try:
+            with open(_SETTINGS_PATH) as _pf:
+                file_cfg = json.load(_pf)
+        except Exception:
+            return cfg
+        file_by_name = {s["name"]: s for s in file_cfg.get("direct_sources", [])}
+        patched = []
+        for src in cfg.get("direct_sources", []):
+            file_cols = file_by_name.get(src["name"], {}).get("columns", {})
+            merged_cols = {**file_cols, **src.get("columns", {})}
+            patched.append({**src, "columns": merged_cols})
+        return {**cfg, "direct_sources": patched}
+
     # Primary: database (survives redeployments on Streamlit Cloud)
     try:
         with _engine().connect() as conn:
@@ -211,7 +228,7 @@ def _load_settings() -> dict:
                 sqlalchemy.text("SELECT value FROM dashboard_settings WHERE key = 'main'")
             ).fetchone()
             if row:
-                return _merge(_DEFAULT_SETTINGS, json.loads(row[0]))
+                return _patch_direct_columns(_merge(_DEFAULT_SETTINGS, json.loads(row[0])))
     except Exception:
         pass
     # Fallback: local file (useful for first-run and local dev)
@@ -1802,7 +1819,7 @@ with tab_settings:
     )
 
     _DIRECT_FIELDS = [
-        "Seller", "Advertiser", "Campaign", "Line Item", "Format",
+        "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
         "Start Date", "End Date", "Goal", "CPM Rate",
         "Delivered", "Impressions (1d)", "Remaining", "Clicks",
         "Pacing %", "Viewability %", "CTR %", "Revenue", "VCR %",
