@@ -4,6 +4,7 @@
       "name": "GAM",
       "enabled": true,
       "table": "gam_pmp_deals",
+      "deal_source_default": "Publisher",
       "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
       "columns": {
         "Deal":             "programmatic_deal_name",
@@ -61,6 +62,7 @@
   "ae_names": {
     "AShah":     "Amit Shah",
     "BKaretny":  "Ben Karetny",
+    "Bkaretny":  "Ben Karetny",
     "BRobinson": "Brian Robinson",
     "DDivack":   "Dana Divack",
     "DVarvaro":  "Danielle Varvaro",
@@ -71,6 +73,7 @@
     "KWebb":     "House",
     "RShore":    "Rob Shore",
     "SCarroll":  "Summer Carroll",
+    "SCaroll":   "Summer Carroll",
     "THern":     "Theresa Hern",
     "House":     "House"
   },

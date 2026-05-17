@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -852,7 +853,12 @@ with tab_seller:
         gam_df = gam_df.copy()
         _direct_src = next((s for s in _cfg.get("direct_sources", []) if s.get("enabled", True)), None)
         _direct_prefix = _direct_src.get("order_name_prefix", "Newsweek_Direct") if _direct_src else "Newsweek_Direct"
-        gam_df = gam_df[gam_df["order_name"].str.startswith(_direct_prefix, na=False)]
+        # Use order_name when populated; fall back to line_item_name prefix for rows
+        # where order_name hasn't been fetched yet (NULL from older refresh runs).
+        _order_populated = gam_df["order_name"].notna() & (gam_df["order_name"] != "")
+        _match_order = _order_populated & gam_df["order_name"].str.startswith(_direct_prefix, na=False)
+        _match_li = (~_order_populated) & gam_df["line_item_name"].str.startswith(_direct_prefix, na=False)
+        gam_df = gam_df[_match_order | _match_li]
         gam_df = gam_df[~gam_df["order_name"].str.startswith("Newsweek_Test", na=False)]
 
         for datecol in ("start_date", "end_date"):
@@ -874,33 +880,29 @@ with tab_seller:
             gam_df["vcr"] = (_completions / _starts * 100).where(_starts > 0)
 
         # Extract seller — prefer GAM salesperson field, fall back to name regex
-        if "salesperson" in gam_df.columns and gam_df["salesperson"].notna().any():
-            gam_df["seller_ae"] = gam_df["salesperson"]
-            _null_mask = gam_df["seller_ae"].isna()
-            if _null_mask.any():
-                _regex_seller = (
-                    gam_df.loc[_null_mask, "order_name"]
-                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                    .map(AE_NAMES)
-                )
-                _li_seller = (
-                    gam_df.loc[_null_mask, "line_item_name"]
-                    .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                    .map(AE_NAMES)
-                )
-                gam_df.loc[_null_mask, "seller_ae"] = _regex_seller.fillna(_li_seller)
-        else:
-            gam_df["seller_ae"] = (
-                gam_df["order_name"]
-                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                .map(AE_NAMES)
-            )
-            _li_seller = (
-                gam_df["line_item_name"]
-                .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                .map(AE_NAMES)
-            )
-            gam_df["seller_ae"] = gam_df["seller_ae"].fillna(_li_seller)
+        # GAM returns "Newsweek - Sales - Full Name (email)" — normalize to just the name.
+        def _parse_gam_salesperson(val):
+            if not isinstance(val, str) or not val.strip():
+                return None
+            m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
+            return m.group(1).strip() if m else val.strip()
+
+        # Normalize salesperson in place so "Seller" shows short name regardless of
+        # which column the settings point to (salesperson or seller_ae).
+        _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+        if "salesperson" in gam_df.columns:
+            gam_df["salesperson"] = gam_df["salesperson"].apply(_parse_gam_salesperson)
+
+        _parsed_sp = gam_df["salesperson"] if "salesperson" in gam_df.columns else pd.Series(dtype=str)
+        _null_mask = _parsed_sp.isna()
+
+        _regex_seller = (
+            gam_df["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+        )
+        _li_seller = (
+            gam_df["line_item_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+        )
+        gam_df["seller_ae"] = _parsed_sp.where(~_null_mask, _regex_seller.fillna(_li_seller))
 
         # Extract advertiser (index 7) and campaign (index 8) from line item name
         def _li_part(name, idx):
@@ -958,7 +960,8 @@ with tab_seller:
         with f4:
             status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
             _status_defaults = [s for s in ["Delivering", "Upcoming"] if s in status_opts]
-            if "gam_status_filter" not in st.session_state:
+            _cur_status = st.session_state.get("gam_status_filter")
+            if not _cur_status or not any(s in status_opts for s in _cur_status):
                 st.session_state["gam_status_filter"] = _status_defaults
             selected_statuses = st.multiselect(
                 "Status",
@@ -1473,6 +1476,15 @@ with tab_seller:
     if _deal_source_aliases and "Deal Source" in combined_pmp.columns:
         combined_pmp["Deal Source"] = combined_pmp["Deal Source"].replace(_deal_source_aliases)
 
+    # Fill missing Deal Source with the per-SSP default configured in Settings -> PMP Data Sources.
+    _ssp_ds_defaults = {s["name"]: s.get("deal_source_default", "") for s in _cfg.get("ssps", [])}
+    if any(_ssp_ds_defaults.values()):
+        if "Deal Source" not in combined_pmp.columns:
+            combined_pmp["Deal Source"] = None
+        _ds_blank = combined_pmp["Deal Source"].isna() | (combined_pmp["Deal Source"].astype(str).str.strip() == "")
+        _ds_fill = combined_pmp.loc[_ds_blank, "SSP"].map(_ssp_ds_defaults).replace("", None)
+        combined_pmp.loc[_ds_blank, "Deal Source"] = _ds_fill
+
     # Persist DSP / Format / Deal Source options for next render (two-pass pattern — filters are rendered above).
     st.session_state["_pmp_dsps_opts"]         = sorted(combined_pmp["DSP"].dropna().unique().tolist())
     st.session_state["_pmp_formats_opts"]      = sorted(combined_pmp["Format"].dropna().unique().tolist())
@@ -1531,6 +1543,11 @@ with tab_seller:
         pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
         pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
+        _pmp_col_order = ["Seller", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
+                          "Paid Impressions", "Revenue", "eCPM",
+                          "Win Rate %", "Total Requests", "Bid Responses"]
+        combined_pmp = combined_pmp[[c for c in _pmp_col_order if c in combined_pmp.columns]]
+
         st.dataframe(
             combined_pmp,
             use_container_width=True,
@@ -1579,10 +1596,11 @@ with tab_settings:
 
         _ssp_rows = [
             {
-                "SSP Name":       s["name"],
-                "Enabled":        s.get("enabled", True),
-                "Database Table": s["table"],
-                "Deal Types":     ", ".join(s.get("deal_types", [])),
+                "SSP Name":            s["name"],
+                "Enabled":             s.get("enabled", True),
+                "Database Table":      s["table"],
+                "Deal Types":          ", ".join(s.get("deal_types", [])),
+                "Default Deal Source": s.get("deal_source_default", ""),
             }
             for s in _s["ssps"]
         ]
@@ -1602,6 +1620,11 @@ with tab_settings:
                 "Deal Types": st.column_config.TextColumn(
                     "Deal Types",
                     help="Comma-separated list — e.g. Private Auction, Preferred Deal",
+                ),
+                "Default Deal Source": st.column_config.TextColumn(
+                    "Default Deal Source",
+                    help="Fills the Deal Source column for rows where the SSP's data has none. "
+                         "Example: GAM has no deal_source column, so set this to 'Publisher'.",
                 ),
             },
         )
@@ -2038,13 +2061,17 @@ with tab_settings:
                 else:
                     _col_map_new = _existing_col_maps.get(_ssp_name, {})
                 _dt_raw = str(_row.get("Deal Types", "")).strip()
-                _new_ssps.append({
+                _ds_default = str(_row.get("Default Deal Source", "") or "").strip()
+                _new_ssp_entry = {
                     "name":       _ssp_name,
                     "enabled":    bool(_row.get("Enabled", True)),
                     "table":      str(_row.get("Database Table", "")).strip(),
                     "deal_types": [t.strip() for t in _dt_raw.split(",") if t.strip()],
                     "columns":    _col_map_new,
-                })
+                }
+                if _ds_default:
+                    _new_ssp_entry["deal_source_default"] = _ds_default
+                _new_ssps.append(_new_ssp_entry)
 
             _new_ae = {
                 str(r["Code"]).strip(): str(r["Full Name"]).strip()

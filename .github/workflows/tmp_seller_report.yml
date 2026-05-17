@@ -20,14 +20,14 @@ jobs:
           engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
           with engine.connect() as conn:
               r = conn.execute(text("""
-                  SELECT DISTINCT
-                      order_name,
+                  SELECT
+                      line_item_name,
                       salesperson,
+                      status,
                       COUNT(*) as line_items
                   FROM gam_campaigns
-                  WHERE order_name LIKE 'Newsweek_Direct%'
-                  GROUP BY order_name, salesperson
-                  ORDER BY order_name
+                  GROUP BY line_item_name, salesperson, status
+                  ORDER BY salesperson NULLS LAST, line_item_name
               """))
               rows = [dict(row._mapping) for row in r]
 
@@ -37,9 +37,11 @@ jobs:
               m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
               return m.group(1).strip() if m else val.strip()
 
-          print("order_name,salesperson_raw,parsed_name,line_items")
+          print("line_item_name,salesperson_raw,parsed_name,status,line_items")
           for row in rows:
               sp = row['salesperson'] or ''
               parsed = parse(sp)
-              print(f'"{row["order_name"]}","{sp}","{parsed}",{row["line_items"]}')
+              name = (row['line_item_name'] or '').replace('"', '""')
+              status = row['status'] or ''
+              print(f'"{name}","{sp}","{parsed}","{status}",{row["line_items"]}')
           PYEOF
