@@ -1,0 +1,46 @@
+name: Check Pubmatic channel types
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Query deal_type_id distribution
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os, sqlalchemy
+          from sqlalchemy import text
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as conn:
+              r = conn.execute(text("""
+                  SELECT deal_type_id, deal_type,
+                         COUNT(DISTINCT deal) as distinct_deals
+                  FROM pubmatic_deals
+                  GROUP BY deal_type_id, deal_type
+                  ORDER BY distinct_deals DESC
+              """))
+              print("deal_type_id | deal_type | distinct_deals")
+              for row in r:
+                  print(dict(row._mapping))
+
+              # Show sample deal names for the unknown IDs
+              r2 = conn.execute(text("""
+                  SELECT DISTINCT deal_type_id, deal_type, deal
+                  FROM pubmatic_deals
+                  WHERE deal_type_id NOT IN (1, 5)
+                  LIMIT 20
+              """))
+              print("\nDeals with non-standard channel type IDs:")
+              for row in r2:
+                  print(dict(row._mapping))
+          PYEOF
