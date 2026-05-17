@@ -1630,7 +1630,6 @@ with tab_seller:
                     )
                     _pa_display = _pa_inventory.rename(columns={
                         "auction_name":     "Auction",
-                        "deal_name":        "Deal",
                         "external_deal_id": "External Deal ID",
                         "buyer_account_id": "Buyer Account",
                         "floor_price_usd":  "Floor CPM",

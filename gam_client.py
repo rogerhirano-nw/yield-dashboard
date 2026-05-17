@@ -417,7 +417,7 @@ class GAMClient:
         level, so this can't be joined to gam_pmp_deals for revenue stats.
         """
         _cols = [
-            "auction_name", "deal_name", "external_deal_id",
+            "auction_name", "external_deal_id",
             "buyer_account_id", "floor_price_usd", "deal_status", "end_time",
         ]
         if self._pa_client is None:
@@ -439,7 +439,6 @@ class GAMClient:
             auction_ref = getattr(deal, "private_auction", "") or ""
             rows.append({
                 "auction_name":     auctions_by_name.get(auction_ref, ""),
-                "deal_name":        deal.display_name or None,
                 "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
                 "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
                 "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
