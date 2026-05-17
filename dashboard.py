@@ -194,6 +194,16 @@ _DEFAULT_SETTINGS: dict = {
 
 
 def _load_settings() -> dict:
+    def _merge(base: dict, override: dict) -> dict:
+        """Overlay override onto base so new keys in base always appear."""
+        result = dict(base)
+        for k, v in override.items():
+            if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+                result[k] = _merge(result[k], v)
+            else:
+                result[k] = v
+        return result
+
     # Primary: database (survives redeployments on Streamlit Cloud)
     try:
         with _engine().connect() as conn:
@@ -201,14 +211,14 @@ def _load_settings() -> dict:
                 sqlalchemy.text("SELECT value FROM dashboard_settings WHERE key = 'main'")
             ).fetchone()
             if row:
-                return json.loads(row[0])
+                return _merge(_DEFAULT_SETTINGS, json.loads(row[0]))
     except Exception:
         pass
     # Fallback: local file (useful for first-run and local dev)
     if _SETTINGS_PATH.exists():
         try:
             with open(_SETTINGS_PATH) as f:
-                return json.load(f)
+                return _merge(_DEFAULT_SETTINGS, json.load(f))
         except Exception:
             pass
     return _DEFAULT_SETTINGS
