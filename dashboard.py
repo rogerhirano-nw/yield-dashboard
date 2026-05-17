@@ -163,7 +163,7 @@ _DEFAULT_SETTINGS: dict = {
         "Programmatic Guaranteed Deal": "Programmatic Guaranteed",
         "Private Marketplace Deal": "Private Marketplace",
     },
-    "excluded_advertiser_patterns": [r"\[nw\]"],
+    "included_order_patterns": ["Newsweek_Direct%"],
     "default_statuses": ["Delivering", "Upcoming"],
     "direct_sources": [
         {
@@ -857,15 +857,16 @@ with tab_seller:
         st.caption(f"Last refresh: {_fmt_last_refresh(last_pull)}")
 
         gam_df = gam_df.copy()
-        _direct_src = next((s for s in _cfg.get("direct_sources", []) if s.get("enabled", True)), None)
-        _direct_prefix = _direct_src.get("order_name_prefix", "Newsweek_Direct") if _direct_src else "Newsweek_Direct"
-        # Use order_name when populated; fall back to line_item_name prefix for rows
-        # where order_name hasn't been fetched yet (NULL from older refresh runs).
+        _incl_patterns = _cfg.get("included_order_patterns", ["Newsweek_Direct%"])
+        _prefixes = [p.rstrip("%") for p in _incl_patterns if p]
         _order_populated = gam_df["order_name"].notna() & (gam_df["order_name"] != "")
-        _match_order = _order_populated & gam_df["order_name"].str.startswith(_direct_prefix, na=False)
-        _match_li = (~_order_populated) & gam_df["line_item_name"].str.startswith(_direct_prefix, na=False)
-        gam_df = gam_df[_match_order | _match_li]
-        gam_df = gam_df[~gam_df["order_name"].str.startswith("Newsweek_Test", na=False)]
+        if _prefixes:
+            _match_order = pd.Series(False, index=gam_df.index)
+            _match_li = pd.Series(False, index=gam_df.index)
+            for _pfx in _prefixes:
+                _match_order |= _order_populated & gam_df["order_name"].str.startswith(_pfx, na=False)
+                _match_li |= (~_order_populated) & gam_df["line_item_name"].str.startswith(_pfx, na=False)
+            gam_df = gam_df[_match_order | _match_li]
 
         for datecol in ("start_date", "end_date"):
             if datecol in gam_df.columns:
@@ -920,12 +921,9 @@ with tab_seller:
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8)
         gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
-
-        # Exclude test line items based on advertiser patterns from settings
-        _excl_patterns = _cfg.get("excluded_advertiser_patterns", [])
-        if _excl_patterns and "advertiser" in gam_df.columns:
-            _excl_re = "|".join(_excl_patterns)
-            gam_df = gam_df[~gam_df["advertiser"].str.contains(_excl_re, case=False, na=False)]
+        for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae"):
+            if _col in gam_df.columns:
+                gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
 
         # Load Pubmatic sellers so they appear in the shared filter
         try:
@@ -1858,16 +1856,16 @@ with tab_settings:
             },
         )
 
-        st.markdown("##### Excluded Advertiser Patterns")
-        st.caption("Line items whose advertiser name matches any of these patterns are hidden from the Direct Campaigns table. Supports regex (e.g. `\\[nw\\]`).")
-        _excl_rows = [{"Pattern": p} for p in _s.get("excluded_advertiser_patterns", [])]
-        _excl_edit = st.data_editor(
-            pd.DataFrame(_excl_rows) if _excl_rows else pd.DataFrame(columns=["Pattern"]),
+        st.markdown("##### Included Order Patterns")
+        st.caption("Only orders whose name matches one of these patterns are shown. Use `%` as a wildcard (e.g. `Newsweek_Direct%`).")
+        _incl_rows = [{"Pattern": p} for p in _s.get("included_order_patterns", ["Newsweek_Direct%"])]
+        _incl_edit = st.data_editor(
+            pd.DataFrame(_incl_rows) if _incl_rows else pd.DataFrame(columns=["Pattern"]),
             use_container_width=True,
             hide_index=True,
             num_rows="dynamic",
-            key="settings_excluded_advertiser_patterns",
-            column_config={"Pattern": st.column_config.TextColumn("Pattern", help="Regex or plain string matched against the advertiser name")},
+            key="settings_included_order_patterns",
+            column_config={"Pattern": st.column_config.TextColumn("Pattern", help="Order name prefix, use % as wildcard (e.g. Newsweek_Direct%)")},
         )
 
         st.markdown("##### Default Status Filter")
@@ -2148,9 +2146,9 @@ with tab_settings:
                 and pd.notna(r.get("Canonical Deal Source Name")) and str(r["Canonical Deal Source Name"]).strip()
             }
 
-            _new_excl_patterns = [
+            _new_incl_patterns = [
                 str(r["Pattern"]).strip()
-                for _, r in _excl_edit.iterrows()
+                for _, r in _incl_edit.iterrows()
                 if pd.notna(r.get("Pattern")) and str(r["Pattern"]).strip()
             ]
             _save_settings({
@@ -2158,7 +2156,7 @@ with tab_settings:
                 "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
                 "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
                 "deal_source_aliases": _new_deal_source_aliases,
-                "excluded_advertiser_patterns": _new_excl_patterns,
+                "included_order_patterns": _new_incl_patterns,
                 "default_statuses": list(_default_statuses_edit),
                 "direct_sources": _new_direct,
             })

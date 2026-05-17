@@ -262,7 +262,7 @@ class GAMClient:
         start = end - timedelta(days=730)
 
         df = self._run_report(
-            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME", "LINE_ITEM_SALESPERSON", "ORDER_NAME"],
+            dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME", "ORDER_SALESPERSON", "ORDER_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS"],
             start_date=start,
             end_date=end,
@@ -271,7 +271,7 @@ class GAMClient:
         return df.rename(columns={
             "ad_server_impressions": "lifetime_impressions_delivered",
             "line_item_computed_status_name": "status_api",
-            "line_item_salesperson": "salesperson_api",
+            "order_salesperson": "salesperson_api",
             "order_name": "order_name_api",
         })
 
