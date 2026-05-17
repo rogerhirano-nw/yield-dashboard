@@ -924,7 +924,13 @@ with tab_seller:
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8).str.replace("-", " ", regex=False)
         gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
-        for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae"):
+        _team_map = {"USA": "Team USA", "INTL": "International"}
+        gam_df["team"] = (
+            gam_df["line_item_name"]
+            .str.extract(r"_Team-(USA|INTL)_", expand=False)
+            .map(_team_map)
+        )
+        for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae", "team"):
             if _col in gam_df.columns:
                 gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
 
@@ -943,7 +949,7 @@ with tab_seller:
 
         all_sellers = sorted(set(gam_df["seller_ae"].dropna().unique()) | set(_pmp_sellers))
 
-        f1, f2, f3, f4 = st.columns(4)
+        f1, f2, f3, f4, f5 = st.columns(5)
         with f1:
             selected_seller = st.selectbox(
                 "Seller",
@@ -978,6 +984,13 @@ with tab_seller:
                 default=_status_defaults,
                 key="gam_status_filter",
             )
+        with f5:
+            team_opts = sorted(gam_df["team"].dropna().unique())
+            selected_teams = st.multiselect(
+                "Team",
+                options=team_opts,
+                key="gam_team_filter",
+            )
 
         view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
         if selected_advertisers:
@@ -986,6 +999,8 @@ with tab_seller:
             view_gam = view_gam[view_gam["ad_format"].isin(selected_formats)]
         if selected_statuses:
             view_gam = view_gam[view_gam["status"].isin(selected_statuses)]
+        if selected_teams:
+            view_gam = view_gam[view_gam["team"].isin(selected_teams)]
 
         if view_gam.empty:
             st.info("No campaigns found for the selected seller.")
