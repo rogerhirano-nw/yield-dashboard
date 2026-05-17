@@ -141,6 +141,7 @@
         "Campaign":         "campaign_name",
         "Line Item":        "line_item_name",
         "Format":           "ad_format",
+        "Status":           "status",
         "Start Date":       "start_date",
         "End Date":         "end_date",
         "Goal":             "impressions_goal",
