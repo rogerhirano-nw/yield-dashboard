@@ -1,0 +1,44 @@
+name: Export Pubmatic Deal Types by Deal Name
+
+on:
+  workflow_dispatch:
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install sqlalchemy psycopg2-binary pandas
+      - name: Export deal names by deal type
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os, sqlalchemy, pandas as pd
+          from sqlalchemy import text
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as conn:
+              df = pd.read_sql(text("""
+                  SELECT
+                      deal_type_id,
+                      deal_type,
+                      deal AS deal_name,
+                      SUM(paid_impressions) AS total_paid_impressions,
+                      SUM(revenue)         AS total_revenue
+                  FROM pubmatic_deals
+                  GROUP BY deal_type_id, deal_type, deal
+                  ORDER BY deal_type_id, deal_type, deal
+              """), conn)
+          df.to_csv("pubmatic_deal_types_by_deal.csv", index=False)
+          print(f"Wrote {len(df)} rows")
+          print(df.to_string())
+          PYEOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pubmatic-deal-types-by-deal
+          path: pubmatic_deal_types_by_deal.csv
+          retention-days: 7
