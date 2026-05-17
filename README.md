@@ -1,68 +1,74 @@
-# magnite_client
+# yield-dashboard
 
-A small Python client for the Magnite DV+ Performance Analytics REST API,
-structured for the live-dashboard use case (scheduled pull → local cache →
-fast dashboard read).
+A Python toolkit for pulling ad revenue data from multiple sources into a local
+cache and serving it through a fast Streamlit dashboard.
+
+**Sources currently integrated:**
+- **Magnite DV+** — programmatic (General + Prebid Analytics datasets)
+- **Google Ad Manager (GAM)** — direct campaigns and PMP deals
+- **Pubmatic** — PMP deal reporting
+
+Structured for the live-dashboard use case: scheduled pull → local cache →
+fast dashboard read. No source is queried at render time.
 
 ## Files
 
-- `client.py` — the `MagniteClient` class. Handles auth, the create/poll/paginate
-  loop, 429 backoff, and pagination via the "short page" heuristic.
-- `refresh_cache.py` — scheduled-job entrypoint. Pulls each configured report
-  into a SQLite table. Wire to cron / Airflow / systemd timer.
+- `client.py` — `MagniteClient`: auth, create/poll/paginate loop, 429 backoff.
+- `gam_client.py` — `GAMClient`: GAM delivery, pacing, and PMP deal reports.
+- `pubmatic_client.py` — `PubmaticClient`: Pubmatic deal report.
+- `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into SQLite.
+  Wire to cron / Airflow / systemd timer.
 - `dashboard.py` — minimal Streamlit dashboard reading from the cache.
 
-## Quickstart (once Magnite AM gives you the API key + secret)
+## Quickstart
 
 ```bash
 pip install requests pandas streamlit
 
-export MAGNITE_API_KEY=...
-export MAGNITE_API_SECRET=...
-export MAGNITE_ACCOUNT_ID=...  # your publisher ID
+# Magnite
+export MAGNITE_KEY=...
+export MAGNITE_SECRET=...
+export MAGNITE_PUBLISHER_ID=...
 
-# 1. test auth and one report end-to-end
-python -c "
-from client import MagniteClient
-c = MagniteClient(
-    api_key='$MAGNITE_API_KEY',
-    api_secret='$MAGNITE_API_SECRET',
-    account_id='$MAGNITE_ACCOUNT_ID',
-)
-df = c.run_report(
-    dimensions=['site', 'date'],
-    metrics=['ad_requests', 'auctions', 'publisher_gross_revenue'],
-    date_range='yesterday',
-)
-print(df.head())
-print('rows:', len(df))
-"
+# GAM (service account JSON path or inline credentials)
+export GAM_NETWORK_CODE=...
+export GAM_KEY_FILE=...
 
-# 2. populate the cache
+# Pubmatic
+export PUBMATIC_API_KEY=...
+export PUBMATIC_PUBLISHER_ID=...
+
+# 1. populate the cache
 python refresh_cache.py
 
-# 3. run the dashboard
+# 2. run the dashboard
 streamlit run dashboard.py
 ```
 
-## Switching from General to Prebid Analytics
+## Adding a new SSP
 
-The client is parametrized on dataset. The default is the General data set
+1. Create `<ssp>_client.py` with a `run_*_report()` method returning a DataFrame.
+2. Add a `refresh_<ssp>()` function in `refresh_cache.py` following the same
+   pattern: pull → add `_pulled_at` → DELETE stale rows → `to_sql(..., if_exists="append")`.
+3. Call it from `main()` in `refresh_cache.py`.
+
+## Magnite: switching from General to Prebid Analytics
+
+The client is parametrized on dataset. The default is the General dataset
 (`"default"` in the URL path). Two changes needed for Prebid:
 
 1. In `client.py`, confirm the Prebid path slug from the logged-in docs at
    <https://help.magnite.com/help/prebid-analytics-api> and update the
    `Dataset` literal type if it's not `"prebid"`.
-2. In `refresh_cache.py`, pass `dataset="prebid"` in each report config and
-   replace the dimension/metric lists with the Prebid-specific column keys
-   from those docs.
+2. In `refresh_cache.py`, pass `dataset="prebid"` in each Magnite report config
+   and replace the dimension/metric lists with the Prebid-specific column keys.
 
 Pattern is identical (POST create, GET status, GET paginated data), so the
 client code itself doesn't need to change.
 
-## Things that will bite you
+## Magnite: things that will bite you
 
-- **Pull yesterday, not today.** Magnite's same-day data has latency.
+- **Pull yesterday, not today.** Same-day data has latency.
 - **500K row cap per report.** High-cardinality dims (zone_id, hour) blow
   through this fast. Break by date range or pre-filter.
 - **5 reports in parallel max** — beyond that you get 429s. The client retries
@@ -78,8 +84,6 @@ client code itself doesn't need to change.
 
 - Move the cache from SQLite to Postgres / BigQuery if more than one person
   reads the dashboard concurrently.
-- Idempotent upserts in `refresh_cache.py` keyed on (date + dimension cols)
-  instead of `if_exists="append"` — otherwise re-running the same day double-counts.
 - Secrets to a vault / env injection in your orchestrator rather than shell env.
 - Structured logging (JSON) + alerting on `MagniteReportFailed` / `MagniteReportTimeout`.
 - Cross-reference the bidder dimension against your `Newsweek_TAM_Bidder_Reference.xlsx`
