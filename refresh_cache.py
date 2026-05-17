@@ -104,7 +104,6 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
         return 0
 
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
 
     with _engine().begin() as conn:
         existing_tables = sa_inspect(conn).get_table_names()
@@ -114,8 +113,12 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
             if existing_cols != new_cols:
                 logger.info("Schema change detected for %s — dropping and recreating", table)
                 conn.execute(text(f'DROP TABLE "{table}"'))
-            else:
+            elif "date" in df.columns:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
                 conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
+            else:
+                # Lookup table with no date column — replace all rows each run.
+                conn.execute(text(f'DELETE FROM "{table}"'))
         df.to_sql(table, conn, if_exists="append", index=False)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
