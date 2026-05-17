@@ -1539,6 +1539,11 @@ with tab_seller:
         pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
         pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
+        _pmp_col_order = ["Seller", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
+                          "Paid Impressions", "Revenue", "eCPM",
+                          "Win Rate %", "Total Requests", "Bid Responses"]
+        combined_pmp = combined_pmp[[c for c in _pmp_col_order if c in combined_pmp.columns]]
+
         st.dataframe(
             combined_pmp,
             use_container_width=True,
