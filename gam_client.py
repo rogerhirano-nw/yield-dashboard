@@ -77,9 +77,11 @@ def _enum_name(val) -> str:
 
 
 def _ts_to_date(ts) -> Optional[str]:
-    """Convert a protobuf Timestamp to a YYYY-MM-DD string."""
+    """Convert a protobuf Timestamp or Python datetime to a YYYY-MM-DD string."""
     if ts is None:
         return None
+    if isinstance(ts, datetime):
+        return ts.date().isoformat()
     try:
         return datetime.fromtimestamp(ts.seconds, tz=timezone.utc).date().isoformat()
     except Exception:

@@ -45,4 +45,15 @@ jobs:
               print("\ncpm_rate stats:")
               for row in r2:
                   print(dict(row._mapping))
+
+              r3 = conn.execute(text("""
+                  SELECT COUNT(*) as total,
+                         COUNT(start_date) as non_null_start,
+                         MIN(start_date) as min_start,
+                         MAX(end_date) as max_end
+                  FROM gam_campaigns
+              """))
+              print("\nstart_date/end_date stats:")
+              for row in r3:
+                  print(dict(row._mapping))
           PYEOF
