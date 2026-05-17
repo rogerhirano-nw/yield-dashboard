@@ -1,10 +1,10 @@
-name: Temp find PA line item delivery
+name: Temp validate PA via correct metrics
 on:
   workflow_dispatch:
 jobs:
-  find:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,122 +16,44 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
-          # Is there any GAM-side delivery on this PA deal?
-          # - Run the deals report with DATE + DEAL_ID + PROGRAMMATIC_CHANNEL_NAME
-          #   over the last 30 days (longer than the 7-day cache).
-          # - Filter to external_deal_id 549644398148080353.
-          # - Also scan archived line items for any LI targeting the auction
-          #   or the deal id (the previous active-only scan came back empty).
-          import csv, json, re, sys, traceback
-          from datetime import date, timedelta
-          from gam_client import GAMClient, admanager_v1
-          import pandas as pd
-
-          AUCTION_ID = "2710186"
-          EXTERNAL_DEAL_ID = "549644398148080353"
-          print(f"Auction id:        {AUCTION_ID}")
-          print(f"External deal id:  {EXTERNAL_DEAL_ID}\n")
+          # Replicate the user's GAM UI report via the API. The UI report uses
+          # Programmatic / AdX metrics (IMPRESSIONS, REVENUE_WITHOUT_CPD) — not
+          # AD_SERVER_* — which is why my earlier API calls missed all PA rows.
+          # If this matches the user's CSV (Ford-Always-On = $2.21 / 433 imps
+          # on 2026-05-16) we have the metric set to use in production.
+          import json, traceback
+          from datetime import date
+          from gam_client import GAMClient
 
           gam = GAMClient()
-          yesterday = date.today() - timedelta(days=1)
-          start = yesterday - timedelta(days=29)  # 30-day window
-
-          # --- 1. Deal-level delivery via DEAL_ID dimension. -----------------
-          print("=" * 70); print("1. Deals report by DEAL_ID (last 30 days)"); print("=" * 70)
+          target = date(2026, 5, 16)
           try:
               df = gam._run_report(
-                  dimensions=["DATE", "DEAL_ID", "PROGRAMMATIC_CHANNEL_NAME",
-                              "ORDER_NAME", "LINE_ITEM_NAME"],
-                  metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE",
-                           "AD_SERVER_AVERAGE_ECPM"],
-                  start_date=start,
-                  end_date=yesterday,
+                  dimensions=["PROGRAMMATIC_CHANNEL_NAME", "DEAL_NAME",
+                              "BUYER_NETWORK_NAME", "DATE"],
+                  metrics=["IMPRESSIONS", "REVENUE_WITHOUT_CPD", "CTR", "CLICKS"],
+                  start_date=target,
+                  end_date=target,
               )
-              df["deal_id"] = df["deal_id"].astype(str)
-              print(f"  total report rows: {len(df)}")
-              hit = df[df["deal_id"] == EXTERNAL_DEAL_ID].copy()
-              print(f"  rows where deal_id == {EXTERNAL_DEAL_ID}: {len(hit)}")
-              if not hit.empty:
-                  hit = hit.dropna(axis=1, how="all")
-                  hit.to_csv("pa_line_item_delivery.csv", index=False)
-                  print(hit.to_string())
-                  print(f"\n  CSV: {len(hit)} row(s) written")
-                  totals = {
-                      "impressions": int(pd.to_numeric(hit.get("ad_server_impressions"), errors="coerce").fillna(0).sum()),
-                      "revenue_usd": float(pd.to_numeric(hit.get("ad_server_cpm_and_cpc_revenue"), errors="coerce").fillna(0).sum()),
-                  }
-                  print(f"  totals: {totals}")
-              else:
-                  cols = ["date", "deal_id", "programmatic_channel_name", "order_name",
-                          "line_item_name", "ad_server_impressions", "ad_server_cpm_and_cpc_revenue"]
-                  pd.DataFrame(columns=cols).to_csv("pa_line_item_delivery.csv", index=False)
-                  print("  (no rows; wrote empty CSV)")
+              print(f"total rows: {len(df)}")
+              print(f"columns:    {list(df.columns)}")
+              print()
+              print("=== channel distribution ===")
+              ch = "programmatic_channel_name"
+              if ch in df.columns:
+                  print(df[ch].fillna("(null)").value_counts().to_string())
+              print()
+              print("=== Private Auction rows for 2026-05-16 ===")
+              pa = df[df.get(ch, "").fillna("").str.contains("Private Auction", case=False, na=False)] if ch in df.columns else df.iloc[0:0]
+              print(f"  PA rows: {len(pa)}")
+              if not pa.empty:
+                  for _, r in pa.iterrows():
+                      print(f"   {r.get('date')} | {r.get('deal_name')[:80]:<80} | imp={r.get('impressions')} rev=${r.get('revenue_without_cpd')}")
+              print()
+              print("=== Ford-Always-On match ===")
+              ford = pa[pa["deal_name"].fillna("").str.contains("Ford-Always-On", case=False, na=False)] if "deal_name" in pa.columns else pa
+              for _, r in ford.iterrows():
+                  print(f"  {r.to_dict()}")
           except Exception:
               traceback.print_exc()
-
-          # --- 2. Try the report API with a DEAL_ID filter to see if there is
-          #       ANY historical row for this deal (broader signal — even bid
-          #       activity without serving).
-          print()
-          print("=" * 70); print("2. Distinct deal IDs in the 30-day report (sanity)"); print("=" * 70)
-          try:
-              ids = df["deal_id"].fillna("").astype(str)
-              nonzero = ids[~ids.isin(["", "0", "0.0"])]
-              uniq = nonzero.unique()
-              print(f"  distinct nonzero deal IDs returned: {len(uniq)}")
-              # is our id present at all?
-              print(f"  contains {EXTERNAL_DEAL_ID}? {EXTERNAL_DEAL_ID in set(uniq)}")
-              # if not, show a few samples (length / format)
-              if uniq.size and EXTERNAL_DEAL_ID not in set(uniq):
-                  samp = sorted(uniq)[:5]
-                  print(f"  sample deal IDs (for length comparison, target is {len(EXTERNAL_DEAL_ID)} digits): {samp}")
-                  lens = sorted(set(len(x) for x in uniq))
-                  print(f"  length histogram of returned deal IDs: {lens}")
-          except Exception:
-              traceback.print_exc()
-
-          # --- 3. Archived line items: scan for targeting reference. ---------
-          print()
-          print("=" * 70); print("3. Line item scan including archived"); print("=" * 70)
-          needles = {AUCTION_ID, EXTERNAL_DEAL_ID}
-          hits = []
-          scanned = 0
-          for variant_label, kwargs in [
-              ("default (non-archived only)", dict(parent=gam._parent)),
-              ("filter archive_status=ARCHIVED", dict(parent=gam._parent, filter="archiveStatus=ARCHIVED")),
-              ("filter archiveStatus!=ACTIVE (catch all)", dict(parent=gam._parent, filter='archiveStatus="ARCHIVED"')),
-          ]:
-              try:
-                  print(f"\n  -- {variant_label} --")
-                  scan_this = 0
-                  matches_this = 0
-                  pager = gam._li_client.list_line_items(admanager_v1.ListLineItemsRequest(**kwargs))
-                  for li in pager:
-                      scan_this += 1
-                      scanned += 1
-                      try:
-                          from google.protobuf import json_format
-                          tgt = json_format.MessageToDict(li.__class__.pb(li).targeting)
-                          tgt_json = json.dumps(tgt)
-                      except Exception:
-                          continue
-                      for n in needles:
-                          if n in tgt_json:
-                              matches_this += 1
-                              hits.append((li, n, tgt))
-                              break
-                  print(f"     scanned {scan_this}; matches {matches_this}")
-              except Exception as e:
-                  print(f"     variant failed: {type(e).__name__}: {e}")
-          print(f"\n  total scanned across variants: {scanned}; total hits: {len(hits)}")
-          for li, n, t in hits[:10]:
-              print(f"\n  --- LI: {li.display_name} (needle '{n}') ---")
-              print(f"    name: {li.name}")
-              print(f"    targeting: {json.dumps(t, indent=6)[:2000]}")
           PYEOF
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pa-line-item-delivery
-          path: pa_line_item_delivery.csv
-          if-no-files-found: ignore
