@@ -10,22 +10,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install google-ads-admanager google-auth
+      - run: pip install google-ads-admanager google-auth requests
       - env:
           GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
           import os, json, re
+          import requests
           from google.oauth2 import service_account
+          from google.auth.transport.requests import AuthorizedSession
           from google.ads import admanager_v1
-          from google.protobuf import field_mask_pb2
 
           creds = service_account.Credentials.from_service_account_info(
               json.loads(os.environ["GAM_SERVICE_ACCOUNT_JSON"]),
               scopes=["https://www.googleapis.com/auth/admanager"],
           )
           network_id = os.environ["GAM_NETWORK_ID"]
+          session = AuthorizedSession(creds)
+          BASE = "https://admanager.googleapis.com/v1"
+
           client = admanager_v1.LineItemServiceClient(credentials=creds)
           parent = f"networks/{network_id}"
           order_resource = f"networks/{network_id}/orders/4057788230"
@@ -43,14 +47,16 @@ jobs:
                   skipped.append(old_name)
                   continue
               new_name = re.sub(r"Infinity", "Infiniti", old_name).replace("infinity", "infiniti")
-              client.update_line_item(
-                  admanager_v1.UpdateLineItemRequest(
-                      line_item=admanager_v1.LineItem(name=li.name, display_name=new_name),
-                      update_mask=field_mask_pb2.FieldMask(paths=["display_name"]),
-                  )
+              resp = session.patch(
+                  f"{BASE}/{li.name}",
+                  params={"updateMask": "displayName"},
+                  json={"displayName": new_name},
               )
-              renamed.append((old_name, new_name))
-              print(f"RENAMED: {old_name!r} -> {new_name!r}")
+              if resp.ok:
+                  renamed.append((old_name, new_name))
+                  print(f"RENAMED: {old_name!r} -> {new_name!r}")
+              else:
+                  print(f"ERROR {resp.status_code} on {li.name}: {resp.text[:200]}")
 
           print(f"\nDone. Renamed {len(renamed)}, skipped {len(skipped)} (no match).")
           PYEOF
