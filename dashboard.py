@@ -1255,11 +1255,17 @@ with tab_seller:
                 if _seller_cfg not in ("[auto]", "N/A", "", None) and _seller_cfg in _gam_raw.columns:
                     _gam_raw["seller_ae"] = _gam_raw[_seller_cfg].map(AE_NAMES)
                 else:
-                    _gam_raw["seller_ae"] = (
-                        _gam_raw["deal_name"]
-                        .str.extract(r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-                        .map(AE_NAMES)
+                    _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+                    _seller_from_deal = (
+                        _gam_raw["deal_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
                     )
+                    if "order_name" in _gam_raw.columns:
+                        _seller_from_order = (
+                            _gam_raw["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+                        )
+                        _gam_raw["seller_ae"] = _seller_from_deal.fillna(_seller_from_order)
+                    else:
+                        _gam_raw["seller_ae"] = _seller_from_deal
 
                 _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
                 if selected_seller != "All":
