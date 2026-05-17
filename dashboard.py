@@ -110,6 +110,9 @@ _DEFAULT_SETTINGS: dict = {
         "JGentile": "Jeremy Gentile", "KWebb": "House", "RShore": "Rob Shore",
         "SCarroll": "Summer Carroll", "THern": "Theresa Hern", "THearn": "Theresa Hern", "House": "House",
     },
+    "team_names": {
+        "USA": "USA", "INTL": "International",
+    },
     "deal_type_codes": {
         "PA": "Private Auction", "PD": "Preferred Deal",
         "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace",
@@ -200,8 +203,9 @@ def _load_settings() -> dict:
     def _with_defaults(loaded: dict) -> dict:
         """Return loaded settings with any missing top-level keys filled from _DEFAULT_SETTINGS."""
         result = {**_DEFAULT_SETTINGS, **loaded}
-        # Deep-merge ae_names so new default entries flow through even when DB has existing settings.
+        # Deep-merge ae_names and team_names so new default entries flow through even when DB has existing settings.
         result["ae_names"] = {**_DEFAULT_SETTINGS.get("ae_names", {}), **loaded.get("ae_names", {})}
+        result["team_names"] = {**_DEFAULT_SETTINGS.get("team_names", {}), **loaded.get("team_names", {})}
         return result
 
     def _patch_direct_columns(cfg: dict) -> dict:
@@ -924,7 +928,7 @@ with tab_seller:
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8).str.replace("-", " ", regex=False)
         gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
-        _team_map = {"USA": "USA", "INTL": "International"}
+        _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
         gam_df["team"] = (
             gam_df["line_item_name"]
             .str.extract(r"_Team-(USA|INTL)_", expand=False)
@@ -1985,6 +1989,23 @@ with tab_settings:
             },
         )
 
+        # ── Section 4b: Team Mapping ─────────────────────────────────────────
+        st.markdown("#### Team Mapping")
+        st.caption("Maps team codes in line item names (USA, INTL) to display labels.")
+
+        _team_rows = [{"Code": k, "Label": v} for k, v in sorted(_s.get("team_names", {}).items())]
+        _team_edit = st.data_editor(
+            pd.DataFrame(_team_rows) if _team_rows else pd.DataFrame(columns=["Code", "Label"]),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_team",
+            column_config={
+                "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. USA, INTL"),
+                "Label": st.column_config.TextColumn("Label", required=True, help="e.g. USA, International"),
+            },
+        )
+
         # ── Section 4: Deal Type Mapping ─────────────────────────────────────
         st.markdown("#### Deal Type Mapping")
         st.caption("Maps abbreviations in deal/order names to display labels.")
@@ -2117,6 +2138,11 @@ with tab_settings:
                 for _, r in _ae_edit.iterrows()
                 if pd.notna(r.get("Code")) and str(r["Code"]).strip()
             }
+            _new_team = {
+                str(r["Code"]).strip(): str(r["Label"]).strip()
+                for _, r in _team_edit.iterrows()
+                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+            }
             _new_dt = {
                 str(r["Code"]).strip(): str(r["Label"]).strip()
                 for _, r in _dt_edit.iterrows()
@@ -2174,7 +2200,7 @@ with tab_settings:
                 if pd.notna(r.get("Pattern")) and str(r["Pattern"]).strip()
             ]
             _save_settings({
-                "ssps": _new_ssps, "ae_names": _new_ae,
+                "ssps": _new_ssps, "ae_names": _new_ae, "team_names": _new_team,
                 "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
                 "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
                 "deal_source_aliases": _new_deal_source_aliases,
