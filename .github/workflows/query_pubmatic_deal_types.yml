@@ -1,0 +1,32 @@
+name: Query Pubmatic Deal Types
+
+on:
+  workflow_dispatch:
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install sqlalchemy psycopg2-binary
+      - name: Query unique deal_type values
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PYEOF'
+          import os, sqlalchemy
+          from sqlalchemy import text
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as conn:
+              rows = conn.execute(text(
+                  "SELECT deal_type, COUNT(*) as cnt FROM pubmatic_deals "
+                  "GROUP BY deal_type ORDER BY cnt DESC"
+              )).fetchall()
+          print(f"\n{'Deal Type':<30} {'Row Count':>10}")
+          print("-" * 42)
+          for r in rows:
+              print(f"{str(r[0]):<30} {r[1]:>10}")
+          PYEOF
