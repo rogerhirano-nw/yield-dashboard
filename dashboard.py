@@ -306,7 +306,7 @@ def _parse_deal(deal: str) -> pd.Series:
     deal_type_label = None
     if len(parts) > 1:
         dt = parts[1].strip()
-        deal_type_label = DEAL_TYPE_NAMES.get(dt, dt)
+        deal_type_label = DEAL_TYPE_NAMES.get(dt)  # None if not a recognized type code
 
     # Position 3 → platform / revenue source
     revenue_source = "Publisher"
