@@ -752,6 +752,67 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   border-color: rgba(70,130,200,0.35);
   color: hsl(210, 50%, 80%);
 }
+/* ── PMP section (matches the Direct Campaigns design language) ──── */
+.nw-section-div { height: 0.5px; border: 0; background: rgba(255,255,255,0.10);
+                  margin: 28px 0 14px; }
+.nw-section-eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+                      color: rgba(250,250,250,0.45); font-weight: 500; }
+.nw-section-h3 { font-size: 18px; font-weight: 500; color: rgba(250,250,250,0.92);
+                 margin: 2px 0 10px 0; line-height: 1.2; }
+/* Deal-type pills (PG / PD / PA / PMP) */
+.pill-dt { display: inline-block; padding: 2px 8px; border-radius: 4px;
+           font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+           text-transform: uppercase; line-height: 1.4;
+           font-variant-numeric: tabular-nums; }
+.pill-dt-pg  { background: hsl(120, 35%, 22%); color: hsl(120, 40%, 78%); }
+.pill-dt-pd  { background: hsl(210, 40%, 24%); color: hsl(210, 50%, 80%); }
+.pill-dt-pa  { background: rgba(255,255,255,0.08); color: rgba(250,250,250,0.65); }
+.pill-dt-pmp { background: hsl(280, 30%, 24%); color: hsl(280, 45%, 80%); }
+/* eCPM threshold colors — under floor amber, well above green. */
+.ecpm-under { background: hsl(40, 45%, 22%); color: hsl(40, 35%, 80%);
+              padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+.ecpm-over  { color: hsl(120, 50%, 65%); font-weight: 600; }
+/* PMP table — same grid pattern as Direct but different column proportions. */
+.nw-pmp-rows .nw-row-header,
+.nw-pmp-rows .nw-pmp-row {
+  display: grid;
+  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 13fr;
+  gap: 10px; align-items: center; padding: 10px 12px;
+  border-bottom: 0.5px solid rgba(255,255,255,0.05);
+  font-size: 13px; color: rgba(250,250,250,0.85);
+  font-variant-numeric: tabular-nums;
+}
+.nw-pmp-rows .nw-row-header {
+  font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+  color: rgba(250,250,250,0.45); font-weight: 500;
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+.nw-pmp-rows .nw-row-header .num,
+.nw-pmp-rows .nw-pmp-row .num { text-align: right; }
+/* Legend (small color-coded glossary in the table card header) */
+.nw-legend-pill { display: flex; gap: 14px; font-size: 11px;
+                  color: rgba(250,250,250,0.55); align-items: center; }
+.nw-legend-pill .pill-dt { font-size: 9px; padding: 1px 6px; }
+/* PA inventory expandable card */
+.nw-pa-inv { background: rgba(255,255,255,0.03);
+             border: 0.5px solid rgba(255,255,255,0.08);
+             border-radius: var(--border-radius-lg);
+             padding: 12px 16px; margin: 12px 0; }
+.nw-pa-inv > summary { display: flex; justify-content: space-between;
+                       align-items: center; cursor: pointer; list-style: none;
+                       font-size: 12px; color: rgba(250,250,250,0.85); }
+.nw-pa-inv > summary::-webkit-details-marker { display: none; }
+.nw-pa-inv > summary::marker { content: ""; }
+.nw-pa-inv-left { display: flex; align-items: center; gap: 8px; }
+.nw-pa-inv-chev { color: rgba(250,250,250,0.45); transition: transform 0.15s; }
+.nw-pa-inv[open] > summary .nw-pa-inv-chev { transform: rotate(90deg); }
+.nw-pa-inv-hint { font-size: 11px; color: rgba(250,250,250,0.45); }
+.nw-pa-inv-body { padding-top: 12px; }
+/* Deal-name primary + parenthetical + subtitle */
+.pmp-name-primary { font-weight: 500; color: rgba(250,250,250,0.92); }
+.pmp-name-paren { color: rgba(250,250,250,0.50); font-weight: 400; margin-left: 4px; }
+.pmp-name-sub { font-size: 11px; color: rgba(250,250,250,0.45); margin-top: 2px;
+                font-variant-numeric: tabular-nums; }
 /* ── Settings sections (Direct Campaigns redesign) ───────────────── */
 .cfg-section { background: rgba(255,255,255,0.02); border-radius: var(--border-radius-lg);
                border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 20px; margin: 10px 0; }
@@ -2475,10 +2536,14 @@ if st.session_state.active_view == "campaigns":
             if len(view_gam) > 25:
                 st.caption(f"Showing 25 of {len(view_gam):,} line items, sorted by |pace − target|.")
 
-    st.divider()
-
-    # ── Table 2: PMP deals from Pubmatic ────────────────────────────────
-    st.subheader("PMP Deals")
+    # ── Section 2: PMP deals ─────────────────────────────────────────────
+    # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
+    st.markdown(
+        '<hr class="nw-section-div"/>'
+        '<div class="nw-section-eyebrow">Programmatic</div>'
+        '<div class="nw-section-h3">PMP deals</div>',
+        unsafe_allow_html=True,
+    )
 
     # Build filter controls unconditionally — they must render even when Pubmatic is absent.
     _pmp_ssps_available = [s["name"] for s in _cfg["ssps"] if s.get("enabled", True)]
@@ -2490,53 +2555,49 @@ if st.session_state.active_view == "campaigns":
     _pmp_formats_opts     = st.session_state.get("_pmp_formats_opts", [])
     _pmp_deal_sources_opts = st.session_state.get("_pmp_deal_sources_opts", [])
     _pmp_teams_opts        = st.session_state.get("_pmp_teams_opts", [])
-    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6, _pf7 = st.columns([1, 1, 1, 1, 1, 1, 0.6])
+    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6 = st.columns(6)
     with _pf1:
+        st.markdown('<div class="nw-filter-label">Deal Type</div>', unsafe_allow_html=True)
         sel_pmp_deal_types = st.multiselect(
-            "Deal Type",
-            _pmp_deal_types_available,
+            "Deal Type", _pmp_deal_types_available,
             key="campaigns_pmp_deal_type_filter",
+            label_visibility="collapsed", placeholder="All",
         )
     with _pf2:
+        st.markdown('<div class="nw-filter-label">SSP</div>', unsafe_allow_html=True)
         sel_pmp_ssps = st.multiselect(
-            "SSP",
-            _pmp_ssps_available,
+            "SSP", _pmp_ssps_available,
             key="campaigns_pmp_ssp_filter",
-            help="PA → Magnite | PD → Magnite or GAM | PG → GAM",
+            label_visibility="collapsed", placeholder="All",
         )
     with _pf3:
+        st.markdown('<div class="nw-filter-label">DSP</div>', unsafe_allow_html=True)
         sel_pmp_dsps = st.multiselect(
-            "DSP",
-            _pmp_dsps_opts,
+            "DSP", _pmp_dsps_opts,
             key="campaigns_pmp_dsp_filter",
+            label_visibility="collapsed", placeholder="All",
         )
     with _pf4:
+        st.markdown('<div class="nw-filter-label">Format</div>', unsafe_allow_html=True)
         sel_pmp_formats = st.multiselect(
-            "Format",
-            _pmp_formats_opts,
+            "Format", _pmp_formats_opts,
             key="campaigns_pmp_format_filter",
+            label_visibility="collapsed", placeholder="All",
         )
     with _pf5:
+        st.markdown('<div class="nw-filter-label">Deal Source</div>', unsafe_allow_html=True)
         sel_pmp_deal_sources = st.multiselect(
-            "Deal Source",
-            _pmp_deal_sources_opts,
+            "Deal Source", _pmp_deal_sources_opts,
             key="campaigns_pmp_deal_source_filter",
+            label_visibility="collapsed", placeholder="All",
         )
     with _pf6:
+        st.markdown('<div class="nw-filter-label">Team</div>', unsafe_allow_html=True)
         sel_pmp_teams = st.multiselect(
-            "Team",
-            _pmp_teams_opts,
+            "Team", _pmp_teams_opts,
             key="campaigns_pmp_team_filter",
+            label_visibility="collapsed", placeholder="All",
         )
-    with _pf7:
-        st.write("")  # align button with multiselect labels
-        if st.button("Reset filters", key="pmp_reset_filters"):
-            for _k in ("campaigns_pmp_deal_type_filter", "campaigns_pmp_ssp_filter",
-                       "campaigns_pmp_dsp_filter", "campaigns_pmp_format_filter",
-                       "campaigns_pmp_deal_source_filter", "campaigns_pmp_team_filter"):
-                st.session_state.pop(_k, None)
-            st.rerun()
-    st.caption("PA = Magnite · PD = Magnite or GAM · PG = GAM")
 
     # ── Pubmatic ──────────────────────────────────────────────────────────
     pmp_summary = pd.DataFrame()
@@ -2942,63 +3003,261 @@ if st.session_state.active_view == "campaigns":
         else:
             st.info("No PMP deal data found. Run a data refresh to populate.")
     else:
-        pm1, pm2, pm3 = st.columns(3)
-        pm1.metric("Paid impressions", f"{combined_pmp['Paid Impressions'].sum():,.0f}")
-        pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
-        pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
+        # ── Local helpers / formatters (scope-isolated from Direct section).
+        def _pmp_esc(s):
+            if s is None: return ""
+            s = str(s)
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        _pmp_col_order = ["Seller", "Team", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
-                          "Deal Status", "Floor CPM",
-                          "Paid Impressions", "Revenue", "eCPM",
-                          "Win Rate %", "Total Requests", "Bid Responses"]
-        combined_pmp = combined_pmp[[c for c in _pmp_col_order if c in combined_pmp.columns]]
+        def _pmp_fmt_money(v):
+            if pd.isna(v): return "—"
+            v = float(v)
+            if abs(v) >= 1_000_000: return f"${v/1_000_000:.2f}M"
+            if abs(v) >= 1_000:     return f"${v/1_000:.1f}K"
+            return f"${v:,.2f}"
 
-        st.dataframe(
-            combined_pmp,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Deal Status": st.column_config.TextColumn("Deal Status"),
-                "Floor CPM": st.column_config.NumberColumn("Floor CPM", format="dollar"),
-                "Paid Impressions": st.column_config.NumberColumn(format="localized"),
-                "Revenue": st.column_config.NumberColumn(format="dollar"),
-                "eCPM": st.column_config.NumberColumn(format="dollar"),
-                "Win Rate %": st.column_config.NumberColumn(format="%.1f"),
-                "Total Requests": st.column_config.NumberColumn(format="localized"),
-                "Bid Responses": st.column_config.NumberColumn(format="localized"),
-            },
+        def _pmp_fmt_count(v):
+            if pd.isna(v) or v == 0: return "—" if pd.isna(v) else "0"
+            v = float(v)
+            if abs(v) >= 1_000_000: return f"{v/1_000_000:.2f}M"
+            if abs(v) >= 1_000:     return f"{v/1_000:.1f}K"
+            return f"{int(v):,}"
+
+        def _pmp_tile(label, value, sub=None):
+            sub_html = f'<div class="kpi-target">{_pmp_esc(sub)}</div>' if sub else ''
+            return (f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">{_pmp_esc(label)}</div>'
+                    f'<div class="kpi-value">{value}</div>'
+                    f'{sub_html}'
+                    f'</div>')
+
+        def _parse_pmp_name(name):
+            """Returns (primary, paren, subtitle) for a structured PMP deal name."""
+            if not isinstance(name, str) or not name:
+                return ("—", "", "")
+            n = re.sub(r"^Newsweek_(P[GDA]|PMP)_", "", name)
+            parts = n.split("_")
+            primary = "_".join(parts[:3]) if len(parts) >= 3 else n
+            paren = ""
+            if len(parts) >= 5:
+                bits = [x for x in (parts[3], parts[4]) if x and x not in ("NA", "N/A")]
+                if bits:
+                    paren = "(" + " ".join(bits) + ")"
+            sub_bits = []
+            if len(parts) >= 6 and parts[5] not in ("NA", "N/A", ""):
+                sub_bits.append(parts[5])
+            if len(parts) >= 7:
+                sub_bits.append("_".join(parts[6:]))
+            return (primary, paren, " · ".join(sub_bits))
+
+        def _dt_pill(dt):
+            code_map = {
+                "Programmatic Guaranteed": ("PG", "pill-dt-pg"),
+                "Preferred Deal":          ("PD", "pill-dt-pd"),
+                "Private Auction":         ("PA", "pill-dt-pa"),
+                "Private Marketplace":     ("PMP", "pill-dt-pmp"),
+            }
+            if not isinstance(dt, str): return ""
+            code, cls = code_map.get(dt, (dt[:3].upper(), "pill-dt-pa"))
+            return f'<span class="pill-dt {cls}">{code}</span>'
+
+        def _ecpm_cell(ecpm, floor):
+            if ecpm is None or pd.isna(ecpm):
+                return '<span class="cell-dash">—</span>'
+            if floor is not None and not pd.isna(floor):
+                if ecpm < floor:
+                    return f'<span class="ecpm-under">${ecpm:.2f}</span>'
+                if ecpm >= floor * 2:
+                    return f'<span class="ecpm-over">${ecpm:.2f}</span>'
+            return f"${ecpm:.2f}"
+
+        def _rev_cell(v):
+            if pd.isna(v): return '<span class="cell-dash">$0</span>'
+            cls = "bold-rev" if v > 10_000 else ""
+            return f'<span class="{cls}">${v:,.0f}</span>'
+
+        def _impr_cell(v):
+            if pd.isna(v): return '<span class="cell-dash">—</span>'
+            a = abs(v)
+            if a >= 1_000_000: return f"{v/1_000_000:.2f}M"
+            if a >= 1_000:     return f"{v/1_000:.1f}K"
+            return f"{int(v):,}"
+
+        # ── Top-line numbers + deal-type mix ──
+        _pmp_rev = float(combined_pmp["Revenue"].sum()) if "Revenue" in combined_pmp.columns else 0.0
+        _pmp_impr = float(combined_pmp["Paid Impressions"].sum()) if "Paid Impressions" in combined_pmp.columns else 0.0
+        _pmp_ecpm = (_pmp_rev / _pmp_impr * 1000) if _pmp_impr else None
+        _pmp_count = len(combined_pmp)
+        _type_counts = (combined_pmp["Deal Type"].value_counts()
+                        if "Deal Type" in combined_pmp.columns else pd.Series(dtype=int))
+        _mix_parts = []
+        for _lbl, _key in (("PG", "Programmatic Guaranteed"), ("PD", "Preferred Deal"),
+                            ("PA", "Private Auction"), ("PMP", "Private Marketplace")):
+            _n = int(_type_counts.get(_key, 0))
+            if _n: _mix_parts.append(f"{_lbl} {_n}")
+        _mix_sub = " · ".join(_mix_parts)
+
+        # Direct totals for comparison sublines (may not exist when gam_df is empty).
+        try:
+            _d_rev = float(total_rev)
+            _d_impr = float(total_impr)
+            _d_ecpm = (_d_rev / _d_impr * 1000) if _d_impr else None
+        except NameError:
+            _d_rev = _d_impr = _d_ecpm = None
+
+        # ── Exception banners ──
+        _floors = _cfg.get("pmp_floors_by_deal_type", {}) or {}
+        _breach_rows = pd.DataFrame()
+        if _floors and "eCPM" in combined_pmp.columns and "Deal Type" in combined_pmp.columns:
+            _df_b = combined_pmp.copy()
+            _df_b["_floor"] = _df_b["Deal Type"].map(_floors)
+            _ecpm_num = pd.to_numeric(_df_b["eCPM"], errors="coerce")
+            _breach_rows = _df_b[_df_b["_floor"].notna() & _ecpm_num.notna() & (_ecpm_num < _df_b["_floor"])]
+
+        _pa_no_delivery = 0
+        try:
+            _pa_inv = load("gam_pa_metadata")
+            _pa_no_delivery = len(_pa_inv) if not _pa_inv.empty else 0
+        except Exception:
+            _pa_inv = pd.DataFrame()
+
+        _banners = []
+        if not _breach_rows.empty:
+            _n_breach = len(_breach_rows)
+            _ex = _breach_rows.iloc[0]
+            _ex_primary = _parse_pmp_name(_ex.get("Deal") or "")[0]
+            _ex_ecpm = float(_ex.get("eCPM")) if pd.notna(_ex.get("eCPM")) else 0.0
+            _ex_floor = float(_ex.get("_floor")) if pd.notna(_ex.get("_floor")) else 0.0
+            _ex_dt_code = {"Programmatic Guaranteed": "PG", "Preferred Deal": "PD",
+                           "Private Auction": "PA", "Private Marketplace": "PMP"
+                           }.get(_ex.get("Deal Type"), "")
+            _hd = f"{_n_breach} {_ex_dt_code} deal{'s' if _n_breach != 1 else ''} below floor eCPM".strip()
+            _banners.append(
+                f'<div class="nw-banner sev-amber">'
+                f'<div class="nw-banner-head">⚠ {_hd}</div>'
+                f'<div>{_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor</div>'
+                f'</div>'
+            )
+        if _pa_no_delivery > 0:
+            _banners.append(
+                f'<div class="nw-banner sev-red">'
+                f'<div class="nw-banner-head">⚠ {_pa_no_delivery} deals — no delivery</div>'
+                f'<div>GAM private auction inventory · review buyer activity</div>'
+                f'</div>'
+            )
+        if _banners:
+            st.markdown(
+                '<div class="nw-banner-row" style="grid-template-columns: repeat(' + str(len(_banners)) + ', 1fr);">'
+                + "".join(_banners) + '</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── KPI strip — 4 tiles (4-column grid override). ──
+        _rev_sub  = f"vs ${_d_rev/1000:,.1f}K direct" if _d_rev else None
+        _ecpm_sub = f"vs ${_d_ecpm:.2f} direct" if _d_ecpm else None
+        st.markdown(
+            '<div class="nw-kpi-row" style="grid-template-columns: repeat(4, 1fr);">'
+            + _pmp_tile("Revenue", _pmp_fmt_money(_pmp_rev), _rev_sub)
+            + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr))
+            + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub)
+            + _pmp_tile("Active deals", f"{_pmp_count:,}", _mix_sub or None)
+            + '</div>',
+            unsafe_allow_html=True,
         )
 
-        # Inventory-only view: GAM's report API doesn't expose Private Auction
-        # delivery at the deal level, so PA can't appear above. This shows what
-        # PA inventory exists on the network (auctions + their deals, floors,
-        # statuses, buyers) sourced from the PA REST API.
-        try:
-            _pa_inventory = load("gam_pa_metadata")
-            if not _pa_inventory.empty:
-                with st.expander(f"GAM Private Auction inventory ({len(_pa_inventory)} deals, no delivery data)", expanded=False):
-                    st.caption(
-                        "Inventory metadata only — GAM does not report delivery for PA at the deal level. "
-                        "Use this to see which PA deals exist, their floors, and buyer / status."
-                    )
-                    _pa_display = _pa_inventory.rename(columns={
-                        "auction_name":     "Auction",
-                        "external_deal_id": "External Deal ID",
-                        "buyer_account_id": "Buyer Account",
-                        "floor_price_usd":  "Floor CPM",
-                        "deal_status":      "Status",
-                        "end_time":         "End",
-                    })
-                    st.dataframe(
-                        _pa_display,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "Floor CPM": st.column_config.NumberColumn(format="dollar"),
-                        },
-                    )
-        except Exception:
-            pass
+        # ── Table — custom HTML grid matching Direct campaigns design. ──
+        _pmp_rows_html = []
+        for _, row in combined_pmp.head(25).iterrows():
+            _primary, _paren, _sub = _parse_pmp_name(row.get("Deal") or "")
+            _dt = row.get("Deal Type") or ""
+            _floor_val = _floors.get(_dt) if _dt else None
+            _seller = row.get("Seller")
+            if not isinstance(_seller, str) or not _seller.strip():
+                _seller_html = '<span class="seller-prog">—</span>'
+            else:
+                # Render "Firstname I." → "F. Lastname"-style abbreviation.
+                _parts = _seller.strip().split(" ")
+                _seller_html = (f"{_parts[0][0]}. {_parts[-1]}" if len(_parts) >= 2 else _seller)
+                _seller_html = _pmp_esc(_seller_html)
+
+            _name_html = f'<span class="pmp-name-primary">{_pmp_esc(_primary)}</span>'
+            if _paren:
+                _name_html += f'<span class="pmp-name-paren">{_pmp_esc(_paren)}</span>'
+            if _sub:
+                _name_html += f'<div class="pmp-name-sub">{_pmp_esc(_sub)}</div>'
+
+            _pmp_rows_html.append(
+                '<div class="nw-pmp-row">'
+                f'<div>{_name_html}</div>'
+                f'<div>{_dt_pill(_dt)}</div>'
+                f'<div>{_pmp_esc(row.get("DSP") or "—")}</div>'
+                f'<div>{_pmp_esc(row.get("SSP") or "—")}</div>'
+                f'<div>{_pmp_esc(row.get("Format") or "—")}</div>'
+                f'<div class="num">{_rev_cell(row.get("Revenue"))}</div>'
+                f'<div class="num">{_impr_cell(row.get("Paid Impressions"))}</div>'
+                f'<div class="num">{_ecpm_cell(row.get("eCPM"), _floor_val)}</div>'
+                f'<div>{_seller_html}</div>'
+                '</div>'
+            )
+
+        st.markdown(
+            '<div class="nw-tbl-wrap">'
+            '<div class="nw-tbl-head">'
+            f'<div class="nw-tbl-title">PMP deals'
+            f'<span class="nw-tbl-sub">· {_pmp_count} active · sorted by revenue</span></div>'
+            '<div class="nw-legend-pill">'
+            '<span><span class="pill-dt pill-dt-pg">PG</span> Programmatic guaranteed</span>'
+            '<span><span class="pill-dt pill-dt-pd">PD</span> Preferred deal</span>'
+            '<span><span class="pill-dt pill-dt-pa">PA</span> Private auction</span>'
+            '</div>'
+            '</div>'
+            '<div class="nw-pmp-rows">'
+            '<div class="nw-row-header">'
+            '<div>Deal</div><div>Type</div><div>DSP</div><div>SSP</div><div>Format</div>'
+            '<div class="num">Revenue</div><div class="num">Impressions</div>'
+            '<div class="num">eCPM</div><div>Seller</div>'
+            '</div>'
+            + "".join(_pmp_rows_html) +
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        if _pmp_count > 25:
+            st.caption(f"Showing 25 of {_pmp_count:,} deals, sorted by revenue.")
+
+        # ── GAM Private Auction inventory — collapsible card matching dashboard style ──
+        if not _pa_inv.empty:
+            _pa_table_rows = []
+            for _, ri in _pa_inv.iterrows():
+                _floor_v = ri.get("floor_price_usd")
+                _floor_s = f"${float(_floor_v):.2f}" if pd.notna(_floor_v) else "—"
+                _pa_table_rows.append(
+                    '<tr>'
+                    f'<td>{_pmp_esc(ri.get("auction_name") or "—")}</td>'
+                    f'<td>{_pmp_esc(ri.get("external_deal_id") or "—")}</td>'
+                    f'<td>{_pmp_esc(ri.get("buyer_account_id") or "—")}</td>'
+                    f'<td class="num">{_floor_s}</td>'
+                    f'<td>{_pmp_esc(ri.get("deal_status") or "—")}</td>'
+                    '</tr>'
+                )
+            st.markdown(
+                '<details class="nw-pa-inv">'
+                '<summary>'
+                '<div class="nw-pa-inv-left">'
+                '<span class="nw-pa-inv-chev">›</span>'
+                f'<span>GAM private auction inventory · {_pa_no_delivery} deals · no delivery data</span>'
+                '</div>'
+                '<span class="nw-pa-inv-hint">Click to expand</span>'
+                '</summary>'
+                '<div class="nw-pa-inv-body">'
+                '<table class="nw-tbl"><thead><tr>'
+                '<th>Auction</th><th>External Deal ID</th><th>Buyer</th>'
+                '<th class="num">Floor CPM</th><th>Status</th>'
+                '</tr></thead><tbody>' + "".join(_pa_table_rows) + '</tbody></table>'
+                '</div></details>',
+                unsafe_allow_html=True,
+            )
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 

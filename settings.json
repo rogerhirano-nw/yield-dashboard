@@ -93,6 +93,12 @@
     "Interstitial": { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
   },
   "pacing_target_pct": 100.0,
+  "pmp_floors_by_deal_type": {
+    "Programmatic Guaranteed": 6.00,
+    "Preferred Deal": 3.00,
+    "Private Auction": 1.00,
+    "Private Marketplace": 1.00
+  },
   "status_colors": [
     { "keyword": "Delivering", "color": "#2E7D32" },
     { "keyword": "Paused",     "color": "#F9A825" },
