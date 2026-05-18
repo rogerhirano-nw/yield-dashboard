@@ -509,21 +509,33 @@ st.markdown(
   text-decoration: none !important;
 }
 /* Hide Streamlit's top toolbar / hamburger / running-status indicator
-   (the stray red line near the top-right was the stStatusWidget flash). */
+   AND the auto-generated heading anchor link icon (the chain glyph). */
 #MainMenu, header[data-testid="stHeader"],
 [data-testid="stToolbar"], [data-testid="stStatusWidget"],
-[data-testid="stDecoration"] {
+[data-testid="stDecoration"], [data-testid="stAppDeployButton"],
+[data-testid="stHeaderActionElements"],
+[data-testid="stHeadingWithActionElements"] a,
+.stApp h1 a, .stApp h2 a, .stApp h3 a {
   visibility: hidden !important;
   height: 0 !important;
   display: none !important;
 }
-/* Compact the top of the main container — Streamlit's default is ~6rem. */
+/* Belt-and-suspenders for Streamlit's deploy/iframe top accent (the
+   stray red line above the eyebrow). */
+.stApp::before, .stApp::after { display: none !important; }
+[data-testid="stAppViewContainer"] > .stApp { border-top: none !important; }
+iframe[title="streamlit_app"] { border-top: none !important; }
+/* Compact the top of the main container AND cap width on wide screens. */
 .stApp .main .block-container,
 .stApp [data-testid="stMain"] .block-container,
 .stApp [data-testid="stAppViewContainer"] .block-container {
   padding-top: 1.5rem !important;
   padding-bottom: 2rem !important;
-  max-width: 100% !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+  max-width: 1600px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 /* H1 sizing per spec — Streamlit's default is much larger. */
 h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4px 0; line-height: 1.2; }
@@ -540,9 +552,10 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
    the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
 .nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
                    color: rgba(250,250,250,0.35); font-weight: 400; margin-bottom: 3px; }
-/* Exception banners — left severity bar, equal-height grid row. */
+/* Exception banners — left severity bar, equal-height grid row.
+   margin-bottom gives breathing room before the KPI strip. */
 .nw-banner-row { display: grid; grid-template-columns: 1fr 1fr 1fr;
-                 gap: 8px; align-items: stretch; margin: 6px 0 10px; }
+                 gap: 8px; align-items: stretch; margin: 6px 0 1rem; }
 .nw-banner { border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
              padding: 10px 12px; font-size: 12px; line-height: 1.35;
              border: none; border-left: 3px solid transparent;
@@ -552,11 +565,13 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 .nw-banner.sev-red    { background: rgba(244, 67, 54, 0.10); border-left-color: hsl(0, 70%, 55%);   color: hsl(0, 60%, 82%); }
 .nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.08); border-left-color: hsl(35, 75%, 55%); color: hsl(35, 60%, 80%); }
 .nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
-/* KPI strip — single grid so all six tiles render at equal height. */
+/* KPI strip — single grid so all six tiles render at exactly the same
+   height. .nw-kpi-row has no background/border — only individual tiles. */
 .nw-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr);
-              gap: 8px; align-items: stretch; margin: 4px 0 10px; }
+              gap: 8px; margin: 4px 0 10px;
+              background: transparent; border: none; }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
-             min-height: 78px; padding: 12px 14px;
+             height: 88px; padding: 12px 14px;
              border-radius: var(--border-radius-lg);
              background: rgba(255,255,255,0.03);
              border: 0.5px solid rgba(255,255,255,0.08);
@@ -657,7 +672,7 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-rows .nw-row > summary {
   display: grid;
   grid-template-columns:
-    minmax(260px, 2.4fr) 100px 100px 88px 90px 72px 72px 120px 140px;
+    22fr 10fr 9fr 11fr 9fr 8fr 7fr 10fr 14fr;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -860,7 +875,10 @@ _active_view = st.session_state.active_view
 _hdr_left, _hdr_right = st.columns([4, 2])
 with _hdr_left:
     st.markdown('<div class="nw-eyebrow">Yield &amp; pacing</div>', unsafe_allow_html=True)
-    st.markdown(f"# {_VIEW_TITLE.get(_active_view, 'Overall performance')}")
+    st.markdown(
+        f"<h1>{_VIEW_TITLE.get(_active_view, 'Overall performance')}</h1>",
+        unsafe_allow_html=True,
+    )
 
 _header_right_slot = _hdr_right.empty()
 
