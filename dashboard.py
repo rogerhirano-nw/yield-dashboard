@@ -1103,6 +1103,127 @@ with tab_seller:
                     view_gam = view_gam.copy()
                     view_gam[_ratio_col] = view_gam[_ratio_col] * 100
 
+            # ── Per-LI delta annotations for impressions / clicks / pacing / viewability ──
+            # Renders cells like "12,345 (▲ +500 vs prior day)" using the latest day
+            # snapshot vs the day before. Falls back to plain value when 2d data is
+            # missing (first deploy before refresh repopulates the new columns).
+            # Sort BEFORE the string conversion — once columns are strings, header-
+            # click sorts are lexicographic and meaningless.
+            if "pacing_pct" in view_gam.columns:
+                view_gam = view_gam.sort_values("pacing_pct", na_position="last").copy()
+            else:
+                view_gam = view_gam.copy()
+
+            def _arrow(d):
+                if pd.isna(d): return ""
+                return "▲" if d >= 0 else "▼"
+
+            # Per-day viewability rate from the new viewable/measurable counts.
+            for _suf in ("1d", "2d"):
+                _viewable  = f"viewable_imps_{_suf}"
+                _measurable = f"measurable_imps_{_suf}"
+                if _viewable in view_gam.columns and _measurable in view_gam.columns:
+                    view_gam[f"viewability_rate_{_suf}"] = view_gam.apply(
+                        lambda r, v=_viewable, m=_measurable: (
+                            r[v] / r[m] * 100 if pd.notna(r[v]) and pd.notna(r[m]) and r[m] > 0 else None
+                        ),
+                        axis=1,
+                    )
+
+            # Prior-day pacing — re-compute from lifetime minus 1d-impressions over a
+            # goal pro-rated to one day earlier. No new refresh data needed for this.
+            def _prior_pacing(row):
+                try:
+                    goal = row.get("impressions_goal")
+                    lifetime = row.get("lifetime_impressions_delivered")
+                    imp_1d = row.get("impressions_1d")
+                    if not (goal and goal > 0 and pd.notna(lifetime) and pd.notna(imp_1d)):
+                        return None
+                    raw_start = pd.to_datetime(row.get("start_date"))
+                    raw_end   = pd.to_datetime(row.get("end_date"))
+                    if pd.isna(raw_start) or pd.isna(raw_end):
+                        return None
+                    today    = pd.Timestamp(date.today())
+                    yesterday = today - pd.Timedelta(days=1)
+                    dbf_yest  = today - pd.Timedelta(days=2)
+                    total_days = max((raw_end - raw_start).days, 1)
+                    elapsed_dbf = max((min(dbf_yest, raw_end) - raw_start).days, 0)
+                    if elapsed_dbf <= 0:
+                        return None
+                    pro_rated_goal = goal * (elapsed_dbf / total_days)
+                    if pro_rated_goal <= 0:
+                        return None
+                    cum_dbf = max(lifetime - imp_1d, 0)
+                    return cum_dbf / pro_rated_goal * 100
+                except Exception:
+                    return None
+
+            view_gam["pacing_prior_pct"] = view_gam.apply(_prior_pacing, axis=1)
+
+            # Build annotated strings — overwrite the numeric columns the table
+            # already references so the existing display_cols mapping picks them up.
+            # The PRIMARY value displayed in each cell is unchanged from before
+            # (Impressions: 1d, Clicks: 7-day sum, Pacing: cumulative, Viewability:
+            # 7-day mean rate). The parenthetical annotation adds a yesterday-vs-
+            # day-before trend indicator for visual context only.
+            def _fmt_count_annot(primary, v1, v2):
+                """Cell value = `primary`; annotation = delta of v1 vs v2."""
+                if pd.isna(primary): return ""
+                base = f"{int(primary):,}"
+                if pd.isna(v1) or pd.isna(v2): return base
+                d = int(v1) - int(v2)
+                sign = "+" if d > 0 else ""
+                return f"{base} ({_arrow(d)} {sign}{d:,} vs prior day)"
+
+            def _fmt_pct_annot(primary, v1, v2, below=None):
+                """Cell value = `primary` (already 0-100 percent); annotation = pp delta of v1 vs v2."""
+                if pd.isna(primary): return ""
+                base = f"{primary:.1f}%"
+                if below is not None and primary < below:
+                    base += f" (below {int(below)}%)"
+                if pd.isna(v1) or pd.isna(v2): return base
+                d = v1 - v2
+                sign = "+" if d > 0 else ""
+                return f"{base} ({_arrow(d)} {sign}{d:.1f}pp vs prior day)"
+
+            if "impressions_1d" in view_gam.columns:
+                # The "Impressions (1d)" column was already showing yesterday's count.
+                # Primary stays = impressions_1d. Annotation = 1d - 2d delta.
+                view_gam["impressions_1d"] = view_gam.apply(
+                    lambda r: _fmt_count_annot(r.get("impressions_1d"),
+                                                r.get("impressions_1d"),
+                                                r.get("impressions_2d")),
+                    axis=1,
+                )
+            if "ad_server_clicks" in view_gam.columns:
+                # Primary stays = ad_server_clicks (7-day sum, what it was before).
+                # Annotation = 1d - 2d delta (daily trend indicator).
+                view_gam["ad_server_clicks"] = view_gam.apply(
+                    lambda r: _fmt_count_annot(r.get("ad_server_clicks"),
+                                                r.get("clicks_1d"),
+                                                r.get("clicks_2d")),
+                    axis=1,
+                )
+            if "pacing_pct" in view_gam.columns:
+                view_gam["pacing_pct"] = view_gam.apply(
+                    lambda r: _fmt_pct_annot(r.get("pacing_pct"),
+                                              r.get("pacing_pct"),
+                                              r.get("pacing_prior_pct")),
+                    axis=1,
+                )
+            if "ad_server_active_view_viewable_impressions_rate" in view_gam.columns:
+                # Primary stays = the 7-day mean viewability rate (already 0-100).
+                # Annotation = 1d rate - 2d rate pp delta.
+                view_gam["ad_server_active_view_viewable_impressions_rate"] = view_gam.apply(
+                    lambda r: _fmt_pct_annot(
+                        r.get("ad_server_active_view_viewable_impressions_rate"),
+                        r.get("viewability_rate_1d"),
+                        r.get("viewability_rate_2d"),
+                        below=70,
+                    ),
+                    axis=1,
+                )
+
             has_vcr = "vcr" in view_gam.columns and (
                 view_gam["vcr"].notna().any()
                 or ("ad_format" in view_gam.columns and view_gam["ad_format"].str.lower().eq("video").any())
@@ -1139,11 +1260,12 @@ with tab_seller:
                 display_cols["vcr"] = "VCR %"
 
             available_cols = [c for c in display_cols if c in view_gam.columns]
+            # view_gam is already sorted by pacing_pct (numeric, ascending) before
+            # the annotated columns were converted to strings.
             table_df = (
                 view_gam[available_cols]
                 .drop_duplicates(subset=["line_item_name"] if "line_item_name" in available_cols else None)
                 .rename(columns={c: display_cols[c] for c in available_cols})
-                .sort_values("Pacing %" if "Pacing %" in [display_cols[c] for c in available_cols] else available_cols[0])
             )
 
             col_config = {}
@@ -1155,14 +1277,16 @@ with tab_seller:
                 col_config["Delivered"] = st.column_config.NumberColumn(format="localized")
             if "Remaining" in table_df.columns:
                 col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
+            # Impressions / Clicks / Pacing / Viewability are now annotated text
+            # strings ("X (▲ +Y vs prior day)"), not raw numbers.
             if "Impressions (1d)" in table_df.columns:
-                col_config["Impressions (1d)"] = st.column_config.NumberColumn(format="localized")
+                col_config["Impressions (1d)"] = st.column_config.TextColumn("Impressions (1d)", width="medium")
             if "Clicks" in table_df.columns:
-                col_config["Clicks"] = st.column_config.NumberColumn(format="localized")
+                col_config["Clicks"] = st.column_config.TextColumn("Clicks", width="medium")
             if "Pacing %" in table_df.columns:
-                col_config["Pacing %"] = st.column_config.NumberColumn(format="%.1f%%")
+                col_config["Pacing %"] = st.column_config.TextColumn("Pacing %", width="medium")
             if "Viewability %" in table_df.columns:
-                col_config["Viewability %"] = st.column_config.NumberColumn(format="%.1f%%")
+                col_config["Viewability %"] = st.column_config.TextColumn("Viewability %", width="medium")
             if "VCR %" in table_df.columns:
                 col_config["VCR %"] = st.column_config.NumberColumn(format="%.1f%%")
             if "CTR %" in table_df.columns:

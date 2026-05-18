@@ -516,15 +516,35 @@ class GAMClient:
 
         agg = df_delivery.groupby(["line_item_id"], as_index=False).agg(**agg_spec)
 
-        # Yesterday's impressions only (most recent date in the report window)
-        latest_date = df_delivery["date"].max()
-        agg_1d = (
-            df_delivery[df_delivery["date"] == latest_date]
-            .groupby("line_item_id", as_index=False)["ad_server_impressions"]
-            .sum()
-            .rename(columns={"ad_server_impressions": "impressions_1d"})
-        )
-        agg_1d["line_item_id"] = agg_1d["line_item_id"].astype(str)
+        # Per-day breakouts for the 1-day-vs-prior-day annotations in the
+        # Direct Campaigns table. We capture both the latest day's totals
+        # (impressions/clicks/viewable/measurable) and the day-before-latest's
+        # totals so the dashboard can render "X (▲ +Y vs prior day)" strings.
+        sorted_dates = sorted(d for d in df_delivery["date"].dropna().unique())
+        latest_date  = sorted_dates[-1] if sorted_dates else None
+        prior_date   = sorted_dates[-2] if len(sorted_dates) >= 2 else None
+
+        _PER_DAY_METRICS = {
+            "ad_server_impressions": "impressions",
+            "ad_server_clicks":      "clicks",
+            "ad_server_active_view_viewable_impressions":   "viewable_imps",
+            "ad_server_active_view_measurable_impressions": "measurable_imps",
+        }
+
+        def _per_day(d, suffix):
+            cols = {api: out for api, out in _PER_DAY_METRICS.items() if api in df_delivery.columns}
+            if d is None or not cols:
+                return pd.DataFrame(columns=["line_item_id"])
+            sub = df_delivery[df_delivery["date"] == d]
+            if sub.empty:
+                return pd.DataFrame(columns=["line_item_id"])
+            df_d = sub.groupby("line_item_id", as_index=False)[list(cols.keys())].sum()
+            df_d = df_d.rename(columns={api: f"{out}_{suffix}" for api, out in cols.items()})
+            df_d["line_item_id"] = df_d["line_item_id"].astype(str)
+            return df_d
+
+        agg_1d = _per_day(latest_date, "1d")
+        agg_2d = _per_day(prior_date,  "2d")
 
         agg["line_item_id"] = agg["line_item_id"].astype(str)
         df_items["line_item_id"] = df_items["line_item_id"].astype(str)
@@ -532,6 +552,7 @@ class GAMClient:
         merged = df_items.merge(agg, on="line_item_id", how="left")
         merged = merged.merge(df_lifetime, on="line_item_id", how="left")
         merged = merged.merge(agg_1d, on="line_item_id", how="left")
+        merged = merged.merge(agg_2d, on="line_item_id", how="left")
 
         # Replace placeholders with real values from the reporting API.
         if "status_api" in merged.columns:
