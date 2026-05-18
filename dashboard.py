@@ -1865,7 +1865,24 @@ with tab_settings:
             disabled=["Field"],
         )
 
-        # ── Section 3: Deal Type Value Aliases ──────────────────────────────
+        # ── Section 3: Deal Type Mapping ───────────────────────────────────
+        st.markdown("#### Deal Type Mapping")
+        st.caption("Maps abbreviations in deal/order names to display labels.")
+
+        _dt_rows = [{"Code": k, "Label": v} for k, v in sorted(_s["deal_type_codes"].items())]
+        _dt_edit = st.data_editor(
+            pd.DataFrame(_dt_rows) if _dt_rows else pd.DataFrame(columns=["Code", "Label"]),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_dt",
+            column_config={
+                "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. PA, PD, PG, PMP"),
+                "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
+            },
+        )
+
+        # ── Section 4: Deal Type Value Aliases ──────────────────────────────
         st.markdown("#### Deal Type Value Aliases")
         st.caption(
             "Map raw values returned by SSP APIs to canonical deal type labels. "
@@ -2125,24 +2142,7 @@ with tab_settings:
             },
         )
 
-        # ── Section 4: Deal Type Mapping ─────────────────────────────────────
-        st.markdown("#### Deal Type Mapping")
-        st.caption("Maps abbreviations in deal/order names to display labels.")
-
-        _dt_rows = [{"Code": k, "Label": v} for k, v in sorted(_s["deal_type_codes"].items())]
-        _dt_edit = st.data_editor(
-            pd.DataFrame(_dt_rows) if _dt_rows else pd.DataFrame(columns=["Code", "Label"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_dt",
-            column_config={
-                "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. PA, PD, PG, PMP"),
-                "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
-            },
-        )
-
-        # ── Section 5: GAM Deal Report Upload ────────────────────────────────
+        # ── Section 4: GAM Deal Report Upload ────────────────────────────────
         st.divider()
         st.markdown("#### Upload GAM Deal Report")
         st.caption(
