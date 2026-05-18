@@ -93,6 +93,25 @@
     "Interstitial": { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
   },
   "gam_network_id": "",
+  "airtable_base_id": "appX7xp1veDq9ndUe",
+  "airtable_form_id": "pagN88p2kwQBcjqZf",
+  "airtable_field_names": {
+    "Request Type": "Request Type",
+    "Line Item":    "Line Item",
+    "GAM ID":       "GAM ID",
+    "Severity":     "Severity",
+    "Seller":       "Seller",
+    "Reporter":     "Reporter",
+    "Notes":        "Notes"
+  },
+  "airtable_request_type_routing": [
+    {"context": "Direct line · delivery problem",       "request_type": "Direct Campaign - Troubleshooting"},
+    {"context": "Direct line · viewability anomaly",    "request_type": "Direct Campaign - Screenshot"},
+    {"context": "Direct line · healthy end-of-flight",  "request_type": "Direct Campaign - IO Review"},
+    {"context": "Direct line · social media component", "request_type": "Direct Campaign - Social Posts"},
+    {"context": "PMP deal · any issue",                 "request_type": "PMP - Adjust"}
+  ],
+  "airtable_reporter": "Roger Hirano",
   "pacing_target_pct": 100.0,
   "pmp_floors_by_deal_type": {
     "Programmatic Guaranteed": 6.00,
