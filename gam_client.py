@@ -213,11 +213,13 @@ class GAMClient:
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS_RATE",
                 "AD_SERVER_ACTIVE_VIEW_ELIGIBLE_IMPRESSIONS",
-                # NOTE: video metrics (VCR support) intentionally omitted —
-                # the VIDEO_INTERACTION_VIDEO_* names guessed in the previous
-                # commit aren't valid in admanager_v1.ReportDefinition.Metric
-                # and made the entire gam_campaigns refresh fail. Need to
-                # probe the actual enum members before re-adding.
+                # VCR — pull viewership starts + completes; the dashboard's
+                # downstream VCR calc is (completes / starts * 100). Probed
+                # against admanager_v1.ReportDefinition.Metric to confirm
+                # these are the actual valid enum members (the previously-
+                # tried VIDEO_INTERACTION_VIDEO_* names don't exist).
+                "VIDEO_VIEWERSHIP_STARTS",
+                "VIDEO_VIEWERSHIP_COMPLETES",
             ],
             start_date=start_date,
             end_date=end_date,
@@ -511,12 +513,8 @@ class GAMClient:
             "ad_server_active_view_viewable_impressions",
             "ad_server_active_view_measurable_impressions",
             "ad_server_active_view_eligible_impressions",
-            "video_interaction_video_starts",
-            "video_interaction_video_first_quartile",
-            "video_interaction_video_midpoint",
-            "video_interaction_video_third_quartile",
-            "video_interaction_video_completions",
-            "video_interaction_video_skips",
+            "video_viewership_starts",
+            "video_viewership_completes",
         ]
         _optional_mean = [
             "ad_server_average_ecpm",
@@ -579,12 +577,14 @@ class GAMClient:
             merged.loc[_had_no_api_status & (merged["status"] == "Delivering"), "status"] = "Paused"
             merged = merged.drop(columns=["status_api"])
 
-        # VCR
-        _vcr_starts = "video_interaction_video_starts"
-        _vcr_completions = "video_interaction_video_completions"
-        if _vcr_starts in merged.columns and _vcr_completions in merged.columns:
+        # VCR — completes / starts. GAM v1's enum exposes these as
+        # VIDEO_VIEWERSHIP_STARTS / VIDEO_VIEWERSHIP_COMPLETES (snake-cased
+        # downstream).
+        _vcr_starts     = "video_viewership_starts"
+        _vcr_completes  = "video_viewership_completes"
+        if _vcr_starts in merged.columns and _vcr_completes in merged.columns:
             merged["vcr"] = merged.apply(
-                lambda r: (r[_vcr_completions] / r[_vcr_starts] * 100)
+                lambda r: (r[_vcr_completes] / r[_vcr_starts] * 100)
                 if pd.notna(r.get(_vcr_starts)) and r.get(_vcr_starts, 0) > 0
                 else (0.0 if pd.notna(r.get(_vcr_starts)) else None),
                 axis=1,
