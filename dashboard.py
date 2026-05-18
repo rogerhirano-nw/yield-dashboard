@@ -1172,11 +1172,12 @@ with tab_seller:
     _pmp_deal_types_available = sorted(set(
         dt for s in _cfg["ssps"] if s.get("enabled", True) for dt in s.get("deal_types", [])
     ))
-    # DSP / Format / Deal Source options come from the previous render via session_state (two-pass pattern).
+    # DSP / Format / Deal Source / Team options come from the previous render via session_state (two-pass pattern).
     _pmp_dsps_opts        = st.session_state.get("_pmp_dsps_opts", [])
     _pmp_formats_opts     = st.session_state.get("_pmp_formats_opts", [])
     _pmp_deal_sources_opts = st.session_state.get("_pmp_deal_sources_opts", [])
-    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6 = st.columns([1, 1, 1, 1, 1, 0.6])
+    _pmp_teams_opts        = st.session_state.get("_pmp_teams_opts", [])
+    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6, _pf7 = st.columns([1, 1, 1, 1, 1, 1, 0.6])
     with _pf1:
         sel_pmp_deal_types = st.multiselect(
             "Deal Type",
@@ -1209,11 +1210,17 @@ with tab_seller:
             key="campaigns_pmp_deal_source_filter",
         )
     with _pf6:
+        sel_pmp_teams = st.multiselect(
+            "Team",
+            _pmp_teams_opts,
+            key="campaigns_pmp_team_filter",
+        )
+    with _pf7:
         st.write("")  # align button with multiselect labels
         if st.button("Reset filters", key="pmp_reset_filters"):
             for _k in ("campaigns_pmp_deal_type_filter", "campaigns_pmp_ssp_filter",
                        "campaigns_pmp_dsp_filter", "campaigns_pmp_format_filter",
-                       "campaigns_pmp_deal_source_filter"):
+                       "campaigns_pmp_deal_source_filter", "campaigns_pmp_team_filter"):
                 st.session_state.pop(_k, None)
             st.rerun()
     st.caption("PA = Magnite · PD = Magnite or GAM · PG = GAM")
@@ -1553,10 +1560,19 @@ with tab_seller:
         _ds_fill = combined_pmp.loc[_ds_blank, "SSP"].map(_ssp_ds_defaults).replace("", None)
         combined_pmp.loc[_ds_blank, "Deal Source"] = _ds_fill
 
-    # Persist DSP / Format / Deal Source options for next render (two-pass pattern — filters are rendered above).
+    # Derive Team from the deal name (Team-USA / Team-INTL → display labels from team_names).
+    # Rows whose deal name doesn't carry the Team marker get NaN and are excluded when a Team filter is active.
+    _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
+    combined_pmp["Team"] = (
+        combined_pmp["Deal"].str.extract(r"_Team-(USA|INTL)_", expand=False).map(_team_map)
+        if "Deal" in combined_pmp.columns else None
+    )
+
+    # Persist DSP / Format / Deal Source / Team options for next render (two-pass pattern — filters are rendered above).
     st.session_state["_pmp_dsps_opts"]         = sorted(combined_pmp["DSP"].dropna().unique().tolist())
     st.session_state["_pmp_formats_opts"]      = sorted(combined_pmp["Format"].dropna().unique().tolist())
     st.session_state["_pmp_deal_sources_opts"] = sorted(combined_pmp["Deal Source"].dropna().unique().tolist()) if "Deal Source" in combined_pmp.columns else []
+    st.session_state["_pmp_teams_opts"]        = sorted(combined_pmp["Team"].dropna().unique().tolist()) if "Team" in combined_pmp.columns else []
 
     _combined_prefilter = combined_pmp.copy()
 
@@ -1568,6 +1584,8 @@ with tab_seller:
         combined_pmp = combined_pmp[combined_pmp["Format"].isin(sel_pmp_formats)]
     if sel_pmp_deal_sources and "Deal Source" in combined_pmp.columns:
         combined_pmp = combined_pmp[combined_pmp["Deal Source"].isin(sel_pmp_deal_sources)]
+    if sel_pmp_teams and "Team" in combined_pmp.columns:
+        combined_pmp = combined_pmp[combined_pmp["Team"].isin(sel_pmp_teams)]
 
     if combined_pmp.empty:
         # Give a specific reason when we can detect it.
@@ -1594,7 +1612,7 @@ with tab_seller:
         pm2.metric("Revenue", f"${combined_pmp['Revenue'].sum():,.2f}")
         pm3.metric("Avg eCPM", f"${combined_pmp['eCPM'].mean():,.2f}" if len(combined_pmp) else "—")
 
-        _pmp_col_order = ["Seller", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
+        _pmp_col_order = ["Seller", "Team", "SSP", "Deal", "Deal Type", "Format", "DSP", "Deal Source",
                           "Deal Status", "Floor CPM",
                           "Paid Impressions", "Revenue", "eCPM",
                           "Win Rate %", "Total Requests", "Bid Responses"]
