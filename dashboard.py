@@ -2095,7 +2095,8 @@ if st.session_state.active_view == "campaigns":
                 return cell
 
             def _viewability_html(p):
-                if pd.isna(p): return '<div class="cell-dash">—</div>'
+                p = _parse_leading_pct(p)
+                if p is None: return '<div class="cell-dash">—</div>'
                 if p < 40:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
                 if p < 65:
@@ -2105,7 +2106,8 @@ if st.session_state.active_view == "campaigns":
             def _vcr_html(p, is_video):
                 if not is_video:
                     return '<div class="cell-dash">—</div>'
-                if pd.isna(p): return '<div class="cell-dash">—</div>'
+                p = _parse_leading_pct(p)
+                if p is None: return '<div class="cell-dash">—</div>'
                 if p < 50:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
                 if p < 60:
