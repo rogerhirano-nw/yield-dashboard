@@ -489,17 +489,21 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
               color: rgba(250,250,250,0.55); font-weight: 500; }
 .nw-timestamp { font-size: 12px; color: rgba(250,250,250,0.55); text-align: right;
                 font-variant-numeric: tabular-nums; }
-/* Small uppercase filter labels (used above each select). */
-.nw-filter-label { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-                   color: rgba(250,250,250,0.55); font-weight: 500; margin-bottom: 2px; }
-/* Exception banners */
-.nw-banner { border-radius: var(--border-radius-md); padding: 10px 14px; margin: 2px 0;
-             border: 0.5px solid rgba(255,255,255,0.08); font-size: 12px; line-height: 1.35; }
-.nw-banner .nw-banner-head { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-                             font-weight: 600; margin-bottom: 2px; }
-.nw-banner.sev-red    { background: rgba(244, 67, 54, 0.12); color: hsl(0, 80%, 80%);   border-color: rgba(244, 67, 54, 0.35); }
-.nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.10); color: hsl(35, 75%, 75%); border-color: rgba(255, 167, 38, 0.30); }
-.nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.08);  color: hsl(120, 35%, 75%); border-color: rgba(76, 175, 80, 0.25); }
+/* Filter labels — quieter than the page eyebrow above the H1. */
+.nw-filter-label { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+                   color: rgba(250,250,250,0.40); font-weight: 500; margin-bottom: 2px; }
+/* Exception banners — left severity bar, equal-height grid row. */
+.nw-banner-row { display: grid; grid-template-columns: 1fr 1fr 1fr;
+                 gap: 8px; align-items: stretch; margin: 6px 0 10px; }
+.nw-banner { border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+             padding: 10px 12px; font-size: 12px; line-height: 1.35;
+             border: none; border-left: 3px solid transparent;
+             height: 100%; box-sizing: border-box; }
+.nw-banner .nw-banner-head { font-size: 11px; letter-spacing: 0.04em;
+                             text-transform: uppercase; font-weight: 500; margin-bottom: 4px; }
+.nw-banner.sev-red    { background: rgba(244, 67, 54, 0.10); border-left-color: hsl(0, 70%, 55%);   color: hsl(0, 60%, 82%); }
+.nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.08); border-left-color: hsl(35, 75%, 55%); color: hsl(35, 60%, 80%); }
+.nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
 /* KPI tile — quieter than st.metric's default display sizing. */
 .kpi-tile  { padding: 12px 14px; border-radius: var(--border-radius-lg);
              background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.08); }
@@ -521,7 +525,31 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 /* Differentiator subtitle */
 .nw-sub { font-size: 11px; color: rgba(250,250,250,0.50); font-variant-numeric: tabular-nums; }
 /* Title muted */
-h1, .stMarkdown h1 { color: rgba(250,250,250,0.60); }
+h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
+/* ── HTML tab row (replaces st.button-based nav so we get flat text tabs,
+   not Streamlit's red filled primary buttons). Active tab gets a 2px
+   neutral-color underline. Clicks update ?view= via real navigation. */
+.nw-tabrow { display: flex; align-items: stretch; gap: 4px;
+             border-bottom: 0.5px solid rgba(255,255,255,0.10);
+             margin: 8px 0 14px; font-size: 13px; }
+.nw-tabrow-spacer { flex: 1; }
+.nw-tab { padding: 8px 12px; color: rgba(250,250,250,0.45);
+          text-decoration: none; border-bottom: 2px solid transparent;
+          margin-bottom: -0.5px; transition: color 0.12s; }
+.nw-tab:hover { color: rgba(250,250,250,0.85); }
+.nw-tab-active { color: rgba(250,250,250,0.95); font-weight: 500;
+                 border-bottom-color: rgba(250,250,250,0.95); }
+.nw-tab-configure { color: rgba(250,250,250,0.35); border-left: 0.5px solid rgba(255,255,255,0.10);
+                    padding-left: 16px; margin-left: 6px; }
+.nw-tab-configure:hover { color: rgba(250,250,250,0.70); }
+.nw-tab-configure.nw-tab-active { color: rgba(250,250,250,0.95);
+                                  border-bottom-color: rgba(250,250,250,0.95); }
+/* Header right-side cluster: timestamp + inline gear icon. */
+.nw-header-right { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.nw-gear { padding: 6px 8px; font-size: 14px; line-height: 1;
+           color: rgba(250,250,250,0.55); text-decoration: none;
+           border-radius: var(--border-radius-md); background: transparent; }
+.nw-gear:hover { background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.85); }
 /* Tab inactive labels muted */
 .stTabs button[aria-selected="false"] { color: rgba(250,250,250,0.45) !important; }
 /* ── Custom HTML table for Direct Campaigns ─────────────────────────── */
@@ -758,39 +786,6 @@ try:
 except Exception:
     pass
 
-# CSS extension for the custom nav + gear button.
-st.markdown(
-    """
-<style>
-/* Gear icon button in header (top-right) */
-.stButton > button[kind="secondary"][data-testid*="gear"] {
-  padding: 6px 8px; font-size: 14px; min-height: 0; line-height: 1;
-  background: transparent; border: 0.5px solid rgba(255,255,255,0.10);
-  border-radius: var(--border-radius-md);
-}
-/* Custom nav buttons styled to look like tabs */
-.nw-nav .stButton > button {
-  background: transparent !important; border: none !important;
-  padding: 8px 6px !important; color: rgba(250,250,250,0.55) !important;
-  font-weight: 400 !important; box-shadow: none !important;
-  border-radius: 0 !important; border-bottom: 2px solid transparent !important;
-  text-align: left !important;
-}
-.nw-nav .stButton > button:hover { color: rgba(250,250,250,0.85) !important;
-                                    background: rgba(255,255,255,0.03) !important; }
-.nw-nav .stButton > button.nw-nav-active {
-  color: rgba(250,250,250,0.95) !important; font-weight: 500 !important;
-  border-bottom: 2px solid rgba(250,250,250,0.95) !important;
-}
-/* Configure tab — pushed right with divider before, tertiary text by default. */
-.nw-nav-configure { border-left: 0.5px solid rgba(255,255,255,0.10); padding-left: 14px; }
-.nw-nav-configure .stButton > button { color: rgba(250,250,250,0.40) !important; }
-.nw-nav-configure .stButton > button:hover { color: rgba(250,250,250,0.70) !important; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
 
 @st.cache_data(ttl=300)
@@ -803,76 +798,72 @@ def load(table: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _set_view(view_key):
-    """Route to a given view from any entry point (nav button OR gear icon)."""
-    st.session_state.active_view = view_key
-    try:
-        st.query_params["view"] = view_key
-    except Exception:
-        pass
-    st.rerun()
-
-
-# ── Header: eyebrow + view-aware H1 + right-aligned timestamp + gear icon.
+# ── Header: eyebrow + view-aware H1 + right-aligned timestamp + inline gear.
 _active_view = st.session_state.active_view
 _hdr_left, _hdr_right = st.columns([4, 2])
 with _hdr_left:
     st.markdown('<div class="nw-eyebrow">Yield &amp; pacing</div>', unsafe_allow_html=True)
     st.markdown(f"# {_VIEW_TITLE.get(_active_view, 'Overall performance')}")
 
-with _hdr_right:
-    _ts_col, _gear_col = st.columns([6, 1])
-    _header_timestamp_slot = _ts_col.empty()
-    # Default fill — overridden by each view.
-    if _active_view == "configure":
-        try:
-            with _engine().connect() as _c_hdr:
-                _r = _c_hdr.execute(sqlalchemy.text(
-                    "SELECT updated_at FROM dashboard_settings WHERE key='main'"
-                )).fetchone()
-            if _r and _r[0]:
-                _ts = pd.to_datetime(_r[0])
-                _age = pd.Timestamp.utcnow() - (_ts.tz_convert("UTC") if _ts.tzinfo else _ts)
-                _h = _age.total_seconds() / 3600
-                _last = f"{int(_age.total_seconds()/60)} min ago" if _h < 1 else \
-                        f"{int(_h)} hours ago" if _h < 24 else f"{int(_h/24)} days ago"
-                _header_timestamp_slot.markdown(
-                    f'<div class="nw-timestamp">Last saved {_last} by R. Hirano</div>',
-                    unsafe_allow_html=True,
-                )
-        except Exception:
-            pass
-    else:
+_header_right_slot = _hdr_right.empty()
+
+def _render_header_right(ts_html=None):
+    """Fill the header right-side cluster: timestamp + inline gear icon.
+    Each view can call this with a richer timestamp (e.g. with line-item count)."""
+    if ts_html is None:
         try:
             from zoneinfo import ZoneInfo as _ZI
             _now_edt = datetime.now(_ZI("America/New_York"))
-            _ts_str = _now_edt.strftime("%-I:%M %p EDT")
+            ts_html = f'🕐 {_now_edt.strftime("%-I:%M %p EDT")}'
         except Exception:
-            _ts_str = datetime.now().strftime("%H:%M")
-        _header_timestamp_slot.markdown(
-            f'<div class="nw-timestamp">🕐 {_ts_str}</div>',
-            unsafe_allow_html=True,
-        )
-    # Gear icon — sets active_view to configure from any view.
-    if _gear_col.button("⚙", key="gear_btn", help="Configure dashboard"):
-        _set_view("configure")
+            ts_html = f'🕐 {datetime.now().strftime("%H:%M")}'
+    _header_right_slot.markdown(
+        '<div class="nw-header-right">'
+        f'<div class="nw-timestamp">{ts_html}</div>'
+        '<a class="nw-gear" href="?view=configure" target="_self" aria-label="Settings">⚙</a>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-# ── Nav row: 5 data tabs + spacer + divider + Configure tab.
-st.markdown('<div class="nw-nav">', unsafe_allow_html=True)
-_nav_cols = st.columns([2, 2, 2, 2, 2, 3, 2])  # 5 data, spacer, configure
-for _i, (_k, _label) in enumerate(_NAV_DATA):
-    _active = (_active_view == _k)
-    _btn_label = ("• " if _active else "") + _label
-    if _nav_cols[_i].button(_label, key=f"nav_{_k}", use_container_width=True,
-                             type="primary" if _active else "secondary"):
-        _set_view(_k)
-# Configure tab (rightmost, with divider)
-_nav_cols[6].markdown('<div class="nw-nav-configure">', unsafe_allow_html=True)
-if _nav_cols[6].button("⚙  Configure", key="nav_configure", use_container_width=True,
-                        type="primary" if _active_view == "configure" else "secondary"):
-    _set_view("configure")
-_nav_cols[6].markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# Default fill — Configure view shows "Last saved …", others fall back to current time.
+if _active_view == "configure":
+    _ts_html = None
+    try:
+        with _engine().connect() as _c_hdr:
+            _r = _c_hdr.execute(sqlalchemy.text(
+                "SELECT updated_at FROM dashboard_settings WHERE key='main'"
+            )).fetchone()
+        if _r and _r[0]:
+            _ts = pd.to_datetime(_r[0])
+            _age = pd.Timestamp.utcnow() - (_ts.tz_convert("UTC") if _ts.tzinfo else _ts)
+            _h = _age.total_seconds() / 3600
+            _last = f"{int(_age.total_seconds()/60)} min ago" if _h < 1 else \
+                    f"{int(_h)} hours ago" if _h < 24 else f"{int(_h/24)} days ago"
+            _ts_html = f"Last saved {_last} by R. Hirano"
+    except Exception:
+        pass
+    _render_header_right(_ts_html)
+else:
+    _render_header_right()
+
+# ── Tab row: HTML anchors (no st.button — Streamlit's primary-button red
+# fill is unbeatable from CSS). Clicks navigate via ?view= query param.
+def _tab_html(view_key, label, extra=""):
+    cls = "nw-tab"
+    if _active_view == view_key:
+        cls += " nw-tab-active"
+    if extra:
+        cls += f" {extra}"
+    return f'<a class="{cls}" href="?view={view_key}" target="_self">{label}</a>'
+
+st.markdown(
+    '<nav class="nw-tabrow">'
+    + "".join(_tab_html(k, lbl) for k, lbl in _NAV_DATA)
+    + '<span class="nw-tabrow-spacer"></span>'
+    + _tab_html("configure", "⚙  Configure", extra="nw-tab-configure")
+    + '</nav>',
+    unsafe_allow_html=True,
+)
 
 # NOTE: existing `with tab_X:` blocks below are converted to
 # `if st.session_state.active_view == "X":` conditionals in a follow-up
@@ -1338,8 +1329,6 @@ if st.session_state.active_view == "pubmatic":
 
 if st.session_state.active_view == "campaigns":
     # ── Table 1: Direct campaigns from GAM ──────────────────────────────
-    st.subheader("Direct Campaigns")
-
     try:
         gam_df = load("gam_campaigns")
     except Exception:
@@ -1349,9 +1338,6 @@ if st.session_state.active_view == "campaigns":
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
     else:
-        last_pull = gam_df["_pulled_at"].max() if "_pulled_at" in gam_df else "unknown"
-        st.caption(f"Last refresh: {_fmt_last_refresh(last_pull)}")
-
         gam_df = gam_df.copy()
         _incl_patterns = _cfg.get("included_order_patterns", ["Newsweek_Direct%"])
         _prefixes = [p.rstrip("%") for p in _incl_patterns if p]
@@ -1513,10 +1499,7 @@ if st.session_state.active_view == "campaigns":
             except Exception:
                 _ts_str = datetime.now().strftime("%H:%M")
             _n_lines = len(view_gam)
-            _header_timestamp_slot.markdown(
-                f'<div class="nw-timestamp">🕐 {_ts_str} · {_n_lines:,} line items</div>',
-                unsafe_allow_html=True,
-            )
+            _render_header_right(f"🕐 {_ts_str} · {_n_lines:,} line items")
 
             # ── Summary numbers (used by both banners and KPI strip).
             total_impr = view_gam["lifetime_impressions_delivered"].sum() if "lifetime_impressions_delivered" in view_gam else 0
@@ -1590,28 +1573,27 @@ if st.session_state.active_view == "campaigns":
                 first = rows.iloc[0]
                 return f"{_short_advertiser(first['line_item_name'])} · {first['_v']:.1f}% viewable"
 
-            _b1, _b2, _b3 = st.columns(3)
-            with _b1:
-                _n = len(_under_rows); _sev = "sev-red" if _n else "sev-ok"
-                _icon = "🚨" if _n else "✓"
-                st.markdown(
-                    f'<div class="nw-banner {_sev}">'
-                    f'<div class="nw-banner-head">{_icon} {_n} underpacing</div>'
-                    f'<div>{_under_detail(_under_rows)}</div></div>', unsafe_allow_html=True)
-            with _b2:
-                _n = len(_over_rows); _sev = "sev-amber" if _n else "sev-ok"
-                _icon = "⚠" if _n else "✓"
-                st.markdown(
-                    f'<div class="nw-banner {_sev}">'
-                    f'<div class="nw-banner-head">{_icon} {_n} overpacing</div>'
-                    f'<div>{_over_detail(_over_rows)}</div></div>', unsafe_allow_html=True)
-            with _b3:
-                _n = len(_vw_anom_rows); _sev = "sev-amber" if _n else "sev-ok"
-                _icon = "⚠" if _n else "✓"
-                st.markdown(
-                    f'<div class="nw-banner {_sev}">'
-                    f'<div class="nw-banner-head">{_icon} {_n} viewability anomaly</div>'
-                    f'<div>{_vw_detail(_vw_anom_rows)}</div></div>', unsafe_allow_html=True)
+            # Single HTML grid so all three banners stretch to equal height.
+            _u_n = len(_under_rows); _u_sev = "sev-red" if _u_n else "sev-ok"
+            _u_icon = "🚨" if _u_n else "✓"
+            _o_n = len(_over_rows); _o_sev = "sev-amber" if _o_n else "sev-ok"
+            _o_icon = "⚠" if _o_n else "✓"
+            _v_n = len(_vw_anom_rows); _v_sev = "sev-amber" if _v_n else "sev-ok"
+            _v_icon = "⚠" if _v_n else "✓"
+            st.markdown(
+                '<div class="nw-banner-row">'
+                f'<div class="nw-banner {_u_sev}">'
+                f'<div class="nw-banner-head">{_u_icon} {_u_n} underpacing</div>'
+                f'<div>{_under_detail(_under_rows)}</div></div>'
+                f'<div class="nw-banner {_o_sev}">'
+                f'<div class="nw-banner-head">{_o_icon} {_o_n} overpacing</div>'
+                f'<div>{_over_detail(_over_rows)}</div></div>'
+                f'<div class="nw-banner {_v_sev}">'
+                f'<div class="nw-banner-head">{_v_icon} {_v_n} viewability anomaly</div>'
+                f'<div>{_vw_detail(_vw_anom_rows)}</div></div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
             # ── KPI strip: six tiles, 18px value, target subtitle where applicable.
             def _fmt_money(v):
