@@ -922,6 +922,22 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 }
 .nw-pmp-rows .nw-row-header .num,
 .nw-pmp-rows .nw-pmp-row .num { text-align: right; }
+/* Click-to-expand mechanics — each PMP row becomes <details name="pmp-cmprow">
+   so it's a native exclusive-accordion (only one drawer open at a time). */
+.nw-pmp-rows details > summary.nw-pmp-row {
+  cursor: pointer; list-style: none;
+}
+.nw-pmp-rows details > summary.nw-pmp-row::-webkit-details-marker { display: none; }
+.nw-pmp-rows details > summary.nw-pmp-row::marker { content: ""; }
+.nw-pmp-rows details[open] > summary.nw-pmp-row {
+  background: rgba(255,255,255,0.025);
+}
+.nw-pmp-drawer {
+  padding: 14px 18px 16px;
+  background: rgba(255,255,255,0.04);
+  border-top: 0.5px solid rgba(255,255,255,0.05);
+  font-size: 12px;
+}
 /* Legend (small color-coded glossary in the table card header) */
 .nw-legend-pill { display: flex; gap: 14px; font-size: 11px;
                   color: rgba(250,250,250,0.55); align-items: center; }
@@ -3673,6 +3689,100 @@ if st.session_state.active_view == "campaigns":
             unsafe_allow_html=True,
         )
 
+        # ── Per-row drawer helper. ───────────────────────────────────────
+        def _pmp_drawer_html(row):
+            _full = _pmp_esc(row.get("Deal") or "")
+            _dt = row.get("Deal Type") or ""
+            _floor = _floors.get(_dt) if _dt else None
+            _ecpm_v = pd.to_numeric(row.get("eCPM"), errors="coerce")
+
+            # Status banner: eCPM vs floor thesis.
+            status_html = ""
+            if pd.notna(_ecpm_v) and _floor:
+                if _ecpm_v < _floor:
+                    pct_below = (_floor - _ecpm_v) / _floor * 100
+                    status_html = (
+                        '<div class="nw-status-banner sev-amber">'
+                        '<strong>⚠ eCPM below floor</strong>'
+                        f'<div>${_ecpm_v:.2f} clearing vs ${_floor:.2f} '
+                        f'{_pmp_esc(_dt)} floor — {pct_below:.0f}% below committed rate.</div>'
+                        '</div>'
+                    )
+                elif _ecpm_v >= _floor * 2:
+                    pct_above = (_ecpm_v - _floor) / _floor * 100
+                    status_html = (
+                        '<div class="nw-status-banner sev-ok">'
+                        '<strong>✓ Strong yield</strong>'
+                        f'<div>${_ecpm_v:.2f} clearing — {pct_above:.0f}% above '
+                        f'the ${_floor:.2f} {_pmp_esc(_dt)} floor.</div>'
+                        '</div>'
+                    )
+
+            # Bid metrics inline (only when source SSP reports them).
+            wr_num = pd.to_numeric(row.get("Win Rate %"), errors="coerce")
+            tr_num = pd.to_numeric(row.get("Total Requests"), errors="coerce")
+            br_num = pd.to_numeric(row.get("Bid Responses"), errors="coerce")
+            bid_html = ""
+            if pd.notna(wr_num) or pd.notna(tr_num) or pd.notna(br_num):
+                cells = []
+                if pd.notna(wr_num):
+                    cells.append(
+                        f'<div><span class="lbl">Win rate</span>'
+                        f'<span class="val">{wr_num:.1f}%</span></div>'
+                    )
+                if pd.notna(tr_num):
+                    cells.append(
+                        f'<div><span class="lbl">Total requests</span>'
+                        f'<span class="val">{_pmp_fmt_count(tr_num)}</span></div>'
+                    )
+                if pd.notna(br_num):
+                    cells.append(
+                        f'<div><span class="lbl">Bid responses</span>'
+                        f'<span class="val">{_pmp_fmt_count(br_num)}</span></div>'
+                    )
+                if pd.notna(tr_num) and pd.notna(br_num) and tr_num > 0:
+                    resp_rate = br_num / tr_num * 100
+                    cells.append(
+                        f'<div><span class="lbl">Response rate</span>'
+                        f'<span class="val">{resp_rate:.1f}%</span></div>'
+                    )
+                if cells:
+                    bid_html = f'<div class="nw-meta-grid">{"".join(cells)}</div>'
+
+            # Full metadata grid.
+            _floor_str = f"${_floor:.2f}" if _floor else "—"
+            meta_html = (
+                '<div class="nw-meta-grid">'
+                f'<div><span class="lbl">SSP</span>'
+                f'<span class="val">{_pmp_esc(row.get("SSP") or "—")}</span></div>'
+                f'<div><span class="lbl">Deal type</span>'
+                f'<span class="val">{_pmp_esc(_dt or "—")}</span></div>'
+                f'<div><span class="lbl">DSP</span>'
+                f'<span class="val">{_pmp_esc(row.get("DSP") or "—")}</span></div>'
+                f'<div><span class="lbl">Format</span>'
+                f'<span class="val">{_pmp_esc(row.get("Format") or "—")}</span></div>'
+                f'<div><span class="lbl">Seller</span>'
+                f'<span class="val">{_pmp_esc(row.get("Seller") or "—")}</span></div>'
+                f'<div><span class="lbl">Deal source</span>'
+                f'<span class="val">{_pmp_esc(row.get("Deal Source") or "—")}</span></div>'
+                f'<div><span class="lbl">Team</span>'
+                f'<span class="val">{_pmp_esc(row.get("Team") or "—")}</span></div>'
+                f'<div><span class="lbl">Configured floor</span>'
+                f'<span class="val">{_floor_str}</span></div>'
+                '</div>'
+            )
+
+            return (
+                '<div class="nw-pmp-drawer">'
+                '<div class="nw-drawer-head">'
+                f'<span class="nw-drawer-li">{_full or "—"}</span>'
+                '</div>'
+                f'{status_html}'
+                f'{bid_html}'
+                f'{meta_html}'
+                '</div>'
+            )
+
         # ── Table — custom HTML grid matching Direct campaigns design. ──
         _pmp_rows_html = []
         for _, row in combined_pmp.head(25).iterrows():
@@ -3695,7 +3805,8 @@ if st.session_state.active_view == "campaigns":
                 _name_html += f'<div class="pmp-name-sub">{_pmp_esc(_sub)}</div>'
 
             _pmp_rows_html.append(
-                '<div class="nw-pmp-row">'
+                '<details name="pmp-cmprow">'
+                '<summary class="nw-pmp-row">'
                 f'<div>{_name_html}</div>'
                 f'<div>{_dt_pill(_dt)}</div>'
                 f'<div>{_pmp_esc(row.get("DSP") or "—")}</div>'
@@ -3705,7 +3816,9 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="num">{_impr_cell(row.get("Paid Impressions"))}</div>'
                 f'<div class="num">{_ecpm_cell(row.get("eCPM"), _floor_val)}</div>'
                 f'<div>{_seller_html}</div>'
-                '</div>'
+                '</summary>'
+                + _pmp_drawer_html(row) +
+                '</details>'
             )
 
         st.markdown(
