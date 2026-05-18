@@ -514,6 +514,68 @@ st.markdown(
 .stApp::before, .stApp::after { display: none !important; }
 [data-testid="stAppViewContainer"] > .stApp { border-top: none !important; }
 iframe[title="streamlit_app"] { border-top: none !important; }
+/* ── Streamlit multiselect chip overrides ──────────────────────────
+   Default chip color is the theme primary (red), which collides with
+   the dashboard's "red = severity" convention. Force a neutral chip
+   for all filters, then color the Status chip per its value so
+   "Delivering" reads as healthy, not as a warning.
+   BaseWeb tag exposes aria-label like "Delivering, close by backspace"
+   so we can target by prefix. */
+.stMultiSelect [data-baseweb="tag"] {
+  background-color: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.10) !important;
+  border-radius: var(--border-radius-md) !important;
+}
+.stMultiSelect [data-baseweb="tag"] span {
+  color: rgba(250,250,250,0.92) !important;
+}
+.stMultiSelect [data-baseweb="tag"] svg {
+  fill: rgba(250,250,250,0.55) !important;
+}
+.stMultiSelect [data-baseweb="tag"]:hover {
+  background-color: rgba(255,255,255,0.10) !important;
+}
+/* Status-specific chip color (matches the table pill palette). */
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] {
+  background-color: hsl(120, 35%, 22%) !important;
+  border-color: hsl(120, 40%, 32%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] span {
+  color: hsl(120, 40%, 78%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] svg {
+  fill: hsl(120, 40%, 70%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] {
+  background-color: hsl(40, 45%, 22%) !important;
+  border-color: hsl(40, 45%, 32%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] span {
+  color: hsl(40, 35%, 80%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] svg {
+  fill: hsl(40, 35%, 75%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] {
+  background-color: hsl(210, 40%, 22%) !important;
+  border-color: hsl(210, 45%, 32%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] span {
+  color: hsl(210, 45%, 80%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] svg {
+  fill: hsl(210, 45%, 75%) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] {
+  background-color: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] span {
+  color: rgba(250,250,250,0.55) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] svg {
+  fill: rgba(250,250,250,0.45) !important;
+}
 /* Compact the top of the main container AND cap width on wide screens. */
 .stApp .main .block-container,
 .stApp [data-testid="stMain"] .block-container,
