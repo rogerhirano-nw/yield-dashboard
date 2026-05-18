@@ -30,6 +30,11 @@ Teams recipient:
       ad-ops channel. Every AE's card lands there. AE is @mentioned via
       their UPN (j.amalfi@newsweek.com), which the Flow Bot resolves to a
       Teams user.
+    - Newer flows hosted at *.environment.api.powerplatform.com require an
+      Entra ID bearer token (Microsoft "Direct API" mode). Provide
+      ENTRA_TENANT_ID / ENTRA_CLIENT_ID / ENTRA_CLIENT_SECRET to enable
+      client-credentials auth — see README / PR description for the IT
+      app-registration request template.
 
 Dry-run (default ON for first rollout):
     - DRY_RUN=1 routes every per-AE email to DRY_RUN_TO and every Teams
@@ -52,6 +57,7 @@ from pathlib import Path
 from typing import Optional
 
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pandas as pd
@@ -87,9 +93,23 @@ DRY_RUN_TO = os.environ.get("DRY_RUN_TO", "roger.hirano@newsweek.com")
 
 # Teams: single shared channel (e.g. #adops-daily). Each AE's card is posted
 # to this channel and @mentions the AE so they get pinged.
+#
+# Newer Power Automate flows hosted at *.environment.api.powerplatform.com
+# require an OAuth bearer token (Microsoft's "Direct API" mode — anonymous
+# webhooks were retired for tenants on the new platform). If the three
+# ENTRA_* env vars are set, we acquire a client-credentials token from
+# Microsoft Entra ID and add it as Authorization: Bearer on each POST. If
+# the webhook URL is on the older *.logic.azure.com host (SAS-signed), the
+# token is simply not sent and the request authenticates via the &sig= in
+# the URL — backwards compatible.
 TEAMS_WEBHOOK_URL = os.environ.get("TEAMS_WEBHOOK_URL", "")
 TEAMS_DRY_RUN_WEBHOOK = os.environ.get("TEAMS_DRY_RUN_WEBHOOK", "") or TEAMS_WEBHOOK_URL
 DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://newsweek-magnite.streamlit.app")
+
+ENTRA_TENANT_ID = os.environ.get("ENTRA_TENANT_ID", "")
+ENTRA_CLIENT_ID = os.environ.get("ENTRA_CLIENT_ID", "")
+ENTRA_CLIENT_SECRET = os.environ.get("ENTRA_CLIENT_SECRET", "")
+ENTRA_SCOPE = os.environ.get("ENTRA_SCOPE", "https://service.flow.microsoft.com/.default")
 
 
 # ── seller_ae derivation (mirrors dashboard.py) ───────────────────────────────
@@ -622,14 +642,58 @@ def render_teams_card(ae_name: str, ae_email: Optional[str], ae_items: pd.DataFr
     }
 
 
-def _post_teams(webhook_url: str, payload: dict) -> None:
-    data = json.dumps(payload).encode("utf-8")
+_TEAMS_TOKEN_CACHE: dict = {}
+
+
+def _entra_token() -> Optional[str]:
+    """
+    Acquire (and cache for the run) a client-credentials bearer token from
+    Microsoft Entra ID for the Power Automate direct-API audience.
+
+    Returns None when the three ENTRA_* env vars aren't all set — that's
+    the signal to fall through to URL-only auth (older SAS-signed URLs on
+    *.logic.azure.com that don't need a header).
+    """
+    if not (ENTRA_TENANT_ID and ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET):
+        return None
+    if "token" in _TEAMS_TOKEN_CACHE:
+        return _TEAMS_TOKEN_CACHE["token"]
+
+    url = f"https://login.microsoftonline.com/{ENTRA_TENANT_ID}/oauth2/v2.0/token"
+    body = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": ENTRA_CLIENT_ID,
+        "client_secret": ENTRA_CLIENT_SECRET,
+        "scope": ENTRA_SCOPE,
+    }).encode("utf-8")
     req = urllib.request.Request(
-        webhook_url,
-        data=data,
-        headers={"Content-Type": "application/json"},
+        url,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", "replace") if hasattr(e, "read") else ""
+        raise RuntimeError(f"Entra ID token request failed ({e.code}): {err}") from e
+
+    token = payload.get("access_token")
+    if not token:
+        raise RuntimeError(f"Entra ID returned no access_token: {payload}")
+    _TEAMS_TOKEN_CACHE["token"] = token
+    return token
+
+
+def _post_teams(webhook_url: str, payload: dict) -> None:
+    headers = {"Content-Type": "application/json"}
+    token = _entra_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(webhook_url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             if resp.status >= 300:

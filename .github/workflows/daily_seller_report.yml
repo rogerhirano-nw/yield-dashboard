@@ -45,5 +45,12 @@ jobs:
           TEAMS_WEBHOOK_URL:      ${{ secrets.TEAMS_WEBHOOK_URL }}
           TEAMS_DRY_RUN_WEBHOOK:  ${{ secrets.TEAMS_DRY_RUN_WEBHOOK }}
           DASHBOARD_URL:          ${{ secrets.DASHBOARD_URL }}
+          # Entra ID OAuth client credentials for the Power Automate
+          # "Direct API" mode. Required for flows hosted at
+          # *.environment.api.powerplatform.com (newer Microsoft tenants).
+          # Leave unset to fall back to URL-only auth on older flow hosts.
+          ENTRA_TENANT_ID:        ${{ secrets.ENTRA_TENANT_ID }}
+          ENTRA_CLIENT_ID:        ${{ secrets.ENTRA_CLIENT_ID }}
+          ENTRA_CLIENT_SECRET:    ${{ secrets.ENTRA_CLIENT_SECRET }}
           # Scheduled runs default to dry-run; workflow_dispatch can flip it via input.
           DRY_RUN:                ${{ github.event.inputs.dry_run || '1' }}
