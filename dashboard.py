@@ -1133,7 +1133,7 @@ with tab_seller:
                 view_gam["ad_server_ctr"] = pd.to_numeric(view_gam["ad_server_ctr"], errors="coerce") * 100
 
             # ── Per-LI delta annotations for impressions / clicks / pacing / viewability ──
-            # Renders cells like "12,345 (▲ +500 vs prior day)" using the latest day
+            # Renders cells like "12,345 (▲ +500)" using the latest day
             # snapshot vs the day before. Falls back to plain value when 2d data is
             # missing (first deploy before refresh repopulates the new columns).
             # Sort BEFORE the string conversion — once columns are strings, header-
@@ -1202,7 +1202,7 @@ with tab_seller:
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = int(v1) - int(v2)
                 sign = "+" if d > 0 else ""
-                return f"{base} ({_arrow(d)} {sign}{d:,} vs prior day)"
+                return f"{base} ({_arrow(d)} {sign}{d:,})"
 
             def _fmt_pct_annot(primary, v1, v2, below=None):
                 """Cell value = `primary` (already 0-100 percent); annotation = pp delta of v1 vs v2."""
@@ -1213,7 +1213,7 @@ with tab_seller:
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = v1 - v2
                 sign = "+" if d > 0 else ""
-                return f"{base} ({_arrow(d)} {sign}{d:.1f}pp vs prior day)"
+                return f"{base} ({_arrow(d)} {sign}{d:.1f}pp)"
 
             if "impressions_1d" in view_gam.columns:
                 # The "Impressions (1d)" column was already showing yesterday's count.
@@ -1307,7 +1307,7 @@ with tab_seller:
             if "Remaining" in table_df.columns:
                 col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
             # Impressions / Clicks / Pacing / Viewability are now annotated text
-            # strings ("X (▲ +Y vs prior day)"), not raw numbers.
+            # strings ("X (▲ +Y)"), not raw numbers.
             if "Impressions (1d)" in table_df.columns:
                 col_config["Impressions (1d)"] = st.column_config.TextColumn("Impressions (1d)", width="medium")
             if "Clicks" in table_df.columns:
