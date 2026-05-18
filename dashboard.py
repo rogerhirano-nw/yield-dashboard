@@ -637,6 +637,8 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 .kpi-delta-up    { color: hsl(120, 50%, 65%); }
 .kpi-delta-down  { color: hsl(0, 60%, 70%); }
 .kpi-delta-amber { color: hsl(40, 60%, 65%); }
+.kpi-delta-flat  { color: rgba(250,250,250,0.55); }
+.kpi-delta-neutral { color: rgba(250,250,250,0.72); }
 /* Sentence-case helper class (utility — applied selectively). */
 .nw-sentence::first-letter { text-transform: uppercase; }
 /* Compact dataframe borders */
@@ -834,42 +836,44 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 }
 /* Drawer 7-day delivery chart panel. */
 .nw-drawer-chart {
-  margin-top: 12px; padding: 10px 12px;
+  margin-top: 12px; padding: 8px 12px 10px;
   background: rgba(255,255,255,0.02);
   border-radius: var(--border-radius-md);
   border: 0.5px solid rgba(255,255,255,0.06);
 }
 .nw-drawer-chart-label {
   font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 8px;
+  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 6px;
   display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 6px;
 }
+.nw-drawer-chart-label .legend-row { display: inline-flex; gap: 10px; }
 .nw-drawer-chart-label .legend {
-  font-size: 10px; color: rgba(250,250,250,0.40); font-weight: 400;
+  font-size: 10px; color: rgba(250,250,250,0.45); font-weight: 400;
   text-transform: none; letter-spacing: 0;
 }
-.nw-drawer-chart svg { width: 100%; height: 80px; display: block; }
-/* Small multiples for viewability + CTR/VCR. */
+.nw-drawer-chart svg { display: block; }
+/* Small multiples for viewability + CTR/VCR — compact, secondary weight. */
 .nw-sm-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
 }
 .nw-sm-panel {
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: rgba(255,255,255,0.02);
   border-radius: var(--border-radius-md);
   border: 0.5px solid rgba(255,255,255,0.06);
 }
 .nw-sm-label {
   font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 6px;
+  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 4px;
   display: flex; justify-content: space-between; align-items: baseline;
 }
 .nw-sm-label .latest {
-  font-size: 12px; font-weight: 500; letter-spacing: 0;
-  color: rgba(250,250,250,0.92); text-transform: none;
+  font-size: 11px; font-weight: 500; letter-spacing: 0;
+  color: rgba(250,250,250,0.85); text-transform: none;
   font-variant-numeric: tabular-nums;
 }
-.nw-sm-panel svg { width: 100%; height: 32px; display: block; }
+.nw-sm-panel svg { width: 100%; height: 24px; display: block; }
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -1982,7 +1986,13 @@ if st.session_state.active_view == "campaigns":
 
             def _trend_delta_label(values, fmt="pct", suffix_target=None):
                 """Compare latest to 7-day average. Returns (text, class).
-                fmt: 'pct' for relative %, 'pp' for percentage-point delta."""
+                fmt: 'pct' for relative %, 'pp' for percentage-point delta.
+                Threshold tiers (apply to both formats):
+                  |d| < 0.5  → "flat" in neutral text (noise band)
+                  |d| < 2    → arrow + value in secondary text
+                  |d| < 5 & worsening → amber
+                  |d| ≥ 5 & worsening → red
+                Up-arrows always neutral/positive (no warning color on growth)."""
                 if not values:
                     return (None, "")
                 non = [v for v in values if v is not None and not pd.isna(v)]
@@ -1994,21 +2004,28 @@ if st.session_state.active_view == "campaigns":
                     return (None, "")
                 if fmt == "pct":
                     d = (latest - prior_avg) / abs(prior_avg) * 100
-                    arrow = "▲" if d > 0 else ("▼" if d < 0 else "•")
-                    cls = "kpi-delta-up" if d > 0 else ("kpi-delta-down" if d < 0 else "")
-                    txt = f'<span class="{cls}">{arrow} {abs(d):.1f}%</span> vs 7-day avg'
-                    if abs(d) < 0.05:
-                        txt = '<span>• flat</span> vs 7-day avg'
-                    if suffix_target is not None:
-                        txt += f' · target {suffix_target}'
-                    return (txt, cls)
-                # pp
-                d = latest - prior_avg
-                arrow = "▲" if d > 0 else ("▼" if d < 0 else "•")
-                cls = "kpi-delta-up" if d > 0 else ("kpi-delta-down" if d < 0 else "")
-                txt = f'<span class="{cls}">{arrow} {abs(d):.1f}pp</span>'
-                if abs(d) < 0.05:
-                    txt = '<span>• flat</span>'
+                    unit = "%"
+                    suffix = " vs 7-day avg"
+                else:
+                    d = latest - prior_avg
+                    unit = "pp"
+                    suffix = ""
+                ABS = abs(d)
+                if ABS < 0.5:
+                    cls = "kpi-delta-flat"
+                    body = "• flat"
+                else:
+                    arrow = "▲" if d > 0 else "▼"
+                    if d > 0:
+                        cls = "kpi-delta-neutral"
+                    elif ABS < 2:
+                        cls = "kpi-delta-neutral"
+                    elif ABS < 5:
+                        cls = "kpi-delta-amber"
+                    else:
+                        cls = "kpi-delta-down"
+                    body = f"{arrow} {ABS:.1f}{unit}"
+                txt = f'<span class="{cls}">{body}</span>{suffix}'
                 if suffix_target is not None:
                     txt += f' · target {suffix_target}'
                 return (txt, cls)
@@ -2799,9 +2816,16 @@ if st.session_state.active_view == "campaigns":
                 return out if any(v is not None for v in out) else None
 
             def _drawer_delivery_chart(row):
-                """7-day daily delivery: solid actual + dashed expected daily rate."""
+                """7-day daily delivery — actual line scaled to its own range so
+                day-to-day shape is visible even when expected dwarfs actuals.
+                Dashed reference line shows the expected daily rate; if it
+                exceeds the actual range it clips to the chart's top edge
+                so it still reads as a horizon line."""
                 actuals = _row_daily_imp_series(row)
                 if actuals is None:
+                    return ""
+                non_null = [a for a in actuals if a is not None]
+                if not non_null:
                     return ""
                 goal = pd.to_numeric(row.get("impressions_goal"), errors="coerce")
                 start = pd.to_datetime(row.get("start_date"), errors="coerce")
@@ -2810,49 +2834,57 @@ if st.session_state.active_view == "campaigns":
                 if pd.notna(goal) and goal > 0 and pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
                     expected = float(goal) / total
-                W, H, PAD = 300, 80, 8
-                pool = [a for a in actuals if a is not None] + ([expected] if expected else [])
-                if not pool:
-                    return ""
-                vmax = max(pool) * 1.1 or 1
+                W, H, PAD = 300, 70, 8
+                # Scale Y axis to actuals only — keeps day-to-day shape visible.
+                vmax = max(non_null) * 1.2 if max(non_null) > 0 else 1
                 n = len(actuals)
                 def _x(i): return PAD + i / (n - 1) * (W - 2 * PAD) if n > 1 else W / 2
                 def _y(v): return H - PAD - v / vmax * (H - 2 * PAD)
                 pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
                                for i, v in enumerate(actuals) if v is not None)
-                # Determine color: avg of actuals vs expected.
-                non_null = [a for a in actuals if a is not None]
+                # Color: green when on track, amber when off — never pure red on
+                # data lines (red is reserved for severity indicators).
                 avg = sum(non_null) / len(non_null) if non_null else 0
-                if expected:
-                    ratio = avg / expected if expected else 1.0
-                    if ratio >= 0.9:   stroke = "hsl(120, 50%, 65%)"
-                    elif ratio >= 0.75: stroke = "hsl(40, 60%, 65%)"
-                    else:               stroke = "hsl(0, 60%, 70%)"
+                if expected and expected > 0:
+                    ratio = avg / expected
+                    stroke = "hsl(120, 50%, 65%)" if ratio >= 0.9 else "hsl(40, 60%, 65%)"
                 else:
                     stroke = "hsl(120, 50%, 65%)"
+                # Expected reference line — clip to chart top if above vmax.
                 exp_line = ""
-                if expected:
-                    ey = _y(expected)
-                    exp_line = (f'<line x1="{PAD}" y1="{ey:.1f}" x2="{W-PAD}" y2="{ey:.1f}" '
-                                f'stroke="rgba(250,250,250,0.40)" stroke-width="1" '
-                                f'stroke-dasharray="3 3"/>')
-                # End dot at most recent value (rightmost non-null).
+                if expected and expected > 0:
+                    raw_ey = _y(expected)
+                    ey = max(raw_ey, PAD)  # don't escape the top edge
+                    exp_line = (
+                        f'<line x1="{PAD}" y1="{ey:.1f}" x2="{W-PAD}" y2="{ey:.1f}" '
+                        f'stroke="rgba(250,250,250,0.45)" stroke-width="1" '
+                        f'stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>'
+                    )
                 last_i = max(i for i, v in enumerate(actuals) if v is not None)
                 dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(actuals[last_i]):.1f}" '
-                       f'r="3" fill="{stroke}"/>')
-                legend = ('<span class="legend">— actual · - - expected daily</span>'
-                          if expected else '<span class="legend">— actual</span>')
+                       f'r="2.5" fill="{stroke}"/>')
+
+                def _fmt_per_day(v):
+                    if v >= 1_000_000: return f"{v/1_000_000:.2f}M/day"
+                    if v >= 1_000:     return f"{v/1_000:.1f}K/day"
+                    return f"{int(v):,}/day"
+                legend_bits = ['<span class="legend">— actual</span>']
+                if expected:
+                    legend_bits.append(
+                        f'<span class="legend">- - expected {_fmt_per_day(expected)}</span>'
+                    )
                 return (
                     '<div class="nw-drawer-chart">'
                     '<div class="nw-drawer-chart-label">'
                     '<span>7-day daily delivery</span>'
-                    f'{legend}'
+                    f'<span class="legend-row">{"".join(legend_bits)}</span>'
                     '</div>'
-                    f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" '
-                    f'xmlns="http://www.w3.org/2000/svg">'
+                    f'<svg width="100%" height="{H}" viewBox="0 0 {W} {H}" '
+                    f'preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
                     f'{exp_line}'
                     f'<polyline points="{pts}" fill="none" stroke="{stroke}" '
-                    f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
+                    f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
+                    f'vector-effect="non-scaling-stroke"/>'
                     f'{dot}</svg>'
                     '</div>'
                 )
@@ -2923,14 +2955,35 @@ if st.session_state.active_view == "campaigns":
                         f'</div>'
                     )
 
-                actions = ""
+                # Context-aware action row — buttons surface based on the
+                # line's state. Email/AirTable use href="#" placeholders for
+                # now (wire to real URLs once configured in settings).
+                action_buttons = []
                 if gam_link:
-                    actions = (
-                        '<div class="nw-actions">'
+                    action_buttons.append(
                         f'<a class="nw-action nw-action-primary" href="{gam_link}" '
                         'target="_blank" rel="noopener">Open in GAM ↗</a>'
-                        '</div>'
                     )
+                _p_num = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
+                if pd.notna(_p_num) and _p_num < 90:
+                    action_buttons.append(
+                        '<a class="nw-action" href="#" '
+                        'onclick="return false;">⚡ Boost priority</a>'
+                    )
+                if pd.notna(_p_num) and (_p_num < 90 or _p_num > 110):
+                    action_buttons.append(
+                        '<a class="nw-action" href="#" '
+                        'onclick="return false;">🎫 AirTable ticket</a>'
+                    )
+                _seller_name = row.get("seller_ae")
+                if isinstance(_seller_name, str) and _seller_name.strip() \
+                   and _seller_name.strip().lower() != "house":
+                    action_buttons.append(
+                        f'<a class="nw-action" href="#" onclick="return false;">'
+                        f'📧 Notify {_esc(_seller_name)}</a>'
+                    )
+                actions = (f'<div class="nw-actions">{"".join(action_buttons)}</div>'
+                           if action_buttons else "")
 
                 id_chip = (f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
                            if li_id_str else '')
