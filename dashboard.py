@@ -327,6 +327,20 @@ _cfg = _load_settings()
 _ssp_enabled: dict[str, bool] = {s["name"]: s.get("enabled", True) for s in _cfg["ssps"]}
 
 
+def _parse_gam_salesperson(val):
+    """Extract the short name from GAM's User.display_name.
+
+    GAM returns values like "Newsweek - Sales - Theresa Hern" or
+    "Newsweek - Sales- Jeremy Makin (jmakin@newsweek.com)" — strip the
+    "Newsweek - Sales[-] " prefix and any trailing email parenthetical.
+    Returns None for empty / non-string inputs.
+    """
+    if not isinstance(val, str) or not val.strip():
+        return None
+    m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
+    return m.group(1).strip() if m else val.strip()
+
+
 PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
 
 
@@ -944,16 +958,9 @@ with tab_seller:
             _completions = gam_df["video_interaction_video_completions"]
             gam_df["vcr"] = (_completions / _starts * 100).where(_starts > 0)
 
-        # Extract seller — prefer GAM salesperson field, fall back to name regex
-        # GAM returns "Newsweek - Sales - Full Name (email)" — normalize to just the name.
-        def _parse_gam_salesperson(val):
-            if not isinstance(val, str) or not val.strip():
-                return None
-            m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
-            return m.group(1).strip() if m else val.strip()
-
         # Normalize salesperson in place so "Seller" shows short name regardless of
         # which column the settings point to (salesperson or seller_ae).
+        # _parse_gam_salesperson is defined at module level.
         _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
         if "salesperson" in gam_df.columns:
             gam_df["salesperson"] = gam_df["salesperson"].apply(_parse_gam_salesperson)
@@ -1352,17 +1359,39 @@ with tab_seller:
                 if _seller_cfg not in ("[auto]", "N/A", "", None) and _seller_cfg in _gam_raw.columns:
                     _gam_raw["seller_ae"] = _gam_raw[_seller_cfg].map(AE_NAMES)
                 else:
-                    _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
-                    _seller_from_deal = (
-                        _gam_raw["deal_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+                    # Policy: PD/PG/Direct rely on GAM's order.salesperson (API
+                    # is the source of truth — no deal-name regex needed). PA
+                    # delivers through Ad Exchange under a backstop order with
+                    # no AE assigned, so PA still falls back to the deal-name /
+                    # order-name regex.
+                    _api_by_order = {}
+                    try:
+                        _camp = load("gam_campaigns")
+                        if not _camp.empty and "order_name" in _camp.columns and "salesperson" in _camp.columns:
+                            _api_by_order = (
+                                _camp.dropna(subset=["salesperson"])
+                                     .drop_duplicates("order_name", keep="first")
+                                     .set_index("order_name")["salesperson"]
+                                     .to_dict()
+                            )
+                    except Exception:
+                        pass
+                    _api_seller = (
+                        _gam_raw["order_name"].map(_api_by_order).apply(_parse_gam_salesperson)
+                        if "order_name" in _gam_raw.columns else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
                     )
-                    if "order_name" in _gam_raw.columns:
-                        _seller_from_order = (
-                            _gam_raw["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
-                        )
-                        _gam_raw["seller_ae"] = _seller_from_deal.fillna(_seller_from_order)
-                    else:
-                        _gam_raw["seller_ae"] = _seller_from_deal
+
+                    _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+                    _regex_from_deal = _gam_raw["deal_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+                    _regex_from_order = (
+                        _gam_raw["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+                        if "order_name" in _gam_raw.columns else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
+                    )
+                    _regex_seller = _regex_from_deal.fillna(_regex_from_order)
+
+                    _is_pa = _gam_raw["deal_type_label"] == "Private Auction"
+                    # PD/PG: API → regex fallback. PA: regex only.
+                    _gam_raw["seller_ae"] = _api_seller.where(~_is_pa & _api_seller.notna(), _regex_seller)
 
                 _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
                 if selected_seller != "All":
