@@ -16,6 +16,7 @@ import os
 import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
@@ -131,6 +132,25 @@ _DEFAULT_SETTINGS: dict = {
     },
     "pacing_target_pct": 100.0,
     "gam_network_id": "",  # set in Configure → Direct campaigns → GAM integration
+    "airtable_base_id": "appX7xp1veDq9ndUe",
+    "airtable_form_id": "pagN88p2kwQBcjqZf",
+    "airtable_field_names": {
+        "Request Type": "Request Type",
+        "Line Item":    "Line Item",
+        "GAM ID":       "GAM ID",
+        "Severity":     "Severity",
+        "Seller":       "Seller",
+        "Reporter":     "Reporter",
+        "Notes":        "Notes",
+    },
+    "airtable_request_type_routing": [
+        {"context": "Direct line · delivery problem",        "request_type": "Direct Campaign - Troubleshooting"},
+        {"context": "Direct line · viewability anomaly",     "request_type": "Direct Campaign - Screenshot"},
+        {"context": "Direct line · healthy end-of-flight",   "request_type": "Direct Campaign - IO Review"},
+        {"context": "Direct line · social media component",  "request_type": "Direct Campaign - Social Posts"},
+        {"context": "PMP deal · any issue",                  "request_type": "PMP - Adjust"},
+    ],
+    "airtable_reporter": "Roger Hirano",
     "status_colors": [
         {"keyword": "Delivering", "color": "#2E7D32"},  # green
         {"keyword": "Paused",     "color": "#F9A825"},  # amber
@@ -854,6 +874,28 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   text-transform: none; letter-spacing: 0;
 }
 .nw-drawer-chart svg { display: block; }
+/* Day-of-week + date row under a 7-cell chart (drawer delivery chart). */
+.nw-date-row {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  margin-top: 4px; font-size: 9px;
+  color: rgba(250,250,250,0.40); font-variant-numeric: tabular-nums;
+}
+.nw-date-row > span { text-align: center; }
+.nw-date-row .is-today {
+  color: rgba(250,250,250,0.85); font-weight: 500;
+}
+.nw-date-row .is-soft { color: hsl(40, 60%, 65%); }
+/* Compact date row under small-multiples sparklines — first/last show day +
+   date, middle days are single-letter abbreviations. */
+.nw-sm-dates {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  margin-top: 3px; font-size: 8px;
+  color: rgba(250,250,250,0.40); font-variant-numeric: tabular-nums;
+}
+.nw-sm-dates > span { text-align: center; }
+.nw-sm-dates .is-today {
+  color: rgba(250,250,250,0.85); font-weight: 500;
+}
 /* Small multiples for viewability + CTR/VCR — compact, secondary weight. */
 .nw-sm-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
@@ -2742,6 +2784,102 @@ if st.session_state.active_view == "campaigns":
                 return (f"https://admanager.google.com/{_gam_network_id}"
                         f"#delivery/line_item/detail/line_item_id={li_int}")
 
+            # ── AirTable ticket helpers ──────────────────────────────────────
+            _at_base    = (_cfg.get("airtable_base_id") or "").strip()
+            _at_form    = (_cfg.get("airtable_form_id") or "").strip()
+            _at_fields  = _cfg.get("airtable_field_names") or {}
+            _at_routes  = {r["context"]: r["request_type"]
+                           for r in (_cfg.get("airtable_request_type_routing") or [])
+                           if isinstance(r, dict) and r.get("context") and r.get("request_type")}
+            _at_reporter = (_cfg.get("airtable_reporter") or "").strip()
+
+            def _direct_request_type(row):
+                """Classify a Direct/PG row → AirTable Request Type via the
+                routing table. Falls back to 'Direct Campaign - Troubleshooting'
+                when no rule matches (the docx-recommended default)."""
+                order = row.get("order_name") or ""
+                if isinstance(order, str) and order.startswith("Newsweek_PG"):
+                    return _at_routes.get("PMP deal · any issue", "PMP - Adjust")
+                # Viewability anomaly = strongest visual signal → Screenshot.
+                _v_num = pd.to_numeric(row.get("ad_server_active_view_viewable_impressions_rate"),
+                                       errors="coerce")
+                if pd.notna(_v_num) and _v_num < 40:
+                    return _at_routes.get("Direct line · viewability anomaly",
+                                          "Direct Campaign - Screenshot")
+                # Healthy near end-of-flight → IO Review (closeout reporting).
+                p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
+                start = pd.to_datetime(row.get("start_date"), errors="coerce")
+                end   = pd.to_datetime(row.get("end_date"),   errors="coerce")
+                if pd.notna(p) and 90 <= p <= 110 \
+                   and pd.notna(start) and pd.notna(end):
+                    total = max((end - start).days, 1)
+                    elapsed = max((pd.Timestamp(date.today()) - start).days, 0)
+                    if total > 0 and elapsed / total >= 0.9:
+                        return _at_routes.get("Direct line · healthy end-of-flight",
+                                              "Direct Campaign - IO Review")
+                # Default: delivery problem.
+                return _at_routes.get("Direct line · delivery problem",
+                                      "Direct Campaign - Troubleshooting")
+
+            def _drawer_severity(row):
+                """'Critical' / 'Warning' / 'Info' — mirrors the status banner."""
+                lit = (row.get("line_item_type") or "").upper()
+                if lit == "SPONSORSHIP":
+                    return "Info"
+                p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
+                if pd.isna(p):
+                    return "Info"
+                if p < 75:    return "Critical"
+                if p < 90 or p > 110: return "Warning"
+                return "Info"
+
+            def _drawer_thesis(row):
+                """One-line thesis statement matching the banner text — used
+                as the AirTable Notes prefill."""
+                lit = (row.get("line_item_type") or "").upper()
+                p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
+                start = pd.to_datetime(row.get("start_date"), errors="coerce")
+                end   = pd.to_datetime(row.get("end_date"),   errors="coerce")
+                flight_bit = ""
+                if pd.notna(start) and pd.notna(end):
+                    total = max((end - start).days, 1)
+                    elapsed = max((pd.Timestamp(date.today()) - start).days, 0)
+                    elapsed = min(elapsed, total)
+                    flight_bit = f" on day {elapsed} of {total}"
+                if lit == "SPONSORSHIP":
+                    return f"Sponsorship line — 100% by definition{flight_bit}."
+                if pd.isna(p):
+                    return f"Direct line · review{flight_bit}."
+                if p < 75:    return f"Pacing critical: {p:.1f}%{flight_bit}. Delivery well below expected."
+                if p < 90:    return f"Underpacing: {p:.1f}%{flight_bit}. Tracking behind expected pace."
+                if p > 110:   return f"Overpacing: {p:.1f}%{flight_bit}. Will exhaust goal before flight ends."
+                return f"On track: {p:.1f}% pacing{flight_bit}."
+
+            def _airtable_url(request_type, *, line_item="", gam_id="",
+                              severity="", seller="", notes=""):
+                """Build an AirTable prefilled-form URL. Returns None when
+                Base ID or Form ID isn't configured."""
+                if not _at_base or not _at_form or not request_type:
+                    return None
+                fields = {
+                    "Request Type": request_type,
+                    "Line Item":    line_item,
+                    "GAM ID":       gam_id,
+                    "Severity":     severity,
+                    "Seller":       seller,
+                    "Reporter":     _at_reporter,
+                    "Notes":        notes,
+                }
+                parts = []
+                for canonical, value in fields.items():
+                    if value is None or str(value).strip() == "":
+                        continue
+                    name = _at_fields.get(canonical, canonical)
+                    parts.append(f"prefill_{quote_plus(name)}={quote_plus(str(value))}")
+                if not parts:
+                    return None
+                return f"https://airtable.com/{_at_base}/{_at_form}/form?{'&'.join(parts)}"
+
             def _fmt_int_cell(v):
                 v = pd.to_numeric(v, errors="coerce")
                 return "—" if pd.isna(v) else f"{int(v):,}"
@@ -2753,7 +2891,9 @@ if st.session_state.active_view == "campaigns":
                 return s.split(" ")[0] if " " in s else s
 
             def _drawer_status_banner(row):
-                """Rule-based thesis statement (severity-colored)."""
+                """Rule-based thesis statement (severity-colored). Flight ref
+                includes the calendar date so 'day 17 of 30' is anchored as
+                'Sun May 18 · day 17 of 30' — no mental translation needed."""
                 p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
                 if pd.isna(p):
                     return ""
@@ -2765,7 +2905,8 @@ if st.session_state.active_view == "campaigns":
                     today_dt = pd.Timestamp(date.today())
                     elapsed = max((today_dt - start).days, 0)
                     elapsed = min(elapsed, total)
-                    flight_bit = f" · day {elapsed} of {total}"
+                    flight_bit = (f" · {today_dt.strftime('%a %b %d').replace(' 0', ' ')}"
+                                  f" · day {elapsed} of {total}")
                 # Sponsorship line items get forced to 100% upstream — call it out.
                 lit = (row.get("line_item_type") or "").upper()
                 if lit == "SPONSORSHIP":
@@ -2839,6 +2980,45 @@ if st.session_state.active_view == "campaigns":
                     out.append(float(c / s * 100) if pd.notna(c) and pd.notna(s) and s > 0 else None)
                 return out if any(v is not None for v in out) else None
 
+            def _date_row_html(actuals, expected=None):
+                """7-cell row of 'Mon 12'-style labels under the delivery chart.
+                Marks today (rightmost) and below-expected days for visual
+                context — answers 'which day was the dip?' without a calendar."""
+                today_d = date.today()
+                cells = []
+                soft_threshold = (expected * 0.75) if expected else None
+                for i in range(7, 0, -1):
+                    d = today_d - timedelta(days=i - 1)
+                    label = f"{d.strftime('%a')} {d.day}"
+                    classes = []
+                    if i == 1:
+                        classes.append("is-today")
+                        label += " · today"
+                    # Mark soft days (delivery < 75% of expected) with ↓.
+                    if soft_threshold is not None:
+                        idx = 7 - i  # actuals are oldest-first; i=7 → idx 0, i=1 → idx 6
+                        v = actuals[idx] if 0 <= idx < len(actuals) else None
+                        if v is not None and v < soft_threshold:
+                            classes.append("is-soft")
+                            label += " ↓"
+                    cls = (" ".join(classes)) if classes else ""
+                    cells.append(f'<span class="{cls}">{label}</span>')
+                return f'<div class="nw-date-row">{"".join(cells)}</div>'
+
+            def _sm_date_row_html():
+                """Compact 7-cell date row under the small-multiples sparklines.
+                Endpoints show 'M 12' / 'S 18'; middle days are single letters."""
+                today_d = date.today()
+                cells = []
+                for i in range(7, 0, -1):
+                    d = today_d - timedelta(days=i - 1)
+                    letter = d.strftime("%a")[0]
+                    is_endpoint = (i == 7 or i == 1)
+                    text = f"{letter} {d.day}" if is_endpoint else letter
+                    cls = "is-today" if i == 1 else ""
+                    cells.append(f'<span class="{cls}">{text}</span>')
+                return f'<div class="nw-sm-dates">{"".join(cells)}</div>'
+
             def _drawer_delivery_chart(row):
                 """7-day daily delivery — actual line scaled to its own range so
                 day-to-day shape is visible even when expected dwarfs actuals.
@@ -2910,6 +3090,7 @@ if st.session_state.active_view == "campaigns":
                     f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
                     f'vector-effect="non-scaling-stroke"/>'
                     f'{dot}</svg>'
+                    + _date_row_html(actuals, expected) +
                     '</div>'
                 )
 
@@ -2921,6 +3102,7 @@ if st.session_state.active_view == "campaigns":
                 second = _row_vcr_series(row) if is_video else _row_ctr_series(row)
                 second_target = 60.0 if is_video else None
                 panels = []
+                sm_dates = _sm_date_row_html()
                 if view is not None:
                     latest = next((v for v in reversed(view) if v is not None), None)
                     latest_html = f'<span class="latest">{latest:.1f}%</span>' if latest is not None else ''
@@ -2928,6 +3110,7 @@ if st.session_state.active_view == "campaigns":
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
                         f'{_sparkline_svg(view, target=70.0, color="green", klass="")}'
+                        f'{sm_dates}'
                         '</div>'
                     )
                 if second is not None:
@@ -2939,6 +3122,7 @@ if st.session_state.active_view == "campaigns":
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
                         f'{_sparkline_svg(second, target=second_target, color="green", klass="")}'
+                        f'{sm_dates}'
                         '</div>'
                     )
                 if not panels:
@@ -3010,11 +3194,36 @@ if st.session_state.active_view == "campaigns":
                         '<a class="nw-action" href="#" '
                         'onclick="return false;">⚡ Boost priority</a>'
                     )
-                if pd.notna(_p_num) and (_p_num < 90 or _p_num > 110):
-                    action_buttons.append(
-                        '<a class="nw-action" href="#" '
-                        'onclick="return false;">🎫 AirTable ticket</a>'
+                # AirTable ticket — only when there's a meaningful issue.
+                _show_at = (pd.notna(_p_num) and (_p_num < 90 or _p_num > 110))
+                # Also show for low-viewability lines (Screenshot ticket).
+                _v_at = pd.to_numeric(row.get("ad_server_active_view_viewable_impressions_rate"),
+                                       errors="coerce")
+                if pd.notna(_v_at) and _v_at < 40:
+                    _show_at = True
+                if _show_at:
+                    _at_rt = _direct_request_type(row)
+                    _at_li = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
+                    _at_sev = _drawer_severity(row)
+                    _at_seller = row.get("seller_ae") or ""
+                    _at_notes = _drawer_thesis(row)
+                    _at_url = _airtable_url(
+                        _at_rt, line_item=_at_li, gam_id=li_id_str,
+                        severity=_at_sev, seller=_at_seller, notes=_at_notes,
                     )
+                    if _at_url:
+                        action_buttons.append(
+                            f'<a class="nw-action" href="{_at_url}" '
+                            f'target="_blank" rel="noopener noreferrer" '
+                            f'title="File AirTable ticket · {_esc(_at_rt)}">'
+                            f'🎫 AirTable ticket</a>'
+                        )
+                    else:
+                        action_buttons.append(
+                            '<a class="nw-action is-disabled" '
+                            'title="Configure AirTable Base ID and Form ID in Settings to enable" '
+                            'aria-disabled="true">🎫 AirTable ticket</a>'
+                        )
                 _seller_name = row.get("seller_ae")
                 if isinstance(_seller_name, str) and _seller_name.strip() \
                    and _seller_name.strip().lower() != "house":
@@ -3796,6 +4005,57 @@ if st.session_state.active_view == "campaigns":
             unsafe_allow_html=True,
         )
 
+        # ── AirTable helpers (PMP scope — Direct scope has its own copies). ──
+        _pmp_at_base = (_cfg.get("airtable_base_id") or "").strip()
+        _pmp_at_form = (_cfg.get("airtable_form_id") or "").strip()
+        _pmp_at_fields = _cfg.get("airtable_field_names") or {}
+        _pmp_at_routes = {r["context"]: r["request_type"]
+                          for r in (_cfg.get("airtable_request_type_routing") or [])
+                          if isinstance(r, dict) and r.get("context") and r.get("request_type")}
+        _pmp_at_reporter = (_cfg.get("airtable_reporter") or "").strip()
+
+        def _pmp_airtable_url(row):
+            """Build the AirTable prefilled-form URL for a PMP row. PMP always
+            routes to one Request Type per the docx spec."""
+            if not _pmp_at_base or not _pmp_at_form:
+                return None
+            rt = _pmp_at_routes.get("PMP deal · any issue", "PMP - Adjust")
+            # Severity from eCPM vs floor.
+            _ecpm = pd.to_numeric(row.get("eCPM"), errors="coerce")
+            _dt = row.get("Deal Type") or ""
+            _floor = _floors.get(_dt) if _dt else None
+            severity = "Info"
+            if pd.notna(_ecpm) and _floor:
+                if _ecpm < _floor * 0.8: severity = "Critical"
+                elif _ecpm < _floor:     severity = "Warning"
+            # Thesis statement.
+            notes = ""
+            if pd.notna(_ecpm) and _floor:
+                if _ecpm < _floor:
+                    pct = (_floor - _ecpm) / _floor * 100
+                    notes = f"eCPM ${_ecpm:.2f} clearing vs ${_floor:.2f} {_dt} floor — {pct:.0f}% below committed rate."
+                elif _ecpm >= _floor * 2:
+                    pct = (_ecpm - _floor) / _floor * 100
+                    notes = f"Strong yield: ${_ecpm:.2f} clearing — {pct:.0f}% above the ${_floor:.2f} {_dt} floor."
+            fields = {
+                "Request Type": rt,
+                "Line Item":    row.get("Deal") or "",
+                "GAM ID":       "",  # PMP rows don't have a line item ID
+                "Severity":     severity,
+                "Seller":       row.get("Seller") or "",
+                "Reporter":     _pmp_at_reporter,
+                "Notes":        notes,
+            }
+            parts = []
+            for canonical, value in fields.items():
+                if value is None or str(value).strip() == "":
+                    continue
+                name = _pmp_at_fields.get(canonical, canonical)
+                parts.append(f"prefill_{quote_plus(name)}={quote_plus(str(value))}")
+            if not parts:
+                return None
+            return f"https://airtable.com/{_pmp_at_base}/{_pmp_at_form}/form?{'&'.join(parts)}"
+
         # ── Per-row drawer helper. ───────────────────────────────────────
         def _pmp_drawer_html(row):
             _full = _pmp_esc(row.get("Deal") or "")
@@ -3879,6 +4139,33 @@ if st.session_state.active_view == "campaigns":
                 '</div>'
             )
 
+            # Action row — surface AirTable ticket when there's a meaningful
+            # issue (eCPM under floor or significantly above). Healthy in-band
+            # rows skip the button to avoid noise.
+            _action_html = ""
+            _show_at_pmp = pd.notna(_ecpm_v) and _floor and (
+                _ecpm_v < _floor or _ecpm_v >= _floor * 2
+            )
+            if _show_at_pmp:
+                _at_url = _pmp_airtable_url(row)
+                if _at_url:
+                    _action_html = (
+                        '<div class="nw-actions">'
+                        f'<a class="nw-action" href="{_at_url}" '
+                        'target="_blank" rel="noopener noreferrer" '
+                        f'title="File AirTable ticket · PMP - Adjust">'
+                        '🎫 AirTable ticket</a>'
+                        '</div>'
+                    )
+                else:
+                    _action_html = (
+                        '<div class="nw-actions">'
+                        '<a class="nw-action is-disabled" '
+                        'title="Configure AirTable Base ID and Form ID in Settings to enable" '
+                        'aria-disabled="true">🎫 AirTable ticket</a>'
+                        '</div>'
+                    )
+
             return (
                 '<div class="nw-pmp-drawer">'
                 '<div class="nw-drawer-head">'
@@ -3887,6 +4174,7 @@ if st.session_state.active_view == "campaigns":
                 f'{status_html}'
                 f'{bid_html}'
                 f'{meta_html}'
+                f'{_action_html}'
                 '</div>'
             )
 
@@ -4619,6 +4907,104 @@ if st.session_state.active_view == "configure":
                     unsafe_allow_html=True,
                 )
 
+        # ── 1e: AirTable ticket integration ──
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">AirTable integration</div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Powers the drawer\'s '
+            f'<span style="color:rgba(250,250,250,0.85)">🎫 AirTable ticket</span> button. '
+            f'Routes Request Type automatically based on the drawer\'s state.</div>',
+            unsafe_allow_html=True,
+        )
+        _at_b_col, _at_f_col, _at_r_col = st.columns(3)
+        with _at_b_col:
+            st.markdown('<div class="nw-filter-label">Base ID</div>', unsafe_allow_html=True)
+            _at_base_edit = st.text_input(
+                "Base ID",
+                value=(_s.get("airtable_base_id") or "").strip(),
+                placeholder="appX7xp1veDq9ndUe",
+                key="settings_airtable_base_id",
+                label_visibility="collapsed",
+            )
+        with _at_f_col:
+            st.markdown('<div class="nw-filter-label">Form ID</div>', unsafe_allow_html=True)
+            _at_form_edit = st.text_input(
+                "Form ID",
+                value=(_s.get("airtable_form_id") or "").strip(),
+                placeholder="pagN88p2kwQBcjqZf",
+                key="settings_airtable_form_id",
+                label_visibility="collapsed",
+            )
+        with _at_r_col:
+            st.markdown('<div class="nw-filter-label">Reporter</div>', unsafe_allow_html=True)
+            _at_reporter_edit = st.text_input(
+                "Reporter",
+                value=(_s.get("airtable_reporter") or "").strip(),
+                placeholder="Roger Hirano",
+                key="settings_airtable_reporter",
+                label_visibility="collapsed",
+            )
+
+        # Request Type routing table — drawer context → AirTable enum value.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:12px">Request Type routing '
+            f'<span class="cfg-card-meta">· drawer context → AirTable enum</span></div>',
+            unsafe_allow_html=True,
+        )
+        _at_routing_rows = _s.get("airtable_request_type_routing") or []
+        _at_routing_edit = st.data_editor(
+            pd.DataFrame(_at_routing_rows) if _at_routing_rows else pd.DataFrame(
+                columns=["context", "request_type"]
+            ),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_airtable_routing",
+            column_config={
+                "context": st.column_config.TextColumn(
+                    "Drawer context",
+                    help="When this state matches, route to the Request Type below.",
+                ),
+                "request_type": st.column_config.TextColumn(
+                    "Request Type",
+                    help="Must match an AirTable enum value exactly "
+                         "(e.g. 'Direct Campaign - Troubleshooting', spaces around the hyphen).",
+                ),
+            },
+        )
+
+        # Field name mapping — canonical name → AirTable form's actual field name.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:12px">Field name mapping '
+            f'<span class="cfg-card-meta">· canonical → AirTable form\'s actual field name</span></div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'AirTable\'s prefill URL parameters must match the form\'s actual field names. '
+            f'Verify via AirTable → Share → Copy prefilled link.</div>',
+            unsafe_allow_html=True,
+        )
+        _at_field_dict = _s.get("airtable_field_names") or {}
+        _at_field_rows = [
+            {"canonical": k, "airtable_field_name": v}
+            for k, v in _at_field_dict.items()
+        ]
+        _at_fields_edit = st.data_editor(
+            pd.DataFrame(_at_field_rows) if _at_field_rows else pd.DataFrame(
+                columns=["canonical", "airtable_field_name"]
+            ),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_airtable_fields",
+            column_config={
+                "canonical": st.column_config.TextColumn(
+                    "Canonical name", help="Internal field name the dashboard uses.",
+                ),
+                "airtable_field_name": st.column_config.TextColumn(
+                    "AirTable field name", help="Exact name as it appears in the AirTable form.",
+                ),
+            },
+        )
+
         # ────────────────────────────────────────────────────────────────────
         # SECTION 2 — Field mapping
         # ────────────────────────────────────────────────────────────────────
@@ -5084,6 +5470,21 @@ if st.session_state.active_view == "configure":
                 for _, r in _incl_edit.iterrows()
                 if pd.notna(r.get("Pattern")) and str(r["Pattern"]).strip()
             ]
+            # AirTable routing + field name mapping from data editors.
+            _new_at_routing = [
+                {"context": str(r.get("context") or "").strip(),
+                 "request_type": str(r.get("request_type") or "").strip()}
+                for _, r in _at_routing_edit.iterrows()
+                if str(r.get("context") or "").strip()
+                and str(r.get("request_type") or "").strip()
+            ]
+            _new_at_fields = {
+                str(r.get("canonical") or "").strip():
+                    str(r.get("airtable_field_name") or "").strip()
+                for _, r in _at_fields_edit.iterrows()
+                if str(r.get("canonical") or "").strip()
+                and str(r.get("airtable_field_name") or "").strip()
+            }
             _save_settings({
                 "ssps": _new_ssps, "ae_names": _new_ae, "team_names": _new_team,
                 "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
@@ -5097,6 +5498,11 @@ if st.session_state.active_view == "configure":
                 "status_colors":       _new_status_colors,
                 "seller_colors":       _new_seller_colors,
                 "gam_network_id":      (_gam_network_id_edit or "").strip(),
+                "airtable_base_id":    (_at_base_edit or "").strip(),
+                "airtable_form_id":    (_at_form_edit or "").strip(),
+                "airtable_reporter":   (_at_reporter_edit or "").strip(),
+                "airtable_request_type_routing": _new_at_routing,
+                "airtable_field_names": _new_at_fields,
             })
             st.cache_data.clear()
             st.success("Settings saved — reloading dashboard…")
