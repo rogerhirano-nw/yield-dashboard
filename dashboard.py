@@ -475,23 +475,71 @@ st.markdown(
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
 }
+/* ── Streamlit defaults override ──────────────────────────────────────
+   Streamlit's global anchor styling (primary-color + underline) beats
+   unprefixed class selectors on specificity. Override with .stApp-prefixed
+   rules + !important + all link pseudo-classes so chrome links render as
+   plain text, never as blue underlined hyperlinks. */
+.stApp .nw-tab,
+.stApp .nw-tab:link,
+.stApp .nw-tab:visited,
+.stApp .nw-tab:active {
+  color: rgba(250,250,250,0.45) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-tab:hover {
+  color: rgba(250,250,250,0.85) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-tab.nw-tab-active,
+.stApp .nw-tab.nw-tab-active:link,
+.stApp .nw-tab.nw-tab-active:visited {
+  color: rgba(250,250,250,0.95) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-gear,
+.stApp .nw-gear:link,
+.stApp .nw-gear:visited,
+.stApp .nw-gear:active {
+  color: rgba(250,250,250,0.55) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-gear:hover {
+  color: rgba(250,250,250,0.85) !important;
+  text-decoration: none !important;
+}
+/* Hide Streamlit's top toolbar / hamburger / running-status indicator
+   (the stray red line near the top-right was the stStatusWidget flash). */
+#MainMenu, header[data-testid="stHeader"],
+[data-testid="stToolbar"], [data-testid="stStatusWidget"],
+[data-testid="stDecoration"] {
+  visibility: hidden !important;
+  height: 0 !important;
+  display: none !important;
+}
+/* Compact the top of the main container — Streamlit's default is ~6rem. */
+.stApp .main .block-container,
+.stApp [data-testid="stMain"] .block-container,
+.stApp [data-testid="stAppViewContainer"] .block-container {
+  padding-top: 1.5rem !important;
+  padding-bottom: 2rem !important;
+  max-width: 100% !important;
+}
 /* H1 sizing per spec — Streamlit's default is much larger. */
 h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4px 0; line-height: 1.2; }
 /* Tabular numbers across every cell + KPI value. */
 [data-testid="stMetricValue"], [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th,
 .kpi-value, .kpi-target, .nw-num { font-variant-numeric: tabular-nums; }
-/* Active tab underline — replace Streamlit's default red highlight with the
-   standard text color (red is reserved for severity). */
-.stTabs [aria-selected="true"] { border-bottom: 2px solid var(--text-color) !important; color: var(--text-color) !important; }
-.stTabs [data-baseweb="tab-highlight"] { background-color: var(--text-color) !important; }
-/* Eyebrow label */
-.nw-eyebrow { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+/* (Old st.tabs overrides removed — chrome is now custom HTML.) */
+/* Eyebrow label (page-level section heading above the H1). */
+.nw-eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
               color: rgba(250,250,250,0.55); font-weight: 500; }
-.nw-timestamp { font-size: 12px; color: rgba(250,250,250,0.55); text-align: right;
+.nw-timestamp { font-size: 12px; color: rgba(250,250,250,0.55);
                 font-variant-numeric: tabular-nums; }
-/* Filter labels — quieter than the page eyebrow above the H1. */
-.nw-filter-label { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
-                   color: rgba(250,250,250,0.40); font-weight: 500; margin-bottom: 2px; }
+/* Filter labels — field labels above selects. Visibly less prominent than
+   the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
+.nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
+                   color: rgba(250,250,250,0.35); font-weight: 400; margin-bottom: 3px; }
 /* Exception banners — left severity bar, equal-height grid row. */
 .nw-banner-row { display: grid; grid-template-columns: 1fr 1fr 1fr;
                  gap: 8px; align-items: stretch; margin: 6px 0 10px; }
@@ -504,13 +552,20 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 .nw-banner.sev-red    { background: rgba(244, 67, 54, 0.10); border-left-color: hsl(0, 70%, 55%);   color: hsl(0, 60%, 82%); }
 .nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.08); border-left-color: hsl(35, 75%, 55%); color: hsl(35, 60%, 80%); }
 .nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
-/* KPI tile — quieter than st.metric's default display sizing. */
-.kpi-tile  { padding: 12px 14px; border-radius: var(--border-radius-lg);
-             background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.08); }
-.kpi-label { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-             color: rgba(250,250,250,0.55); font-weight: 500; margin-bottom: 4px; }
-.kpi-value { font-size: 18px; font-weight: 500; line-height: 1.2; }
-.kpi-target{ font-size: 11px; color: rgba(250,250,250,0.55); margin-top: 2px; }
+/* KPI strip — single grid so all six tiles render at equal height. */
+.nw-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr);
+              gap: 8px; align-items: stretch; margin: 4px 0 10px; }
+.kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
+             min-height: 78px; padding: 12px 14px;
+             border-radius: var(--border-radius-lg);
+             background: rgba(255,255,255,0.03);
+             border: 0.5px solid rgba(255,255,255,0.08);
+             box-sizing: border-box; }
+.kpi-label { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+             color: rgba(250,250,250,0.50); font-weight: 500; margin-bottom: 6px; }
+.kpi-value { font-size: 18px; font-weight: 500; line-height: 1.2;
+             color: rgba(250,250,250,0.92); font-variant-numeric: tabular-nums; }
+.kpi-target{ font-size: 11px; color: rgba(250,250,250,0.50); margin-top: 2px; }
 /* Sentence-case helper class (utility — applied selectively). */
 .nw-sentence::first-letter { text-transform: uppercase; }
 /* Compact dataframe borders */
@@ -546,12 +601,14 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
                                   border-bottom-color: rgba(250,250,250,0.95); }
 /* Header right-side cluster: timestamp + inline gear icon. */
 .nw-header-right { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.nw-gear { padding: 6px 8px; font-size: 14px; line-height: 1;
-           color: rgba(250,250,250,0.55); text-decoration: none;
-           border-radius: var(--border-radius-md); background: transparent; }
-.nw-gear:hover { background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.85); }
-/* Tab inactive labels muted */
-.stTabs button[aria-selected="false"] { color: rgba(250,250,250,0.45) !important; }
+.nw-gear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 1;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  font-family: system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+}
+.nw-gear:hover { background: rgba(255,255,255,0.06); }
 /* ── Custom HTML table for Direct Campaigns ─────────────────────────── */
 .nw-tbl-wrap { background: rgba(255,255,255,0.03); border-radius: var(--border-radius-lg);
                border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 18px; margin: 8px 0; }
@@ -1616,32 +1673,28 @@ if st.session_state.active_view == "campaigns":
                     f'</div>'
                 )
 
-            k1, k2, k3, k4, k5, k6 = st.columns(6)
-            k1.markdown(_kpi_tile("Revenue",     _fmt_money(total_rev)), unsafe_allow_html=True)
-            k2.markdown(_kpi_tile("Impressions", _fmt_count(total_impr)), unsafe_allow_html=True)
-            k3.markdown(
-                _kpi_tile("Avg pacing",
-                          f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                          f"Target {int(_pacing_target)}%"),
-                unsafe_allow_html=True,
-            )
-            k4.markdown(
-                _kpi_tile("Viewability",
-                          f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
-                          "Target 70%"),
-                unsafe_allow_html=True,
-            )
             if _video_li_count > 0 and pd.notna(avg_vcr):
                 _vcr_val = f"{avg_vcr:.1f}%"
                 _vcr_sub = f"{int(_video_li_count)} video line{'s' if _video_li_count != 1 else ''}"
             else:
                 _vcr_val = "—"
                 _vcr_sub = "No video"
-            k5.markdown(_kpi_tile("VCR", _vcr_val, _vcr_sub), unsafe_allow_html=True)
-            k6.markdown(
-                _kpi_tile("CTR",
-                          f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
-                          "Benchmark 0.08%"),
+            # Single grid container so all six tiles stretch to equal height.
+            st.markdown(
+                '<div class="nw-kpi-row">'
+                + _kpi_tile("Revenue",     _fmt_money(total_rev))
+                + _kpi_tile("Impressions", _fmt_count(total_impr))
+                + _kpi_tile("Avg pacing",
+                            f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
+                            f"Target {int(_pacing_target)}%")
+                + _kpi_tile("Viewability",
+                            f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
+                            "Target 70%")
+                + _kpi_tile("VCR", _vcr_val, _vcr_sub)
+                + _kpi_tile("CTR",
+                            f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
+                            "Benchmark 0.08%")
+                + '</div>',
                 unsafe_allow_html=True,
             )
 
