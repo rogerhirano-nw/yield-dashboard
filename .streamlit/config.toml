@@ -1,0 +1,6 @@
+# Pin the theme to dark regardless of the user's OS prefers-color-scheme.
+# All custom CSS in dashboard.py assumes a dark background (text colors are
+# near-white rgba(250,250,250,...)) so light mode renders the page nearly
+# invisible. Lock it.
+[theme]
+base = "dark"
