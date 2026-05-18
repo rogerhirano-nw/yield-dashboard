@@ -177,8 +177,8 @@
         "Pacing %":         "pacing_pct",
         "Viewability %":    "ad_server_active_view_viewable_impressions_rate",
         "CTR %":            "ad_server_ctr",
-        "Revenue":          "ad_server_cpm_and_cpc_revenue",
-        "VCR %":            "vcr"
+        "VCR %":            "vcr",
+        "Revenue":          "ad_server_cpm_and_cpc_revenue"
       }
     }
   ]

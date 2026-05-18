@@ -543,6 +543,8 @@ class GAMClient:
             "ad_server_clicks":      "clicks",
             "ad_server_active_view_viewable_impressions":   "viewable_imps",
             "ad_server_active_view_measurable_impressions": "measurable_imps",
+            "video_viewership_starts":    "video_starts",
+            "video_viewership_completes": "video_completes",
         }
 
         def _per_day(d, suffix):

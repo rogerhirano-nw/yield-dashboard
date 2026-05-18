@@ -213,8 +213,8 @@ _DEFAULT_SETTINGS: dict = {
                 "Pacing %":      "pacing_pct",
                 "Viewability %": "ad_server_active_view_viewable_impressions_rate",
                 "CTR %":         "ad_server_ctr",
-                "Revenue":       "ad_server_cpm_and_cpc_revenue",
                 "VCR %":         "vcr",
+                "Revenue":       "ad_server_cpm_and_cpc_revenue",
             },
         },
     ],
@@ -1291,10 +1291,33 @@ with tab_seller:
                     axis=1,
                 )
 
-            has_vcr = "vcr" in view_gam.columns and (
-                view_gam["vcr"].notna().any()
-                or ("ad_format" in view_gam.columns and view_gam["ad_format"].str.lower().eq("video").any())
-            )
+            # Per-day VCR (completes / starts) for the annotation delta.
+            for _suf in ("1d", "2d"):
+                _vs = f"video_starts_{_suf}"
+                _vc = f"video_completes_{_suf}"
+                if _vs in view_gam.columns and _vc in view_gam.columns:
+                    view_gam[f"vcr_rate_{_suf}"] = view_gam.apply(
+                        lambda r, s=_vs, c=_vc: (
+                            r[c] / r[s] * 100 if pd.notna(r[s]) and pd.notna(r[c]) and r[s] > 0 else None
+                        ),
+                        axis=1,
+                    )
+            if "vcr" in view_gam.columns:
+                # Primary stays = lifetime VCR. Annotation = 1d - 2d pp delta.
+                # Non-video LIs (ad_format doesn't contain 'video') render 'N/A'
+                # so the column is never blank — clear visual signal that VCR
+                # doesn't apply.
+                def _fmt_vcr(row):
+                    fmt = row.get("ad_format")
+                    if not isinstance(fmt, str) or "video" not in fmt.lower():
+                        return "N/A"
+                    return _fmt_pct_annot(row.get("vcr"),
+                                           row.get("vcr_rate_1d"),
+                                           row.get("vcr_rate_2d"))
+                view_gam["vcr"] = view_gam.apply(_fmt_vcr, axis=1)
+
+            # VCR column always shown now (non-video shows 'N/A').
+            has_vcr = "vcr" in view_gam.columns
 
             _direct_src = next(
                 (s for s in _cfg.get("direct_sources", []) if s.get("name") == "GAM Direct"),
@@ -1320,9 +1343,11 @@ with tab_seller:
                     "ad_server_clicks": "Clicks", "pacing_pct": "Pacing %",
                     "ad_server_active_view_viewable_impressions_rate": "Viewability %",
                     "ad_server_ctr": "CTR %",
+                    "vcr": "VCR %",
                     "ad_server_cpm_and_cpc_revenue": "Revenue",
                 }
-            if has_vcr and "vcr" not in display_cols:
+            if "vcr" not in display_cols:
+                # Always include — non-video LIs render as 'N/A', video LIs get the rate.
                 display_cols["vcr"] = "VCR %"
 
             available_cols = [c for c in display_cols if c in view_gam.columns]
@@ -1362,7 +1387,7 @@ with tab_seller:
             if "Viewability %" in table_df.columns:
                 col_config["Viewability %"] = st.column_config.TextColumn("Viewability %", width="medium")
             if "VCR %" in table_df.columns:
-                col_config["VCR %"] = st.column_config.NumberColumn(format="%.1f%%")
+                col_config["VCR %"] = st.column_config.TextColumn("VCR %", width="medium")
             if "CTR %" in table_df.columns:
                 col_config["CTR %"] = st.column_config.TextColumn("CTR %", width="medium")
             if "Revenue" in table_df.columns:
