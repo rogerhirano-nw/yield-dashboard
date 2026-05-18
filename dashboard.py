@@ -623,18 +623,72 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.60); }
     unsafe_allow_html=True,
 )
 
-# ── Header block: eyebrow / H1 / right-aligned timestamp + line-item count.
-# Line-item count is computed below the load() helper; we render a placeholder
-# header here and overwrite the timestamp slot once the count is known.
-_hdr_left, _hdr_right = st.columns([3, 2])
-with _hdr_left:
-    st.markdown('<div class="nw-eyebrow">Yield &amp; pacing</div>', unsafe_allow_html=True)
-    st.markdown("# Newsweek overall performance")
-_header_timestamp_slot = _hdr_right.empty()
+# ──────────────────────────────────────────────────────────────────────────
+# Dual-entry navigation: data tabs + a Configure tab pushed to the right
+# with a divider, AND a gear icon button in the header top-right. Both
+# entry points route through st.session_state.active_view.
+# ──────────────────────────────────────────────────────────────────────────
+_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "configure")
+_VIEW_TITLE = {
+    "campaigns": "Overall performance",
+    "site":      "By site / size",
+    "dsp":       "By DSP",
+    "magnite":   "Magnite deals",
+    "pubmatic":  "Pubmatic deals",
+    "configure": "Configure",
+}
+_NAV_DATA = [
+    ("campaigns", "Campaigns"),
+    ("site",      "By site / size"),
+    ("dsp",       "By DSP"),
+    ("magnite",   "Magnite deals"),
+    ("pubmatic",  "Pubmatic deals"),
+]
 
+if "active_view" not in st.session_state:
+    st.session_state.active_view = "campaigns"
+# Honor ?view= deep-link on first load (and any rerun the user navigates with).
+try:
+    _qp = st.query_params.get("view")
+    if isinstance(_qp, str) and _qp in _VIEW_KEYS and st.session_state.active_view != _qp:
+        st.session_state.active_view = _qp
+except Exception:
+    pass
+
+# CSS extension for the custom nav + gear button.
+st.markdown(
+    """
+<style>
+/* Gear icon button in header (top-right) */
+.stButton > button[kind="secondary"][data-testid*="gear"] {
+  padding: 6px 8px; font-size: 14px; min-height: 0; line-height: 1;
+  background: transparent; border: 0.5px solid rgba(255,255,255,0.10);
+  border-radius: var(--border-radius-md);
+}
+/* Custom nav buttons styled to look like tabs */
+.nw-nav .stButton > button {
+  background: transparent !important; border: none !important;
+  padding: 8px 6px !important; color: rgba(250,250,250,0.55) !important;
+  font-weight: 400 !important; box-shadow: none !important;
+  border-radius: 0 !important; border-bottom: 2px solid transparent !important;
+  text-align: left !important;
+}
+.nw-nav .stButton > button:hover { color: rgba(250,250,250,0.85) !important;
+                                    background: rgba(255,255,255,0.03) !important; }
+.nw-nav .stButton > button.nw-nav-active {
+  color: rgba(250,250,250,0.95) !important; font-weight: 500 !important;
+  border-bottom: 2px solid rgba(250,250,250,0.95) !important;
+}
+/* Configure tab — pushed right with divider before, tertiary text by default. */
+.nw-nav-configure { border-left: 0.5px solid rgba(255,255,255,0.10); padding-left: 14px; }
+.nw-nav-configure .stButton > button { color: rgba(250,250,250,0.40) !important; }
+.nw-nav-configure .stButton > button:hover { color: rgba(250,250,250,0.70) !important; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
-
 
 @st.cache_data(ttl=300)
 def load(table: str) -> pd.DataFrame:
@@ -646,11 +700,85 @@ def load(table: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-tab_seller, tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_settings = st.tabs([
-    "Campaigns", "By site / size", "By DSP", "Magnite deals", "Pubmatic deals", "⚙  Configure",
-])
+def _set_view(view_key):
+    """Route to a given view from any entry point (nav button OR gear icon)."""
+    st.session_state.active_view = view_key
+    try:
+        st.query_params["view"] = view_key
+    except Exception:
+        pass
+    st.rerun()
 
-with tab_site:
+
+# ── Header: eyebrow + view-aware H1 + right-aligned timestamp + gear icon.
+_active_view = st.session_state.active_view
+_hdr_left, _hdr_right = st.columns([4, 2])
+with _hdr_left:
+    st.markdown('<div class="nw-eyebrow">Yield &amp; pacing</div>', unsafe_allow_html=True)
+    st.markdown(f"# {_VIEW_TITLE.get(_active_view, 'Overall performance')}")
+
+with _hdr_right:
+    _ts_col, _gear_col = st.columns([6, 1])
+    _header_timestamp_slot = _ts_col.empty()
+    # Default fill — overridden by each view.
+    if _active_view == "configure":
+        try:
+            with _engine().connect() as _c_hdr:
+                _r = _c_hdr.execute(sqlalchemy.text(
+                    "SELECT updated_at FROM dashboard_settings WHERE key='main'"
+                )).fetchone()
+            if _r and _r[0]:
+                _ts = pd.to_datetime(_r[0])
+                _age = pd.Timestamp.utcnow() - (_ts.tz_convert("UTC") if _ts.tzinfo else _ts)
+                _h = _age.total_seconds() / 3600
+                _last = f"{int(_age.total_seconds()/60)} min ago" if _h < 1 else \
+                        f"{int(_h)} hours ago" if _h < 24 else f"{int(_h/24)} days ago"
+                _header_timestamp_slot.markdown(
+                    f'<div class="nw-timestamp">Last saved {_last} by R. Hirano</div>',
+                    unsafe_allow_html=True,
+                )
+        except Exception:
+            pass
+    else:
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            _now_edt = datetime.now(_ZI("America/New_York"))
+            _ts_str = _now_edt.strftime("%-I:%M %p EDT")
+        except Exception:
+            _ts_str = datetime.now().strftime("%H:%M")
+        _header_timestamp_slot.markdown(
+            f'<div class="nw-timestamp">🕐 {_ts_str}</div>',
+            unsafe_allow_html=True,
+        )
+    # Gear icon — sets active_view to configure from any view.
+    if _gear_col.button("⚙", key="gear_btn", help="Configure dashboard"):
+        _set_view("configure")
+
+# ── Nav row: 5 data tabs + spacer + divider + Configure tab.
+st.markdown('<div class="nw-nav">', unsafe_allow_html=True)
+_nav_cols = st.columns([2, 2, 2, 2, 2, 3, 2])  # 5 data, spacer, configure
+for _i, (_k, _label) in enumerate(_NAV_DATA):
+    _active = (_active_view == _k)
+    _btn_label = ("• " if _active else "") + _label
+    if _nav_cols[_i].button(_label, key=f"nav_{_k}", use_container_width=True,
+                             type="primary" if _active else "secondary"):
+        _set_view(_k)
+# Configure tab (rightmost, with divider)
+_nav_cols[6].markdown('<div class="nw-nav-configure">', unsafe_allow_html=True)
+if _nav_cols[6].button("⚙  Configure", key="nav_configure", use_container_width=True,
+                        type="primary" if _active_view == "configure" else "secondary"):
+    _set_view("configure")
+_nav_cols[6].markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# NOTE: existing `with tab_X:` blocks below are converted to
+# `if st.session_state.active_view == "X":` conditionals in a follow-up
+# edit. The aliases below let the original blocks continue to type-check
+# during the transition — they're stubs that the conditional replacements
+# never reach.
+tab_seller = tab_site = tab_dsp = tab_deal = tab_pubmatic = tab_settings = None
+
+if st.session_state.active_view == "site":
     df = load("magnite_site_daily")
     if df.empty:
         st.info("No data yet.")
@@ -726,7 +854,7 @@ with tab_site:
             },
         )
 
-with tab_deal:
+if st.session_state.active_view == "magnite":
     df = load("magnite_deal_daily")
     if df.empty:
         st.info("No data yet.")
@@ -889,7 +1017,7 @@ with tab_deal:
             },
         )
 
-with tab_dsp:
+if st.session_state.active_view == "dsp":
     df = load("magnite_dsp_daily")
     if df.empty:
         st.info("No data yet.")
@@ -979,7 +1107,7 @@ with tab_dsp:
             },
         )
 
-with tab_pubmatic:
+if st.session_state.active_view == "pubmatic":
     try:
         pm_df = load("pubmatic_deals")
     except Exception:
@@ -1105,7 +1233,7 @@ with tab_pubmatic:
             },
         )
 
-with tab_seller:
+if st.session_state.active_view == "campaigns":
     # ── Table 1: Direct campaigns from GAM ──────────────────────────────
     st.subheader("Direct Campaigns")
 
@@ -2632,7 +2760,7 @@ with tab_seller:
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
-with tab_settings:
+if st.session_state.active_view == "configure":
     _s = _load_settings()  # fresh read so edits are based on current file
 
     _CANONICAL_FIELDS = [
