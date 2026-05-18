@@ -92,6 +92,7 @@
     "Multi":        { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
     "Interstitial": { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
   },
+  "gam_network_id": "",
   "pacing_target_pct": 100.0,
   "pmp_floors_by_deal_type": {
     "Programmatic Guaranteed": 6.00,

@@ -130,6 +130,7 @@ _DEFAULT_SETTINGS: dict = {
         "Interstitial": {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
     },
     "pacing_target_pct": 100.0,
+    "gam_network_id": "",  # set in Configure → Direct campaigns → GAM integration
     "status_colors": [
         {"keyword": "Delivering", "color": "#2E7D32"},  # green
         {"keyword": "Paused",     "color": "#F9A825"},  # amber
@@ -888,6 +889,24 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   background: rgba(70,130,200,0.18);
   border-color: rgba(70,130,200,0.35);
   color: hsl(210, 50%, 80%);
+}
+.nw-action.is-disabled {
+  opacity: 0.4; cursor: not-allowed; pointer-events: auto;
+  background: transparent; color: rgba(250,250,250,0.55);
+}
+.nw-action.is-disabled:hover { background: transparent; }
+/* Clickable GAM ID in the drawer subtitle — anchor inheriting drawer style. */
+.stApp .nw-drawer-id-link,
+.stApp .nw-drawer-id-link:link,
+.stApp .nw-drawer-id-link:visited {
+  color: rgba(250,250,250,0.75) !important;
+  text-decoration: none !important;
+  border-bottom: 0.5px dotted rgba(250,250,250,0.30);
+  font-variant-numeric: tabular-nums;
+}
+.stApp .nw-drawer-id-link:hover {
+  color: rgba(250,250,250,0.95) !important;
+  border-bottom-color: rgba(250,250,250,0.60);
 }
 /* ── PMP section (matches the Direct Campaigns design language) ──── */
 .nw-section-div { height: 0.5px; border: 0; background: rgba(255,255,255,0.10);
@@ -2691,7 +2710,12 @@ if st.session_state.active_view == "campaigns":
                 return f'<div class="nw-prog-bar"><div class="nw-prog-fill {cls}" style="width:{pct:.0f}%"></div></div>'
 
             # ── Drawer helpers (data + warning matcher + URL builder).
-            _gam_network_id = os.environ.get("GAM_NETWORK_ID", "").strip()
+            # Single source of truth for the GAM Network ID — Configure setting
+            # wins, falling back to env var for backwards compat.
+            _gam_network_id = (
+                (_cfg.get("gam_network_id") or "").strip()
+                or os.environ.get("GAM_NETWORK_ID", "").strip()
+            )
             _warnings_cfg = _cfg.get("line_item_warnings") or []
 
             def _warnings_for(row):
@@ -2716,7 +2740,7 @@ if st.session_state.active_view == "campaigns":
                 except (TypeError, ValueError):
                     return None
                 return (f"https://admanager.google.com/{_gam_network_id}"
-                        f"#delivery/LineItemDetail/lineItemId={li_int}")
+                        f"#delivery/line_item/detail/line_item_id={li_int}")
 
             def _fmt_int_cell(v):
                 v = pd.to_numeric(v, errors="coerce")
@@ -2962,7 +2986,23 @@ if st.session_state.active_view == "campaigns":
                 if gam_link:
                     action_buttons.append(
                         f'<a class="nw-action nw-action-primary" href="{gam_link}" '
-                        'target="_blank" rel="noopener">Open in GAM ↗</a>'
+                        f'target="_blank" rel="noopener noreferrer" '
+                        f'title="Opens line item {_esc(li_id_str)} in GAM (new tab)">'
+                        f'↗ Open in GAM</a>'
+                    )
+                elif _gam_network_id and not li_id_str:
+                    # Network configured but row has no LI ID (rare — aggregated rows).
+                    action_buttons.append(
+                        '<a class="nw-action is-disabled" '
+                        'title="No line item ID available for this row" '
+                        'aria-disabled="true">↗ Open in GAM</a>'
+                    )
+                elif not _gam_network_id:
+                    # Settings field empty — disable with a hint pointing back to Configure.
+                    action_buttons.append(
+                        '<a class="nw-action is-disabled" '
+                        'title="Configure GAM Network ID in Settings to enable" '
+                        'aria-disabled="true">↗ Open in GAM</a>'
                     )
                 _p_num = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
                 if pd.notna(_p_num) and _p_num < 90:
@@ -2985,8 +3025,22 @@ if st.session_state.active_view == "campaigns":
                 actions = (f'<div class="nw-actions">{"".join(action_buttons)}</div>'
                            if action_buttons else "")
 
-                id_chip = (f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
-                           if li_id_str else '')
+                # GAM ID is a right-clickable link (Copy Link Address gets the
+                # full deep-link URL — Streamlit blocks JS so navigator.clipboard
+                # isn't available, but the browser's native context menu is).
+                if li_id_str:
+                    if gam_link:
+                        id_chip = (
+                            f'<span class="nw-drawer-id">GAM ID · '
+                            f'<a class="nw-drawer-id-link" href="{gam_link}" '
+                            f'target="_blank" rel="noopener noreferrer" '
+                            f'title="Click to open in GAM · right-click to copy link">'
+                            f'{_esc(li_id_str)}</a></span>'
+                        )
+                    else:
+                        id_chip = f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
+                else:
+                    id_chip = ''
                 status_html = _drawer_status_banner(row)
                 chart_html = _drawer_delivery_chart(row)
                 sm_html = _drawer_small_multiples(row)
@@ -4521,6 +4575,50 @@ if st.session_state.active_view == "configure":
             label_visibility="collapsed",
         )
 
+        # ── 1d: GAM Network ID — powers "Open in GAM" deep links from the drawer.
+        _existing_net_id = (_s.get("gam_network_id") or "").strip()
+        _env_net_id = os.environ.get("GAM_NETWORK_ID", "").strip()
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">GAM integration</div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Network ID used to build the deep link in every drawer\'s '
+            f'<span style="color:rgba(250,250,250,0.85)">Open in GAM ↗</span> button. '
+            f'Find it in any GAM URL after <code>admanager.google.com/</code>.</div>',
+            unsafe_allow_html=True,
+        )
+        _net_col_in, _net_col_hint = st.columns([2, 4])
+        with _net_col_in:
+            _gam_network_id_edit = st.text_input(
+                "GAM Network ID",
+                value=_existing_net_id,
+                placeholder=_env_net_id or "e.g. 1234567",
+                key="settings_gam_network_id",
+                label_visibility="collapsed",
+            )
+        with _net_col_hint:
+            if (_gam_network_id_edit or _existing_net_id):
+                _eff = (_gam_network_id_edit or _existing_net_id).strip()
+                st.markdown(
+                    f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
+                    f'Sample link: <span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">'
+                    f'admanager.google.com/{_eff}#delivery/line_item/detail/line_item_id=…</span></div>',
+                    unsafe_allow_html=True,
+                )
+            elif _env_net_id:
+                st.markdown(
+                    f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
+                    f'Currently falling back to <code>GAM_NETWORK_ID</code> env var '
+                    f'(<span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">{_env_net_id}</span>). '
+                    f'Set above to override.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div style="font-size:11px;color:rgba(40,90%,60%,0.85);padding-top:6px">'
+                    f'⚠ Not set — drawer "Open in GAM" buttons will be disabled.</div>',
+                    unsafe_allow_html=True,
+                )
+
         # ────────────────────────────────────────────────────────────────────
         # SECTION 2 — Field mapping
         # ────────────────────────────────────────────────────────────────────
@@ -4998,6 +5096,7 @@ if st.session_state.active_view == "configure":
                 "pacing_target_pct":   _new_pacing_target,
                 "status_colors":       _new_status_colors,
                 "seller_colors":       _new_seller_colors,
+                "gam_network_id":      (_gam_network_id_edit or "").strip(),
             })
             st.cache_data.clear()
             st.success("Settings saved — reloading dashboard…")
