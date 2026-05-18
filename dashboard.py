@@ -3541,32 +3541,26 @@ if st.session_state.active_view == "campaigns":
                 _gam_raw["ad_format"] = _with_fallback(_gam_raw, _gam_col_map.get("Format", "[auto]"), "ad_format")
                 _gam_raw["dsp"]       = _with_fallback(_gam_raw, _gam_col_map.get("DSP", ""),       "dsp")
 
+                # Build order_name → salesperson lookup from gam_campaigns (Order/User API data)
+                try:
+                    _sp_df = load("gam_campaigns")[["order_name", "salesperson"]].dropna(subset=["order_name", "salesperson"])
+                    _sp_df = _sp_df.drop_duplicates("order_name").copy()
+                    _sp_df["salesperson"] = _sp_df["salesperson"].apply(_parse_gam_salesperson)
+                    _gam_sp_map = dict(zip(_sp_df["order_name"], _sp_df["salesperson"]))
+                except Exception:
+                    _gam_sp_map = {}
+
                 _seller_cfg = _gam_col_map.get("Seller", "[auto]")
                 if _seller_cfg not in ("[auto]", "N/A", "", None) and _seller_cfg in _gam_raw.columns:
                     _gam_raw["seller_ae"] = _gam_raw[_seller_cfg].map(AE_NAMES)
                 else:
-                    # Policy: PD/PG/Direct rely on GAM's order.salesperson (API
-                    # is the source of truth — no deal-name regex needed). PA
-                    # delivers through Ad Exchange under a backstop order with
-                    # no AE assigned, so PA still falls back to the deal-name /
-                    # order-name regex.
-                    _api_by_order = {}
-                    try:
-                        _camp = load("gam_campaigns")
-                        if not _camp.empty and "order_name" in _camp.columns and "salesperson" in _camp.columns:
-                            _api_by_order = (
-                                _camp.dropna(subset=["salesperson"])
-                                     .drop_duplicates("order_name", keep="first")
-                                     .set_index("order_name")["salesperson"]
-                                     .to_dict()
-                            )
-                    except Exception:
-                        pass
+                    # PD/PG: use GAM order.salesperson (API is source of truth).
+                    # PA: regex only — PA orders run through Ad Exchange backstop with no AE assigned.
                     _api_seller = (
-                        _gam_raw["order_name"].map(_api_by_order).apply(_parse_gam_salesperson)
-                        if "order_name" in _gam_raw.columns else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
+                        _gam_raw["order_name"].map(_gam_sp_map)
+                        if "order_name" in _gam_raw.columns and _gam_sp_map
+                        else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
                     )
-
                     _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
                     _regex_from_deal = _gam_raw["deal_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
                     _regex_from_order = (
@@ -3574,9 +3568,7 @@ if st.session_state.active_view == "campaigns":
                         if "order_name" in _gam_raw.columns else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
                     )
                     _regex_seller = _regex_from_deal.fillna(_regex_from_order)
-
                     _is_pa = _gam_raw["deal_type_label"] == "Private Auction"
-                    # PD/PG: API → regex fallback. PA: regex only.
                     _gam_raw["seller_ae"] = _api_seller.where(~_is_pa & _api_seller.notna(), _regex_seller)
 
                 _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()

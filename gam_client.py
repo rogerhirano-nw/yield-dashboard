@@ -457,21 +457,29 @@ class GAMClient:
             logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
             return pd.DataFrame(columns=_cols)
 
-        auctions_by_name: dict[str, str] = {}
+        # Build auction resource name → display name lookup (skip archived)
+        auction_names: dict[str, str] = {}
         for auction in self._pa_client.list_private_auctions(
             admanager_v1.ListPrivateAuctionsRequest(parent=self._parent)
         ):
-            if getattr(auction, "archived", False):
-                continue
-            auctions_by_name[auction.name] = auction.display_name or ""
+            if not getattr(auction, "archived", False):
+                auction_names[auction.name] = auction.display_name or ""
+
+        # List all deals at network level — parent must be "networks/*" not per-auction
 
         rows = []
         for deal in self._pad_client.list_private_auction_deals(
             admanager_v1.ListPrivateAuctionDealsRequest(parent=self._parent)
         ):
-            auction_ref = getattr(deal, "private_auction", "") or ""
+            # deal.name = networks/X/privateAuctions/Y/privateAuctionDeals/Z
+            # extract auction ref = networks/X/privateAuctions/Y
+            parts = deal.name.rsplit("/privateAuctionDeals/", 1)
+            auction_ref = parts[0] if len(parts) == 2 else None
+            if auction_ref not in auction_names:
+                continue  # skip deals belonging to archived auctions
             rows.append({
-                "auction_name":     auctions_by_name.get(auction_ref, ""),
+                "auction_name":     auction_names[auction_ref],
+                "deal_name":        deal.display_name or None,
                 "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
                 "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
                 "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
@@ -479,8 +487,7 @@ class GAMClient:
                 "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
             })
 
-        logger.info("GAM private auction deals: %d deals across %d non-archived auctions",
-                    len(rows), len(auctions_by_name))
+        logger.info("GAM private auctions: %d deals across %d non-archived auctions", len(rows), len(auction_names))
         return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
