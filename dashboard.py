@@ -804,6 +804,72 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   color: hsl(210, 30%, 82%);
 }
 .nw-warn.severity-info strong { color: hsl(210, 45%, 90%); }
+/* Drawer status banner — thesis statement at the top. */
+.nw-status-banner {
+  display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 12px; margin-top: 12px;
+  border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+  border-left: 3px solid transparent;
+  font-size: 12px; line-height: 1.4;
+}
+.nw-status-banner strong {
+  font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; font-weight: 500;
+  white-space: nowrap;
+}
+.nw-status-banner.sev-red {
+  background: rgba(244, 67, 54, 0.10);
+  border-left-color: hsl(0, 70%, 55%);
+  color: hsl(0, 60%, 82%);
+}
+.nw-status-banner.sev-amber {
+  background: rgba(255, 167, 38, 0.08);
+  border-left-color: hsl(35, 75%, 55%);
+  color: hsl(35, 60%, 80%);
+}
+.nw-status-banner.sev-ok {
+  background: rgba(76, 175, 80, 0.06);
+  border-left-color: hsl(120, 35%, 55%);
+  color: hsl(120, 30%, 80%);
+}
+/* Drawer 7-day delivery chart panel. */
+.nw-drawer-chart {
+  margin-top: 12px; padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid rgba(255,255,255,0.06);
+}
+.nw-drawer-chart-label {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.nw-drawer-chart-label .legend {
+  font-size: 10px; color: rgba(250,250,250,0.40); font-weight: 400;
+  text-transform: none; letter-spacing: 0;
+}
+.nw-drawer-chart svg { width: 100%; height: 80px; display: block; }
+/* Small multiples for viewability + CTR/VCR. */
+.nw-sm-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
+}
+.nw-sm-panel {
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid rgba(255,255,255,0.06);
+}
+.nw-sm-label {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 6px;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.nw-sm-label .latest {
+  font-size: 12px; font-weight: 500; letter-spacing: 0;
+  color: rgba(250,250,250,0.92); text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.nw-sm-panel svg { width: 100%; height: 32px; display: block; }
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -1792,10 +1858,11 @@ if st.session_state.active_view == "campaigns":
                 return f"{int(v):,}"
 
             # ── Sparkline helpers ─────────────────────────────────────────
-            def _sparkline_svg(values, target=None, color="green"):
-                """56x20 SVG sparkline. `values` is the 7-day series (oldest first).
-                `target` optionally draws a dashed reference line. `color` keys into
-                the green/amber/red palette."""
+            def _sparkline_svg(values, target=None, color="green", klass="kpi-spark"):
+                """SVG sparkline. `values` is the 7-day series (oldest first).
+                `target` optionally draws a dashed reference line. `color` keys
+                into the green/amber/red palette. `klass` controls outer sizing
+                (default `kpi-spark` = 56x20; pass `""` for parent-controlled)."""
                 if not values:
                     return ""
                 clean = [float(v) if (v is not None and not pd.isna(v)) else None for v in values]
@@ -1827,7 +1894,9 @@ if st.session_state.active_view == "campaigns":
                 last_i = max(i for i, v in enumerate(clean) if v is not None)
                 dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(clean[last_i]):.1f}" '
                        f'r="2" fill="{stroke}"/>')
-                return (f'<svg class="kpi-spark" viewBox="0 0 {W} {H}" '
+                class_attr = f' class="{klass}"' if klass else ""
+                return (f'<svg{class_attr} viewBox="0 0 {W} {H}" '
+                        f'preserveAspectRatio="none" '
                         f'xmlns="http://www.w3.org/2000/svg">{tline}'
                         f'<polyline points="{pts}" fill="none" stroke="{stroke}" '
                         f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
@@ -2626,6 +2695,184 @@ if st.session_state.active_view == "campaigns":
                 s = str(v)
                 return s.split(" ")[0] if " " in s else s
 
+            def _drawer_status_banner(row):
+                """Rule-based thesis statement (severity-colored)."""
+                p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
+                if pd.isna(p):
+                    return ""
+                start = pd.to_datetime(row.get("start_date"), errors="coerce")
+                end = pd.to_datetime(row.get("end_date"), errors="coerce")
+                flight_bit = ""
+                if pd.notna(start) and pd.notna(end):
+                    total = max((end - start).days, 1)
+                    today_dt = pd.Timestamp(date.today())
+                    elapsed = max((today_dt - start).days, 0)
+                    elapsed = min(elapsed, total)
+                    flight_bit = f" · day {elapsed} of {total}"
+                # Sponsorship line items get forced to 100% upstream — call it out.
+                lit = (row.get("line_item_type") or "").upper()
+                if lit == "SPONSORSHIP":
+                    return ('<div class="nw-status-banner sev-ok">'
+                            '<strong>✓ Sponsorship</strong>'
+                            f'<div>Pacing is 100% by definition{flight_bit}.</div>'
+                            '</div>')
+                if p < 75:
+                    return ('<div class="nw-status-banner sev-red">'
+                            '<strong>⚠ Pacing critical</strong>'
+                            f'<div>{p:.1f}%{flight_bit}. Delivery well below expected.</div>'
+                            '</div>')
+                if p < 90:
+                    return ('<div class="nw-status-banner sev-amber">'
+                            '<strong>⚠ Underpacing</strong>'
+                            f'<div>{p:.1f}%{flight_bit}. Tracking behind expected pace.</div>'
+                            '</div>')
+                if p <= 110:
+                    return ('<div class="nw-status-banner sev-ok">'
+                            '<strong>✓ On track</strong>'
+                            f'<div>{p:.1f}% pacing{flight_bit}.</div>'
+                            '</div>')
+                return ('<div class="nw-status-banner sev-amber">'
+                        '<strong>⚠ Overpacing</strong>'
+                        f'<div>{p:.1f}%{flight_bit}. Will exhaust goal before flight ends.</div>'
+                        '</div>')
+
+            def _row_daily_imp_series(row):
+                cols = [f"impressions_{i}d" for i in range(7, 0, -1)]
+                if not all(c in row.index for c in cols):
+                    return None
+                out = []
+                for c in cols:
+                    v = pd.to_numeric(row.get(c), errors="coerce")
+                    out.append(float(v) if pd.notna(v) else None)
+                return out if any(v is not None for v in out) else None
+
+            def _row_view_series(row):
+                cv = [f"viewable_imps_{i}d"   for i in range(7, 0, -1)]
+                cm = [f"measurable_imps_{i}d" for i in range(7, 0, -1)]
+                if not all(c in row.index for c in cv + cm):
+                    return None
+                out = []
+                for a, b in zip(cv, cm):
+                    v = pd.to_numeric(row.get(a), errors="coerce")
+                    m = pd.to_numeric(row.get(b), errors="coerce")
+                    out.append(float(v / m * 100) if pd.notna(v) and pd.notna(m) and m > 0 else None)
+                return out if any(v is not None for v in out) else None
+
+            def _row_ctr_series(row):
+                cc = [f"clicks_{i}d"      for i in range(7, 0, -1)]
+                ci = [f"impressions_{i}d" for i in range(7, 0, -1)]
+                if not all(c in row.index for c in cc + ci):
+                    return None
+                out = []
+                for a, b in zip(cc, ci):
+                    c = pd.to_numeric(row.get(a), errors="coerce")
+                    i = pd.to_numeric(row.get(b), errors="coerce")
+                    out.append(float(c / i * 100) if pd.notna(c) and pd.notna(i) and i > 0 else None)
+                return out if any(v is not None for v in out) else None
+
+            def _row_vcr_series(row):
+                cs = [f"video_starts_{i}d"    for i in range(7, 0, -1)]
+                cc = [f"video_completes_{i}d" for i in range(7, 0, -1)]
+                if not all(c in row.index for c in cs + cc):
+                    return None
+                out = []
+                for a, b in zip(cs, cc):
+                    s = pd.to_numeric(row.get(a), errors="coerce")
+                    c = pd.to_numeric(row.get(b), errors="coerce")
+                    out.append(float(c / s * 100) if pd.notna(c) and pd.notna(s) and s > 0 else None)
+                return out if any(v is not None for v in out) else None
+
+            def _drawer_delivery_chart(row):
+                """7-day daily delivery: solid actual + dashed expected daily rate."""
+                actuals = _row_daily_imp_series(row)
+                if actuals is None:
+                    return ""
+                goal = pd.to_numeric(row.get("impressions_goal"), errors="coerce")
+                start = pd.to_datetime(row.get("start_date"), errors="coerce")
+                end = pd.to_datetime(row.get("end_date"), errors="coerce")
+                expected = None
+                if pd.notna(goal) and goal > 0 and pd.notna(start) and pd.notna(end):
+                    total = max((end - start).days, 1)
+                    expected = float(goal) / total
+                W, H, PAD = 300, 80, 8
+                pool = [a for a in actuals if a is not None] + ([expected] if expected else [])
+                if not pool:
+                    return ""
+                vmax = max(pool) * 1.1 or 1
+                n = len(actuals)
+                def _x(i): return PAD + i / (n - 1) * (W - 2 * PAD) if n > 1 else W / 2
+                def _y(v): return H - PAD - v / vmax * (H - 2 * PAD)
+                pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
+                               for i, v in enumerate(actuals) if v is not None)
+                # Determine color: avg of actuals vs expected.
+                non_null = [a for a in actuals if a is not None]
+                avg = sum(non_null) / len(non_null) if non_null else 0
+                if expected:
+                    ratio = avg / expected if expected else 1.0
+                    if ratio >= 0.9:   stroke = "hsl(120, 50%, 65%)"
+                    elif ratio >= 0.75: stroke = "hsl(40, 60%, 65%)"
+                    else:               stroke = "hsl(0, 60%, 70%)"
+                else:
+                    stroke = "hsl(120, 50%, 65%)"
+                exp_line = ""
+                if expected:
+                    ey = _y(expected)
+                    exp_line = (f'<line x1="{PAD}" y1="{ey:.1f}" x2="{W-PAD}" y2="{ey:.1f}" '
+                                f'stroke="rgba(250,250,250,0.40)" stroke-width="1" '
+                                f'stroke-dasharray="3 3"/>')
+                # End dot at most recent value (rightmost non-null).
+                last_i = max(i for i, v in enumerate(actuals) if v is not None)
+                dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(actuals[last_i]):.1f}" '
+                       f'r="3" fill="{stroke}"/>')
+                legend = ('<span class="legend">— actual · - - expected daily</span>'
+                          if expected else '<span class="legend">— actual</span>')
+                return (
+                    '<div class="nw-drawer-chart">'
+                    '<div class="nw-drawer-chart-label">'
+                    '<span>7-day daily delivery</span>'
+                    f'{legend}'
+                    '</div>'
+                    f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" '
+                    f'xmlns="http://www.w3.org/2000/svg">'
+                    f'{exp_line}'
+                    f'<polyline points="{pts}" fill="none" stroke="{stroke}" '
+                    f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
+                    f'{dot}</svg>'
+                    '</div>'
+                )
+
+            def _drawer_small_multiples(row):
+                fmt = row.get("ad_format")
+                is_video = isinstance(fmt, str) and "video" in fmt.lower()
+                view = _row_view_series(row)
+                second_label = "VCR" if is_video else "CTR"
+                second = _row_vcr_series(row) if is_video else _row_ctr_series(row)
+                second_target = 60.0 if is_video else None
+                panels = []
+                if view is not None:
+                    latest = next((v for v in reversed(view) if v is not None), None)
+                    latest_html = f'<span class="latest">{latest:.1f}%</span>' if latest is not None else ''
+                    panels.append(
+                        '<div class="nw-sm-panel">'
+                        f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
+                        f'{_sparkline_svg(view, target=70.0, color="green", klass="")}'
+                        '</div>'
+                    )
+                if second is not None:
+                    latest = next((v for v in reversed(second) if v is not None), None)
+                    fmt_str = f"{latest:.2f}%" if (latest is not None and not is_video) \
+                              else (f"{latest:.1f}%" if latest is not None else "")
+                    latest_html = f'<span class="latest">{fmt_str}</span>' if latest is not None else ''
+                    panels.append(
+                        '<div class="nw-sm-panel">'
+                        f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
+                        f'{_sparkline_svg(second, target=second_target, color="green", klass="")}'
+                        '</div>'
+                    )
+                if not panels:
+                    return ""
+                return '<div class="nw-sm-grid">' + "".join(panels) + '</div>'
+
             def _drawer_html(row):
                 full_li = _esc(re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or "")))
                 li_id = row.get("line_item_id")
@@ -2671,13 +2918,19 @@ if st.session_state.active_view == "campaigns":
 
                 id_chip = (f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
                            if li_id_str else '')
+                status_html = _drawer_status_banner(row)
+                chart_html = _drawer_delivery_chart(row)
+                sm_html = _drawer_small_multiples(row)
                 return (
                     '<div class="nw-drawer">'
                     '<div class="nw-drawer-head">'
                     f'<span class="nw-drawer-li">{full_li or "—"}</span>'
                     f'{id_chip}'
                     '</div>'
+                    f'{status_html}'
                     f'{warn_html}'
+                    f'{chart_html}'
+                    f'{sm_html}'
                     '<div class="nw-meta-grid">'
                     f'<div><span class="lbl">Goal</span><span class="val">{_fmt_int_cell(row.get("impressions_goal"))}</span></div>'
                     f'<div><span class="lbl">Remaining</span><span class="val">{_fmt_int_cell(row.get("remaining_impressions"))}</span></div>'
