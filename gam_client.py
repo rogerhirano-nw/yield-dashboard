@@ -213,6 +213,14 @@ class GAMClient:
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS_RATE",
                 "AD_SERVER_ACTIVE_VIEW_ELIGIBLE_IMPRESSIONS",
+                # Video interaction metrics — needed so run_report_with_pacing
+                # can compute VCR (video completion rate) per line item.
+                "VIDEO_INTERACTION_VIDEO_STARTS",
+                "VIDEO_INTERACTION_VIDEO_FIRST_QUARTILE",
+                "VIDEO_INTERACTION_VIDEO_MIDPOINT",
+                "VIDEO_INTERACTION_VIDEO_THIRD_QUARTILE",
+                "VIDEO_INTERACTION_VIDEO_COMPLETIONS",
+                "VIDEO_INTERACTION_VIDEO_SKIPS",
             ],
             start_date=start_date,
             end_date=end_date,
