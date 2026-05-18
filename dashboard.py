@@ -122,6 +122,20 @@ _DEFAULT_SETTINGS: dict = {
     "team_names": {
         "USA": "USA", "INTL": "International",
     },
+    "benchmarks_by_format": {
+        "Display":      {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
+        "Video":        {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0},
+        "Native":       {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
+        "Multi":        {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0},
+        "Interstitial": {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
+    },
+    "pacing_target_pct": 100.0,
+    "status_colors": [
+        {"keyword": "Delivering", "color": "#2E7D32"},  # green
+        {"keyword": "Paused",     "color": "#F9A825"},  # amber
+        {"keyword": "Completed",  "color": "#5D4037"},  # brown
+    ],
+    "seller_colors": {},  # per-seller overrides; sellers absent fall back to hash
     "deal_type_codes": {
         "PA": "Private Auction", "PD": "Preferred Deal",
         "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace",
@@ -1206,20 +1220,22 @@ with tab_seller:
             # 7-day mean rate). The parenthetical annotation adds a yesterday-vs-
             # day-before trend indicator for visual context only.
             def _fmt_count_annot(primary, v1, v2):
-                """Cell value = `primary`; annotation = delta of v1 vs v2."""
+                """Cell value = `primary`; annotation = delta of v1 vs v2 (omitted when 0)."""
                 if pd.isna(primary): return ""
                 base = f"{int(primary):,}"
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = int(v1) - int(v2)
+                if d == 0: return base
                 sign = "+" if d > 0 else ""
                 return f"{base} ({_arrow(d)} {sign}{d:,})"
 
             def _fmt_pct_annot(primary, v1, v2):
-                """Cell value = `primary` (already 0-100 percent); annotation = pp delta of v1 vs v2."""
+                """Cell value = `primary` (already 0-100 percent); annotation = pp delta of v1 vs v2 (omitted when 0)."""
                 if pd.isna(primary): return ""
                 base = f"{primary:.1f}%"
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = v1 - v2
+                if abs(d) < 0.05: return base  # rounds to "0.0pp" — suppress
                 sign = "+" if d > 0 else ""
                 return f"{base} ({_arrow(d)} {sign}{d:.1f}pp)"
 
@@ -1318,6 +1334,16 @@ with tab_seller:
                 .rename(columns={c: display_cols[c] for c in available_cols})
             )
 
+            # Friendly transformation for display-only — applied after rename so
+            # it works regardless of which source column the user has mapped to
+            # Campaign / Advertiser in their settings (DB might map Campaign to
+            # order_name, which would otherwise render hyphenated).
+            for _friendly_col in ("Campaign", "Advertiser"):
+                if _friendly_col in table_df.columns:
+                    table_df[_friendly_col] = (
+                        table_df[_friendly_col].astype("string").str.replace("-", " ", regex=False)
+                    )
+
             col_config = {}
             if "Goal" in table_df.columns:
                 col_config["Goal"] = st.column_config.NumberColumn(format="localized")
@@ -1342,10 +1368,10 @@ with tab_seller:
             if "Revenue" in table_df.columns:
                 col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
 
-            # Cells in Pacing % / Viewability % are now annotated strings like
-            # "0.6% (below 70%) (▲ +0.1pp)". Parse the leading numeric percent
-            # so color coding still applies; tolerate the pre-refresh numeric
-            # fallback too.
+            # Cells in Pacing % / Viewability % / CTR % / VCR % are now
+            # annotated strings like "0.6% (▲ +0.1pp)". Parse the leading
+            # numeric percent so color coding still applies; tolerate the
+            # pre-refresh numeric fallback too.
             def _parse_leading_pct(v):
                 if isinstance(v, (int, float)) and pd.notna(v):
                     return float(v)
@@ -1355,27 +1381,75 @@ with tab_seller:
                         return float(m.group(1))
                 return None
 
+            def _ramp_color(pct, target):
+                """Red→green gradient hitting solid green at `target`."""
+                if pct is None or target is None or target <= 0:
+                    return ""
+                if pct >= target:
+                    return "color: hsl(120, 60%, 35%)"
+                hue = int(max(0.0, pct) / float(target) * 120)
+                return f"color: hsl({hue}, 70%, 38%)"
+
+            # ── Status color: editable keyword → color map from settings.
+            #    Substring (case-insensitive); first matching rule wins.
+            _status_color_rules = _cfg.get("status_colors", []) or []
+            def _status_color(v):
+                if not isinstance(v, str): return ""
+                sl = v.strip().lower()
+                if not sl: return ""
+                for rule in _status_color_rules:
+                    kw  = (rule.get("keyword") or "").strip().lower()
+                    col = (rule.get("color")   or "").strip()
+                    if kw and col and kw in sl:
+                        return f"color: {col}"
+                return ""
+
+            # ── Seller color: editable per-seller overrides, falls back to
+            #    deterministic hash-derived hue so unseen sellers still get a
+            #    stable color.
+            _seller_color_overrides = _cfg.get("seller_colors", {}) or {}
+            import hashlib as _hashlib
+            def _seller_color(v):
+                if not isinstance(v, str) or not v.strip():
+                    return ""
+                name = v.strip()
+                override = _seller_color_overrides.get(name)
+                if override and str(override).strip():
+                    return f"color: {str(override).strip()}; font-weight: 600"
+                h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
+                return f"color: hsl({h % 360}, 55%, 38%); font-weight: 600"
+
+            # Benchmarks for the rate columns (per-format). Each row reads its
+            # Format and applies the matching threshold from settings.
+            _benchmarks = _cfg.get("benchmarks_by_format", {})
+            _BENCH_COLS = {
+                "Viewability %": "viewability_pct",
+                "CTR %":         "ctr_pct",
+                "VCR %":         "vcr_pct",
+            }
+
+            def _benchmark_row_styles(row):
+                styles = pd.Series("", index=row.index)
+                fmt = row.get("Format")
+                bench = _benchmarks.get(str(fmt) if pd.notna(fmt) else "", {})
+                for col, key in _BENCH_COLS.items():
+                    if col in row.index:
+                        styles[col] = _ramp_color(_parse_leading_pct(row[col]), bench.get(key))
+                return styles
+
             styled_df = table_df.style
-            if "Viewability %" in table_df.columns:
-                def _viewability_color(v):
-                    pct = _parse_leading_pct(v)
-                    if pct is None:
-                        return ""
-                    if pct >= 70:
-                        return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, pct) / 70.0 * 120)
-                    return f"color: hsl({hue}, 70%, 38%)"
-                styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
+            if any(c in table_df.columns for c in _BENCH_COLS):
+                styled_df = styled_df.apply(_benchmark_row_styles, axis=1)
             if "Pacing %" in table_df.columns:
-                def _pacing_color(v):
-                    pct = _parse_leading_pct(v)
-                    if pct is None:
-                        return ""
-                    if pct >= 100:
-                        return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, pct) / 100.0 * 120)
-                    return f"color: hsl({hue}, 70%, 38%)"
-                styled_df = styled_df.map(_pacing_color, subset=["Pacing %"])
+                _pacing_target = float(_cfg.get("pacing_target_pct", 100.0) or 100.0)
+                styled_df = styled_df.map(
+                    lambda v, _t=_pacing_target: _ramp_color(_parse_leading_pct(v), _t),
+                    subset=["Pacing %"],
+                )
+            if "Status" in table_df.columns:
+                styled_df = styled_df.map(_status_color, subset=["Status"])
+            if "Seller" in table_df.columns:
+                styled_df = styled_df.map(_seller_color, subset=["Seller"])
 
             st.dataframe(
                 styled_df,
@@ -2329,7 +2403,110 @@ with tab_settings:
             },
         )
 
-        # ── Section 4: GAM Deal Report Upload ────────────────────────────────
+        # ── Section 4c: Benchmarks by Format ─────────────────────────────────
+        st.markdown("#### Benchmarks by Format")
+        st.caption(
+            "Per-format performance thresholds for Viewability, CTR, and VCR. "
+            "When a direct campaign row's rate is below its format's benchmark, "
+            "the cell is colored on a red→green gradient. Leave a field blank "
+            "to disable benchmark coloring for that format+metric."
+        )
+        _benchmarks_default = _s.get("benchmarks_by_format", {}) or {}
+        _bench_rows = [
+            {"Format": fmt,
+             "Viewability %": vals.get("viewability_pct"),
+             "CTR %":         vals.get("ctr_pct"),
+             "VCR %":         vals.get("vcr_pct")}
+            for fmt, vals in sorted(_benchmarks_default.items())
+        ]
+        _bench_edit = st.data_editor(
+            pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
+                columns=["Format", "Viewability %", "CTR %", "VCR %"]
+            ),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_benchmarks_by_format",
+            column_config={
+                "Format":        st.column_config.TextColumn("Format", required=True,
+                                    help="e.g. Display, Video, Native, Multi, Interstitial"),
+                "Viewability %": st.column_config.NumberColumn("Viewability %", format="%.1f",
+                                    help="Cells below this get red→green gradient"),
+                "CTR %":         st.column_config.NumberColumn("CTR %", format="%.2f",
+                                    help="Cells below this get red→green gradient"),
+                "VCR %":         st.column_config.NumberColumn("VCR %", format="%.1f",
+                                    help="Cells below this get red→green gradient"),
+            },
+        )
+
+        # ── Section 4d: Pacing Target ────────────────────────────────────────
+        st.markdown("#### Pacing Target")
+        st.caption(
+            "Pacing % cells at or above this value render solid green; below, "
+            "on a red→green gradient hitting solid green at the target."
+        )
+        _pacing_target_edit = st.number_input(
+            "Target pacing %",
+            value=float(_s.get("pacing_target_pct", 100.0)),
+            min_value=0.0,
+            step=1.0,
+            format="%.1f",
+            key="settings_pacing_target",
+        )
+
+        # ── Section 4e: Status Color Mapping ─────────────────────────────────
+        st.markdown("#### Status Color Mapping")
+        st.caption(
+            "Status text is matched against each keyword (case-insensitive substring). "
+            "First match wins. Color accepts any CSS color (hex like `#2E7D32`, named, hsl(...))."
+        )
+        _status_color_rows = _s.get("status_colors", []) or []
+        _status_color_editor = st.data_editor(
+            pd.DataFrame(_status_color_rows) if _status_color_rows
+            else pd.DataFrame(columns=["keyword", "color"]),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_status_colors",
+            column_config={
+                "keyword": st.column_config.TextColumn("Keyword", required=True,
+                              help="Substring of the Status value, case-insensitive"),
+                "color":   st.column_config.TextColumn("Color", required=True,
+                              help="Hex like #2E7D32 or any CSS color"),
+            },
+        )
+
+        # ── Section 4f: Seller Color Overrides ───────────────────────────────
+        st.markdown("#### Seller Color Overrides")
+        st.caption(
+            "Optional per-seller color. Sellers not listed (or with blank color) "
+            "fall back to a deterministic hash-based hue so every name still gets "
+            "a stable color. Pre-populated with the AE names known to the seller mapping."
+        )
+        _known_ae_names = sorted(set(_s.get("ae_names", {}).values()))
+        _existing_seller_colors = _s.get("seller_colors", {}) or {}
+        _seller_color_rows = [
+            {"seller": name, "color": _existing_seller_colors.get(name, "")}
+            for name in _known_ae_names
+        ]
+        # Also surface any seller_colors entries for names that aren't in ae_names
+        for _extra in sorted(set(_existing_seller_colors.keys()) - set(_known_ae_names)):
+            _seller_color_rows.append({"seller": _extra, "color": _existing_seller_colors[_extra]})
+        _seller_color_editor = st.data_editor(
+            pd.DataFrame(_seller_color_rows) if _seller_color_rows
+            else pd.DataFrame(columns=["seller", "color"]),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_seller_colors",
+            column_config={
+                "seller": st.column_config.TextColumn("Seller", required=True),
+                "color":  st.column_config.TextColumn("Color",
+                              help="Hex like #1976D2; leave blank to use hash fallback"),
+            },
+        )
+
+        # ── Section 5: GAM Deal Report Upload ────────────────────────────────
         st.divider()
         st.markdown("#### Upload GAM Deal Report")
         st.caption(
@@ -2454,6 +2631,39 @@ with tab_settings:
                 for _, r in _dt_edit.iterrows()
                 if pd.notna(r.get("Code")) and str(r["Code"]).strip()
             }
+            def _bench_val(v):
+                if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
+                    return None
+                try:
+                    return float(v)
+                except Exception:
+                    return None
+            _new_benchmarks = {}
+            for _, r in _bench_edit.iterrows():
+                _fmt = str(r.get("Format", "")).strip()
+                if not _fmt:
+                    continue
+                _new_benchmarks[_fmt] = {
+                    "viewability_pct": _bench_val(r.get("Viewability %")),
+                    "ctr_pct":         _bench_val(r.get("CTR %")),
+                    "vcr_pct":         _bench_val(r.get("VCR %")),
+                }
+
+            _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
+
+            _new_status_colors = []
+            for _, r in _status_color_editor.iterrows():
+                _kw  = str(r.get("keyword", "")).strip()
+                _col = str(r.get("color", "")).strip()
+                if _kw and _col:
+                    _new_status_colors.append({"keyword": _kw, "color": _col})
+
+            _new_seller_colors = {}
+            for _, r in _seller_color_editor.iterrows():
+                _name = str(r.get("seller", "")).strip()
+                _col  = str(r.get("color", "")).strip()
+                if _name and _col:
+                    _new_seller_colors[_name] = _col
 
             _new_direct = []
             for _, _row in _direct_edit.iterrows():
@@ -2513,6 +2723,10 @@ with tab_settings:
                 "included_order_patterns": _new_incl_patterns,
                 "default_statuses": list(_default_statuses_edit),
                 "direct_sources": _new_direct,
+                "benchmarks_by_format": _new_benchmarks,
+                "pacing_target_pct":   _new_pacing_target,
+                "status_colors":       _new_status_colors,
+                "seller_colors":       _new_seller_colors,
             })
             st.cache_data.clear()
             st.success("Settings saved — reloading dashboard…")
