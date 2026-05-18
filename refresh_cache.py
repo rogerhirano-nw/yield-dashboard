@@ -245,6 +245,39 @@ def refresh_pubmatic() -> int:
     return len(df)
 
 
+def refresh_ttd() -> int:
+    """Pull VGW TTD conversion report from AgentMail inbox and write to ttd_vgw_daily."""
+    from ttd_client import run_ttd_report
+
+    inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
+    api_key  = os.environ["AGENTMAIL_API_KEY"]
+    after    = datetime.now(timezone.utc) - timedelta(days=3)
+
+    logger.info("Refreshing ttd_vgw_daily (TTD via AgentMail)")
+    df = run_ttd_report(inbox_id, api_key, after=after)
+    if df.empty:
+        logger.warning("TTD report came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "ttd_vgw_daily"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            else:
+                dates = df["date"].unique().tolist()
+                placeholders = ", ".join(f"'{d}'" for d in dates)
+                conn.execute(text(f'DELETE FROM "{table}" WHERE date IN ({placeholders})'))
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -319,6 +352,11 @@ def main() -> None:
         total += refresh_pubmatic()
     except Exception:
         logger.exception("Refresh failed for pubmatic_deals — continuing")
+
+    try:
+        total += refresh_ttd()
+    except Exception:
+        logger.exception("Refresh failed for ttd_vgw_daily — continuing")
 
 
 if __name__ == "__main__":
