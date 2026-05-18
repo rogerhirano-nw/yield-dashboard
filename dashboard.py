@@ -461,8 +461,78 @@ def _parse_deal(deal: str) -> pd.Series:
 
 AE_NAMES = _cfg["ae_names"]
 
-st.set_page_config(page_title="Overall Performance", layout="wide")
-st.title("Overall Performance")
+st.set_page_config(page_title="Overall performance", layout="wide")
+
+# ──────────────────────────────────────────────────────────────────────────
+# Global polish: typography, sentence case, tabular nums, tab underline,
+# eyebrow / timestamp affordances, border radius tokens. Streamlit honors
+# inline CSS via st.markdown(unsafe_allow_html=True).
+# ──────────────────────────────────────────────────────────────────────────
+st.markdown(
+    """
+<style>
+:root {
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+}
+/* H1 sizing per spec — Streamlit's default is much larger. */
+h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4px 0; line-height: 1.2; }
+/* Tabular numbers across every cell + KPI value. */
+[data-testid="stMetricValue"], [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th,
+.kpi-value, .kpi-target, .nw-num { font-variant-numeric: tabular-nums; }
+/* Active tab underline — replace Streamlit's default red highlight with the
+   standard text color (red is reserved for severity). */
+.stTabs [aria-selected="true"] { border-bottom: 2px solid var(--text-color) !important; color: var(--text-color) !important; }
+.stTabs [data-baseweb="tab-highlight"] { background-color: var(--text-color) !important; }
+/* Eyebrow label */
+.nw-eyebrow { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+              color: rgba(250,250,250,0.55); font-weight: 500; }
+.nw-timestamp { font-size: 12px; color: rgba(250,250,250,0.55); text-align: right;
+                font-variant-numeric: tabular-nums; }
+/* Small uppercase filter labels (used above each select). */
+.nw-filter-label { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+                   color: rgba(250,250,250,0.55); font-weight: 500; margin-bottom: 2px; }
+/* Exception banners */
+.nw-banner { border-radius: var(--border-radius-md); padding: 10px 14px; margin: 2px 0;
+             border: 0.5px solid rgba(255,255,255,0.08); font-size: 12px; line-height: 1.35; }
+.nw-banner .nw-banner-head { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+                             font-weight: 600; margin-bottom: 2px; }
+.nw-banner.sev-red    { background: rgba(244, 67, 54, 0.12); color: hsl(0, 80%, 80%);   border-color: rgba(244, 67, 54, 0.35); }
+.nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.10); color: hsl(35, 75%, 75%); border-color: rgba(255, 167, 38, 0.30); }
+.nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.08);  color: hsl(120, 35%, 75%); border-color: rgba(76, 175, 80, 0.25); }
+/* KPI tile — quieter than st.metric's default display sizing. */
+.kpi-tile  { padding: 12px 14px; border-radius: var(--border-radius-lg);
+             background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.08); }
+.kpi-label { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+             color: rgba(250,250,250,0.55); font-weight: 500; margin-bottom: 4px; }
+.kpi-value { font-size: 18px; font-weight: 500; line-height: 1.2; }
+.kpi-target{ font-size: 11px; color: rgba(250,250,250,0.55); margin-top: 2px; }
+/* Sentence-case helper class (utility — applied selectively). */
+.nw-sentence::first-letter { text-transform: uppercase; }
+/* Compact dataframe borders */
+[data-testid="stDataFrame"] table { border-collapse: collapse; }
+[data-testid="stDataFrame"] th, [data-testid="stDataFrame"] td { border-bottom-width: 0.5px !important; }
+/* "Prog." filler for sellerless rows */
+.nw-prog { font-style: italic; color: rgba(250,250,250,0.55); }
+/* Ordinal badge */
+.nw-ord { font-size: 10px; padding: 1px 6px; border-radius: 999px;
+          background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.65);
+          margin-right: 6px; font-variant-numeric: tabular-nums; }
+/* Differentiator subtitle */
+.nw-sub { font-size: 11px; color: rgba(250,250,250,0.50); font-variant-numeric: tabular-nums; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# ── Header block: eyebrow / H1 / right-aligned timestamp + line-item count.
+# Line-item count is computed below the load() helper; we render a placeholder
+# header here and overwrite the timestamp slot once the count is known.
+_hdr_left, _hdr_right = st.columns([3, 2])
+with _hdr_left:
+    st.markdown('<div class="nw-eyebrow">Yield &amp; pacing</div>', unsafe_allow_html=True)
+    st.markdown("# Newsweek overall performance")
+_header_timestamp_slot = _hdr_right.empty()
 
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
@@ -479,7 +549,7 @@ def load(table: str) -> pd.DataFrame:
 
 
 tab_seller, tab_site, tab_dsp, tab_deal, tab_pubmatic, tab_settings = st.tabs([
-    "Campaigns", "By Site / Size", "By DSP", "Magnite Deals", "Pubmatic Deals", "⚙ Settings",
+    "Campaigns", "By site / size", "By DSP", "Magnite deals", "Pubmatic deals", "Settings",
 ])
 
 with tab_site:
@@ -1039,28 +1109,36 @@ with tab_seller:
 
         all_sellers = sorted(set(gam_df["seller_ae"].dropna().unique()) | set(_pmp_sellers))
 
+        # ── Filter row: compact, small uppercase labels above each select.
         f1, f2, f3, f4, f5 = st.columns(5)
         with f1:
+            st.markdown('<div class="nw-filter-label">Seller</div>', unsafe_allow_html=True)
             selected_seller = st.selectbox(
                 "Seller",
                 options=["All"] + all_sellers,
                 key="seller_select",
+                label_visibility="collapsed",
             )
         with f2:
+            st.markdown('<div class="nw-filter-label">Advertiser</div>', unsafe_allow_html=True)
             advertiser_opts = sorted(gam_df["advertiser"].dropna().unique())
             selected_advertisers = st.multiselect(
                 "Advertiser",
                 options=advertiser_opts,
                 key="gam_advertiser_filter",
+                label_visibility="collapsed",
             )
         with f3:
+            st.markdown('<div class="nw-filter-label">Format</div>', unsafe_allow_html=True)
             format_opts = sorted(gam_df["ad_format"].dropna().unique())
             selected_formats = st.multiselect(
                 "Format",
                 options=format_opts,
                 key="gam_format_filter",
+                label_visibility="collapsed",
             )
         with f4:
+            st.markdown('<div class="nw-filter-label">Status</div>', unsafe_allow_html=True)
             status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
             _cfg_defaults = _cfg.get("default_statuses", ["Delivering", "Upcoming"])
             _status_defaults = [s for s in _cfg_defaults if s in status_opts]
@@ -1073,13 +1151,16 @@ with tab_seller:
                 options=status_opts,
                 default=_status_defaults,
                 key="gam_status_filter",
+                label_visibility="collapsed",
             )
         with f5:
+            st.markdown('<div class="nw-filter-label">Team</div>', unsafe_allow_html=True)
             team_opts = sorted(gam_df["team"].dropna().unique())
             selected_teams = st.multiselect(
                 "Team",
                 options=team_opts,
                 key="gam_team_filter",
+                label_visibility="collapsed",
             )
 
         view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
@@ -1095,24 +1176,155 @@ with tab_seller:
         if view_gam.empty:
             st.info("No campaigns found for the selected seller.")
         else:
-            # ---------- Summary metrics ----------
+            # ── Now that view_gam is filtered, populate the header timestamp.
+            try:
+                from zoneinfo import ZoneInfo as _ZI
+                _now_edt = datetime.now(_ZI("America/New_York"))
+                _ts_str = _now_edt.strftime("%-I:%M %p EDT")
+            except Exception:
+                _ts_str = datetime.now().strftime("%H:%M")
+            _n_lines = len(view_gam)
+            _header_timestamp_slot.markdown(
+                f'<div class="nw-timestamp">🕐 {_ts_str} · {_n_lines:,} line items</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── Summary numbers (used by both banners and KPI strip).
             total_impr = view_gam["lifetime_impressions_delivered"].sum() if "lifetime_impressions_delivered" in view_gam else 0
             total_rev  = view_gam["ad_server_cpm_and_cpc_revenue"].sum() if "ad_server_cpm_and_cpc_revenue" in view_gam else 0
             avg_pacing = view_gam["pacing_pct"].mean() if "pacing_pct" in view_gam else None
-            avg_viewability = (
-                view_gam["ad_server_active_view_viewable_impressions_rate"].mean()
-                if "ad_server_active_view_viewable_impressions_rate" in view_gam else None
-            )
-            avg_vcr = view_gam["vcr"].mean() if "vcr" in view_gam else None
-            avg_ctr = view_gam["ad_server_ctr"].mean() if "ad_server_ctr" in view_gam else None
 
-            m1, m2, m3, m4, m5, m6 = st.columns(6)
-            m1.metric("Impressions", f"{int(total_impr):,}")
-            m2.metric("Revenue", f"${total_rev:,.2f}")
-            m3.metric("Avg Pacing %", f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—")
-            m4.metric("Avg Viewability", f"{avg_viewability * 100:.1f}%" if pd.notna(avg_viewability) else "—")
-            m5.metric("Avg VCR", f"{avg_vcr:.1f}%" if pd.notna(avg_vcr) else "—")
-            m6.metric("Avg CTR", f"{avg_ctr * 100:.2f}%" if pd.notna(avg_ctr) else "—")
+            # Viewability — recompute from lifetime counts when available so it
+            # matches the cell values (which were swapped to lifetime in #22).
+            if "lifetime_viewable_imps" in view_gam.columns and "lifetime_measurable_imps" in view_gam.columns:
+                _vw = pd.to_numeric(view_gam["lifetime_viewable_imps"], errors="coerce").sum()
+                _mb = pd.to_numeric(view_gam["lifetime_measurable_imps"], errors="coerce").sum()
+                avg_viewability = (_vw / _mb * 100) if _mb else None
+            else:
+                avg_viewability = (
+                    view_gam["ad_server_active_view_viewable_impressions_rate"].mean() * 100
+                    if "ad_server_active_view_viewable_impressions_rate" in view_gam else None
+                )
+
+            avg_vcr = view_gam["vcr"].mean() if "vcr" in view_gam else None
+            _video_li_count = 0
+            if "ad_format" in view_gam.columns:
+                _video_li_count = view_gam["ad_format"].astype("string").str.lower().str.contains("video", na=False).sum()
+
+            if "lifetime_clicks" in view_gam.columns and "lifetime_impressions_delivered" in view_gam.columns:
+                _clk = pd.to_numeric(view_gam["lifetime_clicks"], errors="coerce").sum()
+                _imp = pd.to_numeric(view_gam["lifetime_impressions_delivered"], errors="coerce").sum()
+                avg_ctr = (_clk / _imp * 100) if _imp else None
+            else:
+                avg_ctr = (
+                    view_gam["ad_server_ctr"].mean()
+                    if "ad_server_ctr" in view_gam.columns else None
+                )
+
+            # ── Targets (Pacing comes from settings; Viewability uses 70 as the
+            # common floor; CTR uses the spec's 0.08% benchmark text). The
+            # color thresholds applied to cells live further below.
+            _pacing_target = float(_cfg.get("pacing_target_pct", 100.0) or 100.0)
+
+            # ── Exception banners: critical underpacing / overpacing / view anomalies.
+            if "pacing_pct" in view_gam.columns:
+                _crit_under = int((view_gam["pacing_pct"] < 75).sum())
+                _overpace   = int((view_gam["pacing_pct"] > 110).sum())
+            else:
+                _crit_under = _overpace = 0
+            if "ad_server_active_view_viewable_impressions_rate" in view_gam.columns:
+                _vw_col = pd.to_numeric(view_gam["ad_server_active_view_viewable_impressions_rate"], errors="coerce")
+                # Heuristic: if values look like 0-1 ratios, scale to %.
+                if _vw_col.dropna().between(0, 1).all() if _vw_col.notna().any() else False:
+                    _vw_col = _vw_col * 100
+                _vw_anom = int((_vw_col < 40).sum())
+            else:
+                _vw_anom = 0
+
+            _b1, _b2, _b3 = st.columns(3)
+            with _b1:
+                _sev = "sev-red" if _crit_under > 0 else "sev-ok"
+                _icon = "🚨" if _crit_under > 0 else "✓"
+                _detail = (f"{_crit_under} line item{'s' if _crit_under != 1 else ''} below 75% pacing"
+                           if _crit_under > 0 else "All line items at or above 75% pacing")
+                st.markdown(
+                    f'<div class="nw-banner {_sev}">'
+                    f'<div class="nw-banner-head">{_icon} Critically underpacing</div>'
+                    f'<div>{_detail}</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with _b2:
+                _sev = "sev-amber" if _overpace > 0 else "sev-ok"
+                _icon = "⚠" if _overpace > 0 else "✓"
+                _detail = (f"{_overpace} line item{'s' if _overpace != 1 else ''} above 110% pacing"
+                           if _overpace > 0 else "No overpacers")
+                st.markdown(
+                    f'<div class="nw-banner {_sev}">'
+                    f'<div class="nw-banner-head">{_icon} Overpacing</div>'
+                    f'<div>{_detail}</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with _b3:
+                _sev = "sev-amber" if _vw_anom > 0 else "sev-ok"
+                _icon = "⚠" if _vw_anom > 0 else "✓"
+                _detail = (f"{_vw_anom} line item{'s' if _vw_anom != 1 else ''} with viewability below 40%"
+                           if _vw_anom > 0 else "All line items at or above 40% viewability")
+                st.markdown(
+                    f'<div class="nw-banner {_sev}">'
+                    f'<div class="nw-banner-head">{_icon} Viewability quality</div>'
+                    f'<div>{_detail}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── KPI strip: six tiles, 18px value, target subtitle where applicable.
+            def _fmt_money(v):
+                if pd.isna(v): return "—"
+                if abs(v) >= 1_000_000: return f"${v/1_000_000:.2f}M"
+                if abs(v) >= 1_000:     return f"${v/1_000:.1f}K"
+                return f"${v:,.2f}"
+            def _fmt_count(v):
+                if pd.isna(v) or v == 0: return "—" if pd.isna(v) else "0"
+                if abs(v) >= 1_000_000: return f"{v/1_000_000:.2f}M"
+                if abs(v) >= 1_000:     return f"{v/1_000:.1f}K"
+                return f"{int(v):,}"
+            def _kpi_tile(label, value, target=None):
+                target_html = f'<div class="kpi-target">{target}</div>' if target else ""
+                return (
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">{label}</div>'
+                    f'<div class="kpi-value">{value}</div>'
+                    f'{target_html}'
+                    f'</div>'
+                )
+
+            k1, k2, k3, k4, k5, k6 = st.columns(6)
+            k1.markdown(_kpi_tile("Revenue",     _fmt_money(total_rev)), unsafe_allow_html=True)
+            k2.markdown(_kpi_tile("Impressions", _fmt_count(total_impr)), unsafe_allow_html=True)
+            k3.markdown(
+                _kpi_tile("Avg pacing",
+                          f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
+                          f"Target {int(_pacing_target)}%"),
+                unsafe_allow_html=True,
+            )
+            k4.markdown(
+                _kpi_tile("Viewability",
+                          f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
+                          "Target 70%"),
+                unsafe_allow_html=True,
+            )
+            if _video_li_count > 0 and pd.notna(avg_vcr):
+                _vcr_val = f"{avg_vcr:.1f}%"
+                _vcr_sub = f"{int(_video_li_count)} video line{'s' if _video_li_count != 1 else ''}"
+            else:
+                _vcr_val = "—"
+                _vcr_sub = "No video"
+            k5.markdown(_kpi_tile("VCR", _vcr_val, _vcr_sub), unsafe_allow_html=True)
+            k6.markdown(
+                _kpi_tile("CTR",
+                          f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
+                          "Benchmark 0.08%"),
+                unsafe_allow_html=True,
+            )
 
             # ---------- Campaign table ----------
             # Remaining impressions (None when no goal is set)
@@ -1365,11 +1577,58 @@ with tab_seller:
                 # Always include — non-video LIs render as 'N/A', video LIs get the rate.
                 display_cols["vcr"] = "VCR %"
 
+            # ── Progress column: delivered/goal, capped at 1.0. None for
+            # goal-less line items (sponsorships, house, etc.).
+            if "impressions_goal" in view_gam.columns and "lifetime_impressions_delivered" in view_gam.columns:
+                view_gam["progress_pct"] = view_gam.apply(
+                    lambda r: (min(r["lifetime_impressions_delivered"] / r["impressions_goal"], 1.0)
+                               if pd.notna(r["impressions_goal"]) and r["impressions_goal"] > 0
+                               and pd.notna(r["lifetime_impressions_delivered"]) else None),
+                    axis=1,
+                )
+
+            # ── Ordinal badge: within each campaign (order_name), assign
+            # #1, #2, ... by ascending line_item_id. Prepended to the Line Item
+            # cell so multi-LI orders are disambiguated at a glance.
+            if "line_item_id" in view_gam.columns and "order_name" in view_gam.columns:
+                view_gam = view_gam.sort_values(
+                    ["order_name", "line_item_id"], na_position="last"
+                )
+                view_gam["_ordinal"] = (
+                    view_gam.groupby("order_name", dropna=False).cumcount() + 1
+                )
+                _ord_max = view_gam.groupby("order_name", dropna=False)["_ordinal"].transform("max")
+                # Only show #N when the campaign actually has >1 LI.
+                view_gam["line_item_name"] = view_gam.apply(
+                    lambda r: (f"#{int(r['_ordinal'])}  {r['line_item_name']}"
+                               if pd.notna(r['line_item_name']) and r.get("_ordinal") and _ord_max.loc[r.name] > 1
+                               else r['line_item_name']),
+                    axis=1,
+                )
+
+            # ── Default sort: |pacing - 100| descending. Worst pacers (and
+            # worst overpacers) float to the top, healthy lines sink. The
+            # earlier ascending sort by pacing_pct is overridden here.
+            if "pacing_pct" in view_gam.columns:
+                _pace_for_sort = pd.to_numeric(view_gam["pacing_pct"], errors="coerce")
+                view_gam = view_gam.assign(_pace_dev=(_pace_for_sort - _pacing_target).abs())
+                view_gam = view_gam.sort_values("_pace_dev", ascending=False, na_position="last")
+                view_gam = view_gam.drop(columns=["_pace_dev"])
+
+            # ── Restrict to the spec's default column set; the rest live in
+            # the per-row detail drawer rendered below. Hardcoded for now —
+            # the Settings → direct_sources mapping still drives which fields
+            # are AVAILABLE; this filter decides which are SHOWN inline.
+            _TABLE_DEFAULT = ["Line Item", "Revenue", "Delivered", "Pace", "Δ",
+                              "Viewability %", "CTR %", "VCR %", "Seller", "Progress"]
+
             available_cols = [c for c in display_cols if c in view_gam.columns]
-            # view_gam is already sorted by pacing_pct (numeric, ascending) before
-            # the annotated columns were converted to strings.
-            table_df = (
-                view_gam[available_cols]
+            # Ensure progress_pct flows through under the "Progress" header.
+            if "progress_pct" in view_gam.columns and "progress_pct" not in display_cols:
+                display_cols["progress_pct"] = "Progress"
+                available_cols.append("progress_pct")
+            table_df_full = (
+                view_gam[available_cols + ["line_item_id"] if "line_item_id" in view_gam.columns else available_cols]
                 .drop_duplicates(subset=["line_item_name"] if "line_item_name" in available_cols else None)
                 .rename(columns={c: display_cols[c] for c in available_cols})
             )
@@ -1379,37 +1638,71 @@ with tab_seller:
             # Campaign / Advertiser in their settings (DB might map Campaign to
             # order_name, which would otherwise render hyphenated).
             for _friendly_col in ("Campaign", "Advertiser"):
-                if _friendly_col in table_df.columns:
-                    table_df[_friendly_col] = (
-                        table_df[_friendly_col].astype("string").str.replace("-", " ", regex=False)
+                if _friendly_col in table_df_full.columns:
+                    table_df_full[_friendly_col] = (
+                        table_df_full[_friendly_col].astype("string").str.replace("-", " ", regex=False)
                     )
 
+            # "Prog." italic placeholder when Seller is empty.
+            if "Seller" in table_df_full.columns:
+                table_df_full["Seller"] = table_df_full["Seller"].astype("string").fillna("Prog.")
+
+            # Reset index so positional .iloc lookups in the drawer align
+            # with the row positions Streamlit returns in _sel.selection.rows.
+            table_df_full = table_df_full.reset_index(drop=True)
+
+            # The TABLE shows only the default subset; the FULL set is kept
+            # around so the drawer can show every field.
+            table_df = table_df_full[[c for c in _TABLE_DEFAULT if c in table_df_full.columns]].copy()
+
+            # ── M/K notation for Delivered. The cell is numeric pre-format;
+            # use Streamlit's compact format directly via the column_config.
+            def _mk(v):
+                if pd.isna(v): return ""
+                a = abs(v)
+                if a >= 1_000_000: return f"{v/1_000_000:.2f}M"
+                if a >= 1_000:     return f"{v/1_000:.1f}K"
+                return f"{int(v):,}"
+
+            # CTR formatting: 2 decimals. Apply via inline transform so we can
+            # use TextColumn for consistent text styling with other rate cells.
+            # (Annotation logic from earlier already produced the percent + delta
+            # string; reformat the percent part to 2 decimals.)
+            if "CTR %" in table_df.columns:
+                _ctr_2dp = pd.Series([
+                    re.sub(r"^([0-9.]+)%", lambda m: f"{float(m.group(1)):.2f}%", str(v))
+                    if isinstance(v, str) and "%" in v else v
+                    for v in table_df["CTR %"]
+                ], index=table_df.index)
+                table_df["CTR %"] = _ctr_2dp
+
             col_config = {}
-            if "Goal" in table_df.columns:
-                col_config["Goal"] = st.column_config.NumberColumn(format="localized")
-            if "CPM Rate" in table_df.columns:
-                col_config["CPM Rate"] = st.column_config.NumberColumn(format="dollar")
             if "Delivered" in table_df.columns:
-                col_config["Delivered"] = st.column_config.NumberColumn(format="localized")
-            if "Remaining" in table_df.columns:
-                col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
-            # Clicks / Pacing / Viewability / CTR are now annotated text
-            # strings ("X (▲ +Y)"), not raw numbers.
-            if "Clicks" in table_df.columns:
-                col_config["Clicks"] = st.column_config.TextColumn("Clicks", width="medium")
+                # Numeric column with custom format hook isn't supported in
+                # NumberColumn; transform to string M/K and render as text.
+                table_df["Delivered"] = table_df["Delivered"].apply(_mk)
+                col_config["Delivered"] = st.column_config.TextColumn("Delivered", width="small")
             if "Pace" in table_df.columns:
                 col_config["Pace"] = st.column_config.TextColumn("Pace", width="small")
             if "Δ" in table_df.columns:
                 col_config["Δ"] = st.column_config.TextColumn("Δ", width="small",
                     help="Pace change vs prior day (percentage points)")
             if "Viewability %" in table_df.columns:
-                col_config["Viewability %"] = st.column_config.TextColumn("Viewability %", width="medium")
+                col_config["Viewability %"] = st.column_config.TextColumn("Viewability", width="small")
             if "VCR %" in table_df.columns:
-                col_config["VCR %"] = st.column_config.TextColumn("VCR %", width="medium")
+                col_config["VCR %"] = st.column_config.TextColumn("VCR", width="small")
             if "CTR %" in table_df.columns:
-                col_config["CTR %"] = st.column_config.TextColumn("CTR %", width="medium")
+                col_config["CTR %"] = st.column_config.TextColumn("CTR", width="small")
             if "Revenue" in table_df.columns:
                 col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
+            if "Progress" in table_df.columns:
+                col_config["Progress"] = st.column_config.ProgressColumn(
+                    "Progress", format="%.0f%%", min_value=0.0, max_value=1.0,
+                )
+            if "Line Item" in table_df.columns:
+                col_config["Line Item"] = st.column_config.TextColumn("Line item", width="large")
+            if "Seller" in table_df.columns:
+                col_config["Seller"] = st.column_config.TextColumn("Seller", width="small")
 
             # Cells in Pacing % / Viewability % / CTR % / VCR % are now
             # annotated strings like "0.6% (▲ +0.1pp)". Parse the leading
@@ -1462,60 +1755,172 @@ with tab_seller:
                 h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
                 return f"color: hsl({h % 360}, 55%, 38%); font-weight: 600"
 
-            # Benchmarks for the rate columns (per-format). Each row reads its
-            # Format and applies the matching threshold from settings.
-            _benchmarks = _cfg.get("benchmarks_by_format", {})
-            _BENCH_COLS = {
-                "Viewability %": "viewability_pct",
-                "CTR %":         "ctr_pct",
-                "VCR %":         "vcr_pct",
-            }
+            # ── New three-tier color thresholds per redesign spec.
+            #    Pills only on OUT-OF-TOLERANCE values; in-range = plain colored text.
 
-            def _benchmark_row_styles(row):
-                styles = pd.Series("", index=row.index)
-                fmt = row.get("Format")
-                bench = _benchmarks.get(str(fmt) if pd.notna(fmt) else "", {})
-                for col, key in _BENCH_COLS.items():
-                    if col in row.index:
-                        styles[col] = _ramp_color(_parse_leading_pct(row[col]), bench.get(key))
-                return styles
+            # Pace: red <75%, amber 75-90%, green 90-110%, amber >110%.
+            def _pace_color(v):
+                pct = _parse_leading_pct(v)
+                if pct is None: return ""
+                ratio = pct / _pacing_target if _pacing_target else None
+                if ratio is None: return ""
+                if ratio < 0.75:
+                    return ("background-color: hsl(0, 35%, 25%); color: hsl(0, 30%, 85%); "
+                            "border-radius: 6px; padding: 2px 10px; font-weight: 600")
+                if ratio < 0.90:
+                    return ("background-color: hsl(35, 45%, 22%); color: hsl(35, 35%, 80%); "
+                            "border-radius: 6px; padding: 2px 10px; font-weight: 600")
+                if ratio <= 1.10:
+                    return "color: hsl(120, 50%, 65%); font-weight: 600"   # plain green text
+                return ("background-color: hsl(45, 45%, 22%); color: hsl(45, 35%, 80%); "
+                        "border-radius: 6px; padding: 2px 10px; font-weight: 600")
+
+            # Viewability: red <40%, amber 40-65%, green ≥65%.
+            def _viewability_color(v):
+                pct = _parse_leading_pct(v)
+                if pct is None: return ""
+                if pct < 40:
+                    return ("background-color: hsl(0, 35%, 25%); color: hsl(0, 30%, 85%); "
+                            "border-radius: 6px; padding: 2px 10px")
+                if pct < 65:
+                    return "color: hsl(35, 70%, 65%)"
+                return "color: hsl(120, 50%, 65%)"
+
+            # VCR: red <50%, amber 50-60%, green ≥60%. Skip 'N/A' cells.
+            def _vcr_color(v):
+                if isinstance(v, str) and v.strip().upper() == "N/A":
+                    return "color: rgba(250,250,250,0.35)"
+                pct = _parse_leading_pct(v)
+                if pct is None: return ""
+                if pct < 50:
+                    return ("background-color: hsl(0, 35%, 25%); color: hsl(0, 30%, 85%); "
+                            "border-radius: 6px; padding: 2px 10px")
+                if pct < 60:
+                    return "color: hsl(35, 70%, 65%)"
+                return "color: hsl(120, 50%, 65%)"
+
+            # Bold revenue values above $10K.
+            def _revenue_bold(v):
+                try:
+                    return "font-weight: 700" if float(v) > 10_000 else ""
+                except Exception:
+                    return ""
 
             styled_df = table_df.style
-            if any(c in table_df.columns for c in _BENCH_COLS):
-                styled_df = styled_df.apply(_benchmark_row_styles, axis=1)
             if "Pace" in table_df.columns:
-                _pacing_target = float(_cfg.get("pacing_target_pct", 100.0) or 100.0)
-                # Pace cell is a colored pill — background-color + light-text
-                # combination, no fill when close to target (within 10pp).
-                # Match the screenshot: red/brown for <75% of target, olive
-                # for moderately off, transparent for in-band, olive for over.
-                def _pace_pill(v, target=_pacing_target):
-                    pct = _parse_leading_pct(v)
-                    if pct is None or target <= 0:
-                        return ""
-                    ratio = pct / target
-                    if 0.90 <= ratio <= 1.10:
-                        return ""  # in-band — no pill
-                    if ratio < 0.75:  # significantly under-pacing → red
-                        bg, fg = "hsl(0, 35%, 25%)", "hsl(0, 30%, 80%)"
-                    else:               # moderately off (either side) → olive
-                        bg, fg = "hsl(48, 45%, 22%)", "hsl(48, 35%, 75%)"
-                    return (
-                        f"background-color: {bg}; color: {fg}; "
-                        f"border-radius: 6px; padding: 2px 10px; font-weight: 600"
-                    )
-                styled_df = styled_df.map(_pace_pill, subset=["Pace"])
-            if "Status" in table_df.columns:
-                styled_df = styled_df.map(_status_color, subset=["Status"])
+                styled_df = styled_df.map(_pace_color, subset=["Pace"])
+            if "Viewability %" in table_df.columns:
+                styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
+            if "VCR %" in table_df.columns:
+                styled_df = styled_df.map(_vcr_color, subset=["VCR %"])
             if "Seller" in table_df.columns:
                 styled_df = styled_df.map(_seller_color, subset=["Seller"])
+            if "Revenue" in table_df.columns:
+                styled_df = styled_df.map(_revenue_bold, subset=["Revenue"])
 
-            st.dataframe(
+            # ── Color legend above the table.
+            st.markdown(
+                '<div style="font-size:11px; color:rgba(250,250,250,0.55); '
+                'margin: 8px 0 4px 0; display:flex; gap:14px; flex-wrap:wrap;">'
+                '<span><span style="background:hsl(0,35%,25%);color:hsl(0,30%,85%);'
+                'padding:1px 8px;border-radius:6px;font-weight:600">red</span> critical</span>'
+                '<span><span style="background:hsl(35,45%,22%);color:hsl(35,35%,80%);'
+                'padding:1px 8px;border-radius:6px;font-weight:600">amber</span> off-target</span>'
+                '<span><span style="color:hsl(120,50%,65%);font-weight:600">green</span> healthy</span>'
+                '<span>· pace bands: &lt;75 / 75–90 / 90–110 / &gt;110 %</span>'
+                '<span>· viewability: &lt;40 / 40–65 / ≥65 %</span>'
+                '<span>· VCR: &lt;50 / 50–60 / ≥60 %</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── Interactive table with single-row selection. The selected row
+            # opens a detail "drawer" panel below — analogous to the spec's
+            # in-row expandable drawer, but rendered below the table since
+            # st.dataframe doesn't support inline-row expansion.
+            _sel = st.dataframe(
                 styled_df,
                 use_container_width=True,
                 hide_index=True,
                 column_config=col_config,
+                on_select="rerun",
+                selection_mode="single-row",
+                key="direct_campaigns_table",
+                height=min(600, 38 + 35 * (len(table_df) + 1)),
             )
+
+            # ── Detail drawer for the selected row.
+            _selected_rows = []
+            try:
+                _selected_rows = _sel.selection.rows
+            except Exception:
+                _selected_rows = []
+
+            if _selected_rows:
+                _idx = _selected_rows[0]
+                # Pull the full row from table_df_full (positional after reset_index).
+                _full_row = table_df_full.iloc[_idx]
+
+                _li_name = _full_row.get("Line Item") or "—"
+                # Strip the ordinal badge for the drawer's monospace name.
+                _li_name_clean = re.sub(r"^#\d+\s+", "", str(_li_name))
+                _li_id_val = _full_row.get("line_item_id")
+                _li_id = (str(_li_id_val) if _li_id_val is not None
+                          and not (isinstance(_li_id_val, float) and pd.isna(_li_id_val)) else "—")
+
+                _GAM_BASE = "https://admanager.google.com"  # deep link target
+
+                with st.container():
+                    st.markdown(
+                        '<div style="background: rgba(255,255,255,0.04); '
+                        'border-radius: var(--border-radius-lg); '
+                        'border: 0.5px solid rgba(255,255,255,0.08); '
+                        'padding: 14px 18px; margin: 8px 0;">'
+                        '<div class="nw-eyebrow">Selected line item</div>'
+                        f'<div style="font-family: ui-monospace, Menlo, monospace; '
+                        f'font-size: 12px; margin: 4px 0 8px 0; word-break: break-all;">'
+                        f'{_li_name_clean}</div>'
+                        f'<div style="font-size: 11px; color: rgba(250,250,250,0.55);">'
+                        f'GAM ID <code>{_li_id}</code></div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # 4-column grid of drawer details. Streamlit can't easily
+                    # produce a literal HTML <td colspan> drawer; this column
+                    # layout below the table matches the spirit.
+                    _dcols = st.columns(4)
+                    _drawer_fields = [
+                        ("Goal",       _full_row.get("Goal")),
+                        ("Remaining",  _full_row.get("Remaining")),
+                        ("Start date", _full_row.get("Start Date")),
+                        ("End date",   _full_row.get("End Date")),
+                        ("Order",      _full_row.get("order_name") if "order_name" in _full_row.index else "—"),
+                        ("Format",     _full_row.get("Format")),
+                        ("CPM rate",   _full_row.get("CPM Rate")),
+                        ("Clicks",     _full_row.get("Clicks")),
+                    ]
+                    for _i, (_lbl, _val) in enumerate(_drawer_fields):
+                        with _dcols[_i % 4]:
+                            _disp = "—" if (_val is None or (isinstance(_val, float) and pd.isna(_val))) else str(_val)
+                            st.markdown(
+                                f'<div class="nw-eyebrow" style="margin-top:6px">{_lbl}</div>'
+                                f'<div style="font-size:13px;font-variant-numeric:tabular-nums">{_disp}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    # Action buttons.
+                    _a1, _a2, _a3, _spc = st.columns([1, 1, 1, 4])
+                    if _li_id and _li_id != "—":
+                        _a1.link_button("Open in GAM",
+                            f"{_GAM_BASE}/{os.environ.get('GAM_NETWORK_ID','')}/admanager#delivery/line_item/detail/line_item_id={_li_id}",
+                            type="secondary")
+                    else:
+                        _a1.button("Open in GAM", disabled=True)
+                    _a2.button("Hourly delivery", key=f"hourly_{_li_id}",
+                               help="Intraday breakdown — not yet implemented")
+                    _a3.button("AirTable ticket", key=f"ticket_{_li_id}",
+                               help="Ticket creation — not yet implemented")
 
     st.divider()
 
