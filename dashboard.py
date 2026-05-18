@@ -497,17 +497,6 @@ st.markdown(
   color: rgba(250,250,250,0.95) !important;
   text-decoration: none !important;
 }
-.stApp .nw-gear,
-.stApp .nw-gear:link,
-.stApp .nw-gear:visited,
-.stApp .nw-gear:active {
-  color: rgba(250,250,250,0.55) !important;
-  text-decoration: none !important;
-}
-.stApp .nw-gear:hover {
-  color: rgba(250,250,250,0.85) !important;
-  text-decoration: none !important;
-}
 /* Hide Streamlit's top toolbar / hamburger / running-status indicator
    AND the auto-generated heading anchor link icon (the chain glyph). */
 #MainMenu, header[data-testid="stHeader"],
@@ -614,16 +603,9 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-tab-configure:hover { color: rgba(250,250,250,0.70); }
 .nw-tab-configure.nw-tab-active { color: rgba(250,250,250,0.95);
                                   border-bottom-color: rgba(250,250,250,0.95); }
-/* Header right-side cluster: timestamp + inline gear icon. */
-.nw-header-right { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.nw-gear {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 1;
-  border-radius: var(--border-radius-md);
-  background: transparent;
-  font-family: system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
-}
-.nw-gear:hover { background: rgba(255,255,255,0.06); }
+/* Header right-side cluster — timestamp only (Configure tab is the sole
+   entry point into the settings view, no separate gear button). */
+.nw-header-right { display: flex; align-items: center; justify-content: flex-end; }
 /* ── Custom HTML table for Direct Campaigns ─────────────────────────── */
 .nw-tbl-wrap { background: rgba(255,255,255,0.03); border-radius: var(--border-radius-lg);
                border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 18px; margin: 8px 0; }
@@ -895,7 +877,6 @@ def _render_header_right(ts_html=None):
     _header_right_slot.markdown(
         '<div class="nw-header-right">'
         f'<div class="nw-timestamp">{ts_html}</div>'
-        '<a class="nw-gear" href="?view=configure" target="_self" aria-label="Settings">⚙</a>'
         '</div>',
         unsafe_allow_html=True,
     )
