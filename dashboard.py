@@ -1696,14 +1696,8 @@ if st.session_state.active_view == "campaigns":
                     axis=1,
                 )
             if "pacing_pct" in view_gam.columns:
-                # Pace is rendered as a colored pill (background-color),
-                # with the delta annotation in a separate 'Δ' column so the
-                # box only wraps the percent. Show integer percent in the
-                # pill; tenths in the annotation.
                 _pacing_numeric = pd.to_numeric(view_gam["pacing_pct"], errors="coerce")
-                view_gam["pacing_pct"] = _pacing_numeric.apply(
-                    lambda v: "" if pd.isna(v) else f"{int(round(v))}%"
-                )
+                view_gam["pacing_pct"] = _pacing_numeric
                 def _pace_delta(row):
                     v1 = _pacing_numeric.loc[row.name]
                     v2 = row.get("pacing_prior_pct")
@@ -2076,6 +2070,8 @@ if st.session_state.active_view == "campaigns":
 
             def _pace_html(p, p_prior):
                 """Pace cell: pill (or green text) + variance below."""
+                p = pd.to_numeric(p, errors="coerce")
+                p_prior = pd.to_numeric(p_prior, errors="coerce")
                 if pd.isna(p):
                     return '<div class="cell-dash">—</div>'
                 ratio = p / _pacing_target if _pacing_target else None
