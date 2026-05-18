@@ -8,8 +8,9 @@ through two channels:
   1. Email — HTML modeled on the Tasklet "GAM Daily Campaign Report"
      format, sent via agentmail with adops on Cc.
   2. Teams — compact Adaptive Card (headline + per-LI bullets) posted to
-     that AE's dedicated Teams channel via a "Post to a channel when a
-     webhook request is received" Workflow URL.
+     a single shared ad-ops channel (e.g. #adops-daily) via a "Post to a
+     channel when a webhook request is received" Workflow URL. Each AE's
+     card @mentions them so they get pinged; ad-ops sees every post.
 
 Scope:
     - order_name LIKE 'Newsweek_Direct%'
@@ -24,15 +25,17 @@ Email recipients:
     - To: <AE>           — derived from display name as f<first>.<last>@newsweek.com
     - Cc: ADOPS_EMAIL    — adops@newsweek.com by default
 
-Teams recipients:
-    - Per-AE Workflow URLs in AE_TEAMS_WEBHOOKS_JSON (a JSON object keyed by
-      display name). AEs without a configured URL skip Teams; email still sends.
+Teams recipient:
+    - Single Workflow URL in TEAMS_WEBHOOK_URL pointing at the shared
+      ad-ops channel. Every AE's card lands there. AE is @mentioned via
+      their UPN (j.amalfi@newsweek.com), which the Flow Bot resolves to a
+      Teams user.
 
 Dry-run (default ON for first rollout):
     - DRY_RUN=1 routes every per-AE email to DRY_RUN_TO and every Teams
-      post to TEAMS_DRY_RUN_WEBHOOK, prefixing the headline with
-      "[DRY RUN → <AE>]" so you can review without surprising anyone.
-      Set DRY_RUN=0 to go live.
+      post to TEAMS_DRY_RUN_WEBHOOK (falls back to TEAMS_WEBHOOK_URL),
+      prefixing the headline with "[DRY RUN → <AE>]". Set DRY_RUN=0 to
+      go live (cards then ping the real AEs).
 
 Run manually:  python daily_seller_report.py
 Run on cron:   .github/workflows/daily_seller_report.yml (12 UTC = 8 AM EDT)
@@ -82,14 +85,10 @@ ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL", "adops@newsweek.com")
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
 DRY_RUN_TO = os.environ.get("DRY_RUN_TO", "roger.hirano@newsweek.com")
 
-# Teams: per-AE Workflow webhook URLs and a single dry-run target channel.
-# AE_TEAMS_WEBHOOKS_JSON is a JSON object: { "Julie Amalfi": "https://...", ... }
-try:
-    AE_TEAMS_WEBHOOKS: dict[str, str] = json.loads(os.environ.get("AE_TEAMS_WEBHOOKS_JSON", "{}") or "{}")
-except json.JSONDecodeError:
-    logger.warning("AE_TEAMS_WEBHOOKS_JSON is not valid JSON — Teams sending disabled")
-    AE_TEAMS_WEBHOOKS = {}
-TEAMS_DRY_RUN_WEBHOOK = os.environ.get("TEAMS_DRY_RUN_WEBHOOK", "")
+# Teams: single shared channel (e.g. #adops-daily). Each AE's card is posted
+# to this channel and @mentions the AE so they get pinged.
+TEAMS_WEBHOOK_URL = os.environ.get("TEAMS_WEBHOOK_URL", "")
+TEAMS_DRY_RUN_WEBHOOK = os.environ.get("TEAMS_DRY_RUN_WEBHOOK", "") or TEAMS_WEBHOOK_URL
 DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://newsweek-magnite.streamlit.app")
 
 
@@ -515,16 +514,39 @@ def _li_friendly_name(li: pd.Series) -> str:
     return short[:120] + ("…" if len(short) > 120 else "")
 
 
-def render_teams_card(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, today: date, headline_prefix: str = "") -> dict:
-    """Build the Workflow-webhook payload (a Teams 'message' wrapping an Adaptive Card)."""
+def render_teams_card(ae_name: str, ae_email: Optional[str], ae_items: pd.DataFrame, daily: pd.DataFrame, today: date, headline_prefix: str = "") -> dict:
+    """
+    Build the Workflow-webhook payload (a Teams 'message' wrapping an Adaptive Card).
+
+    When ae_email is provided, includes a msteams mention entity so the AE is
+    pinged. Adaptive Cards posted via the Flow Bot resolve the mentioned `id`
+    against AAD — a Newsweek UPN like j.amalfi@newsweek.com is the right value.
+    """
     n = len(ae_items)
     total_imp, total_rev = _rollup(ae_items, daily)
     date_str = f"{today.month}/{today.day}/{today.year}"
 
+    # Mention syntax: an <at>display</at> token in the TextBlock plus an entity
+    # in msteams.entities that resolves it. Falls back to plain bold name if
+    # we don't have an email (House etc. — but those are filtered upstream).
+    if ae_email:
+        mention_token = f"<at>{ae_name}</at>"
+        mention_entities = [
+            {
+                "type": "mention",
+                "text": mention_token,
+                "mentioned": {"id": ae_email, "name": ae_name},
+            }
+        ]
+        headline_text = f"{headline_prefix}Campaign Status — {mention_token}"
+    else:
+        mention_entities = []
+        headline_text = f"{headline_prefix}Campaign Status: {ae_name}"
+
     body: list[dict] = [
         {
             "type": "TextBlock",
-            "text": f"{headline_prefix}Campaign Status: {ae_name}",
+            "text": headline_text,
             "size": "Large",
             "weight": "Bolder",
             "wrap": True,
@@ -577,7 +599,7 @@ def render_teams_card(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame,
             "isSubtle": True,
         })
 
-    card = {
+    card: dict = {
         "type": "AdaptiveCard",
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "version": "1.5",
@@ -586,6 +608,8 @@ def render_teams_card(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame,
             {"type": "Action.OpenUrl", "title": "View dashboard", "url": DASHBOARD_URL}
         ],
     }
+    if mention_entities:
+        card["msteams"] = {"entities": mention_entities}
     return {
         "type": "message",
         "attachments": [
@@ -616,31 +640,28 @@ def _post_teams(webhook_url: str, payload: dict) -> None:
         raise RuntimeError(f"Teams webhook HTTP {e.code}: {body}") from e
 
 
-def maybe_send_teams(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, today: date) -> bool:
-    """Post to AE's Teams channel if a webhook is configured. Returns True on attempt."""
-    intended_url = AE_TEAMS_WEBHOOKS.get(ae_name)
+def maybe_send_teams(ae_name: str, ae_email: Optional[str], ae_items: pd.DataFrame, daily: pd.DataFrame, today: date) -> bool:
+    """
+    Post one card per AE to the shared ad-ops channel.
 
-    if DRY_RUN:
-        if not TEAMS_DRY_RUN_WEBHOOK:
-            logger.info("Teams: DRY_RUN with no TEAMS_DRY_RUN_WEBHOOK set — skipping %s", ae_name)
-            return False
-        # Only post the dry-run version for AEs that are actually configured for Teams in prod —
-        # otherwise the dry-run channel gets spammed with AEs who won't get Teams when live.
-        if not intended_url:
-            logger.info("Teams: no AE webhook configured for %s — skipping (dry-run + live)", ae_name)
-            return False
-        url = TEAMS_DRY_RUN_WEBHOOK
-        prefix = f"[DRY RUN → {ae_name}] "
-    else:
-        if not intended_url:
-            logger.info("Teams: no webhook for %s — email only", ae_name)
-            return False
-        url = intended_url
-        prefix = ""
+    DRY_RUN routes to TEAMS_DRY_RUN_WEBHOOK (defaults to TEAMS_WEBHOOK_URL) and
+    suppresses the @mention entity so the AE isn't pinged during testing.
+    Returns True if a post was attempted.
+    """
+    url = TEAMS_DRY_RUN_WEBHOOK if DRY_RUN else TEAMS_WEBHOOK_URL
+    if not url:
+        logger.info("Teams: %s not set — skipping Teams for %s",
+                    "TEAMS_DRY_RUN_WEBHOOK / TEAMS_WEBHOOK_URL" if DRY_RUN else "TEAMS_WEBHOOK_URL",
+                    ae_name)
+        return False
 
-    payload = render_teams_card(ae_name, ae_items, daily, today, headline_prefix=prefix)
+    prefix = f"[DRY RUN → {ae_name}] " if DRY_RUN else ""
+    # Suppress mention during dry-run so the real AE isn't pinged from a test channel.
+    mention_email = None if DRY_RUN else ae_email
+
+    payload = render_teams_card(ae_name, mention_email, ae_items, daily, today, headline_prefix=prefix)
     _post_teams(url, payload)
-    logger.info("Teams: posted card for %s (%s)", ae_name, "dry-run channel" if DRY_RUN else "AE channel")
+    logger.info("Teams: posted card for %s (%s)", ae_name, "dry-run channel" if DRY_RUN else "shared channel")
     return True
 
 
@@ -673,7 +694,7 @@ def main() -> None:
             skipped_email.append(ae_name)
 
         try:
-            if maybe_send_teams(ae_name, ae_items, daily, today):
+            if maybe_send_teams(ae_name, ae_email, ae_items, daily, today):
                 teams_sent += 1
         except Exception:
             # Don't let a Teams webhook failure block the rest of the run.

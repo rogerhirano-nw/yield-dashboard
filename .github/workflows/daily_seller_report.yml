@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Route email to DRY_RUN_TO and Teams to TEAMS_DRY_RUN_WEBHOOK instead of each AE'
+        description: 'Route email to DRY_RUN_TO and Teams to TEAMS_DRY_RUN_WEBHOOK; suppress @mentions'
         required: false
         default: '1'
         type: choice
@@ -38,9 +38,11 @@ jobs:
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
           ADOPS_EMAIL:            ${{ secrets.ADOPS_EMAIL }}
           DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO }}
-          # Teams Workflow webhooks (one URL per AE channel, JSON-encoded).
-          # AEs absent from the JSON skip Teams; email still sends.
-          AE_TEAMS_WEBHOOKS_JSON: ${{ secrets.AE_TEAMS_WEBHOOKS_JSON }}
+          # Single Teams Workflow URL for the shared #adops-daily channel.
+          # Each AE's card is posted there and @mentions the AE so they get pinged.
+          # TEAMS_DRY_RUN_WEBHOOK is optional — defaults to TEAMS_WEBHOOK_URL
+          # (mentions are suppressed in DRY_RUN regardless).
+          TEAMS_WEBHOOK_URL:      ${{ secrets.TEAMS_WEBHOOK_URL }}
           TEAMS_DRY_RUN_WEBHOOK:  ${{ secrets.TEAMS_DRY_RUN_WEBHOOK }}
           DASHBOARD_URL:          ${{ secrets.DASHBOARD_URL }}
           # Scheduled runs default to dry-run; workflow_dispatch can flip it via input.
