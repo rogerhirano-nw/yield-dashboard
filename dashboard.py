@@ -217,7 +217,14 @@ def _load_settings() -> dict:
         return result
 
     def _patch_direct_columns(cfg: dict) -> dict:
-        """Add any direct_sources columns present in settings.json but absent from cfg (e.g. DB has stale copy)."""
+        """Reconcile direct_sources columns against settings.json — add missing keys
+        from the file AND drop DB-only keys that the file no longer carries.
+
+        File is the canonical column set. The DB store is allowed to override
+        VALUES (user customization persists), but cannot keep entries for keys
+        the file has dropped — otherwise removing a column from the canonical
+        set leaves it stranded in prod forever (the original bug behind the
+        'Impressions (1d) won't go away' report)."""
         if not _SETTINGS_PATH.exists():
             return cfg
         try:
@@ -229,7 +236,11 @@ def _load_settings() -> dict:
         patched = []
         for src in cfg.get("direct_sources", []):
             file_cols = file_by_name.get(src["name"], {}).get("columns", {})
-            merged_cols = {**file_cols, **src.get("columns", {})}
+            db_cols   = src.get("columns", {})
+            if file_cols:
+                merged_cols = {k: db_cols.get(k, v) for k, v in file_cols.items()}
+            else:
+                merged_cols = db_cols
             patched.append({**src, "columns": merged_cols})
         return {**cfg, "direct_sources": patched}
 
