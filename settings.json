@@ -85,6 +85,13 @@
     "THern":     "Theresa Hern",
     "Thern":     "Theresa Hern"
   },
+  "benchmarks_by_format": {
+    "Display":      { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null },
+    "Video":        { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
+    "Native":       { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null },
+    "Multi":        { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
+    "Interstitial": { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
+  },
   "deal_type_codes": {
     "PA":  "Private Auction",
     "PD":  "Preferred Deal",
