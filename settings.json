@@ -158,7 +158,6 @@
         "Goal":             "impressions_goal",
         "CPM Rate":         "cpm_rate",
         "Delivered":        "lifetime_impressions_delivered",
-        "Impressions (1d)": "impressions_1d",
         "Remaining":        "remaining_impressions",
         "Clicks":           "ad_server_clicks",
         "Pacing %":         "pacing_pct",

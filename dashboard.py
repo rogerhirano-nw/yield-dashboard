@@ -194,7 +194,6 @@ _DEFAULT_SETTINGS: dict = {
                 "Goal":          "impressions_goal",
                 "CPM Rate":      "cpm_rate",
                 "Delivered":     "lifetime_impressions_delivered",
-                "Impressions (1d)": "impressions_1d",
                 "Remaining":     "remaining_impressions",
                 "Clicks":        "ad_server_clicks",
                 "Pacing %":      "pacing_pct",
@@ -1215,15 +1214,6 @@ with tab_seller:
                 sign = "+" if d > 0 else ""
                 return f"{base} ({_arrow(d)} {sign}{d:.1f}pp)"
 
-            if "impressions_1d" in view_gam.columns:
-                # The "Impressions (1d)" column was already showing yesterday's count.
-                # Primary stays = impressions_1d. Annotation = 1d - 2d delta.
-                view_gam["impressions_1d"] = view_gam.apply(
-                    lambda r: _fmt_count_annot(r.get("impressions_1d"),
-                                                r.get("impressions_1d"),
-                                                r.get("impressions_2d")),
-                    axis=1,
-                )
             if "ad_server_clicks" in view_gam.columns:
                 # Primary stays = ad_server_clicks (7-day sum, what it was before).
                 # Annotation = 1d - 2d delta (daily trend indicator).
@@ -1278,7 +1268,6 @@ with tab_seller:
                     "end_date": "End Date", "impressions_goal": "Goal",
                     "cpm_rate": "CPM Rate",
                     "lifetime_impressions_delivered": "Delivered",
-                    "impressions_1d": "Impressions (1d)",
                     "remaining_impressions": "Remaining",
                     "ad_server_clicks": "Clicks", "pacing_pct": "Pacing %",
                     "ad_server_active_view_viewable_impressions_rate": "Viewability %",
@@ -1308,8 +1297,6 @@ with tab_seller:
                 col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
             # Impressions / Clicks / Pacing / Viewability are now annotated text
             # strings ("X (▲ +Y)"), not raw numbers.
-            if "Impressions (1d)" in table_df.columns:
-                col_config["Impressions (1d)"] = st.column_config.TextColumn("Impressions (1d)", width="medium")
             if "Clicks" in table_df.columns:
                 col_config["Clicks"] = st.column_config.TextColumn("Clicks", width="medium")
             if "Pacing %" in table_df.columns:
@@ -1323,23 +1310,38 @@ with tab_seller:
             if "Revenue" in table_df.columns:
                 col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
 
+            # Cells in Pacing % / Viewability % are now annotated strings like
+            # "0.6% (below 70%) (▲ +0.1pp)". Parse the leading numeric percent
+            # so color coding still applies; tolerate the pre-refresh numeric
+            # fallback too.
+            def _parse_leading_pct(v):
+                if isinstance(v, (int, float)) and pd.notna(v):
+                    return float(v)
+                if isinstance(v, str):
+                    m = re.match(r"\s*([+-]?\d+(?:\.\d+)?)\s*%", v)
+                    if m:
+                        return float(m.group(1))
+                return None
+
             styled_df = table_df.style
             if "Viewability %" in table_df.columns:
                 def _viewability_color(v):
-                    if not isinstance(v, (int, float)) or pd.isna(v):
+                    pct = _parse_leading_pct(v)
+                    if pct is None:
                         return ""
-                    if v >= 70:
+                    if pct >= 70:
                         return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, v) / 70.0 * 120)
+                    hue = int(max(0.0, pct) / 70.0 * 120)
                     return f"color: hsl({hue}, 70%, 38%)"
                 styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
             if "Pacing %" in table_df.columns:
                 def _pacing_color(v):
-                    if not isinstance(v, (int, float)) or pd.isna(v):
+                    pct = _parse_leading_pct(v)
+                    if pct is None:
                         return ""
-                    if v >= 100:
+                    if pct >= 100:
                         return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, v) / 100.0 * 120)
+                    hue = int(max(0.0, pct) / 100.0 * 120)
                     return f"color: hsl({hue}, 70%, 38%)"
                 styled_df = styled_df.map(_pacing_color, subset=["Pacing %"])
 
@@ -2203,7 +2205,7 @@ with tab_settings:
         _DIRECT_FIELDS = [
             "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
             "Start Date", "End Date", "Goal", "CPM Rate",
-            "Delivered", "Impressions (1d)", "Remaining", "Clicks",
+            "Delivered", "Remaining", "Clicks",
             "Pacing %", "Viewability %", "CTR %", "Revenue", "VCR %",
         ]
         _DIRECT_COMPUTED = ["seller_ae", "salesperson", "advertiser", "campaign_name", "ad_format", "remaining_impressions"]
