@@ -1046,13 +1046,14 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 # with a divider, AND a gear icon button in the header top-right. Both
 # entry points route through st.session_state.active_view.
 # ──────────────────────────────────────────────────────────────────────────
-_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "configure")
+_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "ttd", "configure")
 _VIEW_TITLE = {
     "campaigns": "Overall performance",
     "site":      "By site / size",
     "dsp":       "By DSP",
     "magnite":   "Magnite deals",
     "pubmatic":  "Pubmatic deals",
+    "ttd":       "VGW / TTD conversions",
     "configure": "Configure",
 }
 _NAV_DATA = [
@@ -1061,6 +1062,7 @@ _NAV_DATA = [
     ("dsp",       "By DSP"),
     ("magnite",   "Magnite deals"),
     ("pubmatic",  "Pubmatic deals"),
+    ("ttd",       "VGW / TTD"),
 ]
 
 if "active_view" not in st.session_state:
@@ -1615,6 +1617,166 @@ if st.session_state.active_view == "pubmatic":
                 "win_rate": st.column_config.NumberColumn("Win Rate %", format="localized"),
             },
         )
+
+# ── VGW / TTD conversions ─────────────────────────────────────────────────────
+if st.session_state.active_view == "ttd":
+    ttd_df = load("ttd_vgw_daily")
+
+    if ttd_df.empty:
+        st.info("No TTD data yet — run refresh_cache.py to populate ttd_vgw_daily.")
+    else:
+        last_pull = ttd_df["_pulled_at"].max() if "_pulled_at" in ttd_df else "unknown"
+        st.caption(f"Last refresh: {_fmt_last_refresh(last_pull)}")
+
+        ttd_df = ttd_df.copy()
+        ttd_df["date"] = pd.to_datetime(ttd_df["date"]).dt.date
+
+        dmin, dmax = ttd_df["date"].min(), ttd_df["date"].max()
+        start, end = date_filter("ttd", dmin, dmax)
+
+        tf1, tf2 = st.columns(2)
+        with tf1:
+            campaign_opts = sorted(ttd_df["campaign"].dropna().unique()) if "campaign" in ttd_df.columns else []
+            sel_campaigns = st.multiselect("Campaign", campaign_opts, key="ttd_campaign_filter")
+        with tf2:
+            creative_opts = sorted(ttd_df["creative"].dropna().unique()) if "creative" in ttd_df.columns else []
+            sel_creatives = st.multiselect("Creative", creative_opts, key="ttd_creative_filter")
+
+        view = ttd_df[(ttd_df["date"] >= start) & (ttd_df["date"] <= end)]
+        if sel_campaigns:
+            view = view[view["campaign"].isin(sel_campaigns)]
+        if sel_creatives:
+            view = view[view["creative"].isin(sel_creatives)]
+
+        # ── KPI strip ─────────────────────────────────────────────────────────
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Impressions",     f"{view['impressions'].sum():,.0f}"     if "impressions"     in view.columns else "—")
+        k2.metric("Clicks",          f"{view['clicks'].sum():,.0f}"          if "clicks"          in view.columns else "—")
+        k3.metric("Registrations",   f"{view['registrations'].sum():,.0f}"   if "registrations"   in view.columns else "—")
+        k4.metric("First Deposits",  f"{view['first_deposits'].sum():,.0f}"  if "first_deposits"  in view.columns else "—")
+
+        if "registration_cpa" in view.columns and view["registrations"].sum() > 0:
+            _reg_cpa = view["advertiser_cost"].sum() / view["registrations"].sum()
+            k5.metric("Reg CPA", f"${_reg_cpa:,.2f}")
+        elif "first_deposit_cpa" in view.columns and view["first_deposits"].sum() > 0:
+            _dep_cpa = view["advertiser_cost"].sum() / view["first_deposits"].sum()
+            k5.metric("Deposit CPA", f"${_dep_cpa:,.2f}")
+        else:
+            k5.metric("Advertiser Cost", f"${view['advertiser_cost'].sum():,.2f}" if "advertiser_cost" in view.columns else "—")
+
+        # ── Daily conversion trend ────────────────────────────────────────────
+        st.subheader("Daily conversions")
+        if "registrations" in view.columns and "first_deposits" in view.columns:
+            daily_cv = (
+                view.groupby("date")[["registrations", "first_deposits"]]
+                .sum()
+                .reset_index()
+                .rename(columns={"registrations": "Registrations", "first_deposits": "First Deposits"})
+            )
+            daily_melted = daily_cv.melt("date", var_name="Event", value_name="Count")
+            cv_chart = (
+                alt.Chart(daily_melted)
+                .mark_bar()
+                .encode(
+                    x=alt.X("date:T", title=None),
+                    y=alt.Y("Count:Q", title="Conversions"),
+                    color=alt.Color(
+                        "Event:N",
+                        scale=alt.Scale(
+                            domain=["Registrations", "First Deposits"],
+                            range=["#4e8cff", "#ff6b6b"],
+                        ),
+                    ),
+                    tooltip=["date:T", "Event:N", "Count:Q"],
+                )
+                .properties(height=260)
+            )
+            st.altair_chart(cv_chart, use_container_width=True)
+
+        # ── CPA trend ─────────────────────────────────────────────────────────
+        if "advertiser_cost" in view.columns and "registrations" in view.columns:
+            daily_cpa = view.groupby("date").agg(
+                cost=("advertiser_cost", "sum"),
+                regs=("registrations", "sum"),
+                deps=("first_deposits", "sum"),
+            ).reset_index()
+            daily_cpa["Reg CPA"]     = daily_cpa.apply(lambda r: r["cost"] / r["regs"]     if r["regs"]  > 0 else None, axis=1)
+            daily_cpa["Deposit CPA"] = daily_cpa.apply(lambda r: r["cost"] / r["deps"]     if r["deps"]  > 0 else None, axis=1)
+
+            cpa_melted = daily_cpa[["date", "Reg CPA", "Deposit CPA"]].melt("date", var_name="Metric", value_name="CPA ($)")
+            cpa_melted = cpa_melted.dropna(subset=["CPA ($)"])
+            if not cpa_melted.empty:
+                st.subheader("Daily CPA")
+                cpa_chart = (
+                    alt.Chart(cpa_melted)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("date:T", title=None),
+                        y=alt.Y("CPA ($):Q", title="CPA ($)"),
+                        color=alt.Color(
+                            "Metric:N",
+                            scale=alt.Scale(
+                                domain=["Reg CPA", "Deposit CPA"],
+                                range=["#4e8cff", "#ff6b6b"],
+                            ),
+                        ),
+                        tooltip=["date:T", "Metric:N", alt.Tooltip("CPA ($):Q", format="$,.2f")],
+                    )
+                    .properties(height=220)
+                )
+                st.altair_chart(cpa_chart, use_container_width=True)
+
+        # ── Campaign summary table ─────────────────────────────────────────────
+        st.subheader("By campaign")
+        agg_cols = {c: "sum" for c in ("impressions", "clicks", "registrations", "first_deposits", "advertiser_cost", "media_cost") if c in view.columns}
+        camp_summary = view.groupby("campaign").agg(agg_cols).reset_index()
+        if "registrations" in camp_summary.columns and "advertiser_cost" in camp_summary.columns:
+            camp_summary["Reg CPA"] = camp_summary.apply(
+                lambda r: r["advertiser_cost"] / r["registrations"] if r["registrations"] > 0 else None, axis=1
+            )
+        if "first_deposits" in camp_summary.columns and "advertiser_cost" in camp_summary.columns:
+            camp_summary["Deposit CPA"] = camp_summary.apply(
+                lambda r: r["advertiser_cost"] / r["first_deposits"] if r["first_deposits"] > 0 else None, axis=1
+            )
+        st.dataframe(
+            camp_summary.sort_values("registrations", ascending=False) if "registrations" in camp_summary.columns else camp_summary,
+            use_container_width=True,
+            column_config={
+                "campaign":        st.column_config.TextColumn("Campaign"),
+                "impressions":     st.column_config.NumberColumn("Impressions",    format="localized"),
+                "clicks":          st.column_config.NumberColumn("Clicks",         format="localized"),
+                "registrations":   st.column_config.NumberColumn("Registrations",  format="localized"),
+                "first_deposits":  st.column_config.NumberColumn("First Deposits", format="localized"),
+                "advertiser_cost": st.column_config.NumberColumn("Adv Cost ($)",   format="dollar"),
+                "media_cost":      st.column_config.NumberColumn("Media Cost ($)",  format="dollar"),
+                "Reg CPA":         st.column_config.NumberColumn("Reg CPA ($)",    format="dollar"),
+                "Deposit CPA":     st.column_config.NumberColumn("Deposit CPA ($)", format="dollar"),
+            },
+        )
+
+        # ── Full detail table ──────────────────────────────────────────────────
+        with st.expander("Full row-level data"):
+            st.dataframe(
+                view.sort_values(["date", "campaign", "creative"], ascending=[False, True, True]),
+                use_container_width=True,
+                column_config={
+                    "_pulled_at":      None,
+                    "currency":        None,
+                    "campaign":        st.column_config.TextColumn("Campaign"),
+                    "ad_group":        st.column_config.TextColumn("Ad Group"),
+                    "creative":        st.column_config.TextColumn("Creative"),
+                    "deal_id":         st.column_config.TextColumn("Deal ID"),
+                    "date":            st.column_config.DateColumn("Date"),
+                    "impressions":     st.column_config.NumberColumn("Impressions",    format="localized"),
+                    "clicks":          st.column_config.NumberColumn("Clicks",         format="localized"),
+                    "registrations":   st.column_config.NumberColumn("Registrations",  format="localized"),
+                    "first_deposits":  st.column_config.NumberColumn("First Deposits", format="localized"),
+                    "advertiser_cost": st.column_config.NumberColumn("Adv Cost ($)",   format="dollar"),
+                    "media_cost":      st.column_config.NumberColumn("Media Cost ($)",  format="dollar"),
+                    "registration_cpa":   st.column_config.NumberColumn("Reg CPA ($)",     format="dollar"),
+                    "first_deposit_cpa":  st.column_config.NumberColumn("Deposit CPA ($)", format="dollar"),
+                },
+            )
 
 if st.session_state.active_view == "campaigns":
     # ── Table 1: Direct campaigns from GAM ──────────────────────────────
