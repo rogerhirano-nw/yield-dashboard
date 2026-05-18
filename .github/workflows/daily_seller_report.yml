@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Route all emails to DRY_RUN_TO instead of the AEs'
+        description: 'Route email to DRY_RUN_TO and Teams to TEAMS_DRY_RUN_WEBHOOK instead of each AE'
         required: false
         default: '1'
         type: choice
@@ -33,10 +33,15 @@ jobs:
 
       - run: python daily_seller_report.py
         env:
-          DATABASE_URL:        ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:   ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID:  ${{ secrets.AGENTMAIL_INBOX_ID }}
-          ADOPS_EMAIL:         ${{ secrets.ADOPS_EMAIL }}
-          DRY_RUN_TO:          ${{ secrets.DRY_RUN_TO }}
+          DATABASE_URL:           ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
+          ADOPS_EMAIL:            ${{ secrets.ADOPS_EMAIL }}
+          DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO }}
+          # Teams Workflow webhooks (one URL per AE channel, JSON-encoded).
+          # AEs absent from the JSON skip Teams; email still sends.
+          AE_TEAMS_WEBHOOKS_JSON: ${{ secrets.AE_TEAMS_WEBHOOKS_JSON }}
+          TEAMS_DRY_RUN_WEBHOOK:  ${{ secrets.TEAMS_DRY_RUN_WEBHOOK }}
+          DASHBOARD_URL:          ${{ secrets.DASHBOARD_URL }}
           # Scheduled runs default to dry-run; workflow_dispatch can flip it via input.
-          DRY_RUN:             ${{ github.event.inputs.dry_run || '1' }}
+          DRY_RUN:                ${{ github.event.inputs.dry_run || '1' }}

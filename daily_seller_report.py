@@ -2,8 +2,14 @@
 Daily seller (AE) campaign report.
 
 For each Newsweek AE with at least one currently-delivering or recently-
-completed direct line item, render a per-AE HTML email modeled on the
-Tasklet "GAM Daily Campaign Report" format and send it via agentmail.
+completed direct line item, render a per-AE status report and deliver it
+through two channels:
+
+  1. Email — HTML modeled on the Tasklet "GAM Daily Campaign Report"
+     format, sent via agentmail with adops on Cc.
+  2. Teams — compact Adaptive Card (headline + per-LI bullets) posted to
+     that AE's dedicated Teams channel via a "Post to a channel when a
+     webhook request is received" Workflow URL.
 
 Scope:
     - order_name LIKE 'Newsweek_Direct%'
@@ -14,14 +20,19 @@ Data sources (both populated by refresh_cache.py refresh_gam):
     - gam_campaigns        — one row per line item (totals, pacing, lifetime)
     - gam_campaigns_daily  — one row per (line_item_id, date) for the last 7d
 
-Recipients:
+Email recipients:
     - To: <AE>           — derived from display name as f<first>.<last>@newsweek.com
     - Cc: ADOPS_EMAIL    — adops@newsweek.com by default
 
+Teams recipients:
+    - Per-AE Workflow URLs in AE_TEAMS_WEBHOOKS_JSON (a JSON object keyed by
+      display name). AEs without a configured URL skip Teams; email still sends.
+
 Dry-run (default ON for first rollout):
-    - DRY_RUN=1 routes every per-AE email to DRY_RUN_TO instead, prefixing
-      the subject with "[DRY RUN → <intended AE>]" so you can review output
-      without surprising any sellers. Set DRY_RUN=0 to go live.
+    - DRY_RUN=1 routes every per-AE email to DRY_RUN_TO and every Teams
+      post to TEAMS_DRY_RUN_WEBHOOK, prefixing the headline with
+      "[DRY RUN → <AE>]" so you can review without surprising anyone.
+      Set DRY_RUN=0 to go live.
 
 Run manually:  python daily_seller_report.py
 Run on cron:   .github/workflows/daily_seller_report.yml (12 UTC = 8 AM EDT)
@@ -36,6 +47,9 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+import urllib.error
+import urllib.request
 
 import pandas as pd
 import sqlalchemy
@@ -67,6 +81,16 @@ AE_REGEX = re.compile(r"Team-(?:USA|INTL)_([A-Za-z]+)")
 ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL", "adops@newsweek.com")
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
 DRY_RUN_TO = os.environ.get("DRY_RUN_TO", "roger.hirano@newsweek.com")
+
+# Teams: per-AE Workflow webhook URLs and a single dry-run target channel.
+# AE_TEAMS_WEBHOOKS_JSON is a JSON object: { "Julie Amalfi": "https://...", ... }
+try:
+    AE_TEAMS_WEBHOOKS: dict[str, str] = json.loads(os.environ.get("AE_TEAMS_WEBHOOKS_JSON", "{}") or "{}")
+except json.JSONDecodeError:
+    logger.warning("AE_TEAMS_WEBHOOKS_JSON is not valid JSON — Teams sending disabled")
+    AE_TEAMS_WEBHOOKS = {}
+TEAMS_DRY_RUN_WEBHOOK = os.environ.get("TEAMS_DRY_RUN_WEBHOOK", "")
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://newsweek-magnite.streamlit.app")
 
 
 # ── seller_ae derivation (mirrors dashboard.py) ───────────────────────────────
@@ -454,6 +478,172 @@ def send_one(ae_name: str, ae_email: str, html: str, today: date) -> None:
     logger.info("Sent: %s → to=%s cc=%s", subject, to, cc)
 
 
+# ── Teams (Workflow webhook) ──────────────────────────────────────────────────
+
+def _rollup(ae_items: pd.DataFrame, daily: pd.DataFrame) -> tuple[int, float]:
+    """Yesterday's total impressions + revenue across an AE's line items."""
+    if not daily.empty and "line_item_id" in daily.columns:
+        daily_y = (
+            daily.sort_values("date", ascending=False)
+                 .drop_duplicates(subset=["line_item_id"], keep="first")
+        )
+        ids = ae_items["line_item_id"].astype(str)
+        y_subset = daily_y[daily_y["line_item_id"].astype(str).isin(ids)]
+        total_imp = int(y_subset["ad_server_impressions"].fillna(0).sum()) if "ad_server_impressions" in y_subset.columns else 0
+        total_rev = float(y_subset["ad_server_cpm_and_cpc_revenue"].fillna(0).sum()) if "ad_server_cpm_and_cpc_revenue" in y_subset.columns else 0.0
+        return total_imp, total_rev
+    total_imp = int(ae_items["impressions_1d"].fillna(0).sum()) if "impressions_1d" in ae_items.columns else 0
+    return total_imp, 0.0
+
+
+def _li_friendly_name(li: pd.Series) -> str:
+    """
+    Try to derive a short, Tasklet-style "<Advertiser> <Campaign> · <Format>"
+    label from the line_item_name; fall back to the full name.
+
+    Splits on '_' using the dashboard.py convention: idx 7 = advertiser,
+    idx 8 = campaign (hyphens → spaces), idx 10 = ad format.
+    """
+    name = li.get("line_item_name") or ""
+    parts = name.split("_") if isinstance(name, str) else []
+    def _at(i): return parts[i].strip() if i < len(parts) else ""
+    advertiser = _at(7)
+    campaign = _at(8).replace("-", " ").strip()
+    fmt = _at(10).replace("-", " ").strip()
+    pieces = [p for p in (advertiser, campaign, fmt) if p]
+    short = " · ".join(pieces) if pieces else name
+    return short[:120] + ("…" if len(short) > 120 else "")
+
+
+def render_teams_card(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, today: date, headline_prefix: str = "") -> dict:
+    """Build the Workflow-webhook payload (a Teams 'message' wrapping an Adaptive Card)."""
+    n = len(ae_items)
+    total_imp, total_rev = _rollup(ae_items, daily)
+    date_str = f"{today.month}/{today.day}/{today.year}"
+
+    body: list[dict] = [
+        {
+            "type": "TextBlock",
+            "text": f"{headline_prefix}Campaign Status: {ae_name}",
+            "size": "Large",
+            "weight": "Bolder",
+            "wrap": True,
+        },
+        {
+            "type": "TextBlock",
+            "text": f"{date_str} · {n} campaigns · {total_imp:,} impressions · {_fmt_money(total_rev)}",
+            "isSubtle": True,
+            "spacing": "None",
+            "wrap": True,
+        },
+    ]
+
+    has_daily = not daily.empty and "line_item_id" in daily.columns
+    for _, li in ae_items.sort_values("order_name", na_position="last").iterrows():
+        if has_daily:
+            daily_li = daily[daily["line_item_id"].astype(str) == str(li["line_item_id"])]
+        else:
+            daily_li = pd.DataFrame()
+        pm = _per_day_metrics(daily_li, li)
+        y_imp, p_imp = pm.get("y_imp"), pm.get("p_imp")
+        y_ctr = _ctr(pm.get("y_clk"), pm.get("y_imp"))
+
+        pacing = li.get("pacing_pct")
+        pacing_str = "—" if pd.isna(pacing) else f"{float(pacing):.1f}%"
+        fully = (
+            not pd.isna(pacing)
+            and float(pacing) >= 100
+            and (li.get("status") == "Completed" or (li.get("remaining_impressions") or 1) <= 0)
+        )
+        if fully:
+            pacing_str += " (fully delivered)"
+
+        delta = _delta_imp(y_imp, p_imp)
+        yesterday_bit = f"Yesterday {_fmt_int(y_imp)} imp" + (f" ({delta})" if delta else "")
+        ctr_bit = f"CTR {_fmt_pct(y_ctr)}"
+
+        body.append({
+            "type": "TextBlock",
+            "text": f"▸ **{_li_friendly_name(li)}**",
+            "wrap": True,
+            "spacing": "Medium",
+            "separator": True,
+        })
+        body.append({
+            "type": "TextBlock",
+            "text": f"Pacing {pacing_str} · {yesterday_bit} · {ctr_bit}",
+            "wrap": True,
+            "spacing": "None",
+            "isSubtle": True,
+        })
+
+    card = {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.5",
+        "body": body,
+        "actions": [
+            {"type": "Action.OpenUrl", "title": "View dashboard", "url": DASHBOARD_URL}
+        ],
+    }
+    return {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "contentUrl": None,
+                "content": card,
+            }
+        ],
+    }
+
+
+def _post_teams(webhook_url: str, payload: dict) -> None:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        webhook_url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status >= 300:
+                body = resp.read().decode("utf-8", "replace")
+                raise RuntimeError(f"Teams webhook returned {resp.status}: {body}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace") if hasattr(e, "read") else ""
+        raise RuntimeError(f"Teams webhook HTTP {e.code}: {body}") from e
+
+
+def maybe_send_teams(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, today: date) -> bool:
+    """Post to AE's Teams channel if a webhook is configured. Returns True on attempt."""
+    intended_url = AE_TEAMS_WEBHOOKS.get(ae_name)
+
+    if DRY_RUN:
+        if not TEAMS_DRY_RUN_WEBHOOK:
+            logger.info("Teams: DRY_RUN with no TEAMS_DRY_RUN_WEBHOOK set — skipping %s", ae_name)
+            return False
+        # Only post the dry-run version for AEs that are actually configured for Teams in prod —
+        # otherwise the dry-run channel gets spammed with AEs who won't get Teams when live.
+        if not intended_url:
+            logger.info("Teams: no AE webhook configured for %s — skipping (dry-run + live)", ae_name)
+            return False
+        url = TEAMS_DRY_RUN_WEBHOOK
+        prefix = f"[DRY RUN → {ae_name}] "
+    else:
+        if not intended_url:
+            logger.info("Teams: no webhook for %s — email only", ae_name)
+            return False
+        url = intended_url
+        prefix = ""
+
+    payload = render_teams_card(ae_name, ae_items, daily, today, headline_prefix=prefix)
+    _post_teams(url, payload)
+    logger.info("Teams: posted card for %s (%s)", ae_name, "dry-run channel" if DRY_RUN else "AE channel")
+    return True
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -470,20 +660,34 @@ def main() -> None:
         logger.info("All in-scope rows resolved to House / unmapped — nothing to send")
         return
 
-    sent = 0
-    skipped = []
+    emails_sent = 0
+    teams_sent = 0
+    skipped_email = []
     for ae_name, ae_items in campaigns.groupby("seller_ae"):
         ae_email = ae_to_email(ae_name)
-        if not ae_email:
-            skipped.append(ae_name)
-            continue
-        html = render_email(ae_name, ae_items, daily, today)
-        send_one(ae_name, ae_email, html, today)
-        sent += 1
+        if ae_email:
+            html = render_email(ae_name, ae_items, daily, today)
+            send_one(ae_name, ae_email, html, today)
+            emails_sent += 1
+        else:
+            skipped_email.append(ae_name)
 
-    logger.info("Done. Sent %d email(s). Skipped (no email): %s", sent, skipped or "none")
+        try:
+            if maybe_send_teams(ae_name, ae_items, daily, today):
+                teams_sent += 1
+        except Exception:
+            # Don't let a Teams webhook failure block the rest of the run.
+            logger.exception("Teams post failed for %s — continuing", ae_name)
+
+    logger.info(
+        "Done. Emails sent: %d (skipped, no address: %s). Teams cards posted: %d.",
+        emails_sent, skipped_email or "none", teams_sent,
+    )
     if DRY_RUN:
-        logger.info("DRY_RUN=1 — all mail routed to %s. Set DRY_RUN=0 to go live.", DRY_RUN_TO)
+        logger.info(
+            "DRY_RUN=1 — email routed to %s, Teams routed to %s. Set DRY_RUN=0 to go live.",
+            DRY_RUN_TO, TEAMS_DRY_RUN_WEBHOOK or "(unset)",
+        )
 
 
 if __name__ == "__main__":
