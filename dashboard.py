@@ -567,6 +567,57 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.60); }
 .seller-prog { font-style: italic; color: rgba(250,250,250,0.45); }
 .cell-dash { color: rgba(250,250,250,0.30); }
 .bold-rev  { font-weight: 700; }
+/* ── Settings sections (Direct Campaigns redesign) ───────────────── */
+.cfg-section { background: rgba(255,255,255,0.02); border-radius: var(--border-radius-lg);
+               border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 20px; margin: 10px 0; }
+.cfg-section-head { display: flex; justify-content: space-between; align-items: baseline;
+                    margin-bottom: 4px; }
+.cfg-eyebrow { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+               color: rgba(250,250,250,0.45); font-weight: 500; }
+.cfg-count   { font-size: 11px; color: rgba(250,250,250,0.45);
+               font-variant-numeric: tabular-nums; }
+.cfg-title   { font-size: 18px; font-weight: 600; color: rgba(250,250,250,0.92);
+               margin: 0 0 4px 0; }
+.cfg-desc    { font-size: 12px; color: rgba(250,250,250,0.55); margin-bottom: 14px;
+               line-height: 1.5; }
+.cfg-card    { background: rgba(255,255,255,0.025); border-radius: var(--border-radius-md);
+               border: 0.5px solid rgba(255,255,255,0.06); padding: 12px 14px; margin: 8px 0; }
+.cfg-card-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.cfg-card-meta  { font-size: 11px; color: rgba(250,250,250,0.45);
+                  margin-left: 8px; font-weight: 400; }
+.cfg-mono    { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+               color: rgba(250,250,250,0.80); }
+.cfg-tertiary{ color: rgba(250,250,250,0.45); }
+.cfg-status-enabled { display: inline-block; padding: 1px 8px; border-radius: 4px;
+                      background: hsl(120, 40%, 22%); color: hsl(120, 30%, 78%);
+                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
+.cfg-status-disabled{ display: inline-block; padding: 1px 8px; border-radius: 4px;
+                      background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.45);
+                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
+.cfg-computed { display: inline-block; padding: 1px 6px; border-radius: 3px;
+                background: rgba(33, 150, 243, 0.18); color: hsl(207, 70%, 78%);
+                font-size: 9px; font-weight: 600; letter-spacing: 0.04em; margin-left: 6px;
+                vertical-align: middle; }
+.cfg-suggest { background: rgba(33, 150, 243, 0.10); color: hsl(207, 70%, 80%);
+               border: 0.5px solid rgba(33, 150, 243, 0.30);
+               border-radius: var(--border-radius-md); padding: 10px 14px;
+               font-size: 12px; margin: 8px 0; }
+.cfg-gradient { height: 12px; border-radius: 6px; margin: 6px 0;
+                background: linear-gradient(to right,
+                  hsl(0, 60%, 50%) 0%, hsl(35, 70%, 50%) 50%, hsl(120, 50%, 50%) 100%); position: relative; }
+.cfg-gradient-marker { position: absolute; top: -3px; width: 2px; height: 18px;
+                       background: rgba(255,255,255,0.85); border-radius: 1px; }
+.cfg-gradient-axis { display: flex; justify-content: space-between; font-size: 10px;
+                     color: rgba(250,250,250,0.45); margin-top: 2px; }
+.cfg-key-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px;
+               padding: 6px 0; border-bottom: 0.5px solid rgba(255,255,255,0.04); align-items: center; }
+.cfg-key-row:last-child { border-bottom: none; }
+.cfg-pill-preview { display: inline-block; padding: 2px 10px; border-radius: 6px;
+                    font-weight: 600; font-size: 12px; }
+.cfg-alias { font-size: 12px; color: rgba(250,250,250,0.70); padding: 2px 0 2px 18px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+.cfg-canonical { font-size: 13px; font-weight: 500; color: rgba(250,250,250,0.90); padding: 4px 0; }
+.cfg-canonical.system { font-style: italic; color: rgba(250,250,250,0.55); }
 </style>
 """,
     unsafe_allow_html=True,
@@ -2845,10 +2896,85 @@ with tab_settings:
 
 
     with _settings_direct_tab:
-        # ── Section 7: Direct Campaign Sources ──────────────────────────────
-        st.markdown("#### Direct Campaign Sources")
-        st.caption("Each row is a direct-sold data source. Disabling a source hides it from the Direct Campaigns table.")
+        # ────────────────────────────────────────────────────────────────────
+        # Header — title + "Last saved" stamp.
+        # ────────────────────────────────────────────────────────────────────
+        _last_saved_label = "—"
+        try:
+            with _engine().connect() as _conn_s:
+                _row = _conn_s.execute(sqlalchemy.text(
+                    "SELECT updated_at FROM dashboard_settings WHERE key='main'"
+                )).fetchone()
+                if _row and _row[0]:
+                    _last_saved_label = pd.to_datetime(_row[0]).strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            pass
 
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 14px 0;">'
+            f'<div><div class="nw-eyebrow">Yield &amp; pacing</div>'
+            f'<div style="font-size:22px;font-weight:600;color:rgba(250,250,250,0.92);">Configure</div></div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.45);">Last saved: {_last_saved_label}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Pre-compute everything used by counts and previews ──────────
+        _gam_for_counts = None
+        try:
+            _gam_for_counts = load("gam_campaigns")
+        except Exception:
+            _gam_for_counts = pd.DataFrame()
+
+        # Match counts per Included Order Pattern.
+        def _matches_for_pattern(pat):
+            if not isinstance(pat, str) or not pat.strip() or _gam_for_counts is None or _gam_for_counts.empty:
+                return 0
+            prefix = pat.replace("%", "")
+            if "order_name" not in _gam_for_counts.columns:
+                return 0
+            distinct_orders = _gam_for_counts.loc[
+                _gam_for_counts["order_name"].fillna("").str.startswith(prefix), "order_name"
+            ].nunique()
+            return int(distinct_orders)
+
+        # Line item count per ad_format (used by Benchmarks "Currently applies to").
+        _format_counts = {}
+        if _gam_for_counts is not None and "ad_format" in _gam_for_counts.columns:
+            _format_counts = _gam_for_counts["ad_format"].fillna("").value_counts().to_dict()
+        def _format_count(fmt):
+            if not isinstance(fmt, str) or not fmt: return 0
+            return int(_format_counts.get(fmt, 0))
+
+        # Seller usage (used by Seller Colors "Currently used in table").
+        _seller_usage = {}
+        if _gam_for_counts is not None and "salesperson" in _gam_for_counts.columns:
+            _sp_norm = _gam_for_counts["salesperson"].apply(_parse_gam_salesperson)
+            _seller_usage = _sp_norm.dropna().value_counts().to_dict()
+        def _seller_count(name):
+            if not isinstance(name, str) or not name: return 0
+            return int(_seller_usage.get(name, 0))
+
+        # ────────────────────────────────────────────────────────────────────
+        # SECTION 1 — Scope & sources
+        # ────────────────────────────────────────────────────────────────────
+        _n_sources  = sum(1 for s in _s.get("direct_sources", []) if s.get("enabled", True))
+        _n_patterns = len(_s.get("included_order_patterns", []) or [])
+        st.markdown(
+            f'<div class="cfg-section-head" style="margin-top:8px">'
+            f'<span class="cfg-eyebrow">Section 1 — Scope &amp; sources</span>'
+            f'<span class="cfg-count">{_n_sources} source · {_n_patterns} patterns</span></div>'
+            f'<div class="cfg-desc">Which data sources feed the Direct Campaigns table, '
+            f'which orders are included, and what\'s pre-selected on load.</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── 1a: Direct Campaign Sources
+        st.markdown(
+            f'<div class="cfg-card-title">Direct campaign sources '
+            f'<span class="cfg-card-meta">· {_n_sources} active</span></div>',
+            unsafe_allow_html=True,
+        )
         _direct_rows = [
             {
                 "Source Name":    s["name"],
@@ -2866,44 +2992,58 @@ with tab_settings:
             num_rows="dynamic",
             key="settings_direct_sources_v2",
             column_config={
-                "Source Name":    st.column_config.TextColumn("Source Name", required=True),
+                "Source Name":    st.column_config.TextColumn("Source name", required=True),
                 "Enabled":        st.column_config.CheckboxColumn("Enabled"),
                 "Database Table": st.column_config.TextColumn(
-                    "Database Table",
+                    "Database table",
                     help="Table populated by refresh_cache.py (e.g. gam_campaigns)",
                 ),
             },
         )
 
-        st.markdown("##### Included Order Patterns")
-        st.caption("Only orders whose name matches one of these patterns are shown. Use `%` as a wildcard (e.g. `Newsweek_Direct%`).")
-        _incl_rows = [{"Pattern": p} for p in _s.get("included_order_patterns", ["Newsweek_Direct%"])]
+        # ── 1b: Included Order Patterns — with live match counts.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Included order patterns '
+            f'<span class="cfg-card-meta">· {_n_patterns} patterns · use % as wildcard</span></div>',
+            unsafe_allow_html=True,
+        )
+        _incl_rows = [
+            {"Pattern": p, "Currently matches": f"~{_matches_for_pattern(p)} orders"}
+            for p in _s.get("included_order_patterns", ["Newsweek_Direct%"])
+        ]
         _incl_edit = st.data_editor(
-            pd.DataFrame(_incl_rows) if _incl_rows else pd.DataFrame(columns=["Pattern"]),
+            pd.DataFrame(_incl_rows) if _incl_rows else pd.DataFrame(columns=["Pattern", "Currently matches"]),
             use_container_width=True,
             hide_index=True,
             num_rows="dynamic",
             key="settings_included_order_patterns",
-            column_config={"Pattern": st.column_config.TextColumn("Pattern", help="Order name prefix, use % as wildcard (e.g. Newsweek_Direct%)")},
+            column_config={
+                "Pattern": st.column_config.TextColumn("Pattern",
+                    help="Order name prefix, use % as wildcard (e.g. Newsweek_Direct%)"),
+                "Currently matches": st.column_config.TextColumn("Currently matches", disabled=True),
+            },
+            disabled=["Currently matches"],
         )
 
-        st.markdown("##### Default Status Filter")
-        st.caption("Statuses pre-selected when the Direct Campaigns table first loads.")
+        # ── 1c: Default Status Filter.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Default status filter</div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Pre-selected when the table first loads.</div>',
+            unsafe_allow_html=True,
+        )
         _all_known_statuses = ["Delivering", "Upcoming", "Completed", "Paused", "Paused inventory released", "Inactive"]
         _default_statuses_edit = st.multiselect(
             "Default statuses",
             options=_all_known_statuses,
             default=_s.get("default_statuses", ["Delivering", "Upcoming"]),
             key="settings_default_statuses",
+            label_visibility="collapsed",
         )
 
-        st.markdown("##### Direct Campaign Metrics and Dimensions Mapping")
-        st.caption(
-            "Map each display field to its source column in the database table. "
-            "Computed columns (seller_ae, advertiser, campaign_name, ad_format) are derived by the dashboard — "
-            "select them as-is or map to a raw column."
-        )
-
+        # ────────────────────────────────────────────────────────────────────
+        # SECTION 2 — Field mapping
+        # ────────────────────────────────────────────────────────────────────
         _DIRECT_FIELDS = [
             "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
             "Start Date", "End Date", "Goal", "CPM Rate",
@@ -2923,6 +3063,20 @@ with tab_settings:
             for _, r in _direct_edit.iterrows()
             if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
         }
+
+        st.markdown(
+            f'<div class="cfg-section-head" style="margin-top:24px">'
+            f'<span class="cfg-eyebrow">Section 2 — Field mapping</span>'
+            f'<span class="cfg-count">{len(_DIRECT_FIELDS)} fields mapped</span></div>'
+            f'<div class="cfg-desc">Map each canonical display field to the source column. '
+            f'<span class="cfg-computed">computed</span> = derived by the dashboard from raw fields.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="cfg-card-title">Metrics &amp; dimensions '
+            f'<span class="cfg-card-meta">· {len(_DIRECT_FIELDS)} fields mapped</span></div>',
+            unsafe_allow_html=True,
+        )
 
         _direct_ssp_opts: dict = {}
         for _dsn in _direct_src_names:
@@ -2944,12 +3098,12 @@ with tab_settings:
             _direct_map_rows.append(_row2)
 
         _direct_map_col_cfg: dict = {
-            "Field": st.column_config.TextColumn("Field", disabled=True, width="small"),
+            "Field": st.column_config.TextColumn("Canonical field", disabled=True, width="small"),
         }
         for _dsn in _direct_src_names:
             _dtbl = _direct_table_map.get(_dsn, "")
             _direct_map_col_cfg[_dsn] = st.column_config.SelectboxColumn(
-                _dsn,
+                f"{_dsn} source column",
                 options=_direct_ssp_opts[_dsn],
                 width="medium",
                 help=f"Source column from `{_dtbl}`. Computed columns: seller_ae, advertiser, campaign_name, ad_format.",
@@ -2965,10 +3119,117 @@ with tab_settings:
             disabled=["Field"],
         )
 
-        # ── Section 4: Seller Mapping ────────────────────────────────────────
-        st.markdown("#### Seller Mapping")
-        st.caption("Maps short AE codes (from order and deal names) to full display names.")
+        # ────────────────────────────────────────────────────────────────────
+        # SECTION 3 — Performance benchmarks
+        # ────────────────────────────────────────────────────────────────────
+        _benchmarks_default = _s.get("benchmarks_by_format", {}) or {}
+        _n_benchmark_formats = len(_benchmarks_default)
+        st.markdown(
+            f'<div class="cfg-section-head" style="margin-top:24px">'
+            f'<span class="cfg-eyebrow">Section 3 — Performance benchmarks</span>'
+            f'<span class="cfg-count">{_n_benchmark_formats} formats configured</span></div>'
+            f'<div class="cfg-desc">Threshold values that drive cell coloring on the Direct Campaigns table. '
+            f'Below benchmark → red→green gradient. Blank = no coloring for that metric.</div>',
+            unsafe_allow_html=True,
+        )
 
+        # ── 3a: Pacing Target with inline gradient preview.
+        _pacing_target_existing = float(_s.get("pacing_target_pct", 100.0))
+        st.markdown(
+            f'<div class="cfg-card-title">Pacing target</div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);">'
+            f'Solid green at or above target.</div>',
+            unsafe_allow_html=True,
+        )
+        _pt1, _pt2 = st.columns([1, 5])
+        with _pt1:
+            _pacing_target_edit = st.number_input(
+                "Target pacing %",
+                value=_pacing_target_existing,
+                min_value=0.0,
+                step=1.0,
+                format="%.1f",
+                key="settings_pacing_target",
+                label_visibility="collapsed",
+            )
+        with _pt2:
+            _tgt_pct = max(0.0, min(100.0, _pacing_target_edit))
+            st.markdown(
+                f'<div class="cfg-gradient">'
+                f'<div class="cfg-gradient-marker" style="left:{_tgt_pct:.1f}%;"></div></div>'
+                f'<div class="cfg-gradient-axis"><span>0%</span><span>→ 100%</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── 3b: Benchmarks by Format — with usage count and explicit blanks.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Benchmarks by format '
+            f'<span class="cfg-card-meta">· {_n_benchmark_formats} formats</span></div>',
+            unsafe_allow_html=True,
+        )
+
+        # Detect "mostly blank" — most cells null → suggest enabling.
+        _bench_blanks = 0
+        _bench_total = 0
+        for _fmt, _vals in _benchmarks_default.items():
+            for _k in ("viewability_pct", "ctr_pct", "vcr_pct"):
+                _bench_total += 1
+                if _vals.get(_k) is None:
+                    _bench_blanks += 1
+        if _bench_total > 0 and _bench_blanks / _bench_total > 0.5:
+            st.markdown(
+                '<div class="cfg-suggest">💡 <b>Suggested:</b> enable CTR &amp; VCR benchmarks. '
+                'All formats currently have CTR and VCR blank — those columns will render '
+                'uncolored on the table. Industry defaults: Display CTR 0.08%, Video VCR 65%.</div>',
+                unsafe_allow_html=True,
+            )
+
+        _bench_rows = [
+            {"Format": fmt,
+             "Viewability %": vals.get("viewability_pct"),
+             "CTR %":         vals.get("ctr_pct"),
+             "VCR %":         vals.get("vcr_pct"),
+             "Applies to":    f"~{_format_count(fmt)} line items"}
+            for fmt, vals in sorted(_benchmarks_default.items())
+        ]
+        _bench_edit = st.data_editor(
+            pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
+                columns=["Format", "Viewability %", "CTR %", "VCR %", "Applies to"]
+            ),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_benchmarks_by_format",
+            column_config={
+                "Format":        st.column_config.TextColumn("Format", required=True),
+                "Viewability %": st.column_config.NumberColumn("Viewability %", format="%.1f"),
+                "CTR %":         st.column_config.NumberColumn("CTR %", format="%.2f"),
+                "VCR %":         st.column_config.NumberColumn("VCR %", format="%.1f"),
+                "Applies to":    st.column_config.TextColumn("Applies to", disabled=True),
+            },
+            disabled=["Applies to"],
+        )
+
+        # ────────────────────────────────────────────────────────────────────
+        # SECTION 4 — Identity & theming
+        # ────────────────────────────────────────────────────────────────────
+        _n_ae   = len(_s.get("ae_names", {}))
+        _n_aes_distinct = len(set(_s.get("ae_names", {}).values()))
+        st.markdown(
+            f'<div class="cfg-section-head" style="margin-top:24px">'
+            f'<span class="cfg-eyebrow">Section 4 — Identity &amp; theming</span>'
+            f'<span class="cfg-count">{_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>'
+            f'<div class="cfg-desc">Normalize AE names and team codes; assign colors to statuses and '
+            f'sellers for consistent visual identity across the dashboard.</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── 4a: Seller Mapping with grouped preview.
+        st.markdown(
+            f'<div class="cfg-card-title">Seller mapping '
+            f'<span class="cfg-card-meta">· {_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>',
+            unsafe_allow_html=True,
+        )
         _ae_rows = [{"Code": k, "Full Name": v} for k, v in sorted(_s["ae_names"].items())]
         _ae_edit = st.data_editor(
             pd.DataFrame(_ae_rows) if _ae_rows else pd.DataFrame(columns=["Code", "Full Name"]),
@@ -2977,15 +3238,16 @@ with tab_settings:
             num_rows="dynamic",
             key="settings_ae",
             column_config={
-                "Code":      st.column_config.TextColumn("Code", required=True, help="e.g. JAmalfi"),
-                "Full Name": st.column_config.TextColumn("Full Name", required=True, help="e.g. Julie Amalfi"),
+                "Code":      st.column_config.TextColumn("Code in order/line item name", required=True),
+                "Full Name": st.column_config.TextColumn("Display name", required=True),
             },
         )
 
-        # ── Section 4b: Team Mapping ─────────────────────────────────────────
-        st.markdown("#### Team Mapping")
-        st.caption("Maps team codes in line item names (USA, INTL) to display labels.")
-
+        # ── 4b: Team Mapping.
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Team mapping</div>',
+            unsafe_allow_html=True,
+        )
         _team_rows = [{"Code": k, "Label": v} for k, v in sorted(_s.get("team_names", {}).items())]
         _team_edit = st.data_editor(
             pd.DataFrame(_team_rows) if _team_rows else pd.DataFrame(columns=["Code", "Label"]),
@@ -2994,69 +3256,19 @@ with tab_settings:
             num_rows="dynamic",
             key="settings_team",
             column_config={
-                "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. USA, INTL"),
-                "Label": st.column_config.TextColumn("Label", required=True, help="e.g. USA, International"),
+                "Code":  st.column_config.TextColumn("Code in line item name", required=True),
+                "Label": st.column_config.TextColumn("Display label", required=True),
             },
         )
 
-        # ── Section 4c: Benchmarks by Format ─────────────────────────────────
-        st.markdown("#### Benchmarks by Format")
-        st.caption(
-            "Per-format performance thresholds for Viewability, CTR, and VCR. "
-            "When a direct campaign row's rate is below its format's benchmark, "
-            "the cell is colored on a red→green gradient. Leave a field blank "
-            "to disable benchmark coloring for that format+metric."
-        )
-        _benchmarks_default = _s.get("benchmarks_by_format", {}) or {}
-        _bench_rows = [
-            {"Format": fmt,
-             "Viewability %": vals.get("viewability_pct"),
-             "CTR %":         vals.get("ctr_pct"),
-             "VCR %":         vals.get("vcr_pct")}
-            for fmt, vals in sorted(_benchmarks_default.items())
-        ]
-        _bench_edit = st.data_editor(
-            pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
-                columns=["Format", "Viewability %", "CTR %", "VCR %"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_benchmarks_by_format",
-            column_config={
-                "Format":        st.column_config.TextColumn("Format", required=True,
-                                    help="e.g. Display, Video, Native, Multi, Interstitial"),
-                "Viewability %": st.column_config.NumberColumn("Viewability %", format="%.1f",
-                                    help="Cells below this get red→green gradient"),
-                "CTR %":         st.column_config.NumberColumn("CTR %", format="%.2f",
-                                    help="Cells below this get red→green gradient"),
-                "VCR %":         st.column_config.NumberColumn("VCR %", format="%.1f",
-                                    help="Cells below this get red→green gradient"),
-            },
-        )
-
-        # ── Section 4d: Pacing Target ────────────────────────────────────────
-        st.markdown("#### Pacing Target")
-        st.caption(
-            "Pacing % cells at or above this value render solid green; below, "
-            "on a red→green gradient hitting solid green at the target."
-        )
-        _pacing_target_edit = st.number_input(
-            "Target pacing %",
-            value=float(_s.get("pacing_target_pct", 100.0)),
-            min_value=0.0,
-            step=1.0,
-            format="%.1f",
-            key="settings_pacing_target",
-        )
-
-        # ── Section 4e: Status Color Mapping ─────────────────────────────────
-        st.markdown("#### Status Color Mapping")
-        st.caption(
-            "Status text is matched against each keyword (case-insensitive substring). "
-            "First match wins. Color accepts any CSS color (hex like `#2E7D32`, named, hsl(...))."
-        )
+        # ── 4c: Status Colors + live preview.
         _status_color_rows = _s.get("status_colors", []) or []
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Status colors</div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'First substring match wins.</div>',
+            unsafe_allow_html=True,
+        )
         _status_color_editor = st.data_editor(
             pd.DataFrame(_status_color_rows) if _status_color_rows
             else pd.DataFrame(columns=["keyword", "color"]),
@@ -3065,42 +3277,106 @@ with tab_settings:
             num_rows="dynamic",
             key="settings_status_colors",
             column_config={
-                "keyword": st.column_config.TextColumn("Keyword", required=True,
-                              help="Substring of the Status value, case-insensitive"),
+                "keyword": st.column_config.TextColumn("Status keyword", required=True),
                 "color":   st.column_config.TextColumn("Color", required=True,
                               help="Hex like #2E7D32 or any CSS color"),
             },
         )
+        # Live preview pills underneath.
+        if _status_color_rows:
+            def _cfg_esc(s):
+                return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+                        .replace(">", "&gt;").replace('"', "&quot;"))
+            _pills = "".join(
+                f'<span class="cfg-pill-preview" style="background:{_cfg_esc(r.get("color",""))};'
+                f'color:#fff;margin-right:8px;opacity:0.95;">{_cfg_esc(r.get("keyword",""))}</span>'
+                for r in _status_color_rows
+                if r.get("keyword") and r.get("color")
+            )
+            st.markdown(
+                f'<div style="margin:8px 0 0 0;font-size:10px;color:rgba(250,250,250,0.45);'
+                f'letter-spacing:0.08em;text-transform:uppercase">Preview</div>'
+                f'<div style="margin-top:4px">{_pills}</div>',
+                unsafe_allow_html=True,
+            )
 
-        # ── Section 4f: Seller Color Overrides ───────────────────────────────
-        st.markdown("#### Seller Color Overrides")
-        st.caption(
-            "Optional per-seller color. Sellers not listed (or with blank color) "
-            "fall back to a deterministic hash-based hue so every name still gets "
-            "a stable color. Pre-populated with the AE names known to the seller mapping."
-        )
-        _known_ae_names = sorted(set(_s.get("ae_names", {}).values()))
+        # ── 4d: Seller Colors — usage count + hash fallback + Show all toggle.
         _existing_seller_colors = _s.get("seller_colors", {}) or {}
-        _seller_color_rows = [
-            {"seller": name, "color": _existing_seller_colors.get(name, "")}
-            for name in _known_ae_names
-        ]
-        # Also surface any seller_colors entries for names that aren't in ae_names
+        _known_ae_names = sorted(set(_s.get("ae_names", {}).values()))
+
+        _seller_card_meta = "stable hash fallback when blank"
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Seller colors '
+            f'<span class="cfg-card-meta">· {_seller_card_meta}</span></div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Used in tables, filters, and chart legends.</div>',
+            unsafe_allow_html=True,
+        )
+        _show_all_sellers = st.toggle(
+            "Show all sellers (default: only those active in the table)",
+            value=False,
+            key="settings_show_all_sellers",
+        )
+
+        def _hash_fallback_color(name):
+            import hashlib as _hashlib
+            h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
+            return f"hsl({h % 360}, 55%, 38%)"
+
+        _seller_color_rows = []
+        for _name in _known_ae_names:
+            _used = _seller_count(_name)
+            if not _show_all_sellers and _used == 0:
+                continue
+            _override = _existing_seller_colors.get(_name, "")
+            _used_str = (f"{_used} line item{'s' if _used != 1 else ''}"
+                         if _used > 0 else "— no active lines")
+            _seller_color_rows.append({
+                "seller": _name,
+                "color":  _override,
+                "Used in table": _used_str,
+            })
+        # Also surface seller_colors keys not in ae_names (so user can remove them).
         for _extra in sorted(set(_existing_seller_colors.keys()) - set(_known_ae_names)):
-            _seller_color_rows.append({"seller": _extra, "color": _existing_seller_colors[_extra]})
+            _seller_color_rows.append({
+                "seller": _extra,
+                "color":  _existing_seller_colors[_extra],
+                "Used in table": "— not in AE mapping",
+            })
         _seller_color_editor = st.data_editor(
             pd.DataFrame(_seller_color_rows) if _seller_color_rows
-            else pd.DataFrame(columns=["seller", "color"]),
+            else pd.DataFrame(columns=["seller", "color", "Used in table"]),
             use_container_width=True,
             hide_index=True,
             num_rows="dynamic",
             key="settings_seller_colors",
             column_config={
                 "seller": st.column_config.TextColumn("Seller", required=True),
-                "color":  st.column_config.TextColumn("Color",
+                "color":  st.column_config.TextColumn("Override color",
                               help="Hex like #1976D2; leave blank to use hash fallback"),
+                "Used in table": st.column_config.TextColumn("Used in table", disabled=True),
             },
+            disabled=["Used in table"],
         )
+        # Hash-fallback explainer for rows with blank overrides.
+        _hash_fb_rows = [r for r in _seller_color_rows
+                         if not (r.get("color") and str(r["color"]).strip())]
+        if _hash_fb_rows:
+            _swatches = "".join(
+                f'<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px;'
+                f'font-size:11px;color:rgba(250,250,250,0.55)">'
+                f'<span style="width:10px;height:10px;border-radius:2px;'
+                f'background:{_hash_fallback_color(r["seller"])}"></span>'
+                f'{r["seller"]} <span class="cfg-tertiary">(hash fallback)</span>'
+                f'</span>'
+                for r in _hash_fb_rows[:8]
+            )
+            st.markdown(
+                f'<div style="margin-top:6px;font-size:11px;color:rgba(250,250,250,0.45);'
+                f'letter-spacing:0.05em">{_swatches}</div>',
+                unsafe_allow_html=True,
+            )
+
 
     # ── Save ─────────────────────────────────────────────────────────────
     st.divider()
