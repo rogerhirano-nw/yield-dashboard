@@ -194,7 +194,6 @@ _DEFAULT_SETTINGS: dict = {
                 "Goal":          "impressions_goal",
                 "CPM Rate":      "cpm_rate",
                 "Delivered":     "lifetime_impressions_delivered",
-                "Impressions (1d)": "impressions_1d",
                 "Remaining":     "remaining_impressions",
                 "Clicks":        "ad_server_clicks",
                 "Pacing %":      "pacing_pct",
@@ -983,7 +982,10 @@ with tab_seller:
             parts = name.split("_")
             return parts[idx].strip() if len(parts) > idx else None
 
-        gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7)
+        # Replace hyphens with spaces so the displayed Advertiser / Campaign
+        # columns read as "Ford Motor Company" / "Always On" rather than the
+        # hyphenated token form used inside the line-item-name convention.
+        gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7).str.replace("-", " ", regex=False)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8).str.replace("-", " ", regex=False)
         gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
         _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
@@ -1097,14 +1099,40 @@ with tab_seller:
                     axis=1,
                 )
 
-            # CTR and viewability are stored as ratios (0–1); convert to percentage for display
-            for _ratio_col in ("ad_server_ctr", "ad_server_active_view_viewable_impressions_rate"):
-                if _ratio_col in view_gam.columns:
-                    view_gam = view_gam.copy()
-                    view_gam[_ratio_col] = view_gam[_ratio_col] * 100
+            # Override the displayed Clicks / Revenue / Viewability % / CTR %
+            # cells with lifetime values (computed from the lifetime_* columns
+            # added by run_lifetime_delivery). Previously these reflected only
+            # the most recent 7 days from the windowed delivery report, which
+            # is misleading for long-running campaigns.
+            view_gam = view_gam.copy()
+            if "lifetime_clicks" in view_gam.columns:
+                view_gam["ad_server_clicks"] = pd.to_numeric(view_gam["lifetime_clicks"], errors="coerce")
+            if "lifetime_revenue" in view_gam.columns:
+                view_gam["ad_server_cpm_and_cpc_revenue"] = pd.to_numeric(view_gam["lifetime_revenue"], errors="coerce")
+            if "lifetime_viewable_imps" in view_gam.columns and "lifetime_measurable_imps" in view_gam.columns:
+                _viewable_lt   = pd.to_numeric(view_gam["lifetime_viewable_imps"],   errors="coerce")
+                _measurable_lt = pd.to_numeric(view_gam["lifetime_measurable_imps"], errors="coerce")
+                view_gam["ad_server_active_view_viewable_impressions_rate"] = (
+                    (_viewable_lt / _measurable_lt).where(_measurable_lt > 0, other=None) * 100
+                )
+            elif "ad_server_active_view_viewable_impressions_rate" in view_gam.columns:
+                # Fallback when lifetime columns aren't populated yet (between
+                # deploy and the next refresh). API column is a 0-1 ratio.
+                view_gam["ad_server_active_view_viewable_impressions_rate"] = (
+                    pd.to_numeric(view_gam["ad_server_active_view_viewable_impressions_rate"], errors="coerce") * 100
+                )
+            if "lifetime_clicks" in view_gam.columns and "lifetime_impressions_delivered" in view_gam.columns:
+                _clicks_lt = pd.to_numeric(view_gam["lifetime_clicks"], errors="coerce")
+                _imps_lt   = pd.to_numeric(view_gam["lifetime_impressions_delivered"], errors="coerce")
+                view_gam["ad_server_ctr"] = (
+                    (_clicks_lt / _imps_lt).where(_imps_lt > 0, other=None) * 100
+                )
+            elif "ad_server_ctr" in view_gam.columns:
+                # Fallback when lifetime columns aren't populated yet.
+                view_gam["ad_server_ctr"] = pd.to_numeric(view_gam["ad_server_ctr"], errors="coerce") * 100
 
             # ── Per-LI delta annotations for impressions / clicks / pacing / viewability ──
-            # Renders cells like "12,345 (▲ +500 vs prior day)" using the latest day
+            # Renders cells like "12,345 (▲ +500)" using the latest day
             # snapshot vs the day before. Falls back to plain value when 2d data is
             # missing (first deploy before refresh repopulates the new columns).
             # Sort BEFORE the string conversion — once columns are strings, header-
@@ -1173,28 +1201,17 @@ with tab_seller:
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = int(v1) - int(v2)
                 sign = "+" if d > 0 else ""
-                return f"{base} ({_arrow(d)} {sign}{d:,} vs prior day)"
+                return f"{base} ({_arrow(d)} {sign}{d:,})"
 
-            def _fmt_pct_annot(primary, v1, v2, below=None):
+            def _fmt_pct_annot(primary, v1, v2):
                 """Cell value = `primary` (already 0-100 percent); annotation = pp delta of v1 vs v2."""
                 if pd.isna(primary): return ""
                 base = f"{primary:.1f}%"
-                if below is not None and primary < below:
-                    base += f" (below {int(below)}%)"
                 if pd.isna(v1) or pd.isna(v2): return base
                 d = v1 - v2
                 sign = "+" if d > 0 else ""
-                return f"{base} ({_arrow(d)} {sign}{d:.1f}pp vs prior day)"
+                return f"{base} ({_arrow(d)} {sign}{d:.1f}pp)"
 
-            if "impressions_1d" in view_gam.columns:
-                # The "Impressions (1d)" column was already showing yesterday's count.
-                # Primary stays = impressions_1d. Annotation = 1d - 2d delta.
-                view_gam["impressions_1d"] = view_gam.apply(
-                    lambda r: _fmt_count_annot(r.get("impressions_1d"),
-                                                r.get("impressions_1d"),
-                                                r.get("impressions_2d")),
-                    axis=1,
-                )
             if "ad_server_clicks" in view_gam.columns:
                 # Primary stays = ad_server_clicks (7-day sum, what it was before).
                 # Annotation = 1d - 2d delta (daily trend indicator).
@@ -1213,13 +1230,13 @@ with tab_seller:
                 )
             if "ad_server_active_view_viewable_impressions_rate" in view_gam.columns:
                 # Primary stays = the 7-day mean viewability rate (already 0-100).
-                # Annotation = 1d rate - 2d rate pp delta.
+                # Annotation = 1d rate - 2d rate pp delta. Below-70 is conveyed
+                # by the column's red→green color ramp, no text qualifier needed.
                 view_gam["ad_server_active_view_viewable_impressions_rate"] = view_gam.apply(
                     lambda r: _fmt_pct_annot(
                         r.get("ad_server_active_view_viewable_impressions_rate"),
                         r.get("viewability_rate_1d"),
                         r.get("viewability_rate_2d"),
-                        below=70,
                     ),
                     axis=1,
                 )
@@ -1249,7 +1266,6 @@ with tab_seller:
                     "end_date": "End Date", "impressions_goal": "Goal",
                     "cpm_rate": "CPM Rate",
                     "lifetime_impressions_delivered": "Delivered",
-                    "impressions_1d": "Impressions (1d)",
                     "remaining_impressions": "Remaining",
                     "ad_server_clicks": "Clicks", "pacing_pct": "Pacing %",
                     "ad_server_active_view_viewable_impressions_rate": "Viewability %",
@@ -1278,9 +1294,7 @@ with tab_seller:
             if "Remaining" in table_df.columns:
                 col_config["Remaining"] = st.column_config.NumberColumn(format="localized")
             # Impressions / Clicks / Pacing / Viewability are now annotated text
-            # strings ("X (▲ +Y vs prior day)"), not raw numbers.
-            if "Impressions (1d)" in table_df.columns:
-                col_config["Impressions (1d)"] = st.column_config.TextColumn("Impressions (1d)", width="medium")
+            # strings ("X (▲ +Y)"), not raw numbers.
             if "Clicks" in table_df.columns:
                 col_config["Clicks"] = st.column_config.TextColumn("Clicks", width="medium")
             if "Pacing %" in table_df.columns:
@@ -1294,23 +1308,38 @@ with tab_seller:
             if "Revenue" in table_df.columns:
                 col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
 
+            # Cells in Pacing % / Viewability % are now annotated strings like
+            # "0.6% (below 70%) (▲ +0.1pp)". Parse the leading numeric percent
+            # so color coding still applies; tolerate the pre-refresh numeric
+            # fallback too.
+            def _parse_leading_pct(v):
+                if isinstance(v, (int, float)) and pd.notna(v):
+                    return float(v)
+                if isinstance(v, str):
+                    m = re.match(r"\s*([+-]?\d+(?:\.\d+)?)\s*%", v)
+                    if m:
+                        return float(m.group(1))
+                return None
+
             styled_df = table_df.style
             if "Viewability %" in table_df.columns:
                 def _viewability_color(v):
-                    if not isinstance(v, (int, float)) or pd.isna(v):
+                    pct = _parse_leading_pct(v)
+                    if pct is None:
                         return ""
-                    if v >= 70:
+                    if pct >= 70:
                         return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, v) / 70.0 * 120)
+                    hue = int(max(0.0, pct) / 70.0 * 120)
                     return f"color: hsl({hue}, 70%, 38%)"
                 styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
             if "Pacing %" in table_df.columns:
                 def _pacing_color(v):
-                    if not isinstance(v, (int, float)) or pd.isna(v):
+                    pct = _parse_leading_pct(v)
+                    if pct is None:
                         return ""
-                    if v >= 100:
+                    if pct >= 100:
                         return "color: hsl(120, 60%, 35%)"
-                    hue = int(max(0.0, v) / 100.0 * 120)
+                    hue = int(max(0.0, pct) / 100.0 * 120)
                     return f"color: hsl({hue}, 70%, 38%)"
                 styled_df = styled_df.map(_pacing_color, subset=["Pacing %"])
 
@@ -2174,7 +2203,7 @@ with tab_settings:
         _DIRECT_FIELDS = [
             "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
             "Start Date", "End Date", "Goal", "CPM Rate",
-            "Delivered", "Impressions (1d)", "Remaining", "Clicks",
+            "Delivered", "Remaining", "Clicks",
             "Pacing %", "Viewability %", "CTR %", "Revenue", "VCR %",
         ]
         _DIRECT_COMPUTED = ["seller_ae", "salesperson", "advertiser", "campaign_name", "ad_format", "remaining_impressions"]

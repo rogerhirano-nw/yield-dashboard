@@ -278,21 +278,32 @@ class GAMClient:
 
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
-        Fetch cumulative impressions per line item over a 2-year window.
-        Used for pacing — covers all realistic active campaign durations.
+        Fetch cumulative delivery metrics per line item over a 2-year window.
+        Used for pacing + the lifetime cell values in the Direct Campaigns
+        table (Clicks, Revenue, Viewability, CTR are computed from these).
         """
         end = date.today() - timedelta(days=1)
         start = end - timedelta(days=730)
 
         df = self._run_report(
             dimensions=["LINE_ITEM_ID", "LINE_ITEM_COMPUTED_STATUS_NAME"],
-            metrics=["AD_SERVER_IMPRESSIONS"],
+            metrics=[
+                "AD_SERVER_IMPRESSIONS",
+                "AD_SERVER_CLICKS",
+                "AD_SERVER_REVENUE",
+                "AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
+                "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+            ],
             start_date=start,
             end_date=end,
         )
         df["line_item_id"] = df["line_item_id"].astype(str)
         return df.rename(columns={
             "ad_server_impressions": "lifetime_impressions_delivered",
+            "ad_server_clicks": "lifetime_clicks",
+            "ad_server_revenue": "lifetime_revenue",
+            "ad_server_active_view_viewable_impressions": "lifetime_viewable_imps",
+            "ad_server_active_view_measurable_impressions": "lifetime_measurable_imps",
             "line_item_computed_status_name": "status_api",
         })
 
@@ -581,6 +592,13 @@ class GAMClient:
 
         def _pacing(row) -> Optional[float]:
             try:
+                # Sponsorship line items commit to a percentage of inventory,
+                # not impressions. Pacing for sponsorships is structurally
+                # "on track" — surface that as 100% regardless of delivery.
+                lit = (row.get("line_item_type") or "").upper()
+                if lit == "SPONSORSHIP":
+                    return 100.0
+
                 goal = row["impressions_goal"]
                 delivered = row["lifetime_impressions_delivered"]
                 has_goal = goal and goal > 0 and pd.notna(delivered)
