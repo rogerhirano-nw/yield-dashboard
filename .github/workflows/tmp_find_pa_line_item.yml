@@ -1,4 +1,4 @@
-name: Temp validate PA via correct metrics
+name: Temp validate PA via correct metrics (full dim set)
 on:
   workflow_dispatch:
 jobs:
@@ -16,44 +16,43 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
         run: |
           python - <<'PYEOF'
-          # Replicate the user's GAM UI report via the API. The UI report uses
-          # Programmatic / AdX metrics (IMPRESSIONS, REVENUE_WITHOUT_CPD) — not
-          # AD_SERVER_* — which is why my earlier API calls missed all PA rows.
-          # If this matches the user's CSV (Ford-Always-On = $2.21 / 433 imps
-          # on 2026-05-16) we have the metric set to use in production.
-          import json, traceback
-          from datetime import date
+          # Confirm the production deals-report dimensions (DATE, ORDER_NAME,
+          # DEAL_NAME, DEAL_BUYER_NAME, INVENTORY_FORMAT_NAME,
+          # PROGRAMMATIC_CHANNEL_NAME) work with the programmatic metric set
+          # (IMPRESSIONS, REVENUE_WITHOUT_CPD, CTR, CLICKS). If yes, ship it.
+          import traceback
+          from datetime import date, timedelta
           from gam_client import GAMClient
 
           gam = GAMClient()
-          target = date(2026, 5, 16)
+          yesterday = date.today() - timedelta(days=1)
+          start = yesterday - timedelta(days=6)
           try:
               df = gam._run_report(
-                  dimensions=["PROGRAMMATIC_CHANNEL_NAME", "DEAL_NAME",
-                              "BUYER_NETWORK_NAME", "DATE"],
+                  dimensions=["DATE", "ORDER_NAME", "DEAL_NAME",
+                              "DEAL_BUYER_NAME", "INVENTORY_FORMAT_NAME",
+                              "PROGRAMMATIC_CHANNEL_NAME"],
                   metrics=["IMPRESSIONS", "REVENUE_WITHOUT_CPD", "CTR", "CLICKS"],
-                  start_date=target,
-                  end_date=target,
+                  start_date=start,
+                  end_date=yesterday,
               )
               print(f"total rows: {len(df)}")
               print(f"columns:    {list(df.columns)}")
               print()
               print("=== channel distribution ===")
               ch = "programmatic_channel_name"
-              if ch in df.columns:
-                  print(df[ch].fillna("(null)").value_counts().to_string())
+              print(df[ch].fillna("(empty)").value_counts().to_string())
               print()
-              print("=== Private Auction rows for 2026-05-16 ===")
-              pa = df[df.get(ch, "").fillna("").str.contains("Private Auction", case=False, na=False)] if ch in df.columns else df.iloc[0:0]
-              print(f"  PA rows: {len(pa)}")
+              print("=== PA rows summary (last 7 days) ===")
+              pa = df[df[ch].fillna("").str.contains("Private Auction", case=False, na=False)]
+              print(f"  total PA rows: {len(pa)}")
               if not pa.empty:
-                  for _, r in pa.iterrows():
-                      print(f"   {r.get('date')} | {r.get('deal_name')[:80]:<80} | imp={r.get('impressions')} rev=${r.get('revenue_without_cpd')}")
-              print()
-              print("=== Ford-Always-On match ===")
-              ford = pa[pa["deal_name"].fillna("").str.contains("Ford-Always-On", case=False, na=False)] if "deal_name" in pa.columns else pa
-              for _, r in ford.iterrows():
-                  print(f"  {r.to_dict()}")
+                  print(f"  unique PA deals: {pa['deal_name'].nunique()}")
+                  print(f"  total PA impressions: {pa['impressions'].sum()}")
+                  print(f"  total PA revenue: ${pa['revenue_without_cpd'].sum():.2f}")
+                  print()
+                  print("  sample rows:")
+                  print(pa.head(5).to_string())
           except Exception:
               traceback.print_exc()
           PYEOF
