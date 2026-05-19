@@ -246,11 +246,18 @@ _DEFAULT_SETTINGS: dict = {
 
 def _load_settings() -> dict:
     def _with_defaults(loaded: dict) -> dict:
-        """Return loaded settings with any missing top-level keys filled from _DEFAULT_SETTINGS."""
+        """Return loaded settings with any missing top-level keys filled from _DEFAULT_SETTINGS.
+        Deep-merges a small set of dict-valued keys so new default sub-entries
+        (e.g. a newly-added benchmark format) flow through to deployments
+        whose DB already has a saved version of that top-level key. User-set
+        values still win — the deep-merge order is defaults first, loaded last."""
         result = {**_DEFAULT_SETTINGS, **loaded}
-        # Deep-merge ae_names and team_names so new default entries flow through even when DB has existing settings.
-        result["ae_names"] = {**_DEFAULT_SETTINGS.get("ae_names", {}), **loaded.get("ae_names", {})}
-        result["team_names"] = {**_DEFAULT_SETTINGS.get("team_names", {}), **loaded.get("team_names", {})}
+        for _k in ("ae_names", "team_names", "benchmarks_by_format",
+                   "airtable_field_names"):
+            result[_k] = {
+                **(_DEFAULT_SETTINGS.get(_k) or {}),
+                **(loaded.get(_k) or {}),
+            }
         return result
 
     def _patch_direct_columns(cfg: dict) -> dict:
