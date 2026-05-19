@@ -88,6 +88,25 @@ def _ts_to_date(ts) -> Optional[str]:
         return None
 
 
+def _soap_date_to_iso(d) -> Optional[str]:
+    """GAM SOAP DateTime values are zeep objects whose repr looks like a dict
+    but behave like attribute-bearing objects: `d.date.year/month/day`. Some
+    upstream code paths also pass real dicts (parsed JSON), so support both."""
+    if d is None:
+        return None
+    inner = d.get("date") if isinstance(d, dict) else getattr(d, "date", None)
+    if inner is None:
+        return None
+    try:
+        if isinstance(inner, dict):
+            y, m, day = int(inner["year"]), int(inner["month"]), int(inner["day"])
+        else:
+            y, m, day = int(inner.year), int(inner.month), int(inner.day)
+        return f"{y:04d}-{m:02d}-{day:02d}"
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+
+
 class GAMClient:
     """Thin wrapper around the google-ads-admanager REST client."""
 
@@ -201,9 +220,11 @@ class GAMClient:
         Returns a DataFrame with columns matching the existing downstream expectations,
         including ad_server_cpm_and_cpc_revenue (mapped from AD_SERVER_GROSS_REVENUE).
         """
-        # Base dimensions; conditionally append video duration so a missing
-        # enum member doesn't kill the whole report (same defensive shape
-        # we used when probing the VCR metric names).
+        # VIDEO_AD_DURATION is intentionally NOT here — GAM returns
+        # REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY when combined with the
+        # AD_SERVER_* + VIDEO_VIEWERSHIP_* metric set this report needs.
+        # Pulled separately by run_video_duration_report() and merged
+        # in run_report_with_pacing().
         _dims = [
             "DATE",
             "LINE_ITEM_ID",
@@ -212,16 +233,9 @@ class GAMClient:
             "ORDER_NAME",
             # Canonical ad format from GAM ("Display" / "Video" / "Native"
             # / etc.). Avoids relying on Newsweek's position-10 token in
-            # line_item_name, which is fragile for non-convention-following
-            # orders (House, OpenAds, archived).
+            # line_item_name.
             "INVENTORY_FORMAT_NAME",
         ]
-        if hasattr(_D, "VIDEO_AD_DURATION"):
-            # Per-creative duration the line item is currently serving.
-            # Splits rows: an LI with mixed 15s/60s creatives appears as
-            # two rows in the same day. Aggregated with max() downstream
-            # so the >30s recategorization fires on any qualifying creative.
-            _dims.append("VIDEO_AD_DURATION")
         df = self._run_report(
             dimensions=_dims,
             metrics=[
@@ -339,6 +353,48 @@ class GAMClient:
     # ------------------------------------------------------------------
     # Lifetime delivery (for pacing)
     # ------------------------------------------------------------------
+
+    def run_video_duration_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Fetch (line_item_id, max video_ad_duration) for every video LI that
+        served impressions in the window.
+
+        Why a separate report: VIDEO_AD_DURATION is incompatible with the
+        full metric set in run_delivery_report (GAM returns
+        REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY). Stripped-down version
+        with just LINE_ITEM_ID + VIDEO_AD_DURATION + AD_SERVER_IMPRESSIONS
+        (the impression count just ensures the dimension combo is valid;
+        we don't read it).
+
+        Returns DataFrame with columns: line_item_id, video_ad_duration
+        (max across the window per LI). Empty DataFrame if the enum isn't
+        in the SDK version or the report errors.
+        """
+        _cols = ["line_item_id", "video_ad_duration"]
+        if not hasattr(_D, "VIDEO_AD_DURATION"):
+            logger.warning("VIDEO_AD_DURATION dimension not in SDK enum — "
+                           "skipping video duration report")
+            return pd.DataFrame(columns=_cols)
+        try:
+            df = self._run_report(
+                dimensions=["LINE_ITEM_ID", "VIDEO_AD_DURATION"],
+                metrics=["AD_SERVER_IMPRESSIONS"],
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception:
+            logger.exception("run_video_duration_report failed — skipping")
+            return pd.DataFrame(columns=_cols)
+        if df.empty or "line_item_id" not in df.columns \
+           or "video_ad_duration" not in df.columns:
+            return pd.DataFrame(columns=_cols)
+        df["line_item_id"] = df["line_item_id"].astype(str)
+        df["video_ad_duration"] = pd.to_numeric(df["video_ad_duration"], errors="coerce")
+        agg = (df.groupby("line_item_id", as_index=False)["video_ad_duration"]
+               .max())
+        logger.info("GAM video duration report: %d line items with duration",
+                    int(agg["video_ad_duration"].notna().sum()))
+        return agg
 
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
@@ -497,17 +553,18 @@ class GAMClient:
 
         ListPrivateAuctionDeals takes the network as parent (not an auction).
         One call returns every PA deal on the network; auction display names
-        come from a separate ListPrivateAuctions call and are joined in via
-        each deal's `private_auction` reference.
+        and archive status come from a separate ListPrivateAuctions call,
+        joined in via each deal's `private_auction_id`.
 
-        Returns DataFrame with one row per PA deal: auction_name, deal_name,
+        Returns DataFrame with one row per non-archived PA deal: auction_name,
         external_deal_id, buyer_account_id, floor_price_usd, deal_status,
-        end_time. Note: this is inventory metadata only — GAM's reporting
-        API does not expose PA delivery (impressions/revenue) at the deal
-        level, so this can't be joined to gam_pmp_deals for revenue stats.
+        create_time, end_time. Note: this is inventory metadata only — GAM's
+        reporting API does not expose PA delivery (impressions/revenue) at
+        the deal level, so this can't be joined to gam_pmp_deals for revenue
+        stats; only by deal_name (auction display name) to gam_deal_bid_daily.
         """
         _cols = [
-            "auction_name", "deal_name", "external_deal_id",
+            "auction_name", "external_deal_id",
             "buyer_account_id", "floor_price_usd", "deal_status",
             "create_time", "end_time",
         ]
@@ -515,29 +572,27 @@ class GAMClient:
             logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
             return pd.DataFrame(columns=_cols)
 
-        # Build auction resource name → display name lookup (skip archived)
-        auction_names: dict[str, str] = {}
+        # Set of archived auction IDs — used to filter their deals out below.
+        archived_auction_ids: set[int] = set()
+        n_auctions = 0
         for auction in self._pa_client.list_private_auctions(
             admanager_v1.ListPrivateAuctionsRequest(parent=self._parent)
         ):
-            if not getattr(auction, "archived", False):
-                auction_names[auction.name] = auction.display_name or ""
+            n_auctions += 1
+            if getattr(auction, "archived", False):
+                archived_auction_ids.add(int(auction.private_auction_id))
 
-        # List all deals at network level — parent must be "networks/*" not per-auction
-
+        # List every PA deal at the network level. Each deal carries its
+        # parent auction's display_name directly on `private_auction_display_name`
+        # — no per-auction lookup needed.
         rows = []
         for deal in self._pad_client.list_private_auction_deals(
             admanager_v1.ListPrivateAuctionDealsRequest(parent=self._parent)
         ):
-            # deal.name = networks/X/privateAuctions/Y/privateAuctionDeals/Z
-            # extract auction ref = networks/X/privateAuctions/Y
-            parts = deal.name.rsplit("/privateAuctionDeals/", 1)
-            auction_ref = parts[0] if len(parts) == 2 else None
-            if auction_ref not in auction_names:
-                continue  # skip deals belonging to archived auctions
+            if int(getattr(deal, "private_auction_id", 0)) in archived_auction_ids:
+                continue
             rows.append({
-                "auction_name":     auction_names[auction_ref],
-                "deal_name":        deal.display_name or None,
+                "auction_name":     deal.private_auction_display_name or None,
                 "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
                 "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
                 "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
@@ -545,8 +600,8 @@ class GAMClient:
                 "create_time":      _ts_to_date(getattr(deal, "create_time", None)),
                 "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
             })
-
-        logger.info("GAM private auctions: %d deals across %d non-archived auctions", len(rows), len(auction_names))
+        logger.info("GAM private auctions: %d deals across %d total auctions (%d archived skipped)",
+                    len(rows), n_auctions, len(archived_auction_ids))
         return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
@@ -594,6 +649,57 @@ class GAMClient:
         # Heuristic: values > 1000 are ms (typical), values ≤ 60 are likely
         # already seconds. Most GAM video creatives are 5-120s → 5000-120000ms.
         return ms / 1000.0 if ms > 1000 else ms
+
+    def get_preferred_deals(self) -> pd.DataFrame:
+        """
+        Fetch Preferred Deal / Programmatic Guaranteed metadata via SOAP
+        ProposalLineItemService. Used by weekly_report.py for the deal-age
+        (≥ 90 days) threshold on PD deals.
+
+        GAM exposes PD/PG/Sponsorship inventory as ProposalLineItems —
+        `lineItemType` distinguishes them. There is no `creationDateTime` on
+        ProposalLineItem; `startDateTime` (when the deal began running) is the
+        closest proxy for "deal age" and is what weekly_report uses.
+
+        Returns one row per non-archived proposal line item: line_item_id,
+        deal_name (= proposal line item name), line_item_type, start_date,
+        end_date, last_modified.
+        """
+        _cols = ["line_item_id", "deal_name", "line_item_type",
+                 "start_date", "end_date", "last_modified"]
+        try:
+            client = self._get_soap_client()
+            from googleads import ad_manager  # type: ignore
+            svc = client.GetService("ProposalLineItemService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Where("isArchived = false")
+            sb.Limit(500)
+            rows = []
+            while True:
+                resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+                results = getattr(resp, "results", None) or []
+                if not results:
+                    break
+                for li in results:
+                    li_id = getattr(li, "id", None)
+                    rows.append({
+                        "line_item_id":   str(li_id) if li_id is not None else None,
+                        "deal_name":      getattr(li, "name", None),
+                        "line_item_type": getattr(li, "lineItemType", None),
+                        "start_date":     _soap_date_to_iso(getattr(li, "startDateTime", None)),
+                        "end_date":       _soap_date_to_iso(getattr(li, "endDateTime", None)),
+                        "last_modified":  _soap_date_to_iso(getattr(li, "lastModifiedDateTime", None)),
+                    })
+                sb.offset += sb.limit
+                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                    break
+            by_type = pd.Series([r["line_item_type"] for r in rows]).value_counts().to_dict() if rows else {}
+            logger.info("GAM preferred deals (SOAP): %d non-archived proposal line items, by type=%s",
+                        len(rows), by_type)
+            return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
+        except Exception:
+            logger.exception("get_preferred_deals (SOAP) failed")
+            return pd.DataFrame(columns=_cols)
 
     def list_creatives_with_duration(self) -> pd.DataFrame:
         """Fetch all creatives via the SOAP CreativeService. Returns
@@ -725,11 +831,6 @@ class GAMClient:
         # position-10 token parsing the dashboard previously relied on.
         if "inventory_format_name" in df_delivery.columns:
             agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
-        # Max video ad duration across all dates / creatives that served
-        # on this line item. Powers the dashboard's >30s preroll
-        # recategorization without needing the SOAP creative+LICA join.
-        if "video_ad_duration" in df_delivery.columns:
-            agg_spec["video_ad_duration"] = ("video_ad_duration", "max")
 
         agg = df_delivery.groupby(["line_item_id"], as_index=False).agg(**agg_spec)
 
@@ -773,6 +874,16 @@ class GAMClient:
         _recent_dates = list(reversed(sorted_dates[-7:]))  # newest first
         for _i, _d in enumerate(_recent_dates, start=1):
             merged = merged.merge(_per_day(_d, f"{_i}d"), on="line_item_id", how="left")
+
+        # Video duration — fetched as a separate report (incompatible
+        # dimension combo with the main delivery report's metric set).
+        # Drives the dashboard's "Video Preroll >30s" recategorization.
+        try:
+            _dur_df = self.run_video_duration_report(start_date, end_date)
+            if not _dur_df.empty:
+                merged = merged.merge(_dur_df, on="line_item_id", how="left")
+        except Exception:
+            logger.exception("video duration merge failed — continuing without it")
 
         # Replace placeholders with real values from the reporting API.
         if "status_api" in merged.columns:

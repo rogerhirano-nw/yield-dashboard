@@ -2785,36 +2785,66 @@ if st.session_state.active_view == "campaigns":
                         cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
                 return cell
 
-            def _viewability_html(p):
+            # Per-format viewability + CTR thresholds from settings (same
+            # pattern as VCR cell below). Band shape is ratio-based so it
+            # works for both percentage-point metrics (viewability ~70%)
+            # and sub-1% metrics (CTR ~0.08%):
+            #   red    < target * 0.85
+            #   amber  target * 0.85 → target
+            #   green  ≥ target
+            # _bench_cfg is defined a few lines below for VCR; pulling it
+            # up here so all three cells share it.
+            _bench_cfg = _cfg.get("benchmarks_by_format") or {}
+            def _bench_target(fmt, key, fallback_key=None, fallback=None):
+                if isinstance(fmt, str) and fmt in _bench_cfg:
+                    v = _bench_cfg[fmt].get(key)
+                    if v is not None:
+                        return float(v)
+                if fallback_key and fallback_key in _bench_cfg:
+                    v = _bench_cfg[fallback_key].get(key)
+                    if v is not None:
+                        return float(v)
+                return float(fallback) if fallback is not None else None
+
+            def _viewability_html(p, fmt=None):
                 p = _parse_leading_pct(p)
                 if p is None: return '<div class="cell-dash">—</div>'
-                if p < 40:
+                target = _bench_target(fmt, "viewability_pct",
+                                       fallback_key="Display", fallback=70.0)
+                red_cut = target * 0.85
+                if p < red_cut:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
-                if p < 65:
+                if p < target:
                     return f'<div class="txt-amber">{p:.1f}%</div>'
                 return f'<div class="txt-green">{p:.1f}%</div>'
 
-            # Per-format VCR threshold pulled from settings (e.g. "Video
-            # Preroll >30s" → 50%, "Video" → 70%). Falls back to 60%
-            # when the format isn't configured (preserves the previous
-            # behavior on un-recategorized lines).
-            _bench_cfg = _cfg.get("benchmarks_by_format") or {}
+            def _ctr_html(p, fmt=None):
+                # p is already numeric (computed from lifetime clicks/imps *100).
+                if p is None or pd.isna(p):
+                    return '<span class="cell-dash">—</span>'
+                target = _bench_target(fmt, "ctr_pct",
+                                       fallback_key="Display", fallback=None)
+                if target is None or target <= 0:
+                    # No benchmark configured → uncolored value (original behavior).
+                    return f"{p:.2f}%"
+                red_cut = target * 0.85
+                if p < red_cut:
+                    return f'<span class="pill pill-red">{p:.2f}%</span>'
+                if p < target:
+                    return f'<span class="txt-amber">{p:.2f}%</span>'
+                return f'<span class="txt-green">{p:.2f}%</span>'
+
+            # Per-format VCR threshold pulled from settings. Uses the same
+            # ratio-based band shape as the viewability + CTR cells above
+            # (red < target * 0.85, amber → target, green ≥ target).
             def _vcr_html(p, is_video, fmt=None):
                 if not is_video:
                     return '<div class="cell-dash">—</div>'
                 p = _parse_leading_pct(p)
                 if p is None: return '<div class="cell-dash">—</div>'
-                # Look up the configured VCR target for this format.
-                target = None
-                if isinstance(fmt, str) and fmt in _bench_cfg:
-                    target = _bench_cfg[fmt].get("vcr_pct")
-                if target is None:
-                    target = _bench_cfg.get("Video", {}).get("vcr_pct") or 60.0
-                target = float(target)
-                # Band layout: red < target - 10pp, amber target - 10 to
-                # target, green ≥ target. Matches the previous hardcoded
-                # 50/60 behavior when target = 60.
-                red_cut = max(target - 10.0, 0.0)
+                target = _bench_target(fmt, "vcr_pct",
+                                       fallback_key="Video", fallback=60.0)
+                red_cut = target * 0.85
                 if p < red_cut:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
                 if p < target:
@@ -3454,8 +3484,8 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_revenue_html(_rev)}</div>'
                     f'<div class="num">{_delivered_html(_delivered)}</div>'
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
-                    f'<div class="num">{_viewability_html(_vw)}</div>'
-                    f'<div class="num">{f"{_ctr:.2f}%" if pd.notna(_ctr) else "<span class=cell-dash>—</span>"}</div>'
+                    f'<div class="num">{_viewability_html(_vw, _fmt_str)}</div>'
+                    f'<div class="num">{_ctr_html(_ctr, _fmt_str)}</div>'
                     f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str)}</div>'
                     f'<div>{_seller_html}</div>'
                     f'<div>{_progress_html(_progress)}</div>'
