@@ -188,6 +188,34 @@ class PubmaticClient:
     # Deal report
     # ------------------------------------------------------------------
 
+    def run_deal_first_seen_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Minimal date+deal report over a long range, used by weekly_report.py
+        as a deal-age proxy. Pubmatic's Analytics API doesn't expose deal
+        creation date; the earliest appearance over a 180-day window is our
+        best conservative proxy (only underestimates age, never overestimates).
+
+        Returns DataFrame with columns: date, deal_meta_id, deal, total_requests.
+        """
+        params = {
+            "fromDate":   start_date.strftime("%Y-%m-%dT00:00"),
+            "toDate":     end_date.strftime("%Y-%m-%dT23:59"),
+            "dateUnit":   "date",
+            "dimensions": "date,dealMetaId",
+            "metrics":    "totalRequests",
+        }
+        records = self._fetch(params)
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records)
+        rename = {
+            "date":            "date",
+            "dealMetaId":      "deal_meta_id",
+            "dealMetaId_name": "deal",
+            "totalRequests":   "total_requests",
+        }
+        return df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+
     def run_deal_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
         Fetch PMP deal analytics for the given date range.
