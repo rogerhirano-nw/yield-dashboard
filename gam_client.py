@@ -201,19 +201,29 @@ class GAMClient:
         Returns a DataFrame with columns matching the existing downstream expectations,
         including ad_server_cpm_and_cpc_revenue (mapped from AD_SERVER_GROSS_REVENUE).
         """
+        # Base dimensions; conditionally append video duration so a missing
+        # enum member doesn't kill the whole report (same defensive shape
+        # we used when probing the VCR metric names).
+        _dims = [
+            "DATE",
+            "LINE_ITEM_ID",
+            "LINE_ITEM_NAME",
+            "ORDER_ID",
+            "ORDER_NAME",
+            # Canonical ad format from GAM ("Display" / "Video" / "Native"
+            # / etc.). Avoids relying on Newsweek's position-10 token in
+            # line_item_name, which is fragile for non-convention-following
+            # orders (House, OpenAds, archived).
+            "INVENTORY_FORMAT_NAME",
+        ]
+        if hasattr(_D, "VIDEO_AD_DURATION"):
+            # Per-creative duration the line item is currently serving.
+            # Splits rows: an LI with mixed 15s/60s creatives appears as
+            # two rows in the same day. Aggregated with max() downstream
+            # so the >30s recategorization fires on any qualifying creative.
+            _dims.append("VIDEO_AD_DURATION")
         df = self._run_report(
-            dimensions=[
-                "DATE",
-                "LINE_ITEM_ID",
-                "LINE_ITEM_NAME",
-                "ORDER_ID",
-                "ORDER_NAME",
-                # Canonical ad format from GAM ("Display" / "Video" /
-                # "Native" / etc.). Avoids relying on Newsweek's position-10
-                # token in line_item_name, which is fragile for non-
-                # convention-following orders (House, OpenAds, archived).
-                "INVENTORY_FORMAT_NAME",
-            ],
+            dimensions=_dims,
             metrics=[
                 "AD_SERVER_IMPRESSIONS",
                 "AD_SERVER_CLICKS",
@@ -497,8 +507,9 @@ class GAMClient:
         level, so this can't be joined to gam_pmp_deals for revenue stats.
         """
         _cols = [
-            "auction_name", "external_deal_id",
-            "buyer_account_id", "floor_price_usd", "deal_status", "end_time",
+            "auction_name", "deal_name", "external_deal_id",
+            "buyer_account_id", "floor_price_usd", "deal_status",
+            "create_time", "end_time",
         ]
         if self._pa_client is None:
             logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
@@ -531,6 +542,7 @@ class GAMClient:
                 "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
                 "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
                 "deal_status":      _enum_name(deal.status) if getattr(deal, "status", None) else None,
+                "create_time":      _ts_to_date(getattr(deal, "create_time", None)),
                 "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
             })
 
@@ -713,6 +725,11 @@ class GAMClient:
         # position-10 token parsing the dashboard previously relied on.
         if "inventory_format_name" in df_delivery.columns:
             agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
+        # Max video ad duration across all dates / creatives that served
+        # on this line item. Powers the dashboard's >30s preroll
+        # recategorization without needing the SOAP creative+LICA join.
+        if "video_ad_duration" in df_delivery.columns:
+            agg_spec["video_ad_duration"] = ("video_ad_duration", "max")
 
         agg = df_delivery.groupby(["line_item_id"], as_index=False).agg(**agg_spec)
 

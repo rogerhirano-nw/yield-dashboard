@@ -1680,32 +1680,52 @@ if st.session_state.active_view == "campaigns":
         gam_df = gam_df.copy()
 
         # Recategorize ad_format → "Video Preroll >30s" when the line item's
-        # longest associated video creative exceeds 30 seconds. Joins
-        # gam_lica + gam_creatives onto gam_df by line_item_id. Falls back
-        # to the original ad_format when either table is missing or the
-        # join yields no duration.
-        try:
-            _creatives_df = load("gam_creatives")
-            _lica_df = load("gam_lica")
-        except Exception:
-            _creatives_df = pd.DataFrame()
-            _lica_df = pd.DataFrame()
-        if (not _creatives_df.empty and not _lica_df.empty
-            and "duration_seconds" in _creatives_df.columns
-            and "creative_id" in _creatives_df.columns
-            and "line_item_id" in _lica_df.columns
-            and "creative_id" in _lica_df.columns
-            and "line_item_id" in gam_df.columns):
-            _dur = (_lica_df[["line_item_id", "creative_id"]]
-                    .merge(_creatives_df[["creative_id", "duration_seconds"]],
-                           on="creative_id", how="left"))
-            _dur["duration_seconds"] = pd.to_numeric(_dur["duration_seconds"], errors="coerce")
-            _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
-                        .max().rename("_creative_max_dur").reset_index())
-            _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
-            gam_df["line_item_id"] = gam_df["line_item_id"].astype(str)
-            gam_df = gam_df.merge(_max_dur, on="line_item_id", how="left")
+        # longest video creative exceeds 30 seconds.
+        #
+        # Source priority:
+        #   1. video_ad_duration column from gam_campaigns (canonical, comes
+        #      straight from GAM's VIDEO_AD_DURATION report dimension).
+        #   2. SOAP creative+LICA join (fallback for rows pulled before the
+        #      report-API dimension landed; also a backup if VIDEO_AD_DURATION
+        #      isn't populated for a given LI).
+        # The Reports dimension is much cleaner — one column on gam_campaigns,
+        # no cross-table join, no SOAP dependency.
+        if "video_ad_duration" in gam_df.columns:
+            gam_df["_creative_max_dur"] = pd.to_numeric(
+                gam_df["video_ad_duration"], errors="coerce"
+            )
+        # SOAP fallback — only fires when video_ad_duration is missing or null.
+        if "_creative_max_dur" not in gam_df.columns \
+           or gam_df["_creative_max_dur"].isna().all():
+            try:
+                _creatives_df = load("gam_creatives")
+                _lica_df = load("gam_lica")
+            except Exception:
+                _creatives_df = pd.DataFrame()
+                _lica_df = pd.DataFrame()
+            if (not _creatives_df.empty and not _lica_df.empty
+                and "duration_seconds" in _creatives_df.columns
+                and "creative_id" in _creatives_df.columns
+                and "line_item_id" in _lica_df.columns
+                and "creative_id" in _lica_df.columns
+                and "line_item_id" in gam_df.columns):
+                _dur = (_lica_df[["line_item_id", "creative_id"]]
+                        .merge(_creatives_df[["creative_id", "duration_seconds"]],
+                               on="creative_id", how="left"))
+                _dur["duration_seconds"] = pd.to_numeric(_dur["duration_seconds"], errors="coerce")
+                _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
+                            .max().rename("_creative_max_dur").reset_index())
+                _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
+                gam_df["line_item_id"] = gam_df["line_item_id"].astype(str)
+                gam_df = gam_df.merge(_max_dur, on="line_item_id", how="left",
+                                      suffixes=("", "_soap"))
+                if "_creative_max_dur_soap" in gam_df.columns:
+                    gam_df["_creative_max_dur"] = gam_df["_creative_max_dur"].fillna(
+                        gam_df["_creative_max_dur_soap"]
+                    )
+                    gam_df = gam_df.drop(columns=["_creative_max_dur_soap"])
 
+        if "_creative_max_dur" in gam_df.columns:
             def _bump_video_format(row):
                 fmt = row.get("ad_format")
                 dur = row.get("_creative_max_dur")
