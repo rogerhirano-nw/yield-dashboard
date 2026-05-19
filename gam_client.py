@@ -109,17 +109,12 @@ class GAMClient:
             self._pa_client = None
             self._pad_client = None
 
-        # Creative + LICA clients — used to pull video duration so the
-        # dashboard can apply the "Video Preroll >30s" benchmark.
-        self._creative_client = (
-            admanager_v1.CreativeServiceClient(credentials=creds)
-            if hasattr(admanager_v1, "CreativeServiceClient") else None
-        )
-        _lica_cls = (
-            getattr(admanager_v1, "LineItemCreativeAssociationServiceClient", None)
-            or getattr(admanager_v1, "LineItemCreativeAssociationsServiceClient", None)
-        )
-        self._lica_client = _lica_cls(credentials=creds) if _lica_cls else None
+        # Creative + LICA: GAM v1 REST doesn't expose these yet (v0.9.0
+        # only has CreativeTemplateServiceClient, not the Creative resource
+        # itself). Fall back to the legacy SOAP API via the `googleads`
+        # library — same pattern used for line-item renames since v1 also
+        # lacks PATCH on LineItem.
+        self._soap_client = None  # lazy — only built when first SOAP call hits
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -503,134 +498,130 @@ class GAMClient:
         return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
-    # Creatives + LineItemCreativeAssociations (LICA) — powers the
-    # "Video Preroll >30s" benchmark by exposing creative duration.
+    # Creatives + LineItemCreativeAssociations (LICA) via legacy SOAP API.
+    # v1 REST exposes neither resource as of google-ads-admanager 0.9.0
+    # (only CreativeTemplate, not Creative), so we use the `googleads`
+    # library against the SOAP API. Powers the "Video Preroll >30s"
+    # benchmark by reading creative duration directly from GAM.
     # ------------------------------------------------------------------
 
+    _SOAP_API_VERSION = "v202605"
+
+    def _get_soap_client(self):
+        """Build the legacy `googleads` SOAP client lazily — only the
+        creative/LICA fetches need it. Uses the same service-account
+        credentials as the v1 REST client."""
+        if self._soap_client is not None:
+            return self._soap_client
+        # Lazy import — keeps refresh paths that don't need SOAP from
+        # pulling in the legacy library on cold start.
+        import tempfile
+        from googleads import ad_manager, oauth2  # type: ignore
+        sa_json = os.environ["GAM_SERVICE_ACCOUNT_JSON"]
+        key_data = json.loads(sa_json)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(key_data, f)
+            key_file = f.name
+        oauth2_client = oauth2.GoogleServiceAccountClient(
+            key_file, "https://www.googleapis.com/auth/dfp"
+        )
+        self._soap_client = ad_manager.AdManagerClient(
+            oauth2_client, "NewsweekDashboard/1.0", network_code=self.network_id
+        )
+        return self._soap_client
+
     @staticmethod
-    def _extract_duration_seconds(msg) -> Optional[float]:
-        """Try several common shapes for a video-creative duration field.
-        Returns seconds (float) or None. Defensive against SDK variation:
-        v1 Creative is polymorphic and may expose duration directly or
-        nested inside a sub-message like video_creative / vast_creative."""
-        if msg is None:
+    def _ms_to_seconds(v) -> Optional[float]:
+        """GAM Creative.duration is in milliseconds. Returns seconds or None."""
+        if v is None:
             return None
-
-        def _coerce(v):
-            if v is None:
-                return None
-            # google.protobuf.Duration (seconds + nanos)
-            if hasattr(v, "seconds"):
-                nanos = getattr(v, "nanos", 0) or 0
-                return float(v.seconds) + nanos / 1e9
-            # Plain number — assume ms when over 1000 (common for GAM).
-            if isinstance(v, (int, float)):
-                return float(v) / 1000.0 if v > 1000 else float(v)
+        try:
+            ms = float(v)
+        except (TypeError, ValueError):
             return None
-
-        # Direct fields
-        for fld in ("duration", "video_duration", "duration_ms"):
-            sec = _coerce(getattr(msg, fld, None))
-            if sec is not None:
-                return sec
-        # Sub-messages by likely creative-type name
-        for sub_name in ("video_creative", "vast_xml_creative",
-                         "vast_redirect_creative", "video",
-                         "vast_xml", "vast_redirect"):
-            sub = getattr(msg, sub_name, None)
-            if sub is None:
-                continue
-            for fld in ("duration", "video_duration", "duration_ms"):
-                sec = _coerce(getattr(sub, fld, None))
-                if sec is not None:
-                    return sec
-        return None
+        # Heuristic: values > 1000 are ms (typical), values ≤ 60 are likely
+        # already seconds. Most GAM video creatives are 5-120s → 5000-120000ms.
+        return ms / 1000.0 if ms > 1000 else ms
 
     def list_creatives_with_duration(self) -> pd.DataFrame:
-        """List all creatives on the network with extracted video duration.
-        Non-video creatives have duration_seconds = None."""
+        """Fetch all creatives via the SOAP CreativeService. Returns
+        (creative_id, display_name, creative_type, duration_seconds).
+        Non-video creatives carry duration_seconds = None. VAST/3rd-party
+        creatives may also be None when GAM doesn't have the duration
+        cached locally."""
         _cols = ["creative_id", "display_name", "creative_type", "duration_seconds"]
-        if self._creative_client is None:
-            logger.warning("CreativeServiceClient not available — upgrade google-ads-admanager")
-            return pd.DataFrame(columns=_cols)
-
-        ListReq = getattr(admanager_v1, "ListCreativesRequest", None)
-        rows = []
         try:
-            if ListReq is not None:
-                iterator = self._creative_client.list_creatives(ListReq(parent=self._parent))
-            else:
-                iterator = self._creative_client.list_creatives(parent=self._parent)
-            for c in iterator:
-                name = getattr(c, "name", "") or ""
-                cid = name.rsplit("/", 1)[-1] if name else None
-                dn = getattr(c, "display_name", "") or ""
-                # Detect creative type — try a few common attributes.
-                ct = None
-                for attr in ("creative_type", "type"):
-                    v = getattr(c, attr, None)
-                    if v is not None:
-                        ct = getattr(v, "name", None) or str(v)
-                        break
-                # Fall back to whichever sub-message is populated.
-                if not ct:
-                    for sub in ("image_creative", "video_creative", "vast_xml_creative",
-                                "vast_redirect_creative", "third_party_creative",
-                                "custom_creative", "template_creative"):
-                        if getattr(c, sub, None):
-                            ct = sub
-                            break
-                duration = self._extract_duration_seconds(c)
-                rows.append({
-                    "creative_id":      cid,
-                    "display_name":     dn,
-                    "creative_type":    ct,
-                    "duration_seconds": duration,
-                })
+            client = self._get_soap_client()
+            from googleads import ad_manager  # type: ignore
+            svc = client.GetService("CreativeService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Limit(500)
+            rows = []
+            while True:
+                resp = svc.getCreativesByStatement(sb.ToStatement())
+                if not hasattr(resp, "results") or not resp.results:
+                    break
+                for c in resp.results:
+                    cid = getattr(c, "id", None)
+                    dn = getattr(c, "name", "") or ""
+                    # SOAP returns polymorphic Creative subclasses — the
+                    # SOAP class name is the type (e.g. "VideoCreative",
+                    # "VastRedirectCreative", "ImageCreative").
+                    ct = type(c).__name__
+                    # `duration` is exposed on VideoCreative and
+                    # VastRedirectCreative (in ms); ImageCreative + others
+                    # don't have it.
+                    duration_ms = getattr(c, "duration", None)
+                    rows.append({
+                        "creative_id":      str(cid) if cid is not None else None,
+                        "display_name":     dn,
+                        "creative_type":    ct,
+                        "duration_seconds": self._ms_to_seconds(duration_ms),
+                    })
+                # Page through.
+                sb.offset += sb.limit
+                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                    break
+            logger.info("GAM creatives (SOAP): %d total, %d with duration",
+                        len(rows), sum(1 for r in rows if r["duration_seconds"] is not None))
+            return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
-            logger.exception("list_creatives failed")
+            logger.exception("list_creatives_with_duration (SOAP) failed")
             return pd.DataFrame(columns=_cols)
-
-        logger.info("GAM creatives: %d total, %d with duration",
-                    len(rows), sum(1 for r in rows if r["duration_seconds"] is not None))
-        return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     def list_line_item_creative_associations(self) -> pd.DataFrame:
-        """List all LICAs on the network. Returns (line_item_id, creative_id)
-        pairs so the dashboard can join creative metadata onto line items."""
+        """Fetch all LineItem-Creative associations via the SOAP API.
+        Returns (line_item_id, creative_id) — joined to creatives + line
+        items in the dashboard to apply per-creative duration thresholds."""
         _cols = ["line_item_id", "creative_id"]
-        if self._lica_client is None:
-            logger.warning("LineItemCreativeAssociation client not available "
-                           "— check google-ads-admanager version")
-            return pd.DataFrame(columns=_cols)
-
-        ListReq = (getattr(admanager_v1, "ListLineItemCreativeAssociationsRequest", None)
-                   or getattr(admanager_v1, "ListLineItemCreativeAssociationRequest", None))
-        rows = []
         try:
-            # Method name varies by SDK version — try common forms.
-            list_method = (getattr(self._lica_client, "list_line_item_creative_associations", None)
-                           or getattr(self._lica_client, "list_lineitem_creative_associations", None))
-            if list_method is None:
-                logger.warning("LICA list method not found on the client")
-                return pd.DataFrame(columns=_cols)
-            if ListReq is not None:
-                iterator = list_method(ListReq(parent=self._parent))
-            else:
-                iterator = list_method(parent=self._parent)
-            for lica in iterator:
-                li = getattr(lica, "line_item", "") or getattr(lica, "line_item_id", "")
-                cr = getattr(lica, "creative", "")  or getattr(lica, "creative_id", "")
-                rows.append({
-                    "line_item_id": str(li).rsplit("/", 1)[-1] if li else None,
-                    "creative_id":  str(cr).rsplit("/", 1)[-1] if cr else None,
-                })
+            client = self._get_soap_client()
+            from googleads import ad_manager  # type: ignore
+            svc = client.GetService(
+                "LineItemCreativeAssociationService", version=self._SOAP_API_VERSION
+            )
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Limit(500)
+            rows = []
+            while True:
+                resp = svc.getLineItemCreativeAssociationsByStatement(sb.ToStatement())
+                if not hasattr(resp, "results") or not resp.results:
+                    break
+                for lica in resp.results:
+                    li = getattr(lica, "lineItemId", None)
+                    cr = getattr(lica, "creativeId", None)
+                    rows.append({
+                        "line_item_id": str(li) if li is not None else None,
+                        "creative_id":  str(cr) if cr is not None else None,
+                    })
+                sb.offset += sb.limit
+                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                    break
+            logger.info("GAM LICA (SOAP): %d associations", len(rows))
+            return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
-            logger.exception("list_line_item_creative_associations failed")
+            logger.exception("list_line_item_creative_associations (SOAP) failed")
             return pd.DataFrame(columns=_cols)
-
-        logger.info("GAM LICA: %d associations", len(rows))
-        return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
     # Combined pacing report

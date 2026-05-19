@@ -5,5 +5,6 @@ sqlalchemy
 psycopg2-binary
 altair
 google-ads-admanager
+googleads
 google-auth
 agentmail
