@@ -286,6 +286,41 @@ class GAMClient:
                     df["programmatic_channel_name"].value_counts().to_dict() if not df.empty else {})
         return df
 
+    def run_deal_bid_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Per-day per-deal bid metrics (DEALS_BID_REQUESTS / DEALS_BIDS /
+        DEALS_WINNING_BIDS). Lives in a separate report from run_deals_report
+        because GAM rejects DEALS_* metrics alongside ORDER_NAME / DEAL_BUYER_NAME
+        in the same report definition (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY).
+
+        Deliberately omits PROGRAMMATIC_CHANNEL_NAME: when included, GAM splits
+        the metrics across two row variants per deal (one carries the requests
+        with channel='', the other carries the bids with the channel populated)
+        — see commit history for the bug this caused in the weekly report.
+        Deal type is instead derived from the deal-name prefix (`Newsweek_PA_`,
+        `Newsweek_PD_`, `Newsweek_PG_`) in weekly_report.py.
+        """
+        df = self._run_report(
+            dimensions=["DATE", "DEAL_NAME"],
+            metrics=["DEALS_BID_REQUESTS", "DEALS_BIDS", "DEALS_WINNING_BIDS"],
+            start_date=start_date,
+            end_date=end_date,
+        ).rename(columns={"deal_name": "programmatic_deal_name"})
+
+        for _col in df.select_dtypes(include="object").columns:
+            df[_col] = df[_col].str.strip()
+
+        df = df[
+            df["programmatic_deal_name"].notna()
+            & ~df["programmatic_deal_name"].isin(["", "(Not applicable)"])
+        ].copy()
+
+        for _bid_col in ("deals_bid_requests", "deals_bids", "deals_winning_bids"):
+            df[_bid_col] = pd.to_numeric(df[_bid_col], errors="coerce").fillna(0).astype("int64")
+
+        logger.info("GAM deal-bid report: %d rows", len(df))
+        return df
+
     # ------------------------------------------------------------------
     # Lifetime delivery (for pacing)
     # ------------------------------------------------------------------

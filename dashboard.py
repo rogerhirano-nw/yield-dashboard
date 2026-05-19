@@ -4843,10 +4843,53 @@ if st.session_state.active_view == "configure":
             ].nunique()
             return int(distinct_orders)
 
-        # Line item count per ad_format (used by Benchmarks "Currently applies to").
+        # Line item count per ad_format — mirrors the runtime logic that the
+        # Direct Campaigns table actually uses, so the Benchmarks editor's
+        # "Applies to" column matches reality:
+        #   1. Apply format_aliases (e.g. "Banner" → "Display") so the
+        #      benchmark keys (which are post-alias) match the count.
+        #   2. Apply the >30s preroll recategorization (join gam_lica +
+        #      gam_creatives on line_item_id → creative_id, take max
+        #      duration per LI, bump any Video line whose max creative
+        #      duration > 30s to "Video Preroll >30s").
         _format_counts = {}
         if _gam_for_counts is not None and "ad_format" in _gam_for_counts.columns:
-            _format_counts = _gam_for_counts["ad_format"].fillna("").value_counts().to_dict()
+            _fmt_series = _gam_for_counts["ad_format"].fillna("").astype("string")
+            _aliases = _s.get("format_aliases") or {}
+            if _aliases:
+                _fmt_series = _fmt_series.replace(_aliases)
+            # Recategorize >30s preroll using the same join as dashboard.py
+            # gam_campaigns rendering — defensive: any failure leaves the
+            # series as-is and we just miss the preroll bucket.
+            try:
+                _cr_df = load("gam_creatives")
+                _li_df = load("gam_lica")
+                if (not _cr_df.empty and not _li_df.empty
+                    and "duration_seconds" in _cr_df.columns
+                    and "creative_id" in _cr_df.columns
+                    and "creative_id" in _li_df.columns
+                    and "line_item_id" in _li_df.columns
+                    and "line_item_id" in _gam_for_counts.columns):
+                    _dur = (_li_df[["line_item_id", "creative_id"]]
+                            .merge(_cr_df[["creative_id", "duration_seconds"]],
+                                   on="creative_id", how="left"))
+                    _dur["duration_seconds"] = pd.to_numeric(
+                        _dur["duration_seconds"], errors="coerce"
+                    )
+                    _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
+                                .max().reset_index())
+                    _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
+                    _li_to_dur = dict(zip(_max_dur["line_item_id"],
+                                          _max_dur["duration_seconds"]))
+                    _li_ids = _gam_for_counts["line_item_id"].astype(str)
+                    _durs = _li_ids.map(_li_to_dur)
+                    _is_video = _fmt_series.str.lower().str.contains("video", na=False)
+                    _is_long = _durs.fillna(0).astype(float) > 30
+                    _fmt_series = _fmt_series.where(~(_is_video & _is_long),
+                                                   "Video Preroll >30s")
+            except Exception:
+                pass
+            _format_counts = _fmt_series.value_counts().to_dict()
         def _format_count(fmt):
             if not isinstance(fmt, str) or not fmt: return 0
             return int(_format_counts.get(fmt, 0))

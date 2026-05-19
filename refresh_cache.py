@@ -195,6 +195,31 @@ def refresh_gam_pmp_deals() -> int:
     return len(df)
 
 
+def refresh_gam_deal_bids() -> int:
+    """Pull per-day per-deal bid metrics for the last 7 days into gam_deal_bid_daily.
+    Separate from gam_pmp_deals because DEALS_* metrics aren't compatible with
+    ORDER_NAME/DEAL_BUYER_NAME in a single GAM report."""
+    logger.info("Refreshing gam_deal_bid_daily (GAM deal bid report)")
+    gam = GAMClient()
+
+    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
+    seven_days_ago = yesterday - timedelta(days=6)
+
+    df = gam.run_deal_bid_report(seven_days_ago, yesterday)
+    if df.empty:
+        logger.warning("GAM deal-bid report came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "gam_deal_bid_daily"
+    with _engine().begin() as conn:
+        df.to_sql(table, conn, if_exists="replace", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 def refresh_gam_private_auctions() -> int:
     """Fetch PA deal metadata from the GAM REST API and write to gam_pa_metadata."""
     logger.info("Refreshing gam_pa_metadata (GAM Private Auctions)")
@@ -343,6 +368,11 @@ def main() -> None:
         total += refresh_gam_pmp_deals()
     except Exception:
         logger.exception("Refresh failed for gam_pmp_deals — continuing")
+
+    try:
+        total += refresh_gam_deal_bids()
+    except Exception:
+        logger.exception("Refresh failed for gam_deal_bid_daily — continuing")
 
     try:
         total += refresh_gam_private_auctions()
