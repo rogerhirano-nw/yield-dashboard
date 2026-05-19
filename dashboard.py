@@ -2764,14 +2764,30 @@ if st.session_state.active_view == "campaigns":
                     return f'<div class="txt-amber">{p:.1f}%</div>'
                 return f'<div class="txt-green">{p:.1f}%</div>'
 
-            def _vcr_html(p, is_video):
+            # Per-format VCR threshold pulled from settings (e.g. "Video
+            # Preroll >30s" → 50%, "Video" → 70%). Falls back to 60%
+            # when the format isn't configured (preserves the previous
+            # behavior on un-recategorized lines).
+            _bench_cfg = _cfg.get("benchmarks_by_format") or {}
+            def _vcr_html(p, is_video, fmt=None):
                 if not is_video:
                     return '<div class="cell-dash">—</div>'
                 p = _parse_leading_pct(p)
                 if p is None: return '<div class="cell-dash">—</div>'
-                if p < 50:
+                # Look up the configured VCR target for this format.
+                target = None
+                if isinstance(fmt, str) and fmt in _bench_cfg:
+                    target = _bench_cfg[fmt].get("vcr_pct")
+                if target is None:
+                    target = _bench_cfg.get("Video", {}).get("vcr_pct") or 60.0
+                target = float(target)
+                # Band layout: red < target - 10pp, amber target - 10 to
+                # target, green ≥ target. Matches the previous hardcoded
+                # 50/60 behavior when target = 60.
+                red_cut = max(target - 10.0, 0.0)
+                if p < red_cut:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
-                if p < 60:
+                if p < target:
                     return f'<div class="txt-amber">{p:.1f}%</div>'
                 return f'<div class="txt-green">{p:.1f}%</div>'
 
@@ -3396,7 +3412,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
                     f'<div class="num">{_viewability_html(_vw)}</div>'
                     f'<div class="num">{f"{_ctr:.2f}%" if pd.notna(_ctr) else "<span class=cell-dash>—</span>"}</div>'
-                    f'<div class="num">{_vcr_html(_vcr_val, _is_video)}</div>'
+                    f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str)}</div>'
                     f'<div>{_seller_html}</div>'
                     f'<div>{_progress_html(_progress)}</div>'
                     '</summary>'
