@@ -4846,15 +4846,28 @@ if st.session_state.active_view == "configure":
         # Line item count per ad_format — mirrors the runtime logic that the
         # Direct Campaigns table actually uses, so the Benchmarks editor's
         # "Applies to" column matches reality:
+        #   0. Derive ad_format from line_item_name's position-10 token,
+        #      because gam_campaigns doesn't store it as a column — the
+        #      Campaigns rendering computes it via .apply(_li_part, idx=10).
         #   1. Apply format_aliases (e.g. "Banner" → "Display") so the
         #      benchmark keys (which are post-alias) match the count.
         #   2. Apply the >30s preroll recategorization (join gam_lica +
         #      gam_creatives on line_item_id → creative_id, take max
         #      duration per LI, bump any Video line whose max creative
         #      duration > 30s to "Video Preroll >30s").
+        def _li_format_part(name):
+            if not isinstance(name, str):
+                return ""
+            parts = name.split("_")
+            return parts[10].strip() if len(parts) > 10 else ""
+
         _format_counts = {}
-        if _gam_for_counts is not None and "ad_format" in _gam_for_counts.columns:
-            _fmt_series = _gam_for_counts["ad_format"].fillna("").astype("string")
+        if (_gam_for_counts is not None
+            and not _gam_for_counts.empty
+            and "line_item_name" in _gam_for_counts.columns):
+            _fmt_series = (_gam_for_counts["line_item_name"]
+                           .apply(_li_format_part)
+                           .fillna("").astype("string"))
             _aliases = _s.get("format_aliases") or {}
             if _aliases:
                 _fmt_series = _fmt_series.replace(_aliases)
