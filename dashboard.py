@@ -4892,7 +4892,43 @@ if st.session_state.active_view == "configure":
             _format_counts = _fmt_series.value_counts().to_dict()
         def _format_count(fmt):
             if not isinstance(fmt, str) or not fmt: return 0
-            return int(_format_counts.get(fmt, 0))
+            # Direct match (post-alias + recategorization) — fast path.
+            if fmt in _format_counts:
+                return int(_format_counts[fmt])
+            # Case-insensitive direct match — handles minor casing drift
+            # between the benchmarks dict key and the stored value.
+            fmt_lower = fmt.lower()
+            for k, v in _format_counts.items():
+                if isinstance(k, str) and k.lower() == fmt_lower:
+                    return int(v)
+            # Substring fallback for column values that include extra
+            # qualifiers (e.g. "Video Spectacular" → counts under "Video").
+            # Only fires for the more specific benchmark name, not the
+            # generic one — "Video Preroll >30s" matches "Video Preroll
+            # 60s" but plain "Video" doesn't slurp up every video subtype.
+            if len(fmt_lower) >= 6:  # avoid 3-char generic names
+                return int(sum(v for k, v in _format_counts.items()
+                              if isinstance(k, str) and fmt_lower in k.lower()))
+            return 0
+
+        # Debug: the most common reason "Applies to" reads 0 is that the
+        # stored ad_format value doesn't match the benchmark key after
+        # aliasing. Show the raw vs aliased distribution so the mismatch
+        # is visible without round-tripping a SQL query.
+        with st.expander("ad_format distribution (debug)", expanded=False):
+            if _gam_for_counts is not None and "ad_format" in _gam_for_counts.columns:
+                _raw_counts = (_gam_for_counts["ad_format"].fillna("(null)")
+                               .value_counts().head(25))
+                st.markdown("**Raw `gam_campaigns.ad_format` (top 25):**")
+                st.dataframe(_raw_counts, use_container_width=True)
+                st.markdown("**After format_aliases + Video Preroll >30s recategorization:**")
+                st.dataframe(
+                    pd.Series(_format_counts).rename("count")
+                      .sort_values(ascending=False).head(25),
+                    use_container_width=True,
+                )
+            else:
+                st.write("`gam_campaigns` is empty or missing the `ad_format` column.")
 
         # Seller usage (used by Seller Colors "Currently used in table").
         _seller_usage = {}
