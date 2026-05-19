@@ -4911,24 +4911,47 @@ if st.session_state.active_view == "configure":
                               if isinstance(k, str) and fmt_lower in k.lower()))
             return 0
 
-        # Debug: the most common reason "Applies to" reads 0 is that the
-        # stored ad_format value doesn't match the benchmark key after
-        # aliasing. Show the raw vs aliased distribution so the mismatch
-        # is visible without round-tripping a SQL query.
+        # Debug: trace exactly why "Applies to" might be 0 across all rows.
+        # Reports the state of _gam_for_counts (None / empty / columns) plus
+        # any captured load error, then shows raw vs aliased distributions
+        # when data is available. Also offers an explicit cache-clear button.
         with st.expander("ad_format distribution (debug)", expanded=False):
-            if _gam_for_counts is not None and "ad_format" in _gam_for_counts.columns:
-                _raw_counts = (_gam_for_counts["ad_format"].fillna("(null)")
+            if st.button("Clear cache + re-query gam_campaigns",
+                         key="cfg_dbg_clear_cache"):
+                st.cache_data.clear()
+                st.rerun()
+            _g = _gam_for_counts
+            if _g is None:
+                st.error("`_gam_for_counts` is None — load() never returned.")
+            elif _g.empty and len(_g.columns) == 0:
+                st.error("`gam_campaigns` load returned an empty DataFrame "
+                         "with no columns (likely a connection or query error).")
+            elif _g.empty:
+                st.warning(f"`gam_campaigns` has 0 rows but columns present: "
+                           f"{list(_g.columns)[:15]}")
+            elif "ad_format" not in _g.columns:
+                st.warning(
+                    "`gam_campaigns` has rows but **no `ad_format` column**. "
+                    "Available columns: " + ", ".join(list(_g.columns)[:25])
+                )
+            else:
+                st.success(f"`gam_campaigns` loaded — {len(_g):,} rows, "
+                           f"ad_format present.")
+                _raw_counts = (_g["ad_format"].fillna("(null)")
                                .value_counts().head(25))
                 st.markdown("**Raw `gam_campaigns.ad_format` (top 25):**")
                 st.dataframe(_raw_counts, use_container_width=True)
-                st.markdown("**After format_aliases + Video Preroll >30s recategorization:**")
-                st.dataframe(
-                    pd.Series(_format_counts).rename("count")
-                      .sort_values(ascending=False).head(25),
-                    use_container_width=True,
-                )
-            else:
-                st.write("`gam_campaigns` is empty or missing the `ad_format` column.")
+                if _format_counts:
+                    st.markdown("**After format_aliases + Video Preroll >30s recategorization:**")
+                    st.dataframe(
+                        pd.Series(_format_counts).rename("count")
+                          .sort_values(ascending=False).head(25),
+                        use_container_width=True,
+                    )
+            # Surface load errors captured by load() itself.
+            if "gam_campaigns" in _load_errors:
+                st.code(f"load_errors['gam_campaigns']: {_load_errors['gam_campaigns']}",
+                        language="text")
 
         # Seller usage (used by Seller Colors "Currently used in table").
         _seller_usage = {}
