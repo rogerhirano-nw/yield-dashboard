@@ -8,3 +8,4 @@ google-ads-admanager
 googleads
 google-auth
 agentmail
+playwright

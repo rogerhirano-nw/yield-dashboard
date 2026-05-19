@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.newsweek.confiant-blocklist</string>
+
+    <!-- Mondays at 09:00 local time. Adjust Hour/Minute/Weekday to taste.
+         Weekday 1 = Monday on macOS launchd. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- If the Mac was asleep at the trigger time, run when it wakes. -->
+    <key>StartCalendarIntervalRunAtLoad</key>
+    <false/>
+
+    <!-- IMPORTANT: edit these paths and env vars before `launchctl load`ing.
+         The plist intentionally uses absolute paths so launchd doesn't depend
+         on shell startup files. -->
+
+    <key>WorkingDirectory</key>
+    <string>/Users/roger/code/yield-dashboard</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>/Users/roger/code/yield-dashboard/confiant_blocklist.py</string>
+        <string>--protection-name</string>
+        <string>REPLACE_WITH_PROTECTION_NAME</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd does not source ~/.zshrc; spell out everything the
+             script needs. Fill these in from your existing .env. -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>GAM_NETWORK_ID</key>
+        <string>REPLACE_ME</string>
+        <key>AGENTMAIL_API_KEY</key>
+        <string>REPLACE_ME</string>
+        <key>AGENTMAIL_INBOX_ID</key>
+        <string>REPLACE_ME</string>
+        <key>CONFIANT_REPORT_TO_EMAIL</key>
+        <string>REPLACE_ME</string>
+        <key>CONFIANT_BLOCKLIST_PROFILE_DIR</key>
+        <string>/Users/roger/.confiant-blocklist/playwright-profile</string>
+        <key>CONFIANT_BLOCKLIST_STATE</key>
+        <string>/Users/roger/.confiant-blocklist/state.sqlite</string>
+        <key>CONFIANT_CSV_CACHE_DIR</key>
+        <string>/Users/roger/.confiant-blocklist/csv-cache</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/roger/.confiant-blocklist/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/roger/.confiant-blocklist/launchd.err.log</string>
+
+    <!-- Keep launchd from killing a slow run; Playwright can take a minute. -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+</dict>
+</plist>
