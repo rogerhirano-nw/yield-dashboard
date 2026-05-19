@@ -1774,7 +1774,17 @@ if st.session_state.active_view == "campaigns":
         # hyphenated token form used inside the line-item-name convention.
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7).str.replace("-", " ", regex=False)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8).str.replace("-", " ", regex=False)
-        gam_df["ad_format"]     = gam_df["line_item_name"].apply(_li_part, idx=10)
+        # Prefer GAM's canonical INVENTORY_FORMAT_NAME (now pulled in
+        # run_delivery_report). Falls back to the position-10 token of
+        # line_item_name only when the API didn't return a format —
+        # backwards compat for any rows from before the dimension was added.
+        if "inventory_format_name" in gam_df.columns:
+            _from_api = gam_df["inventory_format_name"].astype("string").str.strip()
+            _from_api = _from_api.replace({"": pd.NA})
+            _from_name = gam_df["line_item_name"].apply(_li_part, idx=10)
+            gam_df["ad_format"] = _from_api.fillna(pd.Series(_from_name, index=gam_df.index))
+        else:
+            gam_df["ad_format"] = gam_df["line_item_name"].apply(_li_part, idx=10)
         _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
         gam_df["team"] = (
             gam_df["line_item_name"]
@@ -4864,10 +4874,22 @@ if st.session_state.active_view == "configure":
         _format_counts = {}
         if (_gam_for_counts is not None
             and not _gam_for_counts.empty
-            and "line_item_name" in _gam_for_counts.columns):
-            _fmt_series = (_gam_for_counts["line_item_name"]
-                           .apply(_li_format_part)
-                           .fillna("").astype("string"))
+            and ("inventory_format_name" in _gam_for_counts.columns
+                 or "line_item_name" in _gam_for_counts.columns)):
+            # Prefer the canonical GAM dimension when present; fall back to
+            # position-10 parse of line_item_name for older cached rows.
+            if "inventory_format_name" in _gam_for_counts.columns:
+                _api_fmt = (_gam_for_counts["inventory_format_name"]
+                            .astype("string").str.strip()
+                            .replace({"": pd.NA}))
+                _name_fmt = _gam_for_counts["line_item_name"].apply(_li_format_part) \
+                    if "line_item_name" in _gam_for_counts.columns else pd.Series(pd.NA, index=_gam_for_counts.index)
+                _fmt_series = _api_fmt.fillna(pd.Series(_name_fmt, index=_gam_for_counts.index)) \
+                                       .fillna("").astype("string")
+            else:
+                _fmt_series = (_gam_for_counts["line_item_name"]
+                               .apply(_li_format_part)
+                               .fillna("").astype("string"))
             _aliases = _s.get("format_aliases") or {}
             if _aliases:
                 _fmt_series = _fmt_series.replace(_aliases)

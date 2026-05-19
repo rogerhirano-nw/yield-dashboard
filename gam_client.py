@@ -208,6 +208,11 @@ class GAMClient:
                 "LINE_ITEM_NAME",
                 "ORDER_ID",
                 "ORDER_NAME",
+                # Canonical ad format from GAM ("Display" / "Video" /
+                # "Native" / etc.). Avoids relying on Newsweek's position-10
+                # token in line_item_name, which is fragile for non-
+                # convention-following orders (House, OpenAds, archived).
+                "INVENTORY_FORMAT_NAME",
             ],
             metrics=[
                 "AD_SERVER_IMPRESSIONS",
@@ -702,6 +707,12 @@ class GAMClient:
         for _col in _optional_mean:
             if _col in df_delivery.columns:
                 agg_spec[_col] = (_col, "mean")
+        # Preserve INVENTORY_FORMAT_NAME (canonical GAM ad format) — a line
+        # item has a consistent format across days, so "first" is safe.
+        # Surfaces as `ad_format` post-rename below, replacing the brittle
+        # position-10 token parsing the dashboard previously relied on.
+        if "inventory_format_name" in df_delivery.columns:
+            agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
 
         agg = df_delivery.groupby(["line_item_id"], as_index=False).agg(**agg_spec)
 
