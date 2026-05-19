@@ -210,6 +210,40 @@ def refresh_gam_private_auctions() -> int:
     return len(df)
 
 
+def refresh_gam_creatives() -> int:
+    """Fetch creative metadata (display name + video duration) and write
+    to gam_creatives. Used by the dashboard to detect lines whose creative
+    duration crosses the 30-second threshold (→ "Video Preroll >30s")."""
+    logger.info("Refreshing gam_creatives")
+    gam = GAMClient()
+    df = gam.list_creatives_with_duration()
+    if df.empty:
+        logger.warning("No creatives returned from GAM — skipping write")
+        return 0
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    with _engine().begin() as conn:
+        df.to_sql("gam_creatives", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to gam_creatives", len(df))
+    return len(df)
+
+
+def refresh_gam_lica() -> int:
+    """Fetch line-item ↔ creative associations and write to gam_lica.
+    Joined with gam_creatives to give each line item its set of
+    creative durations."""
+    logger.info("Refreshing gam_lica (LineItemCreativeAssociation)")
+    gam = GAMClient()
+    df = gam.list_line_item_creative_associations()
+    if df.empty:
+        logger.warning("No LICAs returned from GAM — skipping write")
+        return 0
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    with _engine().begin() as conn:
+        df.to_sql("gam_lica", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to gam_lica", len(df))
+    return len(df)
+
+
 def refresh_pubmatic() -> int:
     """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
@@ -314,6 +348,16 @@ def main() -> None:
         total += refresh_gam_private_auctions()
     except Exception:
         logger.exception("Refresh failed for gam_pa_metadata — continuing")
+
+    try:
+        total += refresh_gam_creatives()
+    except Exception:
+        logger.exception("Refresh failed for gam_creatives — continuing")
+
+    try:
+        total += refresh_gam_lica()
+    except Exception:
+        logger.exception("Refresh failed for gam_lica — continuing")
 
     try:
         total += refresh_pubmatic()

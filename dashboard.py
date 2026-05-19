@@ -1671,6 +1671,43 @@ if st.session_state.active_view == "campaigns":
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
     else:
         gam_df = gam_df.copy()
+
+        # Recategorize ad_format → "Video Preroll >30s" when the line item's
+        # longest associated video creative exceeds 30 seconds. Joins
+        # gam_lica + gam_creatives onto gam_df by line_item_id. Falls back
+        # to the original ad_format when either table is missing or the
+        # join yields no duration.
+        try:
+            _creatives_df = load("gam_creatives")
+            _lica_df = load("gam_lica")
+        except Exception:
+            _creatives_df = pd.DataFrame()
+            _lica_df = pd.DataFrame()
+        if (not _creatives_df.empty and not _lica_df.empty
+            and "duration_seconds" in _creatives_df.columns
+            and "creative_id" in _creatives_df.columns
+            and "line_item_id" in _lica_df.columns
+            and "creative_id" in _lica_df.columns
+            and "line_item_id" in gam_df.columns):
+            _dur = (_lica_df[["line_item_id", "creative_id"]]
+                    .merge(_creatives_df[["creative_id", "duration_seconds"]],
+                           on="creative_id", how="left"))
+            _dur["duration_seconds"] = pd.to_numeric(_dur["duration_seconds"], errors="coerce")
+            _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
+                        .max().rename("_creative_max_dur").reset_index())
+            _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
+            gam_df["line_item_id"] = gam_df["line_item_id"].astype(str)
+            gam_df = gam_df.merge(_max_dur, on="line_item_id", how="left")
+
+            def _bump_video_format(row):
+                fmt = row.get("ad_format")
+                dur = row.get("_creative_max_dur")
+                if (isinstance(fmt, str) and "video" in fmt.lower()
+                    and pd.notna(dur) and float(dur) > 30):
+                    return "Video Preroll >30s"
+                return fmt
+            gam_df["ad_format"] = gam_df.apply(_bump_video_format, axis=1)
+
         _incl_patterns = _cfg.get("included_order_patterns", ["Newsweek_Direct%"])
         _prefixes = [p.rstrip("%") for p in _incl_patterns if p]
         _order_populated = gam_df["order_name"].notna() & (gam_df["order_name"] != "")
@@ -3095,13 +3132,29 @@ if st.session_state.active_view == "campaigns":
                     '</div>'
                 )
 
+            # Per-format benchmark lookup — pulls from settings so the
+            # "Video Preroll >30s" entry actually shapes the chart targets
+            # for long-preroll lines (50% VCR instead of 70%).
+            _benchmarks_cfg = _cfg.get("benchmarks_by_format") or {}
+            def _row_bench(fmt, key):
+                if isinstance(fmt, str) and fmt in _benchmarks_cfg:
+                    v = _benchmarks_cfg[fmt].get(key)
+                    return float(v) if v is not None else None
+                # Fall back to the generic Video / Display entries.
+                fallback = "Video" if (isinstance(fmt, str) and "video" in fmt.lower()) else "Display"
+                v = _benchmarks_cfg.get(fallback, {}).get(key)
+                return float(v) if v is not None else None
+
             def _drawer_small_multiples(row):
                 fmt = row.get("ad_format")
                 is_video = isinstance(fmt, str) and "video" in fmt.lower()
                 view = _row_view_series(row)
                 second_label = "VCR" if is_video else "CTR"
                 second = _row_vcr_series(row) if is_video else _row_ctr_series(row)
-                second_target = 60.0 if is_video else None
+                # Targets sourced from settings.benchmarks_by_format keyed on
+                # the row's (possibly re-categorized) ad_format.
+                view_target = _row_bench(fmt, "viewability_pct") or 70.0
+                second_target = _row_bench(fmt, "vcr_pct" if is_video else "ctr_pct")
                 panels = []
                 sm_dates = _sm_date_row_html()
                 if view is not None:
@@ -3110,7 +3163,7 @@ if st.session_state.active_view == "campaigns":
                     panels.append(
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
-                        f'{_sparkline_svg(view, target=70.0, color="green", klass="")}'
+                        f'{_sparkline_svg(view, target=view_target, color="green", klass="")}'
                         f'{sm_dates}'
                         '</div>'
                     )
