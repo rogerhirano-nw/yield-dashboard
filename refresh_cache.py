@@ -235,6 +235,23 @@ def refresh_gam_private_auctions() -> int:
     return len(df)
 
 
+def refresh_gam_preferred_deals() -> int:
+    """Fetch non-archived PD/PG/Sponsorship proposal-line-item metadata from
+    GAM via SOAP, write to gam_pd_metadata. Used by weekly_report.py to
+    apply the ≥ 90-day age threshold on Preferred Deals."""
+    logger.info("Refreshing gam_pd_metadata (GAM Preferred Deals / Proposal Line Items)")
+    gam = GAMClient()
+    df = gam.get_preferred_deals()
+    if df.empty:
+        logger.warning("No PD metadata returned — nothing to write")
+        return 0
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    with _engine().begin() as conn:
+        df.to_sql("gam_pd_metadata", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to gam_pd_metadata", len(df))
+    return len(df)
+
+
 def refresh_gam_creatives() -> int:
     """Fetch creative metadata (display name + video duration) and write
     to gam_creatives. Used by the dashboard to detect lines whose creative
@@ -267,6 +284,75 @@ def refresh_gam_lica() -> int:
         df.to_sql("gam_lica", conn, if_exists="replace", index=False)
     logger.info("Wrote %d rows to gam_lica", len(df))
     return len(df)
+
+
+def refresh_magnite_deal_metadata() -> int:
+    """Pull a 180-day Magnite deal-keyed report to determine each deal's
+    earliest appearance. Used by weekly_report.py as an age proxy since
+    Magnite's reports API doesn't expose a deal creation_date dimension.
+
+    Conservative — only underestimates true age, never overestimates."""
+    logger.info("Refreshing magnite_deal_metadata (180-day age proxy)")
+    api_key    = os.environ["MAGNITE_KEY"]
+    api_secret = os.environ["MAGNITE_SECRET"]
+    account_id = os.environ["MAGNITE_PUBLISHER_ID"]
+    client = MagniteClient(api_key=api_key, api_secret=api_secret, account_id=account_id)
+
+    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start     = yesterday - timedelta(days=179)
+
+    df = client.run_report(
+        dimensions=["deal", "deal_id", "date"],
+        metrics=["bid_requests"],
+        start=start.isoformat(),
+        end=yesterday.isoformat(),
+        date_range=None,
+    )
+    if df.empty:
+        logger.warning("Magnite metadata report came back empty — nothing to write")
+        return 0
+
+    agg = df.groupby(["deal", "deal_id"], dropna=False).agg(
+        first_seen=("date", "min"),
+        last_seen=("date", "max"),
+        days_seen=("date", "nunique"),
+    ).reset_index()
+    agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        agg.to_sql("magnite_deal_metadata", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d Magnite deals to magnite_deal_metadata", len(agg))
+    return len(agg)
+
+
+def refresh_pubmatic_deal_metadata() -> int:
+    """Pull a 180-day Pubmatic deal-keyed report (minimal dims/metrics) to
+    determine each deal's earliest appearance. Same proxy as Magnite —
+    Pubmatic's Analytics API doesn't expose deal creation_date."""
+    logger.info("Refreshing pubmatic_deal_metadata (180-day age proxy)")
+    from pubmatic_client import PubmaticClient
+    client = PubmaticClient()
+
+    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start     = yesterday - timedelta(days=179)
+
+    df = client.run_deal_first_seen_report(start, yesterday)
+    if df.empty:
+        logger.warning("Pubmatic metadata report came back empty — nothing to write")
+        return 0
+
+    keep_cols = [c for c in ("deal", "deal_meta_id") if c in df.columns]
+    agg = df.groupby(keep_cols, dropna=False).agg(
+        first_seen=("date", "min"),
+        last_seen=("date", "max"),
+        days_seen=("date", "nunique"),
+    ).reset_index()
+    agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        agg.to_sql("pubmatic_deal_metadata", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d Pubmatic deals to pubmatic_deal_metadata", len(agg))
+    return len(agg)
 
 
 def refresh_pubmatic() -> int:
@@ -380,6 +466,11 @@ def main() -> None:
         logger.exception("Refresh failed for gam_pa_metadata — continuing")
 
     try:
+        total += refresh_gam_preferred_deals()
+    except Exception:
+        logger.exception("Refresh failed for gam_pd_metadata — continuing")
+
+    try:
         total += refresh_gam_creatives()
     except Exception:
         logger.exception("Refresh failed for gam_creatives — continuing")
@@ -393,6 +484,16 @@ def main() -> None:
         total += refresh_pubmatic()
     except Exception:
         logger.exception("Refresh failed for pubmatic_deals — continuing")
+
+    try:
+        total += refresh_magnite_deal_metadata()
+    except Exception:
+        logger.exception("Refresh failed for magnite_deal_metadata — continuing")
+
+    try:
+        total += refresh_pubmatic_deal_metadata()
+    except Exception:
+        logger.exception("Refresh failed for pubmatic_deal_metadata — continuing")
 
 
 if __name__ == "__main__":

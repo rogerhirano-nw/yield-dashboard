@@ -220,24 +220,19 @@ class GAMClient:
         Returns a DataFrame with columns matching the existing downstream expectations,
         including ad_server_cpm_and_cpc_revenue (mapped from AD_SERVER_GROSS_REVENUE).
         """
-        # VIDEO_AD_DURATION is intentionally NOT here — GAM returns
-        # REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY when combined with the
-        # AD_SERVER_* + VIDEO_VIEWERSHIP_* metric set this report needs.
-        # Pulled separately by run_video_duration_report() and merged
-        # in run_report_with_pacing().
-        _dims = [
-            "DATE",
-            "LINE_ITEM_ID",
-            "LINE_ITEM_NAME",
-            "ORDER_ID",
-            "ORDER_NAME",
-            # Canonical ad format from GAM ("Display" / "Video" / "Native"
-            # / etc.). Avoids relying on Newsweek's position-10 token in
-            # line_item_name.
-            "INVENTORY_FORMAT_NAME",
-        ]
+        # INVENTORY_FORMAT_NAME and VIDEO_AD_DURATION both trigger
+        # REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY when added to this
+        # dimension/metric set (verified empirically on two refresh
+        # attempts). Both pulled separately by run_li_metadata_report()
+        # and merged downstream in run_report_with_pacing().
         df = self._run_report(
-            dimensions=_dims,
+            dimensions=[
+                "DATE",
+                "LINE_ITEM_ID",
+                "LINE_ITEM_NAME",
+                "ORDER_ID",
+                "ORDER_NAME",
+            ],
             metrics=[
                 "AD_SERVER_IMPRESSIONS",
                 "AD_SERVER_CLICKS",
@@ -354,47 +349,55 @@ class GAMClient:
     # Lifetime delivery (for pacing)
     # ------------------------------------------------------------------
 
-    def run_video_duration_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+    def run_li_metadata_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
-        Fetch (line_item_id, max video_ad_duration) for every video LI that
-        served impressions in the window.
+        Fetch (line_item_id, inventory_format_name, video_ad_duration) for
+        every LI that served in the window — both dimensions GAM rejects
+        as incompatible with the main delivery report's metric set.
 
-        Why a separate report: VIDEO_AD_DURATION is incompatible with the
-        full metric set in run_delivery_report (GAM returns
-        REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY). Stripped-down version
-        with just LINE_ITEM_ID + VIDEO_AD_DURATION + AD_SERVER_IMPRESSIONS
-        (the impression count just ensures the dimension combo is valid;
-        we don't read it).
-
-        Returns DataFrame with columns: line_item_id, video_ad_duration
-        (max across the window per LI). Empty DataFrame if the enum isn't
-        in the SDK version or the report errors.
+        Returns DataFrame columns: line_item_id, inventory_format_name
+        (first non-null), video_ad_duration (max across the window).
+        Empty DataFrame if the report errors. Falls back gracefully when
+        VIDEO_AD_DURATION isn't in the SDK enum — keeps inventory format.
         """
-        _cols = ["line_item_id", "video_ad_duration"]
-        if not hasattr(_D, "VIDEO_AD_DURATION"):
-            logger.warning("VIDEO_AD_DURATION dimension not in SDK enum — "
-                           "skipping video duration report")
-            return pd.DataFrame(columns=_cols)
+        _cols = ["line_item_id", "inventory_format_name", "video_ad_duration"]
+        _dims = ["LINE_ITEM_ID", "INVENTORY_FORMAT_NAME"]
+        if hasattr(_D, "VIDEO_AD_DURATION"):
+            _dims.append("VIDEO_AD_DURATION")
         try:
             df = self._run_report(
-                dimensions=["LINE_ITEM_ID", "VIDEO_AD_DURATION"],
+                dimensions=_dims,
                 metrics=["AD_SERVER_IMPRESSIONS"],
                 start_date=start_date,
                 end_date=end_date,
             )
         except Exception:
-            logger.exception("run_video_duration_report failed — skipping")
+            logger.exception("run_li_metadata_report failed — skipping")
             return pd.DataFrame(columns=_cols)
-        if df.empty or "line_item_id" not in df.columns \
-           or "video_ad_duration" not in df.columns:
+        if df.empty or "line_item_id" not in df.columns:
             return pd.DataFrame(columns=_cols)
         df["line_item_id"] = df["line_item_id"].astype(str)
-        df["video_ad_duration"] = pd.to_numeric(df["video_ad_duration"], errors="coerce")
-        agg = (df.groupby("line_item_id", as_index=False)["video_ad_duration"]
-               .max())
-        logger.info("GAM video duration report: %d line items with duration",
-                    int(agg["video_ad_duration"].notna().sum()))
-        return agg
+        agg_spec = {}
+        if "inventory_format_name" in df.columns:
+            agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
+        if "video_ad_duration" in df.columns:
+            df["video_ad_duration"] = pd.to_numeric(df["video_ad_duration"], errors="coerce")
+            agg_spec["video_ad_duration"] = ("video_ad_duration", "max")
+        if not agg_spec:
+            return pd.DataFrame(columns=_cols)
+        agg = df.groupby("line_item_id", as_index=False).agg(**agg_spec)
+        # Ensure both columns exist on the returned frame even if one
+        # dimension was unavailable, so downstream merges are stable.
+        for _c in ("inventory_format_name", "video_ad_duration"):
+            if _c not in agg.columns:
+                agg[_c] = None
+        logger.info(
+            "GAM LI metadata report: %d LIs, %d with format, %d with duration",
+            len(agg),
+            int(agg["inventory_format_name"].notna().sum()),
+            int(agg["video_ad_duration"].notna().sum()),
+        )
+        return agg[_cols]
 
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
@@ -875,15 +878,17 @@ class GAMClient:
         for _i, _d in enumerate(_recent_dates, start=1):
             merged = merged.merge(_per_day(_d, f"{_i}d"), on="line_item_id", how="left")
 
-        # Video duration — fetched as a separate report (incompatible
-        # dimension combo with the main delivery report's metric set).
-        # Drives the dashboard's "Video Preroll >30s" recategorization.
+        # LI metadata (inventory_format_name + video_ad_duration) — both
+        # dimensions are incompatible with the main delivery report's
+        # metric set. Fetch via a separate, smaller report and left-join
+        # by line_item_id. Powers canonical ad_format detection and the
+        # "Video Preroll >30s" recategorization.
         try:
-            _dur_df = self.run_video_duration_report(start_date, end_date)
-            if not _dur_df.empty:
-                merged = merged.merge(_dur_df, on="line_item_id", how="left")
+            _meta_df = self.run_li_metadata_report(start_date, end_date)
+            if not _meta_df.empty:
+                merged = merged.merge(_meta_df, on="line_item_id", how="left")
         except Exception:
-            logger.exception("video duration merge failed — continuing without it")
+            logger.exception("LI metadata merge failed — continuing without it")
 
         # Replace placeholders with real values from the reporting API.
         if "status_api" in merged.columns:

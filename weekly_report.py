@@ -2,13 +2,11 @@
 Weekly deal health report — emails a list of deals that look unhealthy
 across Magnite, GAM, and Pubmatic, based on the last 7 days of cached data.
 
-Three sections:
-  1. Never sent       — bid_requests = 0 (trafficking issue)
-                        (Magnite + Pubmatic + GAM auction deals)
-  2. Never accepted   — bid_requests > 0, bid_responses = 0 (buyer not bidding)
-                        (Magnite + Pubmatic + GAM auction deals)
-  3. PG not delivering — Programmatic Guaranteed deals with 0 impressions
-                        (GAM only — PG doesn't expose bid metrics)
+Two sections:
+  1. Never accepted    — bid_requests > 0, bid_responses = 0 (buyer not bidding)
+                         (Magnite + Pubmatic + GAM auction deals)
+  2. PG not delivering — Programmatic Guaranteed deals with 0 impressions
+                         (GAM only — PG doesn't expose bid metrics)
 
 Run manually:  python weekly_report.py
 Run on a cron: GitHub Actions weekly_report.yml
@@ -16,6 +14,7 @@ Run on a cron: GitHub Actions weekly_report.yml
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import date
 from pathlib import Path
@@ -40,22 +39,25 @@ def _load_dotenv() -> None:
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-AE_NAMES = {
-    "AShah": "Amit Shah",
-    "BKaretny": "Ben Karetny",
-    "BRobinson": "Brian Robinson",
-    "DDivack": "Dana Divack",
-    "DVarvaro": "Danielle Varvaro",
-    "ILee": "Ivy Lee",
-    "Ivy": "Ivy Lee",
-    "JAmalfi": "Julie Amalfi",
-    "JGentile": "Jeremy Gentile",
-    "KWebb": "House",
-    "RShore": "Rob Shore",
-    "SCarroll": "Summer Carroll",
-    "THern": "Theresa Hern",
-    "House": "House",
-}
+# Load AE map and deal-type maps from settings.json so this report uses the
+# same source of truth as dashboard.py — edits to ae_names/deal_type_aliases
+# flow through here without a separate hardcoded copy to maintain.
+_SETTINGS_PATH = Path(__file__).parent / "settings.json"
+
+def _load_settings() -> dict:
+    if not _SETTINGS_PATH.exists():
+        return {}
+    try:
+        with open(_SETTINGS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+_CFG = _load_settings()
+AE_NAMES: dict[str, str]          = _CFG.get("ae_names", {}) or {}
+DEAL_TYPE_CODES: dict[str, str]   = _CFG.get("deal_type_codes", {}) or {}
+DEAL_TYPE_ALIASES: dict[str, str] = _CFG.get("deal_type_aliases", {}) or {}
+_CODE_BY_NAME: dict[str, str]     = {v: k for k, v in DEAL_TYPE_CODES.items()}
 
 _AE_REGEX = r"Team-(?:USA|INTL)_([A-Za-z]+)"
 
@@ -65,6 +67,29 @@ _AE_REGEX = r"Team-(?:USA|INTL)_([A-Za-z]+)"
 # unbid PA merits attention given the invited-auction commitment).
 GAM_PD_MIN_REQUESTS = 100_000
 GAM_PD_MIN_DAYS = 7
+
+
+def _deal_type_from_name(deal: str) -> str:
+    """Mirrors dashboard._parse_deal: position 1 of the underscore-split name
+    is the deal-type code (e.g. `Newsweek_PA_...` → 'PA'). Returns '' if the
+    name doesn't fit the convention."""
+    if not deal:
+        return ""
+    parts = str(deal).split("_")
+    if len(parts) < 2:
+        return ""
+    code = parts[1].strip()
+    return code if code in DEAL_TYPE_CODES else ""
+
+
+def _deal_type_from_alias(raw: str) -> str:
+    """Normalize an SSP's vendor-specific deal_type string (e.g. Pubmatic's
+    'PMP' / 'PMP Preferred') to a short code via the dashboard's
+    deal_type_aliases → deal_type_codes pipeline. Returns '' if unrecognized."""
+    if not raw:
+        return ""
+    full = DEAL_TYPE_ALIASES.get(raw, raw)
+    return _CODE_BY_NAME.get(full, "")
 
 
 def _engine() -> sqlalchemy.Engine:
@@ -102,7 +127,8 @@ def load_magnite() -> pd.DataFrame:
             """,
             conn,
         )
-    df["source"] = "Magnite"
+    df["ssp"] = "Magnite"
+    df["deal_type"] = df["deal"].apply(_deal_type_from_name)
     df["seller"] = _derive_seller(df["deal"])
     return df
 
@@ -114,6 +140,7 @@ def load_pubmatic() -> pd.DataFrame:
             """
             SELECT
                 deal,
+                deal_type AS pubmatic_deal_type,
                 SUM(total_requests)         AS total_requests,
                 SUM(non_zero_bid_responses) AS total_bids,
                 COUNT(DISTINCT date) AS days_in_data,
@@ -122,14 +149,18 @@ def load_pubmatic() -> pd.DataFrame:
             WHERE deal IS NOT NULL
               AND deal != ''
               AND UPPER(TRIM(REPLACE(deal, '-', ''))) != 'NA'
-            GROUP BY deal
+            GROUP BY deal, deal_type
             HAVING SUM(non_zero_bid_responses) = 0
             """,
             conn,
         )
-    df["source"] = "Pubmatic"
-    # Pubmatic deal names don't carry an AE code — all attributed to House.
-    df["seller"] = "House"
+    df["ssp"] = "Pubmatic"
+    df["deal_type"] = df["pubmatic_deal_type"].apply(_deal_type_from_alias)
+    df = df.drop(columns=["pubmatic_deal_type"])
+    # Pubmatic deal names don't follow the Newsweek_<TYPE>_..._Team-USA_<AE>
+    # convention, so the regex extract will return Unknown for most rows —
+    # matches dashboard.py behavior.
+    df["seller"] = _derive_seller(df["deal"])
     df["total_requests"] = df["total_requests"].fillna(0).astype("int64")
     df["total_bids"] = df["total_bids"].fillna(0).astype("int64")
     return df
@@ -185,44 +216,48 @@ def load_gam() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
             conn,
         )
 
+    bids["ssp"] = "GAM"
     bids["seller"] = _derive_seller(bids["deal"])
+    bids["deal_type"] = bids["deal"].apply(_deal_type_from_name)
     for col in ("total_requests", "total_bids"):
         bids[col] = bids[col].fillna(0).astype("int64")
 
-    is_pa = bids["deal"].str.startswith("Newsweek_PA_", na=False)
-    is_pg_prefix = bids["deal"].str.startswith("Newsweek_PG_", na=False)
+    is_pa = bids["deal_type"] == "PA"
+    is_pg = bids["deal_type"] == "PG"
+    # Legacy names that don't fit the Newsweek_<TYPE>_ convention get a blank
+    # deal_type but are still treated as PD for thresholding (they behave like
+    # preferred deals).
 
     pa_unhealthy = bids[is_pa].copy()
-    pa_unhealthy["source"] = "GAM-PA"
 
-    pd_candidates = bids[~is_pa & ~is_pg_prefix].copy()
+    pd_candidates = bids[~is_pa & ~is_pg].copy()
     pd_unhealthy = pd_candidates[
         (pd_candidates["days_in_data"] >= GAM_PD_MIN_DAYS)
         & (pd_candidates["total_requests"] >= GAM_PD_MIN_REQUESTS)
     ].copy()
-    pd_unhealthy["source"] = "GAM-PD"
 
     pg["seller"] = _derive_seller(pg["deal"])
 
     return pa_unhealthy, pd_unhealthy, pg
 
 
-def load_unhealthy() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Returns (never_sent, never_accepted, gam_pg_undelivered)."""
+def load_unhealthy() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Returns (never_accepted, gam_pg_undelivered)."""
     magnite = load_magnite()
     pubmatic = load_pubmatic()
     gam_pa, gam_pd, gam_pg = load_gam()
 
-    common_cols = ["source", "deal", "seller", "total_requests", "total_bids", "days_in_data", "first_seen"]
+    common_cols = ["ssp", "deal_type", "deal", "seller", "total_requests", "total_bids", "days_in_data", "first_seen"]
     combined = pd.concat(
         [magnite[common_cols], pubmatic[common_cols], gam_pa[common_cols], gam_pd[common_cols]],
         ignore_index=True,
     )
 
-    never_sent     = combined[combined["total_requests"] == 0].copy().sort_values(["source", "deal"])
-    never_accepted = combined[combined["total_requests"]  > 0].copy().sort_values(["source", "total_requests"], ascending=[True, False])
+    never_accepted = combined[combined["total_requests"] > 0].copy().sort_values(
+        ["ssp", "deal_type", "total_requests"], ascending=[True, True, False]
+    )
 
-    return never_sent, never_accepted, gam_pg
+    return never_accepted, gam_pg
 
 
 # ── email ─────────────────────────────────────────────────────────────────────
@@ -254,7 +289,37 @@ def _section(title: str, color: str, blurb: str, df: pd.DataFrame, cols: list[st
     <br>"""
 
 
-def build_email(never_sent: pd.DataFrame, never_accepted: pd.DataFrame, gam_pg: pd.DataFrame) -> str:
+def _section_by_seller(title: str, color: str, blurb: str, df: pd.DataFrame, cols: list[str], headers: list[str]) -> str:
+    """Section split into one sub-table per seller, sorted by deal count desc.
+    Unknown sellers come last regardless of count."""
+    if df.empty:
+        return f"<h3 style='color:{color}'>{title}</h3><p>None — all clear.</p>"
+
+    out = (
+        f"<h3 style='color:{color}'>{title} ({len(df)} deals)</h3>"
+        f"<p style='font-size:12px;color:#666;margin:-6px 0 12px'>{blurb}</p>"
+    )
+
+    sellers = df["seller"].fillna("Unknown").replace("", "Unknown").unique().tolist()
+    known   = sorted([s for s in sellers if s != "Unknown"],
+                     key=lambda s: -len(df[df["seller"] == s]))
+    ordered = known + (["Unknown"] if "Unknown" in sellers else [])
+
+    for seller in ordered:
+        if seller == "Unknown":
+            grp = df[df["seller"].fillna("Unknown").replace("", "Unknown") == "Unknown"]
+        else:
+            grp = df[df["seller"] == seller]
+        grp = grp.sort_values(["ssp", "deal_type", "total_requests"], ascending=[True, True, False])
+        out += (
+            f"<h4 style='color:#555;margin:18px 0 6px;font-size:14px'>"
+            f"{seller} <span style='color:#888;font-weight:normal'>— {len(grp)} deals</span></h4>"
+            f"{_table_html(grp, cols, headers)}<br>"
+        )
+    return out
+
+
+def build_email(never_accepted: pd.DataFrame, gam_pg: pd.DataFrame) -> str:
     today = date.today().strftime("%B %d, %Y")
 
     body = f"""
@@ -262,29 +327,21 @@ def build_email(never_sent: pd.DataFrame, never_accepted: pd.DataFrame, gam_pg: 
       <h2>Weekly Deal Health Report — {today}</h2>
       <p>Unhealthy deals across Magnite, GAM, and Pubmatic — based on the <strong>last 7 days</strong> of cached data.</p>
 
-      {_section(
-          "🚫 Never sent to buyer — check trafficking",
-          "#c0392b",
-          "Auction deals with zero bid requests over the last 7 days. Usually a trafficking / targeting issue on our side.",
-          never_sent,
-          ["source", "deal", "seller", "days_in_data", "first_seen"],
-          ["Source", "Deal", "Seller", "Days in data", "First seen"],
-      )}
-
-      {_section(
+      {_section_by_seller(
           "⚠️ Sent but never accepted by buyer",
           "#e67e22",
           (
               "Auction deals receiving bid requests but the buyer hasn't bid. "
               "Likely a buyer-side issue (deal not activated, targeting mismatch). "
-              f"GAM-PD threshold: only flagged if days_in_data ≥ {GAM_PD_MIN_DAYS} "
+              "Grouped by seller, then by SSP within. "
+              f"GAM PD threshold: only flagged if days_in_data ≥ {GAM_PD_MIN_DAYS} "
               f"and total bid requests ≥ {GAM_PD_MIN_REQUESTS:,} "
               "(PDs have first-look optionality so low-volume zero-bid deals are noise). "
-              "GAM-PA has no threshold."
+              "GAM PA has no threshold."
           ),
           never_accepted,
-          ["source", "deal", "seller", "total_requests", "days_in_data", "first_seen"],
-          ["Source", "Deal", "Seller", "Total bid requests", "Days in data", "First seen"],
+          ["ssp", "deal_type", "deal", "total_requests", "days_in_data", "first_seen"],
+          ["SSP", "Deal Type", "Deal", "Total bid requests", "Days in data", "First seen"],
       )}
 
       {_section(
@@ -324,13 +381,12 @@ def send_email(html_body: str) -> None:
 
 def main() -> None:
     _load_dotenv()
-    never_sent, never_accepted, gam_pg = load_unhealthy()
+    never_accepted, gam_pg = load_unhealthy()
     print(
-        f"Never sent: {len(never_sent)} | "
         f"Never accepted: {len(never_accepted)} | "
         f"GAM PG undelivered: {len(gam_pg)}"
     )
-    html = build_email(never_sent, never_accepted, gam_pg)
+    html = build_email(never_accepted, gam_pg)
     send_email(html)
 
 
