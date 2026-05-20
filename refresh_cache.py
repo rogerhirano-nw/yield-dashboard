@@ -287,115 +287,6 @@ def refresh_gam_lica() -> int:
     return len(df)
 
 
-def refresh_gam_vast_durations() -> int:
-    """For VAST creatives in gam_creatives with no GAM-cached duration,
-    fetch the VAST XML at vast_url and parse <Duration>. Updates
-    gam_creatives.duration_seconds in place.
-
-    Scoped to creatives associated with currently active line items
-    (via gam_lica ↔ gam_campaigns) so we don't fetch thousands of stale
-    creatives we'll never render. Run sequentially with a 5s timeout per
-    URL — typical run is a few hundred creatives in 2-3 minutes.
-    """
-    logger.info("Refreshing VAST durations for creatives missing duration")
-    try:
-        from vast_client import parse_vast_duration
-    except Exception:
-        logger.exception("vast_client import failed — skipping VAST duration refresh")
-        return 0
-
-    eng = _engine()
-    try:
-        # Scope: only creatives serving on live video line items in
-        # Direct or PG orders. Cuts the fetch pool from ~12K creatives
-        # to a few hundred — we don't burn HTTP on creatives attached
-        # to display/native lines or to paused/completed campaigns.
-        # text() wrap avoids the pandas-3 + SQLAlchemy-2 immutabledict
-        # TypeError on raw-string read_sql.
-        # vast_url IS NOT NULL is itself the "this creative is video" signal
-        # — every VAST tag is video. Dropped the
-        # inventory_format_name LIKE '%video%' filter because it excluded
-        # Multi-format lines (Display + Video bundles like Patek) where
-        # the line item carries video creatives but the LI's declared
-        # format reads "Multi" rather than "Video".
-        _vast_query = text(
-            """
-            SELECT DISTINCT c.creative_id, c.vast_url
-            FROM gam_creatives c
-            JOIN gam_lica l ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
-            JOIN gam_campaigns g ON CAST(g.line_item_id AS TEXT) = CAST(l.line_item_id AS TEXT)
-            WHERE c.duration_seconds IS NULL
-              AND c.vast_url IS NOT NULL
-              AND c.vast_url <> ''
-              AND g.status = 'Delivering'
-              AND (
-                   g.order_name LIKE 'Newsweek_Direct%'
-                OR g.order_name LIKE 'Newsweek_PG%'
-              )
-            """
-        )
-        with eng.connect() as conn:
-            df = pd.read_sql(_vast_query, conn)
-    except Exception:
-        logger.exception("VAST-duration target query failed — skipping")
-        return 0
-    if df.empty:
-        logger.info(
-            "No VAST URLs to parse — no Delivering Direct/PG video lines "
-            "have video creatives missing duration"
-        )
-        return 0
-
-    logger.info("Parsing %d VAST URLs for active-LI creatives", len(df))
-    import requests
-    session = requests.Session()
-    updates: list[tuple[float, str]] = []
-    n_ok, n_fail = 0, 0
-    _failure_samples: list[str] = []
-    for _, row in df.iterrows():
-        cid = row["creative_id"]
-        url = row["vast_url"]
-        dur = parse_vast_duration(url, session=session)
-        if dur is not None and dur > 0:
-            updates.append((float(dur), str(cid)))
-            n_ok += 1
-        else:
-            n_fail += 1
-            if len(_failure_samples) < 5:
-                # Trim each sample to 180 chars so a single mega-URL doesn't
-                # blow up the log line.
-                _failure_samples.append(str(url)[:180])
-    session.close()
-    logger.info("VAST parse: %d resolved, %d failed/empty", n_ok, n_fail)
-    if _failure_samples:
-        logger.info("VAST failure samples (first 5):")
-        for _s in _failure_samples:
-            logger.info("  -> %s", _s)
-
-    if not updates:
-        return 0
-    # Bulk update via temporary table — single transaction, much faster
-    # than N UPDATE statements over the network.
-    try:
-        with eng.begin() as conn:
-            tmp = pd.DataFrame(updates, columns=["duration_seconds", "creative_id"])
-            tmp.to_sql("_tmp_vast_durations", conn, if_exists="replace", index=False)
-            conn.execute(text(
-                """
-                UPDATE gam_creatives AS c
-                SET duration_seconds = t.duration_seconds
-                FROM _tmp_vast_durations AS t
-                WHERE CAST(c.creative_id AS TEXT) = CAST(t.creative_id AS TEXT)
-                """
-            ))
-            conn.execute(text("DROP TABLE IF EXISTS _tmp_vast_durations"))
-    except Exception:
-        logger.exception("VAST duration UPDATE failed")
-        return 0
-    logger.info("Updated %d gam_creatives rows with parsed VAST duration", len(updates))
-    return len(updates)
-
-
 def refresh_magnite_deal_metadata() -> int:
     """Pull a 180-day Magnite deal-keyed report to determine each deal's
     earliest appearance. Used by weekly_report.py as an age proxy since
@@ -591,11 +482,6 @@ def main() -> None:
         total += refresh_gam_lica()
     except Exception:
         logger.exception("Refresh failed for gam_lica — continuing")
-
-    try:
-        total += refresh_gam_vast_durations()
-    except Exception:
-        logger.exception("Refresh failed for gam_vast_durations — continuing")
 
     try:
         total += refresh_pubmatic()
