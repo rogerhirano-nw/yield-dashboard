@@ -306,6 +306,10 @@ def refresh_gam_vast_durations() -> int:
     eng = _engine()
     try:
         with eng.connect() as conn:
+            # Scope: only creatives serving on live video line items in
+            # Direct or PG orders. Cuts the fetch pool from ~12K creatives
+            # to a few hundred — we don't burn HTTP on creatives attached
+            # to display/native lines or to paused/completed campaigns.
             df = pd.read_sql(
                 """
                 SELECT DISTINCT c.creative_id, c.vast_url
@@ -315,6 +319,13 @@ def refresh_gam_vast_durations() -> int:
                 WHERE c.duration_seconds IS NULL
                   AND c.vast_url IS NOT NULL
                   AND c.vast_url <> ''
+                  AND g.status = 'Delivering'
+                  AND (
+                       g.order_name LIKE 'Newsweek_Direct%'
+                    OR g.order_name LIKE 'Newsweek_PG%'
+                  )
+                  AND g.inventory_format_name IS NOT NULL
+                  AND LOWER(g.inventory_format_name) LIKE '%video%'
                 """,
                 conn,
             )
@@ -322,7 +333,10 @@ def refresh_gam_vast_durations() -> int:
         logger.exception("VAST-duration target query failed — skipping")
         return 0
     if df.empty:
-        logger.info("No VAST URLs to parse (all active creatives already have duration)")
+        logger.info(
+            "No VAST URLs to parse — no Delivering Direct/PG video lines "
+            "have video creatives missing duration"
+        )
         return 0
 
     logger.info("Parsing %d VAST URLs for active-LI creatives", len(df))
