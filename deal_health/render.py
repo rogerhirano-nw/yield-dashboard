@@ -406,7 +406,16 @@ def _section_cta(p: Payload) -> str:
 
 # ── section: methodology callout ───────────────────────────────────────────
 
-def _section_methodology() -> str:
+def _section_methodology(p: Payload) -> str:
+    defect_count = sum(1 for d in p.deals if d.has_naming_defect)
+    defect_note = (
+        f' <strong style="color:{TEXT_DEFAULT};">{defect_count} deal'
+        f'{"" if defect_count == 1 else "s"}</strong> have a deal-name SSP slot that '
+        f'looks wrong (DSP or &ldquo;SSP&rdquo; placeholder in slot 3) &mdash; '
+        f'they\'re still grouped under their real SSP above, but the names should '
+        f'be flagged to AdOps for renaming.'
+        if defect_count else ""
+    )
     body = (
         f'<strong style="color:{TEXT_DEFAULT};">Methodology.</strong> '
         f'Auction deals (PA / PD) receiving bid requests but no bids over a '
@@ -414,9 +423,10 @@ def _section_methodology() -> str:
         f'flag deals buyers haven\'t had time to wire up). GAM PD threshold: '
         f'&ge;7 days in data and &ge;100K bid requests (PDs have first-look '
         f'optionality so low-volume zero-bid deals are noise). GAM PA and Magnite '
-        f'have no volume threshold. Deals with malformed naming (DSP or '
-        f'&ldquo;SSP&rdquo; placeholder in the SSP field) are grouped under '
-        f'&ldquo;Unknown SSP&rdquo; &mdash; flag to AdOps for renaming.'
+        f'have no volume threshold. SSP attribution comes from the data source '
+        f'(Magnite / GAM / Pubmatic), not the deal name &mdash; Pubmatic deals with '
+        f'legacy naming still appear under Pubmatic.'
+        f'{defect_note}'
     )
     callout = (
         f'<div style="font-size:11px; color:{TEXT_MUTED}; line-height:1.6;'
@@ -515,10 +525,10 @@ def _seller_section(seller: str, deals: list[UnhealthyDeal]) -> str:
         )
     ))
 
-    # Group by SSP, descending by SSP-bid-request sum
+    # Group by source SSP (data source, ground truth), descending by sum
     by_ssp: dict[str, list[UnhealthyDeal]] = {}
     for d in deals:
-        by_ssp.setdefault(d.parsed.ssp, []).append(d)
+        by_ssp.setdefault(d.source_ssp, []).append(d)
 
     for ssp_name in sorted(by_ssp, key=lambda s: -sum(d.bid_requests for d in by_ssp[s])):
         ssp_deals = by_ssp[ssp_name]
@@ -613,7 +623,7 @@ def render_email(payload: Payload) -> str:
         + _section_summary(payload)
         + _section_breakdowns(payload)
         + _section_cta(payload)
-        + _section_methodology()
+        + _section_methodology(payload)
         + _section_sellers(payload)
         + _section_footer(payload),
         bg=CONTENT_BG,

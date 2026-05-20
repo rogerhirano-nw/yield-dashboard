@@ -40,12 +40,13 @@ def build_payload(
     sellers = {d.parsed.seller for d in _filter_excluded_sellers(deals)}
     seller_count = len(sellers)
 
-    # By-SSP rollup, descending by bid_requests.
+    # By-SSP rollup, descending by bid_requests. Uses source_ssp (the data
+    # source, which we know definitively), not parsed.ssp (which can lie).
     ssp_counts = Counter()
     ssp_requests = Counter()
     for d in deals:
-        ssp_counts[d.parsed.ssp] += 1
-        ssp_requests[d.parsed.ssp] += d.bid_requests
+        ssp_counts[d.source_ssp] += 1
+        ssp_requests[d.source_ssp] += d.bid_requests
     by_ssp = tuple(
         SSPRollup(
             ssp=ssp,

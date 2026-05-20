@@ -48,9 +48,11 @@ def _load_magnite(conn) -> pd.DataFrame:
           AND UPPER(TRIM(REPLACE(REPLACE(deal, '-', ''), '/', ''))) != 'NA'
         GROUP BY deal
         HAVING SUM(bid_responses) = 0
+           AND SUM(bid_requests)  > 0
         """,
         conn,
     )
+    df["source_ssp"] = "Magnite"
     return _join_age(conn, df, "magnite_deal_metadata", "deal", "first_seen")
 
 
@@ -69,9 +71,11 @@ def _load_pubmatic(conn) -> pd.DataFrame:
           AND UPPER(TRIM(REPLACE(REPLACE(deal, '-', ''), '/', ''))) != 'NA'
         GROUP BY deal
         HAVING SUM(non_zero_bid_responses) = 0
+           AND SUM(total_requests)         > 0
         """,
         conn,
     )
+    df["source_ssp"] = "Pubmatic"
     return _join_age(conn, df, "pubmatic_deal_metadata", "deal", "first_seen")
 
 
@@ -105,6 +109,7 @@ def _load_gam(conn) -> pd.DataFrame:
     if bids.empty:
         return bids
 
+    bids["source_ssp"] = "AdX"
     is_pa = bids["deal"].str.startswith("Newsweek_PA_", na=False)
     is_pg = bids["deal"].str.startswith("Newsweek_PG_", na=False)
 
@@ -194,6 +199,7 @@ def load_deals(
     for _, r in df.iterrows():
         deals.append(UnhealthyDeal(
             parsed=parse_deal(r["deal"]),
+            source_ssp=str(r["source_ssp"]),
             bid_requests=int(r["bid_requests"]),
             days_in_data=int(r["days_in_data"]),
             first_seen=str(r["first_seen"]),

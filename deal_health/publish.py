@@ -32,7 +32,7 @@ def _row_for(d: UnhealthyDeal) -> dict[str, str]:
     p = d.parsed
     return {
         "Seller":         p.seller or "Unknown",
-        "SSP":            p.ssp,
+        "SSP":            d.source_ssp,
         "DSP":            p.dsp or "",
         "Agency":         p.agency or p.agency_holdco or "",
         "Advertiser":     p.advertiser or "",
