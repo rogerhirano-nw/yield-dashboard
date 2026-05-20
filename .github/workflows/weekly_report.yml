@@ -2,18 +2,26 @@ name: Weekly deal health report
 
 on:
   schedule:
-    - cron: '0 13 * * 1'   # every Monday 9 AM ET (13:00 UTC)
-  workflow_dispatch:        # manual trigger for testing
+    - cron: '0 12 * * 1'   # every Monday 8 AM ET (12:00 UTC)
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: write         # required for the in-workflow git push of the CSV
+
 jobs:
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          # Need a real ref so the in-workflow `git push` works.
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5.6.0
         with:
@@ -21,9 +29,58 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python weekly_report.py
+      # 1. Generate HTML email + redacted CSV, commit + push the CSV.
+      - name: Generate report and publish CSV
+        id: gen
+        run: |
+          python -m deal_health \
+            --output-dir reports \
+            --report-date "$(date -u +%F)"
         env:
-          DATABASE_URL:          ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:     ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID:    ${{ secrets.AGENTMAIL_INBOX_ID }}
-          REPORT_TO_EMAIL:       ${{ secrets.REPORT_TO_EMAIL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GH_ORG_REPO:  ${{ github.repository }}
+          GH_BRANCH:    ${{ github.ref_name }}
+          REPORTS_PATH: reports
+          PUBLIC_SAFE:  "true"
+
+      # 2. Send the HTML email via SMTP. Secrets come from repo settings.
+      #    (AgentMail path is kept as a fallback below — set USE_SMTP=false
+      #    in repo vars to switch.)
+      - name: Send email (SMTP)
+        if: vars.USE_SMTP != 'false'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: 465
+          secure: true
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "Weekly Deal Health — ${{ steps.gen.outputs.report_date || github.run_id }}"
+          from: ${{ secrets.MAIL_FROM }}
+          to: ${{ secrets.MAIL_TO }}
+          html_body: file://reports/weekly_deal_health_$(date -u +%F).html
+          convert_markdown: false
+
+      # 3. AgentMail fallback (legacy path). Activates when USE_SMTP=false.
+      - name: Send email (AgentMail fallback)
+        if: vars.USE_SMTP == 'false'
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from agentmail import AgentMail
+          from datetime import date
+          html = Path(f"reports/weekly_deal_health_{date.today().isoformat()}.html").read_text()
+          client = AgentMail(api_key=os.environ["AGENTMAIL_API_KEY"])
+          client.inboxes.messages.send(
+              os.environ["AGENTMAIL_INBOX_ID"],
+              to=os.environ["REPORT_TO_EMAIL"],
+              subject=f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}",
+              html=html,
+          )
+          print("AgentMail sent")
+          PY
+        env:
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REPORT_TO_EMAIL:    ${{ secrets.REPORT_TO_EMAIL }}

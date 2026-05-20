@@ -9,3 +9,5 @@ googleads
 google-auth
 agentmail
 playwright
+structlog
+pytest
