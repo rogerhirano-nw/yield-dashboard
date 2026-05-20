@@ -159,6 +159,16 @@ _DEFAULT_SETTINGS: dict = {
         "Interstitial":       {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
     },
     "pacing_target_pct": 100.0,
+    # Manual long-preroll override — list of rules that force a line into
+    # the "Video Preroll >30s" benchmark when creative duration can't be
+    # auto-detected from GAM (Newsweek's 3rd-party video tags via Innovid /
+    # DCM hide the duration behind JS, so the SOAP duration + Reports
+    # VIDEO_AD_DURATION + VAST parse all return null for those creatives).
+    # Each rule: {match_field, match_value}.
+    #   match_field: "order_name" | "line_item_name" | "line_item_id"
+    #   match_value: substring (case-insensitive) for the *_name fields,
+    #                exact match for line_item_id
+    "long_preroll_lines": [],
     "gam_network_id": "",  # set in Configure → Direct campaigns → GAM integration
     "airtable_base_id": "appX7xp1veDq9ndUe",
     "airtable_form_id": "pagN88p2kwQBcjqZf",
@@ -1783,6 +1793,37 @@ if st.session_state.active_view == "campaigns":
                     return "Video Preroll >30s"
                 return fmt
             gam_df["ad_format"] = gam_df.apply(_bump_video_format, axis=1)
+
+        # Manual long-preroll override — applied AFTER the duration-based
+        # auto-detection so user-curated rules win. Useful for Newsweek's
+        # 3rd-party tag setups (Innovid / DCM JS loaders) where neither
+        # the GAM Creative API nor the VAST URL exposes duration.
+        _lp_rules = _cfg.get("long_preroll_lines") or []
+        if _lp_rules:
+            def _matches_long_preroll(row):
+                for rule in _lp_rules:
+                    if not isinstance(rule, dict):
+                        continue
+                    field = (rule.get("match_field") or "").strip()
+                    val   = (rule.get("match_value") or "").strip()
+                    if not field or not val:
+                        continue
+                    if field == "line_item_id":
+                        if str(row.get("line_item_id") or "") == val:
+                            return True
+                    elif field == "order_name":
+                        cell = str(row.get("order_name") or "").lower()
+                        needle = val.lower().rstrip("*").rstrip("%")
+                        if needle and needle in cell:
+                            return True
+                    elif field == "line_item_name":
+                        cell = str(row.get("line_item_name") or "").lower()
+                        if val.lower() in cell:
+                            return True
+                return False
+            _lp_mask = gam_df.apply(_matches_long_preroll, axis=1)
+            if _lp_mask.any():
+                gam_df.loc[_lp_mask, "ad_format"] = "Video Preroll >30s"
 
         _incl_patterns = _cfg.get("included_order_patterns", ["Newsweek_Direct%"])
         _prefixes = [p.rstrip("%") for p in _incl_patterns if p]
@@ -5230,7 +5271,43 @@ if st.session_state.active_view == "configure":
                     unsafe_allow_html=True,
                 )
 
-        # ── 1e: AirTable ticket integration ──
+        # ── 1e: Manual long-preroll override ──
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Long preroll override '
+            f'<span class="cfg-card-meta">· manual flag for &gt;30s preroll lines</span></div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Force matching lines into the '
+            f'<span style="color:rgba(250,250,250,0.85)">Video Preroll &gt;30s</span> '
+            f'benchmark. Use this when Newsweek\'s 3rd-party video tags '
+            f'(Innovid / DCM) hide creative duration behind JS so neither '
+            f'the GAM API nor VAST parse can detect it. '
+            f'<i>Match field</i>: order_name (substring), line_item_name (substring), '
+            f'or line_item_id (exact).</div>',
+            unsafe_allow_html=True,
+        )
+        _lp_rows = list(_s.get("long_preroll_lines") or [])
+        _lp_edit = st.data_editor(
+            pd.DataFrame(_lp_rows) if _lp_rows
+            else pd.DataFrame(columns=["match_field", "match_value"]),
+            use_container_width=True, hide_index=True, num_rows="dynamic",
+            key="settings_long_preroll_lines",
+            column_config={
+                "match_field": st.column_config.SelectboxColumn(
+                    "Match field",
+                    options=["order_name", "line_item_name", "line_item_id"],
+                    required=True,
+                    help="What to match against in the line item row.",
+                ),
+                "match_value": st.column_config.TextColumn(
+                    "Match value",
+                    required=True,
+                    help="Substring (case-insensitive) for order_name / line_item_name. "
+                         "Exact match for line_item_id.",
+                ),
+            },
+        )
+
+        # ── 1f: AirTable ticket integration ──
         st.markdown(
             f'<div class="cfg-card-title" style="margin-top:14px">AirTable integration</div>'
             f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
@@ -5821,6 +5898,13 @@ if st.session_state.active_view == "configure":
                 "status_colors":       _new_status_colors,
                 "seller_colors":       _new_seller_colors,
                 "gam_network_id":      (_gam_network_id_edit or "").strip(),
+                "long_preroll_lines": [
+                    {"match_field": str(r.get("match_field") or "").strip(),
+                     "match_value": str(r.get("match_value") or "").strip()}
+                    for _, r in _lp_edit.iterrows()
+                    if str(r.get("match_field") or "").strip()
+                    and str(r.get("match_value") or "").strip()
+                ],
                 "airtable_base_id":    (_at_base_edit or "").strip(),
                 "airtable_form_id":    (_at_form_edit or "").strip(),
                 "airtable_reporter":   (_at_reporter_edit or "").strip(),

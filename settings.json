@@ -93,6 +93,7 @@
     "Multi":              { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
     "Interstitial":       { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
   },
+  "long_preroll_lines": [],
   "gam_network_id": "",
   "airtable_base_id": "appX7xp1veDq9ndUe",
   "airtable_form_id": "pagN88p2kwQBcjqZf",
