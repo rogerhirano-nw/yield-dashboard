@@ -5,6 +5,16 @@ on:
     # Wednesday 9 AM ET (= 13:00 UTC in EDT; drifts to 8 AM in EST winter).
     - cron: '0 13 * * 3'
   workflow_dispatch:
+    inputs:
+      recipients_override:
+        description: "Comma-separated recipients (blank = use the standard list)"
+        required: false
+        default: ""
+      attach_csv:
+        description: "Attach the full (unredacted) CSV to the email"
+        required: false
+        type: boolean
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -98,42 +108,76 @@ jobs:
       # 3. Send via AgentMail. Single send with all recipients on To:.
       #    Runs as long as the HTML rendered, even if the CSV publish failed
       #    (the HTML body is the report; CSV is a convenience download).
+      # For manual one-off sends with the full CSV attached, regenerate
+      # WITHOUT redaction so the attached file carries Floor + Bid Requests +
+      # Raw Deal Name (internal-only). The published reports-branch CSV stays
+      # redacted; only the attachment is full.
+      - name: Regenerate unredacted CSV (manual-only)
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_csv == true
+        run: |
+          python -m deal_health \
+            --output-dir reports \
+            --report-date "$(date -u +%F)" \
+            --no-publish \
+            --no-redact
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GH_ORG_REPO:  ${{ github.repository }}
+          GH_BRANCH:    reports
+          REPORTS_PATH: reports
+
       - name: Send email (AgentMail)
         if: always() && hashFiles('reports/weekly_deal_health_*.html') != ''
         run: |
           python - <<'PY'
-          import os
+          import base64, os
           from datetime import date
           from pathlib import Path
           from agentmail import AgentMail
+          from agentmail.attachments.types.send_attachment import SendAttachment
 
           report_date = date.today().isoformat()
           html_path = Path(f"reports/weekly_deal_health_{report_date}.html")
+          csv_path  = Path(f"reports/weekly_deal_health_{report_date}.csv")
           if not html_path.exists():
-              print(f"No HTML generated at {html_path} — nothing to send. Skipping.")
+              print(f"No HTML generated at {html_path} — skipping.")
               raise SystemExit(0)
           html = html_path.read_text(encoding="utf-8")
 
-          recipients = [r.strip() for r in os.environ["REPORT_RECIPIENTS"].split(",") if r.strip()]
+          override = os.environ.get("RECIPIENTS_OVERRIDE", "").strip()
+          src = override or os.environ["REPORT_RECIPIENTS"]
+          recipients = [r.strip() for r in src.split(",") if r.strip()]
+
+          attach = os.environ.get("ATTACH_CSV", "false").lower() == "true"
+          attachments = None
+          if attach and csv_path.exists():
+              attachments = [SendAttachment(
+                  filename=csv_path.name,
+                  content_type="text/csv",
+                  content_disposition="attachment",
+                  content=base64.b64encode(csv_path.read_bytes()).decode("ascii"),
+              )]
+              print(f"attaching {csv_path.name} ({csv_path.stat().st_size:,} bytes)")
 
           client = AgentMail(api_key=os.environ["AGENTMAIL_API_KEY"])
           inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
-          subject = f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
+          subject_prefix = "[manual] " if override else ""
+          subject = f"{subject_prefix}Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
 
-          # Single send with the full recipient list — all addresses on To:
-          # so recipients see each other and replies thread across the group.
-          # AgentMail accepts `to: list[str]` (see MessagesClient.send signature).
           client.inboxes.messages.send(
               inbox_id,
               to=recipients,
               subject=subject,
               html=html,
+              attachments=attachments,
           )
-          print(f"sent — to: {', '.join(recipients)} ({len(recipients)} recipients in one message)")
+          print(f"sent — to: {', '.join(recipients)} ({len(recipients)} recipients)")
           PY
         env:
-          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          AGENTMAIL_API_KEY:   ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:  ${{ secrets.AGENTMAIL_INBOX_ID }}
+          RECIPIENTS_OVERRIDE: ${{ inputs.recipients_override }}
+          ATTACH_CSV:          ${{ inputs.attach_csv }}
           REPORT_RECIPIENTS: >-
             am@newsweek.com,
             adops@newsweek.com,
