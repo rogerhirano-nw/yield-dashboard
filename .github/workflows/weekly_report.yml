@@ -86,6 +86,7 @@ jobs:
           REPORT_RECIPIENTS: >-
             am@newsweek.com,
             adops@newsweek.com,
+            revops@newsweek.com,
             r.shore@newsweek.com,
             b.karetny@newsweek.com,
             d.varvaro@newsweek.com
