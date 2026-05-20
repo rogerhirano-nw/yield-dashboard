@@ -33,6 +33,33 @@ def _fmt_last_refresh(ts: str) -> str:
     except Exception:
         return str(ts)
 
+
+def _fmt_header_freshness(ts) -> str | None:
+    """Compact data-freshness label for the header timestamp.
+    'today'   → '8:13 AM EDT'
+    'yesterday' → 'Yesterday 11:28 PM EDT'
+    older     → 'May 18 · 11:28 PM EDT'
+    Returns None for unparseable input.
+    """
+    if ts is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_et = dt.astimezone(_ET)
+        tz_label = "EDT" if dt_et.dst().seconds else "EST"
+        time_str = dt_et.strftime(f"%-I:%M %p {tz_label}")
+        today_et = datetime.now(_ET).date()
+        delta_days = (today_et - dt_et.date()).days
+        if delta_days <= 0:
+            return time_str
+        if delta_days == 1:
+            return f"Yesterday {time_str}"
+        return dt_et.strftime("%b %-d · ") + time_str
+    except Exception:
+        return None
+
 import altair as alt
 import pandas as pd
 import sqlalchemy
@@ -1147,16 +1174,38 @@ with _hdr_left:
 
 _header_right_slot = _hdr_right.empty()
 
+@st.cache_data(ttl=300)
+def _last_data_refresh_iso() -> str | None:
+    """Latest _pulled_at across gam_campaigns — the canonical 'when did the
+    data last update' signal for the header timestamp. Cached 5 min so we
+    don't requery on every script rerun."""
+    try:
+        with _engine().connect() as _conn:
+            row = _conn.execute(sqlalchemy.text(
+                "SELECT MAX(_pulled_at) FROM gam_campaigns"
+            )).fetchone()
+        return str(row[0]) if row and row[0] else None
+    except Exception:
+        return None
+
+
 def _render_header_right(ts_html=None):
     """Fill the header right-side cluster: timestamp + inline gear icon.
-    Each view can call this with a richer timestamp (e.g. with line-item count)."""
+    Default timestamp sources from gam_campaigns._pulled_at (when the data
+    last refreshed) rather than wall-clock time. View-specific overrides
+    can pass a richer timestamp (e.g. with line-item count)."""
     if ts_html is None:
-        try:
-            from zoneinfo import ZoneInfo as _ZI
-            _now_edt = datetime.now(_ZI("America/New_York"))
-            ts_html = f'🕐 {_now_edt.strftime("%-I:%M %p EDT")}'
-        except Exception:
-            ts_html = f'🕐 {datetime.now().strftime("%H:%M")}'
+        freshness = _fmt_header_freshness(_last_data_refresh_iso())
+        if freshness:
+            ts_html = f'🕐 {freshness}'
+        else:
+            # No cached data yet (pre-first-refresh) — fall back to wall clock.
+            try:
+                from zoneinfo import ZoneInfo as _ZI
+                _now_edt = datetime.now(_ZI("America/New_York"))
+                ts_html = f'🕐 {_now_edt.strftime("%-I:%M %p EDT")}'
+            except Exception:
+                ts_html = f'🕐 {datetime.now().strftime("%H:%M")}'
     _header_right_slot.markdown(
         '<div class="nw-header-right">'
         f'<div class="nw-timestamp">{ts_html}</div>'
@@ -1897,15 +1946,19 @@ if st.session_state.active_view == "campaigns":
         if view_gam.empty:
             st.info("No campaigns found for the selected seller.")
         else:
-            # ── Now that view_gam is filtered, populate the header timestamp.
-            try:
-                from zoneinfo import ZoneInfo as _ZI
-                _now_edt = datetime.now(_ZI("America/New_York"))
-                _ts_str = _now_edt.strftime("%-I:%M %p EDT")
-            except Exception:
-                _ts_str = datetime.now().strftime("%H:%M")
+            # Header timestamp reflects when gam_campaigns was last refreshed
+            # (gam_df["_pulled_at"]), NOT the current wall-clock time. Falls
+            # back to the cached refresh stamp when the column isn't present.
+            _ts_iso = (gam_df["_pulled_at"].max()
+                       if "_pulled_at" in gam_df.columns else None)
+            _ts_str = _fmt_header_freshness(_ts_iso) or _fmt_header_freshness(
+                _last_data_refresh_iso()
+            )
             _n_lines = len(view_gam)
-            _render_header_right(f"🕐 {_ts_str} · {_n_lines:,} line items")
+            if _ts_str:
+                _render_header_right(f"🕐 {_ts_str} · {_n_lines:,} line items")
+            else:
+                _render_header_right(f"🕐 {_n_lines:,} line items")
 
             # ── Summary numbers (used by both banners and KPI strip).
             total_impr = view_gam["lifetime_impressions_delivered"].sum() if "lifetime_impressions_delivered" in view_gam else 0
