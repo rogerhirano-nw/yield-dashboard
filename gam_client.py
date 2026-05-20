@@ -706,11 +706,12 @@ class GAMClient:
 
     def list_creatives_with_duration(self) -> pd.DataFrame:
         """Fetch all creatives via the SOAP CreativeService. Returns
-        (creative_id, display_name, creative_type, duration_seconds).
-        Non-video creatives carry duration_seconds = None. VAST/3rd-party
-        creatives may also be None when GAM doesn't have the duration
-        cached locally."""
-        _cols = ["creative_id", "display_name", "creative_type", "duration_seconds"]
+        creative_id, display_name, creative_type, duration_seconds, and
+        vast_url (the upstream VAST XML URL when present, used later to
+        parse <Duration> from VAST tags for creatives where GAM doesn't
+        cache duration locally)."""
+        _cols = ["creative_id", "display_name", "creative_type",
+                 "duration_seconds", "vast_url"]
         try:
             client = self._get_soap_client()
             from googleads import ad_manager  # type: ignore
@@ -725,26 +726,43 @@ class GAMClient:
                 for c in resp.results:
                     cid = getattr(c, "id", None)
                     dn = getattr(c, "name", "") or ""
-                    # SOAP returns polymorphic Creative subclasses — the
-                    # SOAP class name is the type (e.g. "VideoCreative",
-                    # "VastRedirectCreative", "ImageCreative").
                     ct = type(c).__name__
-                    # `duration` is exposed on VideoCreative and
-                    # VastRedirectCreative (in ms); ImageCreative + others
-                    # don't have it.
                     duration_ms = getattr(c, "duration", None)
+                    # VAST URL extraction varies by creative subclass.
+                    # VastRedirectCreative has vastXmlUrl directly; some
+                    # third-party / template creatives carry it in a
+                    # snippet or as a typed attribute.
+                    vast_url = None
+                    for _attr in ("vastXmlUrl", "vastRedirectUrl",
+                                  "thirdPartyImpressionUrl"):
+                        v = getattr(c, _attr, None)
+                        if isinstance(v, str) and v.startswith(("http://", "https://")):
+                            vast_url = v
+                            break
+                    # ThirdPartyCreative snippet — try to extract a URL.
+                    if not vast_url:
+                        snippet = getattr(c, "snippet", None)
+                        if isinstance(snippet, str):
+                            m = re.search(r'https?://[^\s"\'<>]+', snippet)
+                            if m:
+                                vast_url = m.group(0)
                     rows.append({
                         "creative_id":      str(cid) if cid is not None else None,
                         "display_name":     dn,
                         "creative_type":    ct,
                         "duration_seconds": self._ms_to_seconds(duration_ms),
+                        "vast_url":         vast_url,
                     })
                 # Page through.
                 sb.offset += sb.limit
                 if sb.offset >= getattr(resp, "totalResultSetSize", 0):
                     break
-            logger.info("GAM creatives (SOAP): %d total, %d with duration",
-                        len(rows), sum(1 for r in rows if r["duration_seconds"] is not None))
+            logger.info(
+                "GAM creatives (SOAP): %d total, %d with duration, %d with VAST URL",
+                len(rows),
+                sum(1 for r in rows if r["duration_seconds"] is not None),
+                sum(1 for r in rows if r["vast_url"] is not None),
+            )
             return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
             logger.exception("list_creatives_with_duration (SOAP) failed")

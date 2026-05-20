@@ -68,6 +68,37 @@ _AE_REGEX = r"Team-(?:USA|INTL)_([A-Za-z]+)"
 GAM_PD_MIN_REQUESTS = 100_000
 GAM_PD_MIN_DAYS = 7
 
+# Deal-age filter — only flag deals that have existed for at least this long.
+# Anchor source per SSP:
+#   - Magnite : magnite_deal_metadata.first_seen  (180-day report proxy)
+#   - Pubmatic: pubmatic_deal_metadata.first_seen (180-day report proxy)
+#   - GAM PA  : gam_pa_metadata.create_time       (true creation timestamp)
+#   - GAM PD  : gam_pd_metadata.start_date        (proposal line-item start)
+# Rows without an age anchor (deal missing from metadata table) are EXCLUDED
+# — we don't flag deals we can't date.
+DEAL_AGE_MIN_DAYS = 90
+
+
+def _join_age_anchor(df: pd.DataFrame, table: str, key_col: str, date_col: str) -> pd.DataFrame:
+    """Left-join an age-anchor date onto df by deal name. Tolerates missing
+    metadata tables — returns df with age_anchor_date = NaT in that case."""
+    df = df.copy()
+    df["age_anchor_date"] = pd.NaT
+    try:
+        with _engine().connect() as conn:
+            meta = pd.read_sql(
+                f"SELECT {key_col} AS deal, {date_col}::date AS age_anchor_date FROM {table}",
+                conn,
+            )
+    except Exception:
+        return df
+    meta["age_anchor_date"] = pd.to_datetime(meta["age_anchor_date"], errors="coerce")
+    # Multiple metadata rows for one deal (e.g. GAM PD with several proposal
+    # line items sharing a display name) → keep the earliest start_date so
+    # the deal gets the benefit of the doubt on age.
+    meta = meta.sort_values("age_anchor_date").drop_duplicates(subset=["deal"], keep="first")
+    return df.drop(columns=["age_anchor_date"]).merge(meta, on="deal", how="left")
+
 
 def _deal_type_from_name(deal: str) -> str:
     """Mirrors dashboard._parse_deal: position 1 of the underscore-split name
@@ -130,6 +161,7 @@ def load_magnite() -> pd.DataFrame:
     df["ssp"] = "Magnite"
     df["deal_type"] = df["deal"].apply(_deal_type_from_name)
     df["seller"] = _derive_seller(df["deal"])
+    df = _join_age_anchor(df, "magnite_deal_metadata", "deal", "first_seen")
     return df
 
 
@@ -163,6 +195,7 @@ def load_pubmatic() -> pd.DataFrame:
     df["seller"] = _derive_seller(df["deal"])
     df["total_requests"] = df["total_requests"].fillna(0).astype("int64")
     df["total_bids"] = df["total_bids"].fillna(0).astype("int64")
+    df = _join_age_anchor(df, "pubmatic_deal_metadata", "deal", "first_seen")
     return df
 
 
@@ -229,12 +262,14 @@ def load_gam() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     # preferred deals).
 
     pa_unhealthy = bids[is_pa].copy()
+    pa_unhealthy = _join_age_anchor(pa_unhealthy, "gam_pa_metadata", "auction_name", "create_time")
 
     pd_candidates = bids[~is_pa & ~is_pg].copy()
     pd_unhealthy = pd_candidates[
         (pd_candidates["days_in_data"] >= GAM_PD_MIN_DAYS)
         & (pd_candidates["total_requests"] >= GAM_PD_MIN_REQUESTS)
     ].copy()
+    pd_unhealthy = _join_age_anchor(pd_unhealthy, "gam_pd_metadata", "deal_name", "start_date")
 
     pg["seller"] = _derive_seller(pg["deal"])
 
@@ -242,20 +277,38 @@ def load_gam() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
 
 def load_unhealthy() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Returns (never_accepted, gam_pg_undelivered)."""
+    """Returns (never_accepted, gam_pg_undelivered).
+
+    never_accepted is filtered to deals with age ≥ DEAL_AGE_MIN_DAYS. Rows
+    missing an age anchor (deal not present in its SSP's metadata table)
+    are dropped — we don't flag deals whose age we can't verify."""
     magnite = load_magnite()
     pubmatic = load_pubmatic()
     gam_pa, gam_pd, gam_pg = load_gam()
 
-    common_cols = ["ssp", "deal_type", "deal", "seller", "total_requests", "total_bids", "days_in_data", "first_seen"]
+    common_cols = [
+        "ssp", "deal_type", "deal", "seller",
+        "total_requests", "total_bids", "days_in_data",
+        "first_seen", "age_anchor_date",
+    ]
     combined = pd.concat(
         [magnite[common_cols], pubmatic[common_cols], gam_pa[common_cols], gam_pd[common_cols]],
         ignore_index=True,
     )
 
-    never_accepted = combined[combined["total_requests"] > 0].copy().sort_values(
-        ["ssp", "deal_type", "total_requests"], ascending=[True, True, False]
+    today = pd.Timestamp.utcnow().tz_convert(None).normalize()
+    combined["deal_age_days"] = (
+        today - pd.to_datetime(combined["age_anchor_date"], errors="coerce")
+    ).dt.days
+
+    never_accepted = combined[
+        (combined["total_requests"] > 0)
+        & (combined["deal_age_days"] >= DEAL_AGE_MIN_DAYS)
+    ].copy().sort_values(
+        ["ssp", "deal_type", "deal_age_days"], ascending=[True, True, False]
     )
+    if not never_accepted.empty:
+        never_accepted["deal_age_days"] = never_accepted["deal_age_days"].astype("int64")
 
     return never_accepted, gam_pg
 
@@ -333,15 +386,16 @@ def build_email(never_accepted: pd.DataFrame, gam_pg: pd.DataFrame) -> str:
           (
               "Auction deals receiving bid requests but the buyer hasn't bid. "
               "Likely a buyer-side issue (deal not activated, targeting mismatch). "
-              "Grouped by seller, then by SSP within. "
-              f"GAM PD threshold: only flagged if days_in_data ≥ {GAM_PD_MIN_DAYS} "
+              f"Filter: only deals that have existed for ≥ {DEAL_AGE_MIN_DAYS} days "
+              "(new deals excluded — buyers may need time to wire up). "
+              f"GAM PD additionally requires days_in_data ≥ {GAM_PD_MIN_DAYS} "
               f"and total bid requests ≥ {GAM_PD_MIN_REQUESTS:,} "
               "(PDs have first-look optionality so low-volume zero-bid deals are noise). "
-              "GAM PA has no threshold."
+              "Grouped by seller, then by SSP within."
           ),
           never_accepted,
-          ["ssp", "deal_type", "deal", "total_requests", "days_in_data", "first_seen"],
-          ["SSP", "Deal Type", "Deal", "Total bid requests", "Days in data", "First seen"],
+          ["ssp", "deal_type", "deal", "total_requests", "deal_age_days"],
+          ["SSP", "Deal Type", "Deal", "Total bid requests", "Age (days)"],
       )}
 
       {_section(
