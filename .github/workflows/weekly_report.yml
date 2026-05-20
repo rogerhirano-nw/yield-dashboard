@@ -71,18 +71,17 @@ jobs:
           inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
           subject = f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
 
-          # One message per recipient. Some mail providers strip multi-To/Cc
-          # when the sender is an inbox-style integration; one-at-a-time keeps
-          # delivery predictable and lets us log failures per recipient.
-          for to in recipients:
-              client.inboxes.messages.send(
-                  inbox_id,
-                  to=to,
-                  subject=subject,
-                  html=html,
-              )
-              print(f"sent to {to}")
-          print(f"done — {len(recipients)} recipient(s)")
+          # Single send with the full recipient list — all 6 addresses show up
+          # on the To: line so recipients can see each other (replies stay
+          # threaded across the group). AgentMail accepts `to: list[str]` per
+          # its SDK signature: typing.Union[str, typing.List[str], None].
+          client.inboxes.messages.send(
+              inbox_id,
+              to=recipients,
+              subject=subject,
+              html=html,
+          )
+          print(f"sent — to: {', '.join(recipients)} ({len(recipients)} recipients in one message)")
           PY
         env:
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
