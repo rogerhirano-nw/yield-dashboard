@@ -442,7 +442,14 @@ def _section_methodology(p: Payload) -> str:
 # ── section: per-seller hierarchy ──────────────────────────────────────────
 
 def _format_deal_line(d: UnhealthyDeal) -> str:
-    """Single deal row: chip + 'Geo · Format · Floor' + request count."""
+    """Single deal row. Layout:
+      [chip]   Campaign (primary line, only when present)        Requests
+               Geo · Format · Floor (sub-line, muted)
+
+    Campaign is the most reliable disambiguator within an Advertiser × Agency
+    group — same advertiser often runs multiple campaigns at the same floor
+    and format. Without it, rows look like duplicates.
+    """
     pieces: list[str] = []
     if d.parsed.geo:
         pieces.append(_esc(d.parsed.geo))
@@ -450,20 +457,32 @@ def _format_deal_line(d: UnhealthyDeal) -> str:
         pieces.append(_esc(d.parsed.ad_format))
     if d.parsed.floor:
         pieces.append(_esc(d.parsed.floor))
-    middle = "  &middot;  ".join(pieces) or "&mdash;"
+    sub = "  &middot;  ".join(pieces) or "&mdash;"
+
+    campaign_html = ""
+    if d.parsed.campaign:
+        campaign_html = (
+            f'<div style="font-size:12px; color:{TEXT_PRIMARY}; line-height:1.4;">'
+            f'{_esc(d.parsed.campaign)}</div>'
+        )
+
+    middle = (
+        f'{campaign_html}'
+        f'<div style="font-size:11px; color:{TEXT_MUTED}; line-height:1.4;">{sub}</div>'
+    )
 
     return _row(
         _cell(
             _chip(d.parsed.deal_type),
             bg=CONTENT_BG,
-            style="padding:5px 0 5px 18px; white-space:nowrap;",
+            style="padding:6px 0 6px 18px; white-space:nowrap;",
             valign="middle",
             width="60",
         ),
         _cell(
-            f'<span style="font-size:12px; color:{TEXT_DEFAULT};">{middle}</span>',
+            middle,
             bg=CONTENT_BG,
-            style="padding:5px 8px;",
+            style="padding:6px 8px;",
             valign="middle",
         ),
         _cell(
@@ -472,7 +491,7 @@ def _format_deal_line(d: UnhealthyDeal) -> str:
             bg=CONTENT_BG,
             align="right",
             valign="middle",
-            style="padding:5px 18px 5px 8px; white-space:nowrap;",
+            style="padding:6px 18px 6px 8px; white-space:nowrap;",
         ),
     )
 
@@ -561,7 +580,12 @@ def _seller_section(seller: str, deals: list[UnhealthyDeal]) -> str:
 
             for (adv, agency) in sorted(by_adv, key=lambda k: -sum(d.bid_requests for d in by_adv[k])):
                 adv_deals = by_adv[(adv, agency)]
-                label = adv if not agency else f"{adv}  &middot;  {_esc(agency)}"
+                # Build the advertiser · agency label as PLAIN TEXT (Unicode
+                # mid-dot, not &middot;) so _group_header's _esc() escapes the
+                # whole thing once. Previously we passed already-escaped HTML
+                # here, which double-escaped any & in the names (Hearts&Science
+                # → Hearts&amp;amp;Science).
+                label = adv if not agency else f"{adv}  ·  {agency}"
                 body_rows.append(_group_header(
                     "", label, len(adv_deals),
                     sum(d.bid_requests for d in adv_deals),
