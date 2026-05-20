@@ -86,12 +86,12 @@
     "Thern":     "Theresa Hern"
   },
   "benchmarks_by_format": {
-    "Display":            { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null },
-    "Video":              { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
-    "Video Preroll >30s": { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 50.0 },
-    "Native":             { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null },
-    "Multi":              { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0 },
-    "Interstitial":       { "viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": null }
+    "Display":            { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null },
+    "Video":              { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 70.0, "vcr_red_below": null },
+    "Video Preroll >30s": { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 50.0, "vcr_red_below": null },
+    "Native":             { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null },
+    "Multi":              { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 70.0, "vcr_red_below": null },
+    "Interstitial":       { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null }
   },
   "long_preroll_lines": [],
   "gam_network_id": "",
