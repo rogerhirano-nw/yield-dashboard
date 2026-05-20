@@ -351,6 +351,7 @@ def refresh_gam_vast_durations() -> int:
     session = requests.Session()
     updates: list[tuple[float, str]] = []
     n_ok, n_fail = 0, 0
+    _failure_samples: list[str] = []
     for _, row in df.iterrows():
         cid = row["creative_id"]
         url = row["vast_url"]
@@ -360,8 +361,16 @@ def refresh_gam_vast_durations() -> int:
             n_ok += 1
         else:
             n_fail += 1
+            if len(_failure_samples) < 5:
+                # Trim each sample to 180 chars so a single mega-URL doesn't
+                # blow up the log line.
+                _failure_samples.append(str(url)[:180])
     session.close()
     logger.info("VAST parse: %d resolved, %d failed/empty", n_ok, n_fail)
+    if _failure_samples:
+        logger.info("VAST failure samples (first 5):")
+        for _s in _failure_samples:
+            logger.info("  -> %s", _s)
 
     if not updates:
         return 0

@@ -728,24 +728,30 @@ class GAMClient:
                     dn = getattr(c, "name", "") or ""
                     ct = type(c).__name__
                     duration_ms = getattr(c, "duration", None)
-                    # VAST URL extraction varies by creative subclass.
-                    # VastRedirectCreative has vastXmlUrl directly; some
-                    # third-party / template creatives carry it in a
-                    # snippet or as a typed attribute.
+                    # VAST URL extraction. Only fields that *should* return
+                    # VAST XML: vastXmlUrl + vastRedirectUrl. Skipped
+                    # thirdPartyImpressionUrl (it's a 1x1 impression beacon,
+                    # not a VAST endpoint). For ThirdPartyCreative snippets,
+                    # extract a URL only if its path hints at VAST/video.
                     vast_url = None
-                    for _attr in ("vastXmlUrl", "vastRedirectUrl",
-                                  "thirdPartyImpressionUrl"):
+                    for _attr in ("vastXmlUrl", "vastRedirectUrl"):
                         v = getattr(c, _attr, None)
                         if isinstance(v, str) and v.startswith(("http://", "https://")):
                             vast_url = v
                             break
-                    # ThirdPartyCreative snippet — try to extract a URL.
                     if not vast_url:
                         snippet = getattr(c, "snippet", None)
                         if isinstance(snippet, str):
-                            m = re.search(r'https?://[^\s"\'<>]+', snippet)
-                            if m:
-                                vast_url = m.group(0)
+                            for _m in re.finditer(r'https?://[^\s"\'<>]+', snippet):
+                                _u = _m.group(0)
+                                _ul = _u.lower()
+                                # Heuristic: VAST-likely URLs contain "vast",
+                                # end with ".xml", or hit a known SSP VAST
+                                # endpoint pattern. Skip impression beacons.
+                                if ("vast" in _ul or _ul.endswith(".xml")
+                                    or "ad_tag" in _ul or "/vad" in _ul):
+                                    vast_url = _u
+                                    break
                     rows.append({
                         "creative_id":      str(cid) if cid is not None else None,
                         "display_name":     dn,
