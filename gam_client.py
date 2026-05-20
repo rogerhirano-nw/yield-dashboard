@@ -728,11 +728,16 @@ class GAMClient:
                     dn = getattr(c, "name", "") or ""
                     ct = type(c).__name__
                     duration_ms = getattr(c, "duration", None)
-                    # VAST URL extraction. Only fields that *should* return
-                    # VAST XML: vastXmlUrl + vastRedirectUrl. Skipped
-                    # thirdPartyImpressionUrl (it's a 1x1 impression beacon,
-                    # not a VAST endpoint). For ThirdPartyCreative snippets,
-                    # extract a URL only if its path hints at VAST/video.
+                    # VAST URL extraction.
+                    # 1. Typed fields that should return VAST XML directly.
+                    # 2. ThirdPartyCreative snippets: take the FIRST URL.
+                    #    Newsweek's active video lines are mostly third-party
+                    #    tags where the SSP-side URL is the leading URL in the
+                    #    snippet, even when it's a JS loader rather than a
+                    #    raw VAST endpoint. The parser will follow redirects;
+                    #    real failures get sampled into the refresh log.
+                    # 3. Skip thirdPartyImpressionUrl — that's an impression
+                    #    beacon, never a VAST endpoint.
                     vast_url = None
                     for _attr in ("vastXmlUrl", "vastRedirectUrl"):
                         v = getattr(c, _attr, None)
@@ -742,16 +747,9 @@ class GAMClient:
                     if not vast_url:
                         snippet = getattr(c, "snippet", None)
                         if isinstance(snippet, str):
-                            for _m in re.finditer(r'https?://[^\s"\'<>]+', snippet):
-                                _u = _m.group(0)
-                                _ul = _u.lower()
-                                # Heuristic: VAST-likely URLs contain "vast",
-                                # end with ".xml", or hit a known SSP VAST
-                                # endpoint pattern. Skip impression beacons.
-                                if ("vast" in _ul or _ul.endswith(".xml")
-                                    or "ad_tag" in _ul or "/vad" in _ul):
-                                    vast_url = _u
-                                    break
+                            m = re.search(r'https?://[^\s"\'<>]+', snippet)
+                            if m:
+                                vast_url = m.group(0)
                     rows.append({
                         "creative_id":      str(cid) if cid is not None else None,
                         "display_name":     dn,
