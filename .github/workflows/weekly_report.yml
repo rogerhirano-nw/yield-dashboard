@@ -46,7 +46,11 @@ jobs:
       #    Recipients are listed here in the YAML — not a secret — because
       #    they're internal work addresses, easy for ops to edit, and putting
       #    them in plaintext makes the distribution list auditable in git.
+      #    Runs even if step 1 hit a non-fatal issue (e.g. CSV push blocked by
+      #    branch protection) — the HTML email itself is the report; the CSV
+      #    is convenience.
       - name: Send email (AgentMail)
+        if: always() && hashFiles('reports/weekly_deal_health_*.html') != ''
         run: |
           python - <<'PY'
           import os
