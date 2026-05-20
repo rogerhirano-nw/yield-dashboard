@@ -312,6 +312,12 @@ def refresh_gam_vast_durations() -> int:
         # to display/native lines or to paused/completed campaigns.
         # text() wrap avoids the pandas-3 + SQLAlchemy-2 immutabledict
         # TypeError on raw-string read_sql.
+        # vast_url IS NOT NULL is itself the "this creative is video" signal
+        # — every VAST tag is video. Dropped the
+        # inventory_format_name LIKE '%video%' filter because it excluded
+        # Multi-format lines (Display + Video bundles like Patek) where
+        # the line item carries video creatives but the LI's declared
+        # format reads "Multi" rather than "Video".
         _vast_query = text(
             """
             SELECT DISTINCT c.creative_id, c.vast_url
@@ -326,8 +332,6 @@ def refresh_gam_vast_durations() -> int:
                    g.order_name LIKE 'Newsweek_Direct%'
                 OR g.order_name LIKE 'Newsweek_PG%'
               )
-              AND g.inventory_format_name IS NOT NULL
-              AND LOWER(g.inventory_format_name) LIKE '%video%'
             """
         )
         with eng.connect() as conn:
