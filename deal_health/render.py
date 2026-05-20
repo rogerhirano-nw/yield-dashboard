@@ -561,7 +561,12 @@ def _seller_section(seller: str, deals: list[UnhealthyDeal]) -> str:
 
             for (adv, agency) in sorted(by_adv, key=lambda k: -sum(d.bid_requests for d in by_adv[k])):
                 adv_deals = by_adv[(adv, agency)]
-                label = adv if not agency else f"{adv}  &middot;  {_esc(agency)}"
+                # Build the advertiser · agency label as PLAIN TEXT (Unicode
+                # mid-dot, not &middot;) so _group_header's _esc() escapes the
+                # whole thing once. Previously we passed already-escaped HTML
+                # here, which double-escaped any & in the names (Hearts&Science
+                # → Hearts&amp;amp;Science).
+                label = adv if not agency else f"{adv}  ·  {agency}"
                 body_rows.append(_group_header(
                     "", label, len(adv_deals),
                     sum(d.bid_requests for d in adv_deals),

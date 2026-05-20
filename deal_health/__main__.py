@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="skip CSV redaction (overrides PUBLIC_SAFE env)")
     parser.add_argument("--dry-run", action="store_true",
                         help="generate files but never commit/push (alias for --no-publish)")
-    parser.add_argument("--dashboard-url", default="https://newsweek-magnite.streamlit.app/")
+    parser.add_argument("--dashboard-url", default="https://newsweek.streamlit.app/")
     args = parser.parse_args(argv)
 
     _setup_logging()

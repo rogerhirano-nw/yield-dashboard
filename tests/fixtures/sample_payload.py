@@ -15,7 +15,7 @@ from deal_health.parser import parse_deal
 REPORT_DATE = date(2026, 5, 19)
 LOOKBACK_DAYS = 7
 CSV_URL = "https://raw.githubusercontent.com/example/yield-dashboard/main/reports/weekly_deal_health_2026-05-19.csv"
-DASHBOARD_URL = "https://newsweek-magnite.streamlit.app/"
+DASHBOARD_URL = "https://newsweek.streamlit.app/"
 
 
 _RAW_DEALS: list[tuple[str, str, int, int, str, int]] = [
