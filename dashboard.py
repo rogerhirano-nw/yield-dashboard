@@ -2058,10 +2058,23 @@ if st.session_state.active_view == "campaigns":
                     if "ad_server_ctr" in view_gam.columns else None
                 )
 
-            # ── Targets (Pacing comes from settings; Viewability uses 70 as the
-            # common floor; CTR uses the spec's 0.08% benchmark text). The
-            # color thresholds applied to cells live further below.
+            # ── Targets — all sourced from Configure → Benchmarks by format
+            # (Display = viewability + CTR fallbacks; pacing_target_pct
+            # drives the pacing-band ratios used by banners + drawer +
+            # AirTable classification). No hardcoded percentages remain.
             _pacing_target = float(_cfg.get("pacing_target_pct", 100.0) or 100.0)
+            # Pacing bands expressed as ratios of the target so changing
+            # pacing_target_pct shifts them coherently. Defaults at 100%
+            # target preserve the prior 75 / 90 / 110 absolute thresholds.
+            _pacing_critical  = _pacing_target * 0.75
+            _pacing_warn_low  = _pacing_target * 0.90
+            _pacing_warn_high = _pacing_target * 1.10
+            # Display viewability + CTR benchmarks for cross-cutting use
+            # (KPI sparkline targets, banner anomaly, AirTable severity).
+            _bench_display = (_cfg.get("benchmarks_by_format") or {}).get("Display", {}) or {}
+            _view_bench    = float(_bench_display.get("viewability_pct") or 70.0)
+            _ctr_bench     = (_bench_display.get("ctr_pct"))
+            _ctr_bench     = float(_ctr_bench) if _ctr_bench is not None else None
 
             # ── Exception banners — list the specific offenders, not just counts.
             def _short_advertiser(name):
@@ -2073,19 +2086,16 @@ if st.session_state.active_view == "campaigns":
                         return parts[idx].replace("-", " ")
                 return parts[0]
 
-            _under_rows  = (view_gam[view_gam["pacing_pct"] < 75][["line_item_name", "pacing_pct"]].head(4)
+            _under_rows  = (view_gam[view_gam["pacing_pct"] < _pacing_critical][["line_item_name", "pacing_pct"]].head(4)
                             if "pacing_pct" in view_gam.columns else pd.DataFrame())
-            _over_rows   = (view_gam[view_gam["pacing_pct"] > 110][["line_item_name", "pacing_pct"]].head(6)
+            _over_rows   = (view_gam[view_gam["pacing_pct"] > _pacing_warn_high][["line_item_name", "pacing_pct"]].head(6)
                             if "pacing_pct" in view_gam.columns else pd.DataFrame())
             # Viewability anomaly threshold sources from the configured
             # benchmark (Configure → Section 3 → Benchmarks by format →
             # Display viewability). Previously hardcoded at 40 — confusing
             # when users set the benchmark to 70 and wondered why the
             # banner referenced 40.
-            _vw_target = float(
-                ((_cfg.get("benchmarks_by_format") or {})
-                 .get("Display", {}).get("viewability_pct")) or 70.0
-            )
+            _vw_target = _view_bench
             _vw_anom_rows = pd.DataFrame()
             if "lifetime_viewable_imps" in view_gam.columns and "lifetime_measurable_imps" in view_gam.columns:
                 _v_rate = pd.to_numeric(view_gam["lifetime_viewable_imps"], errors="coerce") / \
@@ -2094,7 +2104,7 @@ if st.session_state.active_view == "campaigns":
                                  .loc[_v_rate < _vw_target, ["line_item_name", "_v"]].head(4))
 
             def _under_detail(rows):
-                if rows.empty: return "All line items at or above 75% pacing"
+                if rows.empty: return f"All line items at or above {_pacing_critical:g}% pacing"
                 advs = rows["line_item_name"].apply(_short_advertiser).unique().tolist()
                 paces = " &amp; ".join(f"{p:.0f}%" for p in rows["pacing_pct"].head(2))
                 return f"{advs[0]} · {paces} pace" if len(advs) == 1 else f"{', '.join(advs[:3])}"
@@ -2340,20 +2350,28 @@ if st.session_state.active_view == "campaigns":
                 _pace_series, target=float(_pacing_target),
                 color=_spark_color(_pace_series, float(_pacing_target), True),
             ) if _pace_series else ""
-            _view_target = 70.0  # from settings.benchmarks_by_format.Display.viewability_pct
+            # Viewability + CTR targets source from Configure → Benchmarks by
+            # format → Display, so changing them in the Settings tab updates
+            # both the sparkline reference line and the subtitle string.
+            _view_target = _view_bench
             _view_spark = _sparkline_svg(
                 _view_series, target=_view_target,
                 color=_spark_color(_view_series, _view_target, True),
             ) if _view_series else ""
             _ctr_spark = _sparkline_svg(_ctr_series, color="green") if _ctr_series else ""
 
+            _view_target_str = f"{_view_target:g}%"
+            _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
             _rev_sub  = _trend_delta_label(_rev_series, "pct")[0]
             _pace_sub = _trend_delta_label(_pace_series, "pp", suffix_target=f"{int(_pacing_target)}%")[0] \
                         if _pace_series else f"Target {int(_pacing_target)}%"
-            _view_sub = _trend_delta_label(_view_series, "pp", suffix_target="70%")[0] \
-                        if _view_series else "Target 70%"
-            _ctr_sub  = _trend_delta_label(_ctr_series, "pp", suffix_target="0.08%")[0] \
-                        if _ctr_series else "Benchmark 0.08%"
+            _view_sub = _trend_delta_label(_view_series, "pp", suffix_target=_view_target_str)[0] \
+                        if _view_series else f"Target {_view_target_str}"
+            if _ctr_bench_str:
+                _ctr_sub = _trend_delta_label(_ctr_series, "pp", suffix_target=_ctr_bench_str)[0] \
+                           if _ctr_series else f"Benchmark {_ctr_bench_str}"
+            else:
+                _ctr_sub = _trend_delta_label(_ctr_series, "pp")[0] if _ctr_series else "—"
 
             if _video_li_count > 0 and pd.notna(avg_vcr):
                 _vcr_val = f"{avg_vcr:.1f}%"
@@ -3051,16 +3069,17 @@ if st.session_state.active_view == "campaigns":
                 if isinstance(order, str) and order.startswith("Newsweek_PG"):
                     return _at_routes.get("PMP deal · any issue", "PMP - Adjust")
                 # Viewability anomaly = strongest visual signal → Screenshot.
+                # Threshold = Configure → Benchmarks by format → Display.
                 _v_num = pd.to_numeric(row.get("ad_server_active_view_viewable_impressions_rate"),
                                        errors="coerce")
-                if pd.notna(_v_num) and _v_num < 40:
+                if pd.notna(_v_num) and _v_num < _view_bench:
                     return _at_routes.get("Direct line · viewability anomaly",
                                           "Direct Campaign - Screenshot")
                 # Healthy near end-of-flight → IO Review (closeout reporting).
                 p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
                 start = pd.to_datetime(row.get("start_date"), errors="coerce")
                 end   = pd.to_datetime(row.get("end_date"),   errors="coerce")
-                if pd.notna(p) and 90 <= p <= 110 \
+                if pd.notna(p) and _pacing_warn_low <= p <= _pacing_warn_high \
                    and pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
                     elapsed = max((pd.Timestamp(date.today()) - start).days, 0)
@@ -3079,8 +3098,8 @@ if st.session_state.active_view == "campaigns":
                 p = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
                 if pd.isna(p):
                     return "Info"
-                if p < 75:    return "Critical"
-                if p < 90 or p > 110: return "Warning"
+                if p < _pacing_critical:    return "Critical"
+                if p < _pacing_warn_low or p > _pacing_warn_high: return "Warning"
                 return "Info"
 
             def _drawer_thesis(row):
@@ -3100,9 +3119,9 @@ if st.session_state.active_view == "campaigns":
                     return f"Sponsorship line — 100% by definition{flight_bit}."
                 if pd.isna(p):
                     return f"Direct line · review{flight_bit}."
-                if p < 75:    return f"Pacing critical: {p:.1f}%{flight_bit}. Delivery well below expected."
-                if p < 90:    return f"Underpacing: {p:.1f}%{flight_bit}. Tracking behind expected pace."
-                if p > 110:   return f"Overpacing: {p:.1f}%{flight_bit}. Will exhaust goal before flight ends."
+                if p < _pacing_critical:  return f"Pacing critical: {p:.1f}%{flight_bit}. Delivery well below expected."
+                if p < _pacing_warn_low:  return f"Underpacing: {p:.1f}%{flight_bit}. Tracking behind expected pace."
+                if p > _pacing_warn_high: return f"Overpacing: {p:.1f}%{flight_bit}. Will exhaust goal before flight ends."
                 return f"On track: {p:.1f}% pacing{flight_bit}."
 
             def _airtable_url(request_type, *, line_item="", gam_id="",
@@ -3164,17 +3183,17 @@ if st.session_state.active_view == "campaigns":
                             '<strong>✓ Sponsorship</strong>'
                             f'<div>Pacing is 100% by definition{flight_bit}.</div>'
                             '</div>')
-                if p < 75:
+                if p < _pacing_critical:
                     return ('<div class="nw-status-banner sev-red">'
                             '<strong>⚠ Pacing critical</strong>'
                             f'<div>{p:.1f}%{flight_bit}. Delivery well below expected.</div>'
                             '</div>')
-                if p < 90:
+                if p < _pacing_warn_low:
                     return ('<div class="nw-status-banner sev-amber">'
                             '<strong>⚠ Underpacing</strong>'
                             f'<div>{p:.1f}%{flight_bit}. Tracking behind expected pace.</div>'
                             '</div>')
-                if p <= 110:
+                if p <= _pacing_warn_high:
                     return ('<div class="nw-status-banner sev-ok">'
                             '<strong>✓ On track</strong>'
                             f'<div>{p:.1f}% pacing{flight_bit}.</div>'
@@ -3467,17 +3486,19 @@ if st.session_state.active_view == "campaigns":
                         'aria-disabled="true">↗ Open in GAM</a>'
                     )
                 _p_num = pd.to_numeric(row.get("pacing_pct"), errors="coerce")
-                if pd.notna(_p_num) and _p_num < 90:
+                if pd.notna(_p_num) and _p_num < _pacing_warn_low:
                     action_buttons.append(
                         '<a class="nw-action" href="#" '
                         'onclick="return false;">⚡ Boost priority</a>'
                     )
                 # AirTable ticket — only when there's a meaningful issue.
-                _show_at = (pd.notna(_p_num) and (_p_num < 90 or _p_num > 110))
+                # Thresholds source from Configure (pacing_target_pct + the
+                # 75/90/110 band ratios; Display viewability benchmark).
+                _show_at = (pd.notna(_p_num) and (_p_num < _pacing_warn_low or _p_num > _pacing_warn_high))
                 # Also show for low-viewability lines (Screenshot ticket).
                 _v_at = pd.to_numeric(row.get("ad_server_active_view_viewable_impressions_rate"),
                                        errors="coerce")
-                if pd.notna(_v_at) and _v_at < 40:
+                if pd.notna(_v_at) and _v_at < _view_bench:
                     _show_at = True
                 if _show_at:
                     _at_rt = _direct_request_type(row)
