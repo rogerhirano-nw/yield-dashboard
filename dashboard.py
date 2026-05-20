@@ -1162,7 +1162,12 @@ except Exception:
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
 
-@st.cache_data(ttl=300)
+# Cache TTL set to 1 hour — the refresh_cache cron runs daily, so 5-min
+# TTL just thrashed the DB on session-cold starts without delivering
+# fresher data. Refreshes write new rows; clearing the cache after a
+# refresh would require explicit cache-busting (not done here yet — the
+# next refresh-after-deploy + the hourly TTL together cover normal use).
+@st.cache_data(ttl=3600)
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
@@ -1170,6 +1175,40 @@ def load(table: str) -> pd.DataFrame:
     except Exception as _e:
         _load_errors[table] = str(_e)
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)
+def _load_li_max_duration() -> pd.DataFrame:
+    """Pre-aggregated max creative duration per line item.
+
+    Replaces the prior pattern of loading 183K gam_lica rows + 12K
+    gam_creatives rows just to compute a max() per LI in pandas. Same
+    output (~2K rows), tiny fraction of the bandwidth.
+
+    Columns: line_item_id (text), _creative_max_dur (float seconds).
+    Returns empty frame on any error so callers degrade to "no
+    recategorization" instead of crashing.
+    """
+    try:
+        with _engine().connect() as conn:
+            return pd.read_sql(
+                sqlalchemy.text(
+                    """
+                    SELECT CAST(l.line_item_id AS TEXT) AS line_item_id,
+                           MAX(CAST(c.duration_seconds AS DOUBLE PRECISION))
+                               AS _creative_max_dur
+                    FROM gam_lica l
+                    JOIN gam_creatives c
+                      ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
+                    WHERE c.duration_seconds IS NOT NULL
+                    GROUP BY l.line_item_id
+                    """
+                ),
+                conn,
+            )
+    except Exception as _e:
+        _load_errors["_li_max_duration"] = str(_e)
+        return pd.DataFrame(columns=["line_item_id", "_creative_max_dur"])
 
 
 # ── Header: eyebrow + view-aware H1 + right-aligned timestamp + inline gear.
@@ -1184,11 +1223,11 @@ with _hdr_left:
 
 _header_right_slot = _hdr_right.empty()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def _last_data_refresh_iso() -> str | None:
     """Latest _pulled_at across gam_campaigns — the canonical 'when did the
-    data last update' signal for the header timestamp. Cached 5 min so we
-    don't requery on every script rerun."""
+    data last update' signal for the header timestamp. Cached 1 hour to
+    match the rest of the cache profile (daily refresh cadence)."""
     try:
         with _engine().connect() as _conn:
             row = _conn.execute(sqlalchemy.text(
@@ -1754,27 +1793,13 @@ if st.session_state.active_view == "campaigns":
                 gam_df["video_ad_duration"], errors="coerce"
             )
         # SOAP fallback — only fires when video_ad_duration is missing or null.
+        # Uses the pre-aggregated _load_li_max_duration() (server-side
+        # GROUP BY) instead of pulling 183K LICA + 12K creative rows
+        # client-side.
         if "_creative_max_dur" not in gam_df.columns \
            or gam_df["_creative_max_dur"].isna().all():
-            try:
-                _creatives_df = load("gam_creatives")
-                _lica_df = load("gam_lica")
-            except Exception:
-                _creatives_df = pd.DataFrame()
-                _lica_df = pd.DataFrame()
-            if (not _creatives_df.empty and not _lica_df.empty
-                and "duration_seconds" in _creatives_df.columns
-                and "creative_id" in _creatives_df.columns
-                and "line_item_id" in _lica_df.columns
-                and "creative_id" in _lica_df.columns
-                and "line_item_id" in gam_df.columns):
-                _dur = (_lica_df[["line_item_id", "creative_id"]]
-                        .merge(_creatives_df[["creative_id", "duration_seconds"]],
-                               on="creative_id", how="left"))
-                _dur["duration_seconds"] = pd.to_numeric(_dur["duration_seconds"], errors="coerce")
-                _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
-                            .max().rename("_creative_max_dur").reset_index())
-                _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
+            _max_dur = _load_li_max_duration()
+            if not _max_dur.empty and "line_item_id" in gam_df.columns:
                 gam_df["line_item_id"] = gam_df["line_item_id"].astype(str)
                 gam_df = gam_df.merge(_max_dur, on="line_item_id", how="left",
                                       suffixes=("", "_soap"))
@@ -5037,29 +5062,14 @@ if st.session_state.active_view == "configure":
             _aliases = _s.get("format_aliases") or {}
             if _aliases:
                 _fmt_series = _fmt_series.replace(_aliases)
-            # Recategorize >30s preroll using the same join as dashboard.py
-            # gam_campaigns rendering — defensive: any failure leaves the
-            # series as-is and we just miss the preroll bucket.
+            # Recategorize >30s preroll using the pre-aggregated SQL
+            # GROUP BY (same data as the campaigns view, same cache).
             try:
-                _cr_df = load("gam_creatives")
-                _li_df = load("gam_lica")
-                if (not _cr_df.empty and not _li_df.empty
-                    and "duration_seconds" in _cr_df.columns
-                    and "creative_id" in _cr_df.columns
-                    and "creative_id" in _li_df.columns
-                    and "line_item_id" in _li_df.columns
+                _max_dur = _load_li_max_duration()
+                if (not _max_dur.empty
                     and "line_item_id" in _gam_for_counts.columns):
-                    _dur = (_li_df[["line_item_id", "creative_id"]]
-                            .merge(_cr_df[["creative_id", "duration_seconds"]],
-                                   on="creative_id", how="left"))
-                    _dur["duration_seconds"] = pd.to_numeric(
-                        _dur["duration_seconds"], errors="coerce"
-                    )
-                    _max_dur = (_dur.groupby("line_item_id")["duration_seconds"]
-                                .max().reset_index())
-                    _max_dur["line_item_id"] = _max_dur["line_item_id"].astype(str)
-                    _li_to_dur = dict(zip(_max_dur["line_item_id"],
-                                          _max_dur["duration_seconds"]))
+                    _li_to_dur = dict(zip(_max_dur["line_item_id"].astype(str),
+                                          _max_dur["_creative_max_dur"]))
                     _li_ids = _gam_for_counts["line_item_id"].astype(str)
                     _durs = _li_ids.map(_li_to_dur)
                     _is_video = _fmt_series.str.lower().str.contains("video", na=False)
