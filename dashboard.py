@@ -2077,12 +2077,21 @@ if st.session_state.active_view == "campaigns":
                             if "pacing_pct" in view_gam.columns else pd.DataFrame())
             _over_rows   = (view_gam[view_gam["pacing_pct"] > 110][["line_item_name", "pacing_pct"]].head(6)
                             if "pacing_pct" in view_gam.columns else pd.DataFrame())
+            # Viewability anomaly threshold sources from the configured
+            # benchmark (Configure → Section 3 → Benchmarks by format →
+            # Display viewability). Previously hardcoded at 40 — confusing
+            # when users set the benchmark to 70 and wondered why the
+            # banner referenced 40.
+            _vw_target = float(
+                ((_cfg.get("benchmarks_by_format") or {})
+                 .get("Display", {}).get("viewability_pct")) or 70.0
+            )
             _vw_anom_rows = pd.DataFrame()
             if "lifetime_viewable_imps" in view_gam.columns and "lifetime_measurable_imps" in view_gam.columns:
                 _v_rate = pd.to_numeric(view_gam["lifetime_viewable_imps"], errors="coerce") / \
                           pd.to_numeric(view_gam["lifetime_measurable_imps"], errors="coerce") * 100
                 _vw_anom_rows = (view_gam.assign(_v=_v_rate)
-                                 .loc[_v_rate < 40, ["line_item_name", "_v"]].head(4))
+                                 .loc[_v_rate < _vw_target, ["line_item_name", "_v"]].head(4))
 
             def _under_detail(rows):
                 if rows.empty: return "All line items at or above 75% pacing"
@@ -2094,7 +2103,8 @@ if st.session_state.active_view == "campaigns":
                 advs = rows["line_item_name"].apply(_short_advertiser).unique().tolist()
                 return ", ".join(advs[:4])
             def _vw_detail(rows):
-                if rows.empty: return "All line items at or above 40% viewability"
+                if rows.empty:
+                    return f"All line items at or above {_vw_target:g}% viewability"
                 first = rows.iloc[0]
                 return f"{_short_advertiser(first['line_item_name'])} · {first['_v']:.1f}% viewable"
 
