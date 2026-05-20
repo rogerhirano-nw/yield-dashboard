@@ -147,7 +147,19 @@ def commit_and_push(
         "commit", "-m", commit_message,
         cwd=repo_dir,
     )
-    _run_git("push", "origin", "HEAD", cwd=repo_dir)
+    # Push is best-effort — branch protection or a transient network issue
+    # shouldn't take down the rest of the report (email send, etc.). The
+    # commit stays on the runner's local clone; we surface the push outcome
+    # via the return value.
+    try:
+        _run_git("push", "origin", "HEAD", cwd=repo_dir)
+    except subprocess.CalledProcessError as e:
+        log.warning(
+            "push failed (commit kept locally; CSV won't be at raw URL until pushed)",
+            path=str(filepath),
+            stderr=(e.stderr or "")[:300],
+        )
+        return False
     log.info("pushed", path=str(filepath))
     return True
 

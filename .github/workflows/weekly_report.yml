@@ -5,12 +5,22 @@ on:
     # Wednesday 9 AM ET (= 13:00 UTC in EDT; drifts to 8 AM in EST winter).
     - cron: '0 13 * * 3'
   workflow_dispatch:
+    inputs:
+      recipients_override:
+        description: "Comma-separated recipients (blank = use the standard list)"
+        required: false
+        default: ""
+      attach_csv:
+        description: "Attach the full (unredacted) CSV to the email"
+        required: false
+        type: boolean
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
-  contents: write         # required for the in-workflow git push of the CSV
+  contents: write         # required for git push to the reports branch
 
 jobs:
   report:
@@ -29,60 +39,145 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # 1. Generate the HTML email + redacted CSV, commit + push the CSV.
-      - name: Generate report and publish CSV
+      # 1. Generate the HTML email + redacted CSV. --no-publish keeps the
+      #    script from touching git; the "Publish CSV" step below handles
+      #    the branch dance separately.
+      - name: Generate report artifacts
         run: |
           python -m deal_health \
             --output-dir reports \
-            --report-date "$(date -u +%F)"
+            --report-date "$(date -u +%F)" \
+            --no-publish
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GH_ORG_REPO:  ${{ github.repository }}
-          GH_BRANCH:    ${{ github.ref_name }}
+          GH_BRANCH:    reports
           REPORTS_PATH: reports
           PUBLIC_SAFE:  "true"
 
-      # 2. Send via AgentMail (Roger's existing setup).
-      #    Recipients are listed here in the YAML — not a secret — because
-      #    they're internal work addresses, easy for ops to edit, and putting
-      #    them in plaintext makes the distribution list auditable in git.
+      # 2. Publish the redacted CSV to a dedicated `reports` branch.
+      #    `main` is branch-protected (can't direct-push with GITHUB_TOKEN);
+      #    the `reports` branch is artifact-only and not protected.
+      #
+      #    First run: create as an orphan branch (no main history). Subsequent
+      #    runs: check out the existing branch and add the new CSV. URL in
+      #    the email points to raw.githubusercontent.com/<repo>/reports/...
+      - name: Publish CSV to reports branch
+        if: hashFiles('reports/weekly_deal_health_*.csv') != ''
+        continue-on-error: true
+        run: |
+          set -e
+          CSV_PATH=$(ls reports/weekly_deal_health_*.csv | head -1)
+          CSV_NAME=$(basename "$CSV_PATH")
+
+          # Do the publish in a separate worktree so main's working tree
+          # (which holds the HTML the email step needs) stays untouched.
+          WT=/tmp/reports-wt
+          rm -rf "$WT"
+
+          if git ls-remote --exit-code --heads origin reports >/dev/null 2>&1; then
+            echo "reports branch exists — adding worktree from origin/reports"
+            git fetch origin reports
+            git worktree add "$WT" -B reports origin/reports
+          else
+            echo "reports branch missing — creating orphan worktree"
+            git worktree add --detach "$WT"
+            (
+              cd "$WT"
+              git checkout --orphan reports
+              git rm -rf . >/dev/null 2>&1 || true
+              find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+            )
+          fi
+
+          mkdir -p "$WT/reports"
+          cp "$CSV_PATH" "$WT/reports/$CSV_NAME"
+
+          cd "$WT"
+          git config user.email "yield-dashboard@newsweek.com"
+          git config user.name  "yield-dashboard"
+          git add "reports/$CSV_NAME"
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+          else
+            git commit -m "publish: $CSV_NAME"
+            git push origin HEAD:refs/heads/reports
+            echo "published $CSV_NAME to reports branch"
+          fi
+
+      # 3. Send via AgentMail. Single send with all recipients on To:.
+      #    Runs as long as the HTML rendered, even if the CSV publish failed
+      #    (the HTML body is the report; CSV is a convenience download).
+      # For manual one-off sends with the full CSV attached, regenerate
+      # WITHOUT redaction so the attached file carries Floor + Bid Requests +
+      # Raw Deal Name (internal-only). The published reports-branch CSV stays
+      # redacted; only the attachment is full.
+      - name: Regenerate unredacted CSV (manual-only)
+        if: github.event_name == 'workflow_dispatch' && inputs.attach_csv == true
+        run: |
+          python -m deal_health \
+            --output-dir reports \
+            --report-date "$(date -u +%F)" \
+            --no-publish \
+            --no-redact
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GH_ORG_REPO:  ${{ github.repository }}
+          GH_BRANCH:    reports
+          REPORTS_PATH: reports
+
       - name: Send email (AgentMail)
+        if: always() && hashFiles('reports/weekly_deal_health_*.html') != ''
         run: |
           python - <<'PY'
-          import os
+          import base64, os
           from datetime import date
           from pathlib import Path
           from agentmail import AgentMail
+          from agentmail.attachments.types.send_attachment import SendAttachment
 
           report_date = date.today().isoformat()
           html_path = Path(f"reports/weekly_deal_health_{report_date}.html")
+          csv_path  = Path(f"reports/weekly_deal_health_{report_date}.csv")
           if not html_path.exists():
-              print(f"No HTML generated at {html_path} — nothing to send. Skipping.")
+              print(f"No HTML generated at {html_path} — skipping.")
               raise SystemExit(0)
           html = html_path.read_text(encoding="utf-8")
 
-          recipients = [r.strip() for r in os.environ["REPORT_RECIPIENTS"].split(",") if r.strip()]
+          override = os.environ.get("RECIPIENTS_OVERRIDE", "").strip()
+          src = override or os.environ["REPORT_RECIPIENTS"]
+          recipients = [r.strip() for r in src.split(",") if r.strip()]
+
+          attach = os.environ.get("ATTACH_CSV", "false").lower() == "true"
+          attachments = None
+          if attach and csv_path.exists():
+              attachments = [SendAttachment(
+                  filename=csv_path.name,
+                  content_type="text/csv",
+                  content_disposition="attachment",
+                  content=base64.b64encode(csv_path.read_bytes()).decode("ascii"),
+              )]
+              print(f"attaching {csv_path.name} ({csv_path.stat().st_size:,} bytes)")
 
           client = AgentMail(api_key=os.environ["AGENTMAIL_API_KEY"])
           inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
-          subject = f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
+          subject_prefix = "[manual] " if override else ""
+          subject = f"{subject_prefix}Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
 
-          # One message per recipient. Some mail providers strip multi-To/Cc
-          # when the sender is an inbox-style integration; one-at-a-time keeps
-          # delivery predictable and lets us log failures per recipient.
-          for to in recipients:
-              client.inboxes.messages.send(
-                  inbox_id,
-                  to=to,
-                  subject=subject,
-                  html=html,
-              )
-              print(f"sent to {to}")
-          print(f"done — {len(recipients)} recipient(s)")
+          client.inboxes.messages.send(
+              inbox_id,
+              to=recipients,
+              subject=subject,
+              html=html,
+              attachments=attachments,
+          )
+          print(f"sent — to: {', '.join(recipients)} ({len(recipients)} recipients)")
           PY
         env:
-          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          AGENTMAIL_API_KEY:   ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:  ${{ secrets.AGENTMAIL_INBOX_ID }}
+          RECIPIENTS_OVERRIDE: ${{ inputs.recipients_override }}
+          ATTACH_CSV:          ${{ inputs.attach_csv }}
           REPORT_RECIPIENTS: >-
             am@newsweek.com,
             adops@newsweek.com,
