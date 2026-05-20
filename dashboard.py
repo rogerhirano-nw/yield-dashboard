@@ -150,13 +150,18 @@ _DEFAULT_SETTINGS: dict = {
     "team_names": {
         "USA": "USA", "INTL": "International",
     },
+    # Per-format thresholds. *_pct is the green floor (≥ target = green). The
+    # matching *_red_below is the red ceiling (< red_below = red); anything
+    # between red_below and target renders amber. Leaving *_red_below null
+    # falls back to target × 0.85 (the original implicit band), so existing
+    # settings keep working without change.
     "benchmarks_by_format": {
-        "Display":            {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
-        "Video":              {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0},
-        "Video Preroll >30s": {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 50.0},
-        "Native":             {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
-        "Multi":              {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": 70.0},
-        "Interstitial":       {"viewability_pct": 70.0, "ctr_pct": 0.30, "vcr_pct": None},
+        "Display":            {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
+        "Video":              {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 70.0,  "vcr_red_below": None},
+        "Video Preroll >30s": {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 50.0,  "vcr_red_below": None},
+        "Native":             {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
+        "Multi":              {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 70.0,  "vcr_red_below": None},
+        "Interstitial":       {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
     },
     "pacing_target_pct": 100.0,
     # Manual long-preroll override — list of rules that force a line into
@@ -2932,15 +2937,17 @@ if st.session_state.active_view == "campaigns":
                         cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
                 return cell
 
-            # Per-format viewability + CTR thresholds from settings (same
-            # pattern as VCR cell below). Band shape is ratio-based so it
-            # works for both percentage-point metrics (viewability ~70%)
-            # and sub-1% metrics (CTR ~0.08%):
-            #   red    < target * 0.85
-            #   amber  target * 0.85 → target
+            # Per-format viewability + CTR + VCR thresholds from settings.
             #   green  ≥ target
-            # _bench_cfg is defined a few lines below for VCR; pulling it
-            # up here so all three cells share it.
+            #   amber  red_cut ≤ p < target
+            #   red    p < red_cut
+            #
+            # `target` reads from benchmarks_by_format.<fmt>.<key>_pct
+            # (e.g. `viewability_pct`). `red_cut` reads from the matching
+            # `<key>_red_below` field; if that's null/missing it falls back
+            # to `target * 0.85` — the original implicit band. So existing
+            # settings keep their old visuals until a user configures an
+            # explicit red threshold in Configure → Section 3.
             _bench_cfg = _cfg.get("benchmarks_by_format") or {}
             def _bench_target(fmt, key, fallback_key=None, fallback=None):
                 if isinstance(fmt, str) and fmt in _bench_cfg:
@@ -2953,12 +2960,28 @@ if st.session_state.active_view == "campaigns":
                         return float(v)
                 return float(fallback) if fallback is not None else None
 
+            def _bench_red_cut(fmt, key, target, fallback_key=None):
+                """Return the configured `<key>_red_below` for this format,
+                falling back to the same lookup on `fallback_key`, then to
+                `target * 0.85`. `key` is e.g. 'viewability'."""
+                red_key = f"{key}_red_below"
+                if isinstance(fmt, str) and fmt in _bench_cfg:
+                    v = _bench_cfg[fmt].get(red_key)
+                    if v is not None:
+                        return float(v)
+                if fallback_key and fallback_key in _bench_cfg:
+                    v = _bench_cfg[fallback_key].get(red_key)
+                    if v is not None:
+                        return float(v)
+                return target * 0.85 if target else None
+
             def _viewability_html(p, fmt=None):
                 p = _parse_leading_pct(p)
                 if p is None: return '<div class="cell-dash">—</div>'
                 target = _bench_target(fmt, "viewability_pct",
                                        fallback_key="Display", fallback=70.0)
-                red_cut = target * 0.85
+                red_cut = _bench_red_cut(fmt, "viewability", target,
+                                         fallback_key="Display")
                 if p < red_cut:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
                 if p < target:
@@ -2974,16 +2997,14 @@ if st.session_state.active_view == "campaigns":
                 if target is None or target <= 0:
                     # No benchmark configured → uncolored value (original behavior).
                     return f"{p:.2f}%"
-                red_cut = target * 0.85
+                red_cut = _bench_red_cut(fmt, "ctr", target,
+                                         fallback_key="Display")
                 if p < red_cut:
                     return f'<span class="pill pill-red">{p:.2f}%</span>'
                 if p < target:
                     return f'<span class="txt-amber">{p:.2f}%</span>'
                 return f'<span class="txt-green">{p:.2f}%</span>'
 
-            # Per-format VCR threshold pulled from settings. Uses the same
-            # ratio-based band shape as the viewability + CTR cells above
-            # (red < target * 0.85, amber → target, green ≥ target).
             def _vcr_html(p, is_video, fmt=None):
                 if not is_video:
                     return '<div class="cell-dash">—</div>'
@@ -2991,7 +3012,8 @@ if st.session_state.active_view == "campaigns":
                 if p is None: return '<div class="cell-dash">—</div>'
                 target = _bench_target(fmt, "vcr_pct",
                                        fallback_key="Video", fallback=60.0)
-                red_cut = target * 0.85
+                red_cut = _bench_red_cut(fmt, "vcr", target,
+                                         fallback_key="Video")
                 if p < red_cut:
                     return f'<div class="pill pill-red">{p:.1f}%</div>'
                 if p < target:
@@ -5589,28 +5611,64 @@ if st.session_state.active_view == "configure":
                 unsafe_allow_html=True,
             )
 
+        # Color bands: each metric has a green floor (the "%" column) and an
+        # optional red ceiling (the "red <" column). Anything ≥ green is
+        # green; anything below "red <" is red; in between is amber. Leave
+        # "red <" blank to keep the implicit fallback (target × 0.85).
+        st.markdown(
+            '<div class="cfg-helper" style="font-size:12px;color:rgba(250,250,250,0.55);'
+            'margin:-4px 0 6px 0">'
+            'Color bands: cell is <span style="color:hsl(120,50%,65%)">green</span> ≥ target, '
+            '<span style="color:hsl(35,70%,65%)">amber</span> between target and red threshold, '
+            '<span style="color:hsl(0,55%,70%)">red</span> below threshold. '
+            'Leave “red &lt;” blank to default to 85% of target.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         _bench_rows = [
             {"Format": fmt,
-             "Viewability %": vals.get("viewability_pct"),
-             "CTR %":         vals.get("ctr_pct"),
-             "VCR %":         vals.get("vcr_pct"),
-             "Applies to":    f"~{_format_count(fmt)} line items"}
+             "Viewability %":     vals.get("viewability_pct"),
+             "Viewability red <": vals.get("viewability_red_below"),
+             "CTR %":             vals.get("ctr_pct"),
+             "CTR red <":         vals.get("ctr_red_below"),
+             "VCR %":             vals.get("vcr_pct"),
+             "VCR red <":         vals.get("vcr_red_below"),
+             "Applies to":        f"~{_format_count(fmt)} line items"}
             for fmt, vals in sorted(_benchmarks_default.items())
         ]
         _bench_edit = st.data_editor(
             pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
-                columns=["Format", "Viewability %", "CTR %", "VCR %", "Applies to"]
+                columns=["Format",
+                         "Viewability %", "Viewability red <",
+                         "CTR %", "CTR red <",
+                         "VCR %", "VCR red <",
+                         "Applies to"]
             ),
             use_container_width=True,
             hide_index=True,
             num_rows="dynamic",
             key="settings_benchmarks_by_format",
             column_config={
-                "Format":        st.column_config.TextColumn("Format", required=True),
-                "Viewability %": st.column_config.NumberColumn("Viewability %", format="%.1f"),
-                "CTR %":         st.column_config.NumberColumn("CTR %", format="%.2f"),
-                "VCR %":         st.column_config.NumberColumn("VCR %", format="%.1f"),
-                "Applies to":    st.column_config.TextColumn("Applies to", disabled=True),
+                "Format":            st.column_config.TextColumn("Format", required=True),
+                "Viewability %":     st.column_config.NumberColumn(
+                    "Viewability %", format="%.1f",
+                    help="Green floor — values at or above this render green."),
+                "Viewability red <": st.column_config.NumberColumn(
+                    "Viewability red <", format="%.1f",
+                    help="Red ceiling — values below this render red. Blank = 85% of target."),
+                "CTR %":             st.column_config.NumberColumn(
+                    "CTR %", format="%.2f",
+                    help="Green floor — values at or above this render green."),
+                "CTR red <":         st.column_config.NumberColumn(
+                    "CTR red <", format="%.2f",
+                    help="Red ceiling — values below this render red. Blank = 85% of target."),
+                "VCR %":             st.column_config.NumberColumn(
+                    "VCR %", format="%.1f",
+                    help="Green floor — values at or above this render green."),
+                "VCR red <":         st.column_config.NumberColumn(
+                    "VCR red <", format="%.1f",
+                    help="Red ceiling — values below this render red. Blank = 85% of target."),
+                "Applies to":        st.column_config.TextColumn("Applies to", disabled=True),
             },
             disabled=["Applies to"],
         )
@@ -5840,9 +5898,12 @@ if st.session_state.active_view == "configure":
                 if not _fmt:
                     continue
                 _new_benchmarks[_fmt] = {
-                    "viewability_pct": _bench_val(r.get("Viewability %")),
-                    "ctr_pct":         _bench_val(r.get("CTR %")),
-                    "vcr_pct":         _bench_val(r.get("VCR %")),
+                    "viewability_pct":       _bench_val(r.get("Viewability %")),
+                    "viewability_red_below": _bench_val(r.get("Viewability red <")),
+                    "ctr_pct":               _bench_val(r.get("CTR %")),
+                    "ctr_red_below":         _bench_val(r.get("CTR red <")),
+                    "vcr_pct":               _bench_val(r.get("VCR %")),
+                    "vcr_red_below":         _bench_val(r.get("VCR red <")),
                 }
 
             _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
