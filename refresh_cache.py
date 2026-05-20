@@ -306,30 +306,32 @@ def refresh_gam_vast_durations() -> int:
 
     eng = _engine()
     try:
+        # Scope: only creatives serving on live video line items in
+        # Direct or PG orders. Cuts the fetch pool from ~12K creatives
+        # to a few hundred — we don't burn HTTP on creatives attached
+        # to display/native lines or to paused/completed campaigns.
+        # text() wrap avoids the pandas-3 + SQLAlchemy-2 immutabledict
+        # TypeError on raw-string read_sql.
+        _vast_query = text(
+            """
+            SELECT DISTINCT c.creative_id, c.vast_url
+            FROM gam_creatives c
+            JOIN gam_lica l ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
+            JOIN gam_campaigns g ON CAST(g.line_item_id AS TEXT) = CAST(l.line_item_id AS TEXT)
+            WHERE c.duration_seconds IS NULL
+              AND c.vast_url IS NOT NULL
+              AND c.vast_url <> ''
+              AND g.status = 'Delivering'
+              AND (
+                   g.order_name LIKE 'Newsweek_Direct%'
+                OR g.order_name LIKE 'Newsweek_PG%'
+              )
+              AND g.inventory_format_name IS NOT NULL
+              AND LOWER(g.inventory_format_name) LIKE '%video%'
+            """
+        )
         with eng.connect() as conn:
-            # Scope: only creatives serving on live video line items in
-            # Direct or PG orders. Cuts the fetch pool from ~12K creatives
-            # to a few hundred — we don't burn HTTP on creatives attached
-            # to display/native lines or to paused/completed campaigns.
-            df = pd.read_sql(
-                """
-                SELECT DISTINCT c.creative_id, c.vast_url
-                FROM gam_creatives c
-                JOIN gam_lica l ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
-                JOIN gam_campaigns g ON CAST(g.line_item_id AS TEXT) = CAST(l.line_item_id AS TEXT)
-                WHERE c.duration_seconds IS NULL
-                  AND c.vast_url IS NOT NULL
-                  AND c.vast_url <> ''
-                  AND g.status = 'Delivering'
-                  AND (
-                       g.order_name LIKE 'Newsweek_Direct%'
-                    OR g.order_name LIKE 'Newsweek_PG%'
-                  )
-                  AND g.inventory_format_name IS NOT NULL
-                  AND LOWER(g.inventory_format_name) LIKE '%video%'
-                """,
-                conn,
-            )
+            df = pd.read_sql(_vast_query, conn)
     except Exception:
         logger.exception("VAST-duration target query failed — skipping")
         return 0
