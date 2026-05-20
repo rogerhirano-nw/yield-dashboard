@@ -20,6 +20,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pandas as pd
 import sqlalchemy
 from sqlalchemy import inspect as sa_inspect, text
 
