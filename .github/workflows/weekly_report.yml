@@ -59,32 +59,39 @@ jobs:
           set -e
           CSV_PATH=$(ls reports/weekly_deal_health_*.csv | head -1)
           CSV_NAME=$(basename "$CSV_PATH")
-          cp "$CSV_PATH" "/tmp/$CSV_NAME"
 
-          git config user.email "yield-dashboard@newsweek.com"
-          git config user.name  "yield-dashboard"
+          # Do the publish in a separate worktree so main's working tree
+          # (which holds the HTML the email step needs) stays untouched.
+          WT=/tmp/reports-wt
+          rm -rf "$WT"
 
           if git ls-remote --exit-code --heads origin reports >/dev/null 2>&1; then
-            echo "reports branch exists — checking out"
+            echo "reports branch exists — adding worktree from origin/reports"
             git fetch origin reports
-            git checkout -B reports origin/reports
+            git worktree add "$WT" -B reports origin/reports
           else
-            echo "reports branch missing — creating orphan"
-            git checkout --orphan reports
-            # Remove everything except .git so the branch starts empty.
-            git rm -rf . >/dev/null 2>&1 || true
-            find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+            echo "reports branch missing — creating orphan worktree"
+            git worktree add --detach "$WT"
+            (
+              cd "$WT"
+              git checkout --orphan reports
+              git rm -rf . >/dev/null 2>&1 || true
+              find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+            )
           fi
 
-          mkdir -p reports
-          cp "/tmp/$CSV_NAME" "reports/$CSV_NAME"
-          git add "reports/$CSV_NAME"
+          mkdir -p "$WT/reports"
+          cp "$CSV_PATH" "$WT/reports/$CSV_NAME"
 
+          cd "$WT"
+          git config user.email "yield-dashboard@newsweek.com"
+          git config user.name  "yield-dashboard"
+          git add "reports/$CSV_NAME"
           if git diff --cached --quiet; then
             echo "no changes to publish"
           else
             git commit -m "publish: $CSV_NAME"
-            git push origin reports
+            git push origin HEAD:refs/heads/reports
             echo "published $CSV_NAME to reports branch"
           fi
 
