@@ -2,7 +2,8 @@ name: Weekly deal health report
 
 on:
   schedule:
-    - cron: '0 12 * * 1'   # every Monday 8 AM ET (12:00 UTC)
+    # Wednesday 9 AM ET (= 13:00 UTC in EDT; drifts to 8 AM in EST winter).
+    - cron: '0 13 * * 3'
   workflow_dispatch:
 
 env:
@@ -19,7 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
         with:
-          # Need a real ref so the in-workflow `git push` works.
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -29,9 +29,8 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # 1. Generate HTML email + redacted CSV, commit + push the CSV.
+      # 1. Generate the HTML email + redacted CSV, commit + push the CSV.
       - name: Generate report and publish CSV
-        id: gen
         run: |
           python -m deal_health \
             --output-dir reports \
@@ -43,44 +42,51 @@ jobs:
           REPORTS_PATH: reports
           PUBLIC_SAFE:  "true"
 
-      # 2. Send the HTML email via SMTP. Secrets come from repo settings.
-      #    (AgentMail path is kept as a fallback below — set USE_SMTP=false
-      #    in repo vars to switch.)
-      - name: Send email (SMTP)
-        if: vars.USE_SMTP != 'false'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_HOST }}
-          server_port: 465
-          secure: true
-          username: ${{ secrets.SMTP_USER }}
-          password: ${{ secrets.SMTP_PASS }}
-          subject: "Weekly Deal Health — ${{ steps.gen.outputs.report_date || github.run_id }}"
-          from: ${{ secrets.MAIL_FROM }}
-          to: ${{ secrets.MAIL_TO }}
-          html_body: file://reports/weekly_deal_health_$(date -u +%F).html
-          convert_markdown: false
-
-      # 3. AgentMail fallback (legacy path). Activates when USE_SMTP=false.
-      - name: Send email (AgentMail fallback)
-        if: vars.USE_SMTP == 'false'
+      # 2. Send via AgentMail (Roger's existing setup).
+      #    Recipients are listed here in the YAML — not a secret — because
+      #    they're internal work addresses, easy for ops to edit, and putting
+      #    them in plaintext makes the distribution list auditable in git.
+      - name: Send email (AgentMail)
         run: |
           python - <<'PY'
           import os
+          from datetime import date
           from pathlib import Path
           from agentmail import AgentMail
-          from datetime import date
-          html = Path(f"reports/weekly_deal_health_{date.today().isoformat()}.html").read_text()
+
+          report_date = date.today().isoformat()
+          html_path = Path(f"reports/weekly_deal_health_{report_date}.html")
+          if not html_path.exists():
+              print(f"No HTML generated at {html_path} — nothing to send. Skipping.")
+              raise SystemExit(0)
+          html = html_path.read_text(encoding="utf-8")
+
+          recipients = [r.strip() for r in os.environ["REPORT_RECIPIENTS"].split(",") if r.strip()]
+
           client = AgentMail(api_key=os.environ["AGENTMAIL_API_KEY"])
-          client.inboxes.messages.send(
-              os.environ["AGENTMAIL_INBOX_ID"],
-              to=os.environ["REPORT_TO_EMAIL"],
-              subject=f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}",
-              html=html,
-          )
-          print("AgentMail sent")
+          inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
+          subject = f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
+
+          # One message per recipient. Some mail providers strip multi-To/Cc
+          # when the sender is an inbox-style integration; one-at-a-time keeps
+          # delivery predictable and lets us log failures per recipient.
+          for to in recipients:
+              client.inboxes.messages.send(
+                  inbox_id,
+                  to=to,
+                  subject=subject,
+                  html=html,
+              )
+              print(f"sent to {to}")
+          print(f"done — {len(recipients)} recipient(s)")
           PY
         env:
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
-          REPORT_TO_EMAIL:    ${{ secrets.REPORT_TO_EMAIL }}
+          REPORT_RECIPIENTS: >-
+            am@newsweek.com,
+            adops@newsweek.com,
+            revops@newsweek.com,
+            r.shore@newsweek.com,
+            b.karetny@newsweek.com,
+            d.varvaro@newsweek.com
