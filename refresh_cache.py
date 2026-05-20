@@ -286,6 +286,86 @@ def refresh_gam_lica() -> int:
     return len(df)
 
 
+def refresh_gam_vast_durations() -> int:
+    """For VAST creatives in gam_creatives with no GAM-cached duration,
+    fetch the VAST XML at vast_url and parse <Duration>. Updates
+    gam_creatives.duration_seconds in place.
+
+    Scoped to creatives associated with currently active line items
+    (via gam_lica ↔ gam_campaigns) so we don't fetch thousands of stale
+    creatives we'll never render. Run sequentially with a 5s timeout per
+    URL — typical run is a few hundred creatives in 2-3 minutes.
+    """
+    logger.info("Refreshing VAST durations for creatives missing duration")
+    try:
+        from vast_client import parse_vast_duration
+    except Exception:
+        logger.exception("vast_client import failed — skipping VAST duration refresh")
+        return 0
+
+    eng = _engine()
+    try:
+        with eng.connect() as conn:
+            df = pd.read_sql(
+                """
+                SELECT DISTINCT c.creative_id, c.vast_url
+                FROM gam_creatives c
+                JOIN gam_lica l ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
+                JOIN gam_campaigns g ON CAST(g.line_item_id AS TEXT) = CAST(l.line_item_id AS TEXT)
+                WHERE c.duration_seconds IS NULL
+                  AND c.vast_url IS NOT NULL
+                  AND c.vast_url <> ''
+                """,
+                conn,
+            )
+    except Exception:
+        logger.exception("VAST-duration target query failed — skipping")
+        return 0
+    if df.empty:
+        logger.info("No VAST URLs to parse (all active creatives already have duration)")
+        return 0
+
+    logger.info("Parsing %d VAST URLs for active-LI creatives", len(df))
+    import requests
+    session = requests.Session()
+    updates: list[tuple[float, str]] = []
+    n_ok, n_fail = 0, 0
+    for _, row in df.iterrows():
+        cid = row["creative_id"]
+        url = row["vast_url"]
+        dur = parse_vast_duration(url, session=session)
+        if dur is not None and dur > 0:
+            updates.append((float(dur), str(cid)))
+            n_ok += 1
+        else:
+            n_fail += 1
+    session.close()
+    logger.info("VAST parse: %d resolved, %d failed/empty", n_ok, n_fail)
+
+    if not updates:
+        return 0
+    # Bulk update via temporary table — single transaction, much faster
+    # than N UPDATE statements over the network.
+    try:
+        with eng.begin() as conn:
+            tmp = pd.DataFrame(updates, columns=["duration_seconds", "creative_id"])
+            tmp.to_sql("_tmp_vast_durations", conn, if_exists="replace", index=False)
+            conn.execute(text(
+                """
+                UPDATE gam_creatives AS c
+                SET duration_seconds = t.duration_seconds
+                FROM _tmp_vast_durations AS t
+                WHERE CAST(c.creative_id AS TEXT) = CAST(t.creative_id AS TEXT)
+                """
+            ))
+            conn.execute(text("DROP TABLE IF EXISTS _tmp_vast_durations"))
+    except Exception:
+        logger.exception("VAST duration UPDATE failed")
+        return 0
+    logger.info("Updated %d gam_creatives rows with parsed VAST duration", len(updates))
+    return len(updates)
+
+
 def refresh_magnite_deal_metadata() -> int:
     """Pull a 180-day Magnite deal-keyed report to determine each deal's
     earliest appearance. Used by weekly_report.py as an age proxy since
@@ -481,6 +561,11 @@ def main() -> None:
         total += refresh_gam_lica()
     except Exception:
         logger.exception("Refresh failed for gam_lica — continuing")
+
+    try:
+        total += refresh_gam_vast_durations()
+    except Exception:
+        logger.exception("Refresh failed for gam_vast_durations — continuing")
 
     try:
         total += refresh_pubmatic()
