@@ -10,7 +10,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
-  contents: write         # required for the in-workflow git push of the CSV
+  contents: write         # required for git push to the reports branch
 
 jobs:
   report:
@@ -29,26 +29,68 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # 1. Generate the HTML email + redacted CSV, commit + push the CSV.
-      - name: Generate report and publish CSV
+      # 1. Generate the HTML email + redacted CSV. --no-publish keeps the
+      #    script from touching git; the "Publish CSV" step below handles
+      #    the branch dance separately.
+      - name: Generate report artifacts
         run: |
           python -m deal_health \
             --output-dir reports \
-            --report-date "$(date -u +%F)"
+            --report-date "$(date -u +%F)" \
+            --no-publish
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GH_ORG_REPO:  ${{ github.repository }}
-          GH_BRANCH:    ${{ github.ref_name }}
+          GH_BRANCH:    reports
           REPORTS_PATH: reports
           PUBLIC_SAFE:  "true"
 
-      # 2. Send via AgentMail (Roger's existing setup).
-      #    Recipients are listed here in the YAML — not a secret — because
-      #    they're internal work addresses, easy for ops to edit, and putting
-      #    them in plaintext makes the distribution list auditable in git.
-      #    Runs even if step 1 hit a non-fatal issue (e.g. CSV push blocked by
-      #    branch protection) — the HTML email itself is the report; the CSV
-      #    is convenience.
+      # 2. Publish the redacted CSV to a dedicated `reports` branch.
+      #    `main` is branch-protected (can't direct-push with GITHUB_TOKEN);
+      #    the `reports` branch is artifact-only and not protected.
+      #
+      #    First run: create as an orphan branch (no main history). Subsequent
+      #    runs: check out the existing branch and add the new CSV. URL in
+      #    the email points to raw.githubusercontent.com/<repo>/reports/...
+      - name: Publish CSV to reports branch
+        if: hashFiles('reports/weekly_deal_health_*.csv') != ''
+        continue-on-error: true
+        run: |
+          set -e
+          CSV_PATH=$(ls reports/weekly_deal_health_*.csv | head -1)
+          CSV_NAME=$(basename "$CSV_PATH")
+          cp "$CSV_PATH" "/tmp/$CSV_NAME"
+
+          git config user.email "yield-dashboard@newsweek.com"
+          git config user.name  "yield-dashboard"
+
+          if git ls-remote --exit-code --heads origin reports >/dev/null 2>&1; then
+            echo "reports branch exists — checking out"
+            git fetch origin reports
+            git checkout -B reports origin/reports
+          else
+            echo "reports branch missing — creating orphan"
+            git checkout --orphan reports
+            # Remove everything except .git so the branch starts empty.
+            git rm -rf . >/dev/null 2>&1 || true
+            find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          fi
+
+          mkdir -p reports
+          cp "/tmp/$CSV_NAME" "reports/$CSV_NAME"
+          git add "reports/$CSV_NAME"
+
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+          else
+            git commit -m "publish: $CSV_NAME"
+            git push origin reports
+            echo "published $CSV_NAME to reports branch"
+          fi
+
+      # 3. Send via AgentMail. Single send with all recipients on To:.
+      #    Runs as long as the HTML rendered, even if the CSV publish failed
+      #    (the HTML body is the report; CSV is a convenience download).
       - name: Send email (AgentMail)
         if: always() && hashFiles('reports/weekly_deal_health_*.html') != ''
         run: |
@@ -71,10 +113,9 @@ jobs:
           inbox_id = os.environ["AGENTMAIL_INBOX_ID"]
           subject = f"Weekly Deal Health — {date.today().strftime('%b %d, %Y')}"
 
-          # Single send with the full recipient list — all 6 addresses show up
-          # on the To: line so recipients can see each other (replies stay
-          # threaded across the group). AgentMail accepts `to: list[str]` per
-          # its SDK signature: typing.Union[str, typing.List[str], None].
+          # Single send with the full recipient list — all addresses on To:
+          # so recipients see each other and replies thread across the group.
+          # AgentMail accepts `to: list[str]` (see MessagesClient.send signature).
           client.inboxes.messages.send(
               inbox_id,
               to=recipients,
