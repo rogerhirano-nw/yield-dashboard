@@ -706,12 +706,14 @@ class GAMClient:
 
     def list_creatives_with_duration(self) -> pd.DataFrame:
         """Fetch all creatives via the SOAP CreativeService. Returns
-        creative_id, display_name, creative_type, duration_seconds, and
-        vast_url (the upstream VAST XML URL when present, used later to
-        parse <Duration> from VAST tags for creatives where GAM doesn't
-        cache duration locally)."""
+        creative_id, display_name, creative_type, duration_seconds.
+        Only the ~5% of creatives where GAM cached duration locally
+        (uploaded VideoCreatives and some VastRedirectCreatives) get a
+        non-null value. For the rest (3rd-party tags via Innovid / DCM
+        / etc), duration lives in the executed JS — the manual long-
+        preroll override in Configure handles those."""
         _cols = ["creative_id", "display_name", "creative_type",
-                 "duration_seconds", "vast_url"]
+                 "duration_seconds"]
         try:
             client = self._get_soap_client()
             from googleads import ad_manager  # type: ignore
@@ -728,44 +730,19 @@ class GAMClient:
                     dn = getattr(c, "name", "") or ""
                     ct = type(c).__name__
                     duration_ms = getattr(c, "duration", None)
-                    # VAST URL extraction.
-                    # 1. Typed fields that should return VAST XML directly.
-                    # 2. ThirdPartyCreative snippets: take the FIRST URL.
-                    #    Newsweek's active video lines are mostly third-party
-                    #    tags where the SSP-side URL is the leading URL in the
-                    #    snippet, even when it's a JS loader rather than a
-                    #    raw VAST endpoint. The parser will follow redirects;
-                    #    real failures get sampled into the refresh log.
-                    # 3. Skip thirdPartyImpressionUrl — that's an impression
-                    #    beacon, never a VAST endpoint.
-                    vast_url = None
-                    for _attr in ("vastXmlUrl", "vastRedirectUrl"):
-                        v = getattr(c, _attr, None)
-                        if isinstance(v, str) and v.startswith(("http://", "https://")):
-                            vast_url = v
-                            break
-                    if not vast_url:
-                        snippet = getattr(c, "snippet", None)
-                        if isinstance(snippet, str):
-                            m = re.search(r'https?://[^\s"\'<>]+', snippet)
-                            if m:
-                                vast_url = m.group(0)
                     rows.append({
                         "creative_id":      str(cid) if cid is not None else None,
                         "display_name":     dn,
                         "creative_type":    ct,
                         "duration_seconds": self._ms_to_seconds(duration_ms),
-                        "vast_url":         vast_url,
                     })
-                # Page through.
                 sb.offset += sb.limit
                 if sb.offset >= getattr(resp, "totalResultSetSize", 0):
                     break
             logger.info(
-                "GAM creatives (SOAP): %d total, %d with duration, %d with VAST URL",
+                "GAM creatives (SOAP): %d total, %d with duration",
                 len(rows),
                 sum(1 for r in rows if r["duration_seconds"] is not None),
-                sum(1 for r in rows if r["vast_url"] is not None),
             )
             return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
