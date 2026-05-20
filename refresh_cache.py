@@ -301,11 +301,13 @@ def refresh_magnite_deal_metadata() -> int:
     yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
     start     = yesterday - timedelta(days=179)
 
+    # Magnite rejects bare YYYY-MM-DD; requires ISO-8601 with timezone, e.g.
+        # "yyyy-MM-dd'T'HH:mm:ssZ". Send midnight UTC for start and end-of-day UTC for end.
     df = client.run_report(
         dimensions=["deal", "deal_id", "date"],
         metrics=["bid_requests"],
-        start=start.isoformat(),
-        end=yesterday.isoformat(),
+        start=f"{start.isoformat()}T00:00:00Z",
+        end=f"{yesterday.isoformat()}T23:59:59Z",
         date_range=None,
     )
     if df.empty:
