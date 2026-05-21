@@ -2898,9 +2898,11 @@ if st.session_state.active_view == "campaigns":
                 return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
             def _subtitle(li_name, ad_format, cpm_rate):
-                """Extract 'Advertiser · Format · $CPM' from the line-item name."""
+                """Extract 'Format · $CPM' from the line-item name. The client
+                lives in the main display name now (e.g. 'Cartier UK -
+                Uniscroller' on the row above), so the subtitle stays
+                advertiser-free to avoid the repetition."""
                 parts = (li_name or "").split("_") if isinstance(li_name, str) else []
-                adv = parts[7].replace("-", " ") if len(parts) > 7 and parts[7] not in ("NA","N/A","") else ""
                 fmt = ad_format if (isinstance(ad_format, str) and ad_format) else (parts[10] if len(parts) > 10 else "")
                 cpm_str = ""
                 try:
@@ -2908,7 +2910,7 @@ if st.session_state.active_view == "campaigns":
                         cpm_str = f"${float(cpm_rate):g} CPM"
                 except Exception:
                     pass
-                bits = [b for b in (adv, fmt, cpm_str) if b]
+                bits = [b for b in (fmt, cpm_str) if b]
                 return " · ".join(bits)
 
             def _pace_html(p, p_prior):
@@ -3638,19 +3640,29 @@ if st.session_state.active_view == "campaigns":
                                 else _esc(_seller))
                 _progress = row.get("progress_pct")
 
-                # Display name = the taxonomy MediaType (field 11 of the
-                # 14-field LI naming convention — token index 10). This
-                # surfaces Newsweek-specific products like Uniscroller /
-                # Interscroller / CenterStage / FITO / Preroll that GAM's
-                # auto-derived `ad_format` collapses to "Banner" or "Video".
-                # See `project_gam_line_item_naming_convention.md` for the
-                # full SOP. Falls back to the prior Vertical_SSP_DSP slice
-                # when field 11 is NA / blank / missing (off-convention or
-                # legacy line items).
+                # Display name = "<Client> - <MediaType>" from the 14-field LI
+                # naming convention (Client = field 8 = token[7]; MediaType =
+                # field 11 = token[10]). This surfaces Newsweek-specific
+                # products like Uniscroller / Interscroller / CenterStage /
+                # FITO / Preroll (which GAM's `ad_format` collapses to
+                # "Banner"/"Video") paired with the advertiser, so each row
+                # reads like "Cartier UK - Uniscroller" instead of just
+                # the product alone. See `project_gam_line_item_naming
+                # _convention.md` for the full SOP. Either half may be
+                # missing — fall back gracefully.
                 _tokens = _li_clean.split("_")
-                _media_type = _tokens[10] if len(_tokens) >= 11 else ""
-                if _media_type and _media_type not in ("NA", "N/A", ""):
-                    _display_name = _media_type.replace("-", " ")
+                _client_raw = _tokens[7] if len(_tokens) >= 8 else ""
+                _media_raw  = _tokens[10] if len(_tokens) >= 11 else ""
+                _client = (_client_raw.replace("-", " ")
+                           if _client_raw and _client_raw not in ("NA", "N/A", "") else "")
+                _media  = (_media_raw.replace("-", " ")
+                           if _media_raw and _media_raw not in ("NA", "N/A", "") else "")
+                if _client and _media:
+                    _display_name = f"{_client} - {_media}"
+                elif _media:
+                    _display_name = _media
+                elif _client:
+                    _display_name = _client
                 elif len(_tokens) >= 5:
                     _display_name = "_".join(_tokens[2:5])
                 elif len(_tokens) >= 3:
