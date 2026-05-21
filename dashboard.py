@@ -3638,11 +3638,20 @@ if st.session_state.active_view == "campaigns":
                                 else _esc(_seller))
                 _progress = row.get("progress_pct")
 
-                # Display name = short slice of the structured LI name. Take
-                # tokens 2-4 (category + ssp + dsp / category_advertiser for
-                # PMP-style) joined — matches the screenshot's compact form.
+                # Display name = the taxonomy MediaType (field 11 of the
+                # 14-field LI naming convention — token index 10). This
+                # surfaces Newsweek-specific products like Uniscroller /
+                # Interscroller / CenterStage / FITO / Preroll that GAM's
+                # auto-derived `ad_format` collapses to "Banner" or "Video".
+                # See `project_gam_line_item_naming_convention.md` for the
+                # full SOP. Falls back to the prior Vertical_SSP_DSP slice
+                # when field 11 is NA / blank / missing (off-convention or
+                # legacy line items).
                 _tokens = _li_clean.split("_")
-                if len(_tokens) >= 5:
+                _media_type = _tokens[10] if len(_tokens) >= 11 else ""
+                if _media_type and _media_type not in ("NA", "N/A", ""):
+                    _display_name = _media_type.replace("-", " ")
+                elif len(_tokens) >= 5:
                     _display_name = "_".join(_tokens[2:5])
                 elif len(_tokens) >= 3:
                     _display_name = "_".join(_tokens[2:])
