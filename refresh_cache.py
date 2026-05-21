@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -426,12 +427,37 @@ def migrate_table_names() -> None:
 
 def main() -> None:
     _load_dotenv()
+
+    # --mode=direct → only refresh GAM direct campaigns (gam_campaigns).
+    # Used by refresh_direct.yml on its intra-day fires (11 AM + 3 PM ET)
+    # so dashboard users get fresh direct-campaign delivery without
+    # re-pulling the slower PMP / Magnite / Pubmatic feeds. Default mode
+    # is the full sweep — what refresh.yml runs at 5 AM ET.
+    mode = "all"
+    for arg in sys.argv[1:]:
+        if arg.startswith("--mode="):
+            mode = arg.split("=", 1)[1].strip().lower()
+    if mode not in ("all", "direct"):
+        logger.error("Unknown --mode=%s (use 'all' or 'direct')", mode)
+        raise SystemExit(2)
+    logger.info("refresh_cache v3 — mode=%s", mode)
+
+    migrate_table_names()
+
+    if mode == "direct":
+        total = 0
+        try:
+            total += refresh_gam()
+        except Exception:
+            logger.exception("Refresh failed for gam_campaigns")
+        logger.info("Done (direct-only). %d rows written.", total)
+        return
+
+    # Full sweep below — everything in dependency-independent order.
     logger.info("refresh_cache v3 — Magnite date_range=%s", next(iter(REPORTS.values()))["date_range"])
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
     account_id = os.environ["MAGNITE_PUBLISHER_ID"]
-
-    migrate_table_names()
 
     client = MagniteClient(
         api_key=api_key,

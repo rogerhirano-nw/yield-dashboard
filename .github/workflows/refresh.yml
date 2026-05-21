@@ -1,9 +1,16 @@
 name: Refresh Magnite cache
 
+# Triggered externally by cron-job.org via the GitHub API
+# (POST /repos/<owner>/<repo>/actions/workflows/refresh.yml/dispatches)
+# at 05:00 America/New_York. workflow_dispatch fires within seconds of
+# the API call — unlike GitHub's native `schedule:` cron which was
+# drifting 8+ hours late because top-of-hour scheduled runs get
+# deprioritized during system-wide load spikes.
+#
+# Same pattern used by rogerhirano-nw/apple-news/daily-report.yml.
+# Manual `gh workflow run refresh.yml` still works for ad-hoc runs.
 on:
-  schedule:
-    - cron: '0 9 * * *'   # 9 AM UTC = 5 AM ET daily
-  workflow_dispatch:        # lets you trigger manually from GitHub UI
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
