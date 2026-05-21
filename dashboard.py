@@ -150,6 +150,14 @@ _DEFAULT_SETTINGS: dict = {
     "team_names": {
         "USA": "USA", "INTL": "International",
     },
+    # AE → Account Manager mapping. AEs (Sellers) are the ones who close
+    # the deal; AMs are the ops people who manage the campaign once live.
+    # Each AE typically has a paired AM; populate this mapping in Configure
+    # → Section 4 → Account Manager mapping. The Direct campaigns view
+    # surfaces this as an "Account Manager" filter dropdown (AM names are
+    # derived from the seller_ae of each line item via this map).
+    # Empty / unmapped AEs surface as "Unassigned" in the filter.
+    "account_managers": {},
     # Per-format thresholds. *_pct is the green floor (≥ target = green). The
     # matching *_red_below is the red ceiling (< red_below = red); anything
     # between red_below and target renders amber. Leaving *_red_below null
@@ -294,8 +302,8 @@ def _load_settings() -> dict:
         whose DB already has a saved version of that top-level key. User-set
         values still win — the deep-merge order is defaults first, loaded last."""
         result = {**_DEFAULT_SETTINGS, **loaded}
-        for _k in ("ae_names", "team_names", "benchmarks_by_format",
-                   "airtable_field_names"):
+        for _k in ("ae_names", "team_names", "account_managers",
+                   "benchmarks_by_format", "airtable_field_names"):
             result[_k] = {
                 **(_DEFAULT_SETTINGS.get(_k) or {}),
                 **(loaded.get(_k) or {}),
@@ -1951,7 +1959,22 @@ if st.session_state.active_view == "campaigns":
         all_sellers = sorted(set(gam_df["seller_ae"].dropna().unique()) | set(_pmp_sellers))
 
         # ── Filter row: compact, small uppercase labels above each select.
-        f1, f2, f3, f4, f5 = st.columns(5)
+        # Account Manager filter — derives the AM for each line by looking
+        # up its seller_ae in the Configure → Section 4 → Account Manager
+        # mapping. Multiselect so you can scope to one AM or compare across
+        # several. Lines whose AE isn't in the map fall into "Unassigned"
+        # (still selectable, useful for spotting AEs missing from Configure).
+        _am_map = _cfg.get("account_managers", {}) or {}
+        all_ams = sorted({v for v in _am_map.values() if v}) if _am_map else []
+        # Detect whether any line has a seller_ae missing from the map →
+        # expose "Unassigned" as a filter option only when relevant.
+        _has_unmapped = bool(
+            "seller_ae" in gam_df.columns
+            and gam_df["seller_ae"].dropna().apply(lambda s: s not in _am_map).any()
+        )
+        am_opts = all_ams + (["Unassigned"] if _has_unmapped else [])
+
+        f1, f2, f3, f4, f5, f6 = st.columns(6)
         with f1:
             st.markdown('<div class="nw-filter-label">Seller</div>', unsafe_allow_html=True)
             selected_seller = st.selectbox(
@@ -2003,6 +2026,14 @@ if st.session_state.active_view == "campaigns":
                 key="gam_team_filter",
                 label_visibility="collapsed",
             )
+        with f6:
+            st.markdown('<div class="nw-filter-label">Account Manager</div>', unsafe_allow_html=True)
+            selected_ams = st.multiselect(
+                "Account Manager",
+                options=am_opts,
+                key="gam_am_filter",
+                label_visibility="collapsed",
+            )
 
         view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
         if selected_advertisers:
@@ -2013,6 +2044,14 @@ if st.session_state.active_view == "campaigns":
             view_gam = view_gam[view_gam["status"].isin(selected_statuses)]
         if selected_teams:
             view_gam = view_gam[view_gam["team"].isin(selected_teams)]
+        if selected_ams:
+            # Map each row's seller_ae → AM via the Configure mapping;
+            # rows whose AE is not in the map get "Unassigned" so they're
+            # filterable separately. Empty/null seller_ae also maps to
+            # "Unassigned" so they don't disappear silently.
+            _row_am = (view_gam["seller_ae"].fillna("").map(_am_map)
+                       .where(lambda s: s.astype(bool), other="Unassigned"))
+            view_gam = view_gam[_row_am.isin(selected_ams)]
 
         if view_gam.empty:
             st.info("No campaigns found for the selected seller.")
@@ -5745,7 +5784,44 @@ if st.session_state.active_view == "configure":
             },
         )
 
-        # ── 4c: Status Colors + live preview.
+        # ── 4c: Account Manager mapping.
+        # Maps an AE code (Seller / field 14 of the LI name) to the Account
+        # Manager who operates the campaign. The Direct campaigns view in
+        # Overall Performance uses this map for the "Account Manager"
+        # filter dropdown — each line's AM is looked up from its seller_ae.
+        # AE codes not in the table fall into the "Unassigned" bucket in
+        # the filter.
+        _am_map = _s.get("account_managers", {}) or {}
+        _n_ams_distinct = len(set(_am_map.values())) if _am_map else 0
+        st.markdown(
+            f'<div class="cfg-card-title" style="margin-top:14px">Account Manager mapping '
+            f'<span class="cfg-card-meta">· {_n_ams_distinct} AMs · {len(_am_map)} AE links</span></div>'
+            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+            f'Each AE (Seller) can be paired with the Account Manager who operates '
+            f'their campaigns. Surfaces as the Account Manager filter on Direct campaigns. '
+            f'AEs not listed here surface as "Unassigned".</div>',
+            unsafe_allow_html=True,
+        )
+        _am_rows = [{"AE Code": k, "Account Manager": v} for k, v in sorted(_am_map.items())]
+        _am_edit = st.data_editor(
+            pd.DataFrame(_am_rows) if _am_rows
+            else pd.DataFrame(columns=["AE Code", "Account Manager"]),
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="settings_account_managers",
+            column_config={
+                "AE Code":         st.column_config.TextColumn(
+                    "AE Code (matches Seller mapping above)", required=True,
+                    help="The AE code as it appears in field 14 of the line item name "
+                         "(e.g. AShah, JMakin). Must match a Code in the Seller mapping above."),
+                "Account Manager": st.column_config.TextColumn(
+                    "Account Manager", required=True,
+                    help="Display name of the AM paired with this AE."),
+            },
+        )
+
+        # ── 4d: Status Colors + live preview.
         _status_color_rows = _s.get("status_colors", []) or []
         st.markdown(
             f'<div class="cfg-card-title" style="margin-top:14px">Status colors</div>'
@@ -5901,6 +5977,12 @@ if st.session_state.active_view == "configure":
                 for _, r in _team_edit.iterrows()
                 if pd.notna(r.get("Code")) and str(r["Code"]).strip()
             }
+            _new_account_managers = {
+                str(r["AE Code"]).strip(): str(r["Account Manager"]).strip()
+                for _, r in _am_edit.iterrows()
+                if pd.notna(r.get("AE Code")) and str(r["AE Code"]).strip()
+                and pd.notna(r.get("Account Manager")) and str(r["Account Manager"]).strip()
+            }
             _new_dt = {
                 str(r["Code"]).strip(): str(r["Label"]).strip()
                 for _, r in _dt_edit.iterrows()
@@ -6010,6 +6092,7 @@ if st.session_state.active_view == "configure":
             }
             _save_settings({
                 "ssps": _new_ssps, "ae_names": _new_ae, "team_names": _new_team,
+                "account_managers": _new_account_managers,
                 "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
                 "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
                 "deal_source_aliases": _new_deal_source_aliases,

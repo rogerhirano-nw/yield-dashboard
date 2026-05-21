@@ -85,6 +85,7 @@
     "THern":     "Theresa Hern",
     "Thern":     "Theresa Hern"
   },
+  "account_managers": {},
   "benchmarks_by_format": {
     "Display":            { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null },
     "Video":              { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 70.0, "vcr_red_below": null },
