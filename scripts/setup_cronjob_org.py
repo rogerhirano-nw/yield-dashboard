@@ -33,11 +33,13 @@ import time
 import urllib.error
 import urllib.request
 
-REPO = "rogerhirano-nw/yield-dashboard"
-
+# Per-job repo + workflow + schedule. Repo is per-entry so this script
+# can provision crons across multiple repos owned by the same account
+# (yield-dashboard + apple-news today; trivial to add more later).
 JOBS = [
     {
-        "title": "yield-dashboard refresh (daily 5 AM ET)",
+        "repo":     "rogerhirano-nw/yield-dashboard",
+        "title":    "yield-dashboard refresh (daily 5 AM ET)",
         "workflow": "refresh.yml",
         # All-day, but hours/minutes pinned → fires once at 05:00 NY time.
         "schedule": {
@@ -50,7 +52,8 @@ JOBS = [
         },
     },
     {
-        "title": "yield-dashboard weekly seller report (Wed 9 AM ET)",
+        "repo":     "rogerhirano-nw/yield-dashboard",
+        "title":    "yield-dashboard weekly seller report (Wed 9 AM ET)",
         "workflow": "weekly_report.yml",
         "schedule": {
             "timezone": "America/New_York",
@@ -59,6 +62,19 @@ JOBS = [
             "mdays":   [-1],
             "months":  [-1],
             "wdays":   [3],    # Wednesday only (Sun=0..Sat=6)
+        },
+    },
+    {
+        "repo":     "rogerhirano-nw/apple-news",
+        "title":    "apple-news daily report (daily 8 AM ET)",
+        "workflow": "daily-report.yml",
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [8],
+            "minutes": [0],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [-1],
         },
     },
 ]
@@ -92,11 +108,11 @@ def _api(method: str, path: str, *, api_key: str, body: dict | None = None) -> d
         ) from e
 
 
-def _job_payload(*, title: str, workflow: str, schedule: dict, github_pat: str) -> dict:
+def _job_payload(*, repo: str, title: str, workflow: str, schedule: dict, github_pat: str) -> dict:
     """Build the cron-job.org job creation/update payload."""
     return {
         "job": {
-            "url":           f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/dispatches",
+            "url":           f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
             "enabled":       True,
             "title":         title,
             "saveResponses": True,         # keep response bodies for debugging
@@ -142,13 +158,13 @@ def _create_or_update(api_key: str, *, title: str, payload: dict) -> int:
     return int(job_id)
 
 
-def _fire_workflow_dispatch(github_pat: str, workflow: str) -> int:
+def _fire_workflow_dispatch(github_pat: str, repo: str, workflow: str) -> int:
     """Smoke test: make the *exact same* call cron-job.org will make at
     schedule time, directly against GitHub. Returns the HTTP code.
     cron-job.org has no public 'run now' API endpoint — that button is
     UI-only — so we verify end-to-end against GitHub instead. This is
     actually a stronger test: if this 204s, cron-job.org will too."""
-    url = f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/dispatches"
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
     req = urllib.request.Request(
         url,
         data=json.dumps({"ref": "main"}).encode("utf-8"),
@@ -181,11 +197,14 @@ def main() -> int:
         print("✗ Missing CRONJOB_API_KEY and/or GITHUB_PAT env vars.")
         return 2
 
-    print(f"Provisioning {len(JOBS)} cron-job.org jobs for {REPO}…\n")
+    repos = sorted({j["repo"] for j in JOBS})
+    print(f"Provisioning {len(JOBS)} cron-job.org jobs across {len(repos)} repos:\n  - "
+          + "\n  - ".join(repos) + "\n")
     created_ids: list[tuple[str, int]] = []
     for spec in JOBS:
         print(f"• {spec['title']}")
         payload = _job_payload(
+            repo=spec["repo"],
             title=spec["title"],
             workflow=spec["workflow"],
             schedule=spec["schedule"],
@@ -197,23 +216,22 @@ def main() -> int:
     print("\nSmoke test — making the same workflow_dispatch call directly\n"
           "against GitHub that cron-job.org will make at schedule time…\n")
     for spec in JOBS:
-        print(f"• {spec['workflow']}")
-        code = _fire_workflow_dispatch(github_pat, spec["workflow"])
+        print(f"• {spec['repo']} / {spec['workflow']}")
+        code = _fire_workflow_dispatch(github_pat, spec["repo"], spec["workflow"])
         ok = "✓" if code == 204 else "✗"
         print(f"  {ok} GitHub returned HTTP {code} (expect 204)")
 
-    print(
-        "\nGive GitHub ~10 seconds to register the dispatches, then verify:\n"
-        f"  gh run list --workflow=refresh.yml       --limit=1 -R {REPO}\n"
-        f"  gh run list --workflow=weekly_report.yml --limit=1 -R {REPO}\n"
-        "Both should show event=workflow_dispatch, status=queued or in_progress.\n"
-    )
+    print("\nGive GitHub ~10 seconds to register the dispatches, then "
+          "verify with:\n")
+    for spec in JOBS:
+        print(f"  gh run list --workflow={spec['workflow']} --limit=1 -R {spec['repo']}")
+    print("\nAll should show event=workflow_dispatch, status=queued or in_progress.\n")
 
     # Give GitHub a moment, then list the runs for the user.
     time.sleep(8)
     print("Recent runs (live from gh CLI):\n")
     for spec in JOBS:
-        os.system(f"gh run list --workflow={spec['workflow']} --limit=1 -R {REPO}")
+        os.system(f"gh run list --workflow={spec['workflow']} --limit=1 -R {spec['repo']}")
     return 0
 
 
