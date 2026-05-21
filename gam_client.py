@@ -416,6 +416,14 @@ class GAMClient:
                 "AD_SERVER_REVENUE",
                 "AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+                # Video starts + completes for campaign-to-date VCR. The 7-day
+                # delivery report also pulls these, but the dashboard's VCR
+                # cell needs the lifetime ratio (consistent with Revenue /
+                # Delivered / Viewable / CTR cells which are all CTD). Added
+                # 2026-05-21 per "data displayed should be always campaign
+                # to date" directive for Direct campaigns table.
+                "VIDEO_VIEWERSHIP_STARTS",
+                "VIDEO_VIEWERSHIP_COMPLETES",
             ],
             start_date=start,
             end_date=end,
@@ -427,6 +435,8 @@ class GAMClient:
             "ad_server_revenue": "lifetime_revenue",
             "ad_server_active_view_viewable_impressions": "lifetime_viewable_imps",
             "ad_server_active_view_measurable_impressions": "lifetime_measurable_imps",
+            "video_viewership_starts": "lifetime_video_starts",
+            "video_viewership_completes": "lifetime_video_completes",
             "line_item_computed_status_name": "status_api",
         })
 
@@ -898,18 +908,34 @@ class GAMClient:
             merged.loc[_had_no_api_status & (merged["status"] == "Delivering"), "status"] = "Paused"
             merged = merged.drop(columns=["status_api"])
 
-        # VCR — completes / starts. GAM v1's enum exposes these as
-        # VIDEO_VIEWERSHIP_STARTS / VIDEO_VIEWERSHIP_COMPLETES (snake-cased
-        # downstream).
-        _vcr_starts     = "video_viewership_starts"
-        _vcr_completes  = "video_viewership_completes"
-        if _vcr_starts in merged.columns and _vcr_completes in merged.columns:
-            merged["vcr"] = merged.apply(
-                lambda r: (r[_vcr_completes] / r[_vcr_starts] * 100)
-                if pd.notna(r.get(_vcr_starts)) and r.get(_vcr_starts, 0) > 0
-                else (0.0 if pd.notna(r.get(_vcr_starts)) else None),
-                axis=1,
-            )
+        # VCR — completes / starts. Prefer the *lifetime* (campaign-to-date)
+        # ratio so the Direct campaigns table is consistent with the other
+        # CTD cells (Revenue / Delivered / Viewable / CTR). Fall back to the
+        # 7-day aggregate when lifetime starts/completes weren't returned
+        # for the line — e.g. a brand-new video line with zero history yet.
+        _lt_starts    = "lifetime_video_starts"
+        _lt_completes = "lifetime_video_completes"
+        _wk_starts    = "video_viewership_starts"
+        _wk_completes = "video_viewership_completes"
+
+        def _vcr_for(row):
+            # Lifetime first.
+            ls = row.get(_lt_starts); lc = row.get(_lt_completes)
+            if pd.notna(ls) and ls > 0 and pd.notna(lc):
+                return float(lc) / float(ls) * 100
+            if pd.notna(ls) and ls == 0:
+                # Lifetime says zero video starts ever → no VCR (not 0%).
+                pass
+            # 7-day fallback.
+            ws = row.get(_wk_starts); wc = row.get(_wk_completes)
+            if pd.notna(ws) and ws > 0 and pd.notna(wc):
+                return float(wc) / float(ws) * 100
+            return None
+
+        has_lifetime_video = _lt_starts in merged.columns and _lt_completes in merged.columns
+        has_weekly_video   = _wk_starts in merged.columns and _wk_completes in merged.columns
+        if has_lifetime_video or has_weekly_video:
+            merged["vcr"] = merged.apply(_vcr_for, axis=1)
         else:
             merged["vcr"] = None
 
