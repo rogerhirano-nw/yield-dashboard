@@ -1982,13 +1982,28 @@ if st.session_state.active_view == "campaigns":
         # mapping. Multiselect so you can scope to one AM or compare across
         # several. Lines whose AE isn't in the map fall into "Unassigned"
         # (still selectable, useful for spotting AEs missing from Configure).
+        #
+        # IMPORTANT: gam_df["seller_ae"] holds the FULL display name (e.g.
+        # "Theresa Hern"), not the code ("THern") — see line ~1924 where it
+        # gets run through AE_NAMES.map() before storage. The AM map in
+        # settings is keyed by code (matching ae_names structure), so we
+        # build a name-keyed lookup here for the filter join. Aliases that
+        # share a full name (THern / Thern / THearn → Theresa Hern) collapse
+        # into one entry — assigning ANY one alias to JC/Jen covers them all.
         _am_map = _cfg.get("account_managers", {}) or {}
-        all_ams = sorted({v for v in _am_map.values() if v}) if _am_map else []
-        # Detect whether any line has a seller_ae missing from the map →
-        # expose "Unassigned" as a filter option only when relevant.
+        _ae_names_map = _cfg.get("ae_names", {}) or {}
+        _am_by_full_name = {
+            _ae_names_map.get(_code, _code): _am
+            for _code, _am in _am_map.items()
+            if _am
+        }
+        all_ams = sorted({v for v in _am_by_full_name.values() if v})
+        # Detect whether any line has a seller_ae missing from the
+        # full-name keyed map → expose "Unassigned" as a filter option
+        # only when relevant.
         _has_unmapped = bool(
             "seller_ae" in gam_df.columns
-            and gam_df["seller_ae"].dropna().apply(lambda s: s not in _am_map).any()
+            and gam_df["seller_ae"].dropna().apply(lambda s: s not in _am_by_full_name).any()
         )
         am_opts = all_ams + (["Unassigned"] if _has_unmapped else [])
 
@@ -2063,16 +2078,19 @@ if st.session_state.active_view == "campaigns":
         if selected_teams:
             view_gam = view_gam[view_gam["team"].isin(selected_teams)]
         if selected_ams:
-            # Map each row's seller_ae → AM via the Configure mapping;
-            # rows whose AE is not in the map get "Unassigned" so they're
-            # filterable separately. Empty/null seller_ae also maps to
-            # "Unassigned" so they don't disappear silently.
-            _row_am = (view_gam["seller_ae"].fillna("").map(_am_map)
-                       .where(lambda s: s.astype(bool), other="Unassigned"))
+            # Map each row's seller_ae (full display name) → AM via the
+            # name-keyed lookup. Rows whose AE isn't in the map → NaN, then
+            # we coerce NaN/empty to "Unassigned" so they're filterable
+            # explicitly. Using fillna() chain instead of .where(astype(bool))
+            # to avoid the NaN→True quirk of pandas' bool-cast.
+            _row_am = (view_gam["seller_ae"].fillna("")
+                       .map(_am_by_full_name)
+                       .fillna("Unassigned")
+                       .replace("", "Unassigned"))
             view_gam = view_gam[_row_am.isin(selected_ams)]
 
         if view_gam.empty:
-            st.info("No campaigns found for the selected seller.")
+            st.info("No campaigns found for the selected filters.")
         else:
             # Header timestamp reflects when gam_campaigns was last refreshed
             # (gam_df["_pulled_at"]), NOT the current wall-clock time. Falls
