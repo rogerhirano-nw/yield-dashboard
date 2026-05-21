@@ -5807,20 +5807,33 @@ if st.session_state.active_view == "configure":
         # Manager who operates the campaign. The Direct campaigns view in
         # Overall Performance uses this map for the "Account Manager"
         # filter dropdown — each line's AM is looked up from its seller_ae.
-        # AE codes not in the table fall into the "Unassigned" bucket in
-        # the filter.
+        # AE codes not assigned to an AM fall into the "Unassigned" bucket
+        # in the filter.
+        #
+        # AM is constrained to a small allowlist via a Selectbox column.
+        # When the team grows past these two, just extend _AM_CHOICES.
+        _AM_CHOICES = ["JC", "Jen"]
         _am_map = _s.get("account_managers", {}) or {}
-        _n_ams_distinct = len(set(_am_map.values())) if _am_map else 0
+        _n_assigned    = sum(1 for v in _am_map.values() if v)
+        _n_unassigned  = sum(1 for v in _am_map.values() if not v)
         st.markdown(
             f'<div class="cfg-card-title" style="margin-top:14px">Account Manager mapping '
-            f'<span class="cfg-card-meta">· {_n_ams_distinct} AMs · {len(_am_map)} AE links</span></div>'
+            f'<span class="cfg-card-meta">· {_n_assigned} assigned · {_n_unassigned} blank</span></div>'
             f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Each AE (Seller) can be paired with the Account Manager who operates '
-            f'their campaigns. Surfaces as the Account Manager filter on Direct campaigns. '
-            f'AEs not listed here surface as "Unassigned".</div>',
+            f'Each AE (Seller) can be paired with one of the Account Managers below. '
+            f'Surfaces as the Account Manager filter on Direct campaigns. '
+            f'Leave blank to keep the AE in the "Unassigned" bucket.</div>',
             unsafe_allow_html=True,
         )
-        _am_rows = [{"AE Code": k, "Account Manager": v} for k, v in sorted(_am_map.items())]
+        # Coerce stored values into the allowlist or None so the Selectbox
+        # column doesn't reject pre-existing free-text values (e.g. from a
+        # prior schema where AM was a TextColumn). Anything not in
+        # _AM_CHOICES becomes None (blank) for the editor.
+        _am_rows = [
+            {"AE Code": k,
+             "Account Manager": (v if v in _AM_CHOICES else None)}
+            for k, v in sorted(_am_map.items())
+        ]
         _am_edit = st.data_editor(
             pd.DataFrame(_am_rows) if _am_rows
             else pd.DataFrame(columns=["AE Code", "Account Manager"]),
@@ -5833,9 +5846,11 @@ if st.session_state.active_view == "configure":
                     "AE Code (matches Seller mapping above)", required=True,
                     help="The AE code as it appears in field 14 of the line item name "
                          "(e.g. AShah, JMakin). Must match a Code in the Seller mapping above."),
-                "Account Manager": st.column_config.TextColumn(
-                    "Account Manager", required=True,
-                    help="Display name of the AM paired with this AE."),
+                "Account Manager": st.column_config.SelectboxColumn(
+                    "Account Manager",
+                    options=_AM_CHOICES,
+                    required=False,
+                    help="Pick the AM paired with this AE. Leave blank to keep the AE unassigned."),
             },
         )
 
