@@ -156,8 +156,26 @@ _DEFAULT_SETTINGS: dict = {
     # → Section 4 → Account Manager mapping. The Direct campaigns view
     # surfaces this as an "Account Manager" filter dropdown (AM names are
     # derived from the seller_ae of each line item via this map).
-    # Empty / unmapped AEs surface as "Unassigned" in the filter.
-    "account_managers": {},
+    # Empty AM values are kept as scaffolding (so the codes show up in the
+    # Configure table even before assignment); rows with empty AMs are
+    # treated as "Unassigned" by the dashboard filter.
+    "account_managers": {
+        "AShah": "", "Ashah": "",
+        "BKaretny": "", "Bkaretny": "",
+        "BRobinson": "",
+        "CMamboury": "",
+        "DDivack": "",
+        "DVarvaro": "",
+        "House": "",
+        "ILee": "", "Ilee": "", "Ivy": "",
+        "JAmalfi": "", "JGentile": "", "JMakin": "",
+        "KWebb": "",
+        "NAkhtar": "",
+        "RHirano": "",
+        "RShore": "",
+        "SCarroll": "", "SCaroll": "",
+        "THearn": "", "THern": "", "Thern": "",
+    },
     # Per-format thresholds. *_pct is the green floor (≥ target = green). The
     # matching *_red_below is the red ceiling (< red_below = red); anything
     # between red_below and target renders amber. Leaving *_red_below null
@@ -5977,11 +5995,21 @@ if st.session_state.active_view == "configure":
                 for _, r in _team_edit.iterrows()
                 if pd.notna(r.get("Code")) and str(r["Code"]).strip()
             }
+            # Preserve every AE Code, even when the Account Manager column is
+            # blank. The Configure table is pre-populated with all known AE
+            # codes so the user can fill in AMs incrementally — dropping
+            # blank-AM rows on save would lose that scaffolding the first
+            # time someone saves before completing the assignments. Blank
+            # AMs are treated as "Unassigned" by the dashboard filter, so
+            # behavior stays consistent whether the row is missing or
+            # blank-valued.
             _new_account_managers = {
-                str(r["AE Code"]).strip(): str(r["Account Manager"]).strip()
+                str(r["AE Code"]).strip(): (
+                    str(r["Account Manager"]).strip()
+                    if pd.notna(r.get("Account Manager")) else ""
+                )
                 for _, r in _am_edit.iterrows()
                 if pd.notna(r.get("AE Code")) and str(r["AE Code"]).strip()
-                and pd.notna(r.get("Account Manager")) and str(r["Account Manager"]).strip()
             }
             _new_dt = {
                 str(r["Code"]).strip(): str(r["Label"]).strip()
