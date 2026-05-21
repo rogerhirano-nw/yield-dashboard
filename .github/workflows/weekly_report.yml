@@ -1,9 +1,14 @@
 name: Weekly deal health report
 
+# Triggered externally by cron-job.org via the GitHub API
+# (POST /repos/<owner>/<repo>/actions/workflows/weekly_report.yml/dispatches)
+# at 09:00 America/New_York every Wednesday. workflow_dispatch fires
+# immediately with no scheduling lag, unlike GitHub's native `schedule:`
+# cron which was drifting hours late and (in EST winter) into the wrong
+# hour entirely. Same pattern as refresh.yml + apple-news/daily-report.yml.
+#
+# Manual `gh workflow run weekly_report.yml` still works for ad-hoc runs.
 on:
-  schedule:
-    # Wednesday 9 AM ET (= 13:00 UTC in EDT; drifts to 8 AM in EST winter).
-    - cron: '0 13 * * 3'
   workflow_dispatch:
     inputs:
       recipients_override:
