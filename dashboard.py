@@ -1164,21 +1164,23 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 # with a divider, AND a gear icon button in the header top-right. Both
 # entry points route through st.session_state.active_view.
 # ──────────────────────────────────────────────────────────────────────────
-_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "configure")
+_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "opensincera", "configure")
 _VIEW_TITLE = {
-    "campaigns": "Overall performance",
-    "site":      "By site / size",
-    "dsp":       "By DSP",
-    "magnite":   "Magnite deals",
-    "pubmatic":  "Pubmatic deals",
-    "configure": "Configure",
+    "campaigns":   "Overall performance",
+    "site":        "By site / size",
+    "dsp":         "By DSP",
+    "magnite":     "Magnite deals",
+    "pubmatic":    "Pubmatic deals",
+    "opensincera": "OpenSincera",
+    "configure":   "Configure",
 }
 _NAV_DATA = [
-    ("campaigns", "Campaigns"),
-    ("site",      "By site / size"),
-    ("dsp",       "By DSP"),
-    ("magnite",   "Magnite deals"),
-    ("pubmatic",  "Pubmatic deals"),
+    ("campaigns",   "Campaigns"),
+    ("site",        "By site / size"),
+    ("dsp",         "By DSP"),
+    ("magnite",     "Magnite deals"),
+    ("pubmatic",    "Pubmatic deals"),
+    ("opensincera", "OpenSincera"),
 ]
 
 if "active_view" not in st.session_state:
@@ -1794,6 +1796,263 @@ if st.session_state.active_view == "pubmatic":
                 "win_rate": st.column_config.NumberColumn("Win Rate %", format="localized"),
             },
         )
+
+if st.session_state.active_view == "opensincera":
+    # OpenSincera quality / ecosystem metadata. Refreshed by
+    # refresh_cache.py into four tables: opensincera_ecosystem,
+    # opensincera_publishers, opensincera_adsystems, opensincera_modules.
+    eco_df  = load("opensincera_ecosystem")
+    pubs_df = load("opensincera_publishers")
+    sys_df  = load("opensincera_adsystems")
+    mod_df  = load("opensincera_modules")
+
+    if eco_df.empty and pubs_df.empty and sys_df.empty and mod_df.empty:
+        st.info(
+            "No OpenSincera data yet. Set OPENSINCERA_TOKEN and run "
+            "`python refresh_cache.py` to populate the cache."
+        )
+    else:
+        last_pull_candidates = []
+        for _df in (eco_df, pubs_df, sys_df, mod_df):
+            if not _df.empty and "_pulled_at" in _df.columns:
+                last_pull_candidates.append(_df["_pulled_at"].max())
+        if last_pull_candidates:
+            st.caption(f"Last refresh: {_fmt_last_refresh(max(last_pull_candidates))}")
+
+        sub_eco, sub_pubs, sub_sys, sub_mod = st.tabs(
+            ["Ecosystem", "Publishers", "Ad systems", "Prebid modules"]
+        )
+
+        # ── Ecosystem ───────────────────────────────────────────────────
+        with sub_eco:
+            if eco_df.empty:
+                st.info("No ecosystem snapshot yet.")
+            else:
+                latest = eco_df.sort_values("_pulled_at").iloc[-1]
+                e1, e2, e3, e4 = st.columns(4)
+                e1.metric("Publishers", f"{int(latest.get('sincera_ecosystem_size', 0)):,}"
+                          if pd.notna(latest.get("sincera_ecosystem_size")) else "—")
+                e2.metric("Known ad systems", f"{int(latest.get('known_adsystems', 0)):,}"
+                          if pd.notna(latest.get("known_adsystems")) else "—")
+                e3.metric("Global GPIDs", f"{int(latest.get('global_gpids', 0)):,}"
+                          if pd.notna(latest.get("global_gpids")) else "—")
+                e4.metric("Pubs with GPID", f"{int(latest.get('pubs_with_gpid', 0)):,}"
+                          if pd.notna(latest.get("pubs_with_gpid")) else "—")
+
+                f1, f2, f3, f4 = st.columns(4)
+                f1.metric("Avg user modules",
+                          f"{float(latest['avg_user_modules_deployed']):.2f}"
+                          if pd.notna(latest.get("avg_user_modules_deployed")) else "—")
+                f2.metric("Avg audience providers",
+                          f"{float(latest['avg_audience_providers_deployed']):.2f}"
+                          if pd.notna(latest.get("avg_audience_providers_deployed")) else "—")
+                f3.metric("WebRisk-flagged", f"{int(latest.get('webrisk_flagged_publishers', 0)):,}"
+                          if pd.notna(latest.get("webrisk_flagged_publishers")) else "—")
+                f4.metric("Adult domains", f"{int(latest.get('adult_domains', 0)):,}"
+                          if pd.notna(latest.get("adult_domains")) else "—")
+
+                # Show breakdown JSON columns as expandable tables.
+                _json_cols = (
+                    ("pbjs_ad_unit_media_types", "Prebid ad-unit media types"),
+                    ("pbjs_major_versions",      "Prebid major versions"),
+                    ("header_wrappers",          "Header wrappers (by ad system)"),
+                )
+                for col, label in _json_cols:
+                    raw = latest.get(col)
+                    if not isinstance(raw, str) or not raw:
+                        continue
+                    try:
+                        parsed = json.loads(raw)
+                    except Exception:
+                        continue
+                    if not isinstance(parsed, dict) or not parsed:
+                        continue
+                    with st.expander(label):
+                        _rows = sorted(
+                            ((k, int(v) if str(v).isdigit() else v) for k, v in parsed.items()),
+                            key=lambda kv: (-kv[1] if isinstance(kv[1], int) else 0, str(kv[0])),
+                        )
+                        st.dataframe(
+                            pd.DataFrame(_rows, columns=["key", "count"]),
+                            use_container_width=True, hide_index=True,
+                        )
+
+                if len(eco_df) > 1:
+                    st.subheader("Ecosystem size over time")
+                    _eco_trend = eco_df.copy()
+                    if "date" in _eco_trend.columns:
+                        _eco_trend["date"] = pd.to_datetime(_eco_trend["date"], errors="coerce")
+                        _eco_trend = _eco_trend.dropna(subset=["date"]).sort_values("date")
+                        _eco_trend = _eco_trend.set_index("date")[["sincera_ecosystem_size"]]
+                        st.line_chart(_eco_trend, height=220)
+
+        # ── Publishers ──────────────────────────────────────────────────
+        with sub_pubs:
+            if pubs_df.empty:
+                st.info("No publisher records yet.")
+            else:
+                view = pubs_df.copy()
+
+                # A2CR is returned as a fraction (0.2 = 20%). Surface as %.
+                if "avg_ads_to_content_ratio" in view.columns:
+                    view["avg_ads_to_content_ratio_pct"] = (
+                        pd.to_numeric(view["avg_ads_to_content_ratio"], errors="coerce") * 100
+                    )
+
+                display_cols = [
+                    c for c in [
+                        "name", "domain", "primary_supply_type",
+                        "avg_ads_to_content_ratio_pct", "avg_ads_in_view",
+                        "avg_ad_refresh", "avg_page_weight", "avg_cpu",
+                        "total_unique_gpids", "id_absorption_rate",
+                        "total_supply_paths", "reseller_count", "updated_at",
+                    ] if c in view.columns
+                ]
+
+                st.dataframe(
+                    view[display_cols] if display_cols else view,
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "name":                          st.column_config.TextColumn("Publisher"),
+                        "domain":                        st.column_config.TextColumn("Domain"),
+                        "primary_supply_type":           st.column_config.TextColumn("Supply"),
+                        "avg_ads_to_content_ratio_pct":  st.column_config.NumberColumn("A2CR %", format="%.1f%%"),
+                        "avg_ads_in_view":               st.column_config.NumberColumn("Ads in view", format="%.2f"),
+                        "avg_ad_refresh":                st.column_config.NumberColumn("Ad refresh (s)", format="%.1f"),
+                        "avg_page_weight":               st.column_config.NumberColumn("Page wt (MB)", format="%.2f"),
+                        "avg_cpu":                       st.column_config.NumberColumn("CPU (s)", format="%.2f"),
+                        "total_unique_gpids":            st.column_config.NumberColumn("GPIDs", format="localized"),
+                        "id_absorption_rate":            st.column_config.NumberColumn("ID absorption", format="%.3f"),
+                        "total_supply_paths":            st.column_config.NumberColumn("Supply paths", format="localized"),
+                        "reseller_count":                st.column_config.NumberColumn("Resellers", format="localized"),
+                        "updated_at":                    st.column_config.TextColumn("Updated"),
+                    },
+                )
+
+                # Side-by-side ranking charts for the two most-actionable metrics.
+                col_a2cr, col_refresh = st.columns(2)
+                if "avg_ads_to_content_ratio_pct" in view.columns and not view["avg_ads_to_content_ratio_pct"].dropna().empty:
+                    with col_a2cr:
+                        st.subheader("A2CR by publisher (lower is better)")
+                        chart = (
+                            alt.Chart(view.dropna(subset=["avg_ads_to_content_ratio_pct"]))
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("avg_ads_to_content_ratio_pct:Q", title="A2CR (%)"),
+                                y=alt.Y("domain:N", sort="-x", title=None,
+                                        axis=alt.Axis(labelLimit=200)),
+                                tooltip=[
+                                    alt.Tooltip("name:N", title="Publisher"),
+                                    alt.Tooltip("domain:N", title="Domain"),
+                                    alt.Tooltip("avg_ads_to_content_ratio_pct:Q",
+                                                title="A2CR %", format=".2f"),
+                                ],
+                            ).properties(height=320)
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+
+                if "avg_ad_refresh" in view.columns and not view["avg_ad_refresh"].dropna().empty:
+                    with col_refresh:
+                        st.subheader("Ad refresh by publisher (higher is slower)")
+                        chart = (
+                            alt.Chart(view.dropna(subset=["avg_ad_refresh"]))
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("avg_ad_refresh:Q", title="Refresh (s)"),
+                                y=alt.Y("domain:N", sort="-x", title=None,
+                                        axis=alt.Axis(labelLimit=200)),
+                                tooltip=[
+                                    alt.Tooltip("name:N", title="Publisher"),
+                                    alt.Tooltip("domain:N", title="Domain"),
+                                    alt.Tooltip("avg_ad_refresh:Q",
+                                                title="Refresh (s)", format=".1f"),
+                                ],
+                            ).properties(height=320)
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+
+        # ── Ad systems ──────────────────────────────────────────────────
+        with sub_sys:
+            if sys_df.empty:
+                st.info("No ad-system records yet.")
+            else:
+                st.caption(f"{len(sys_df):,} ad systems known to Sincera.")
+                sys_search = st.text_input("Search ad systems", placeholder="Name or domain…",
+                                           key="os_adsys_search")
+                _view_sys = sys_df.copy()
+                if sys_search:
+                    _mask = (
+                        _view_sys["name"].str.contains(sys_search, case=False, na=False)
+                        | _view_sys["canonical_domain"].str.contains(sys_search, case=False, na=False)
+                    )
+                    _view_sys = _view_sys[_mask]
+
+                st.dataframe(
+                    _view_sys[[c for c in ["id", "name", "canonical_domain", "description",
+                                           "image_url"] if c in _view_sys.columns]],
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "id":               st.column_config.NumberColumn("ID", format="localized"),
+                        "name":             st.column_config.TextColumn("Name"),
+                        "canonical_domain": st.column_config.TextColumn("Domain"),
+                        "description":      st.column_config.TextColumn("Description"),
+                        "image_url":        st.column_config.ImageColumn("Logo"),
+                    },
+                )
+
+        # ── Prebid modules ──────────────────────────────────────────────
+        with sub_mod:
+            if mod_df.empty:
+                st.info("No Prebid-module records yet.")
+            else:
+                cats = sorted(mod_df["module_category"].dropna().unique().tolist()) \
+                    if "module_category" in mod_df.columns else []
+                col_filter, col_search = st.columns([1, 2])
+                with col_filter:
+                    sel_cats = st.multiselect("Category", cats, key="os_mod_cat")
+                with col_search:
+                    mod_search = st.text_input("Search module name", placeholder="e.g. brightcom",
+                                               key="os_mod_search")
+
+                view_mod = mod_df.copy()
+                if sel_cats:
+                    view_mod = view_mod[view_mod["module_category"].isin(sel_cats)]
+                if mod_search:
+                    view_mod = view_mod[
+                        view_mod["module_name"].str.contains(mod_search, case=False, na=False)
+                    ]
+
+                if "detected_count" in view_mod.columns:
+                    view_mod = view_mod.sort_values("detected_count", ascending=False)
+
+                st.dataframe(
+                    view_mod,
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "id":              st.column_config.NumberColumn("ID", format="localized"),
+                        "module_name":     st.column_config.TextColumn("Module"),
+                        "module_category": st.column_config.TextColumn("Category"),
+                        "adsystem_id":     st.column_config.NumberColumn("Ad system ID", format="localized"),
+                        "detected_count":  st.column_config.NumberColumn("Detections (90d)", format="localized"),
+                        "_pulled_at":      None,
+                    },
+                )
+
+                if "detected_count" in view_mod.columns and not view_mod.empty:
+                    st.subheader("Top 20 detected modules")
+                    top = view_mod.head(20).copy()
+                    chart = (
+                        alt.Chart(top).mark_bar().encode(
+                            x=alt.X("detected_count:Q", title="Detections (last 90d)"),
+                            y=alt.Y("module_name:N", sort="-x", title=None,
+                                    axis=alt.Axis(labelLimit=240)),
+                            tooltip=[
+                                "module_name", "module_category",
+                                alt.Tooltip("detected_count:Q", format=","),
+                            ],
+                        ).properties(height=420)
+                    )
+                    st.altair_chart(chart, use_container_width=True)
 
 if st.session_state.active_view == "campaigns":
     # ── Table 1: Direct campaigns from GAM ──────────────────────────────

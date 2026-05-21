@@ -27,6 +27,7 @@ from sqlalchemy import inspect as sa_inspect, text
 
 from client import MagniteClient
 from gam_client import GAMClient
+from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -394,6 +395,107 @@ def refresh_pubmatic() -> int:
     return len(df)
 
 
+# Hardcoded watch-list for the OpenSincera /publishers endpoint.
+# Newsweek + editorial peers we care about for quality benchmarking
+# (A2CR, ads-in-view, ad refresh, page weight, ID absorption).
+OPENSINCERA_WATCHLIST = [
+    "newsweek.com",
+    "businessinsider.com",
+    "forbes.com",
+    "theatlantic.com",
+    "time.com",
+    "slate.com",
+    "salon.com",
+    "thedailybeast.com",
+    "huffpost.com",
+    "buzzfeed.com",
+]
+
+
+def refresh_opensincera_ecosystem() -> int:
+    """Append today's /ecosystem snapshot to opensincera_ecosystem.
+
+    Each row is one daily snapshot — kept as an append-only history so
+    the dashboard can show how the ecosystem metrics drift over time."""
+    logger.info("Refreshing opensincera_ecosystem")
+    client = OpenSinceraClient()
+    df = client.get_ecosystem()
+    if df.empty:
+        logger.warning("OpenSincera ecosystem came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "opensincera_ecosystem"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            elif "date" in df.columns:
+                # Keep one row per snapshot date — replace today's if rerun same day.
+                conn.execute(
+                    text(f'DELETE FROM "{table}" WHERE date = :d'),
+                    {"d": df["date"].iloc[0]},
+                )
+        df.to_sql(table, conn, if_exists="append", index=False)
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
+def refresh_opensincera_publishers() -> int:
+    """Pull /publishers for each domain in the watch-list and replace the table."""
+    logger.info("Refreshing opensincera_publishers (%d domains)",
+                len(OPENSINCERA_WATCHLIST))
+    client = OpenSinceraClient()
+    df = client.get_publishers(OPENSINCERA_WATCHLIST)
+    if df.empty:
+        logger.warning("OpenSincera publishers came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        df.to_sql("opensincera_publishers", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to opensincera_publishers", len(df))
+    return len(df)
+
+
+def refresh_opensincera_adsystems() -> int:
+    """Pull /adsystems and replace the table."""
+    logger.info("Refreshing opensincera_adsystems")
+    client = OpenSinceraClient()
+    df = client.get_adsystems()
+    if df.empty:
+        logger.warning("OpenSincera adsystems came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        df.to_sql("opensincera_adsystems", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to opensincera_adsystems", len(df))
+    return len(df)
+
+
+def refresh_opensincera_modules() -> int:
+    """Pull /mapping_modules and replace the table."""
+    logger.info("Refreshing opensincera_modules")
+    client = OpenSinceraClient()
+    df = client.get_mapping_modules()
+    if df.empty:
+        logger.warning("OpenSincera modules came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        df.to_sql("opensincera_modules", conn, if_exists="replace", index=False)
+    logger.info("Wrote %d rows to opensincera_modules", len(df))
+    return len(df)
+
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -523,6 +625,26 @@ def main() -> None:
         total += refresh_pubmatic_deal_metadata()
     except Exception:
         logger.exception("Refresh failed for pubmatic_deal_metadata — continuing")
+
+    try:
+        total += refresh_opensincera_ecosystem()
+    except Exception:
+        logger.exception("Refresh failed for opensincera_ecosystem — continuing")
+
+    try:
+        total += refresh_opensincera_publishers()
+    except Exception:
+        logger.exception("Refresh failed for opensincera_publishers — continuing")
+
+    try:
+        total += refresh_opensincera_adsystems()
+    except Exception:
+        logger.exception("Refresh failed for opensincera_adsystems — continuing")
+
+    try:
+        total += refresh_opensincera_modules()
+    except Exception:
+        logger.exception("Refresh failed for opensincera_modules — continuing")
 
 
 if __name__ == "__main__":

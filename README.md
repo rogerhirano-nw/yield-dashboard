@@ -7,6 +7,9 @@ cache and serving it through a fast Streamlit dashboard.
 - **Magnite DV+** — programmatic (General + Prebid Analytics datasets)
 - **Google Ad Manager (GAM)** — direct campaigns and PMP deals
 - **Pubmatic** — PMP deal reporting
+- **OpenSincera** — publisher quality + ecosystem metadata (A2CR, ads-in-view,
+  ad refresh, page weight, Prebid module mappings) for a hardcoded watch-list
+  of peer publishers
 
 Structured for the live-dashboard use case: scheduled pull → local cache →
 fast dashboard read. No source is queried at render time.
@@ -16,6 +19,8 @@ fast dashboard read. No source is queried at render time.
 - `client.py` — `MagniteClient`: auth, create/poll/paginate loop, 429 backoff.
 - `gam_client.py` — `GAMClient`: GAM delivery, pacing, and PMP deal reports.
 - `pubmatic_client.py` — `PubmaticClient`: Pubmatic deal report.
+- `opensincera_client.py` — `OpenSinceraClient`: ecosystem, publishers,
+  ad systems, and Prebid module mappings from the OpenSincera API.
 - `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into SQLite.
   Wire to cron / Airflow / systemd timer.
 - `dashboard.py` — minimal Streamlit dashboard reading from the cache.
@@ -37,6 +42,9 @@ export GAM_KEY_FILE=...
 # Pubmatic
 export PUBMATIC_API_KEY=...
 export PUBMATIC_PUBLISHER_ID=...
+
+# OpenSincera
+export OPENSINCERA_TOKEN=...
 
 # 1. populate the cache
 python refresh_cache.py
