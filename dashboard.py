@@ -1998,6 +1998,21 @@ if st.session_state.active_view == "campaigns":
             if _am
         }
         all_ams = sorted({v for v in _am_by_full_name.values() if v})
+
+        def _apply_am_filter(df, col="seller_ae"):
+            """Apply the top-of-page Account Manager multiselect to any PMP /
+            Magnite / Pubmatic / Direct dataframe whose `col` holds the full
+            display name (e.g. "Theresa Hern"). Returns df unchanged when no
+            AMs are selected, the column is missing, or the df is empty.
+            Aliases collapse via _am_by_full_name. Unmapped or null AEs map
+            to "Unassigned" so they're filterable explicitly."""
+            if not selected_ams or df is None or df.empty or col not in df.columns:
+                return df
+            _row_am = (df[col].fillna("")
+                       .map(_am_by_full_name)
+                       .fillna("Unassigned")
+                       .replace("", "Unassigned"))
+            return df[_row_am.isin(selected_ams)]
         # Detect whether any line has a seller_ae missing from the
         # full-name keyed map → expose "Unassigned" as a filter option
         # only when relevant.
@@ -2077,17 +2092,7 @@ if st.session_state.active_view == "campaigns":
             view_gam = view_gam[view_gam["status"].isin(selected_statuses)]
         if selected_teams:
             view_gam = view_gam[view_gam["team"].isin(selected_teams)]
-        if selected_ams:
-            # Map each row's seller_ae (full display name) → AM via the
-            # name-keyed lookup. Rows whose AE isn't in the map → NaN, then
-            # we coerce NaN/empty to "Unassigned" so they're filterable
-            # explicitly. Using fillna() chain instead of .where(astype(bool))
-            # to avoid the NaN→True quirk of pandas' bool-cast.
-            _row_am = (view_gam["seller_ae"].fillna("")
-                       .map(_am_by_full_name)
-                       .fillna("Unassigned")
-                       .replace("", "Unassigned"))
-            view_gam = view_gam[_row_am.isin(selected_ams)]
+        view_gam = _apply_am_filter(view_gam, "seller_ae")
 
         if view_gam.empty:
             st.info("No campaigns found for the selected filters.")
@@ -3881,6 +3886,7 @@ if st.session_state.active_view == "campaigns":
         )
         if selected_seller != "All":
             pmp_df = pmp_df[pmp_df["seller_ae"] == selected_seller]
+        pmp_df = _apply_am_filter(pmp_df, "seller_ae")
         # _parse_deal() is primary — it reads the type code from the deal name (PD_, PA_, PG_).
         # channelTypeId is fallback only for deals whose names have no recognizable type code.
         _dt_aliases = _cfg.get("deal_type_aliases", {})
@@ -3993,6 +3999,7 @@ if st.session_state.active_view == "campaigns":
                 _gam_deals = _gam_raw[_gam_raw["deal_type_label"].isin(_gam_deal_types)].copy()
                 if selected_seller != "All":
                     _gam_deals = _gam_deals[_gam_deals["seller_ae"] == selected_seller]
+                _gam_deals = _apply_am_filter(_gam_deals, "seller_ae")
                 if sel_pmp_deal_types:
                     _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
                 if not _gam_deals.empty:
@@ -4084,6 +4091,7 @@ if st.session_state.active_view == "campaigns":
                     _mag_df["partner"] = _mag_df["deal"].apply(lambda d: _parse_deal(d)["dsp"])
                 if selected_seller != "All":
                     _mag_df = _mag_df[_mag_df["seller_ae"] == selected_seller]
+                _mag_df = _apply_am_filter(_mag_df, "seller_ae")
                 if not _mag_df.empty:
                     _mag_grp = ["ssp", "deal", "deal_type_label", "ad_format", "partner", "seller_ae"]
                     if "revenue_source" in _mag_df.columns:
@@ -4158,6 +4166,7 @@ if st.session_state.active_view == "campaigns":
                 _custom_df = _custom_df[_custom_df["Deal Type"].isin(_active_types)]
             if selected_seller != "All" and "Seller" in _custom_df.columns:
                 _custom_df = _custom_df[_custom_df["Seller"] == selected_seller]
+            _custom_df = _apply_am_filter(_custom_df, "Seller")
             if _custom_df.empty:
                 continue
             _grp_cols = [c for c in ["SSP", "Deal", "Deal Type", "Format", "DSP", "Seller"] if c in _custom_df.columns]
