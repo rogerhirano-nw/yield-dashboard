@@ -4599,8 +4599,11 @@ if st.session_state.active_view == "campaigns":
             )
 
         # ── Table — custom HTML grid matching Direct campaigns design. ──
+        # No row cap: PMP is a flat list and ad-ops needs the whole inventory
+        # visible (75-ish rows today). If row count grows past ~500 and the
+        # custom HTML grid starts to feel slow, reintroduce pagination here.
         _pmp_rows_html = []
-        for _, row in combined_pmp.head(25).iterrows():
+        for _, row in combined_pmp.iterrows():
             _primary, _paren, _sub = _parse_pmp_name(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
             _floor_val = _floors.get(_dt) if _dt else None
@@ -4659,8 +4662,8 @@ if st.session_state.active_view == "campaigns":
             unsafe_allow_html=True,
         )
 
-        if _pmp_count > 25:
-            st.caption(f"Showing 25 of {_pmp_count:,} deals, sorted by revenue.")
+        # No row cap on the PMP table; the subtitle above already shows the
+        # active count + sort key, so no separate caption needed.
 
         # ── GAM Private Auction inventory — collapsible card matching dashboard style ──
         if not _pa_inv.empty:
