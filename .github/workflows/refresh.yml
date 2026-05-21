@@ -2,7 +2,11 @@ name: Refresh Magnite cache
 
 on:
   schedule:
-    - cron: '0 9 * * *'   # 9 AM UTC = 5 AM ET daily
+    # Offbeat minute on purpose: top-of-hour scheduled runs on GitHub
+    # Actions get heavily deprioritized during the load spike at :00,
+    # and were drifting ~8h late (firing ~17 UTC instead of 09 UTC).
+    # 9:17 UTC = 5:17 AM ET, off the bottleneck, much closer to SLA.
+    - cron: '17 9 * * *'
   workflow_dispatch:        # lets you trigger manually from GitHub UI
 
 env:
