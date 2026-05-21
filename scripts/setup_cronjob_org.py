@@ -142,9 +142,35 @@ def _create_or_update(api_key: str, *, title: str, payload: dict) -> int:
     return int(job_id)
 
 
-def _fire_now(api_key: str, job_id: int) -> None:
-    """Trigger a manual run (smoke test). cron-job.org returns 200 on success."""
-    _api("PATCH", f"/jobs/{job_id}/run", api_key=api_key)
+def _fire_workflow_dispatch(github_pat: str, workflow: str) -> int:
+    """Smoke test: make the *exact same* call cron-job.org will make at
+    schedule time, directly against GitHub. Returns the HTTP code.
+    cron-job.org has no public 'run now' API endpoint — that button is
+    UI-only — so we verify end-to-end against GitHub instead. This is
+    actually a stronger test: if this 204s, cron-job.org will too."""
+    url = f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow}/dispatches"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"ref": "main"}).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization":        f"Bearer {github_pat}",
+            "Accept":               "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type":         "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.getcode()
+    except urllib.error.HTTPError as e:
+        msg = e.read().decode("utf-8", errors="replace")
+        raise SystemExit(
+            f"\n✗ GitHub workflow_dispatch failed: POST {url}\n"
+            f"  HTTP {e.code}: {msg}\n"
+            f"  Most likely cause: GITHUB_PAT is wrong, expired, or lacks\n"
+            f"  Actions: write permission on this repo.\n"
+        ) from e
 
 
 def main() -> int:
@@ -168,11 +194,13 @@ def main() -> int:
         job_id = _create_or_update(api_key, title=spec["title"], payload=payload)
         created_ids.append((spec["title"], job_id))
 
-    print("\nSmoke test — firing each job once now…\n")
-    for title, job_id in created_ids:
-        print(f"• {title}")
-        _fire_now(api_key, job_id)
-        print(f"  ✓ Dispatched (cron-job.org id={job_id})")
+    print("\nSmoke test — making the same workflow_dispatch call directly\n"
+          "against GitHub that cron-job.org will make at schedule time…\n")
+    for spec in JOBS:
+        print(f"• {spec['workflow']}")
+        code = _fire_workflow_dispatch(github_pat, spec["workflow"])
+        ok = "✓" if code == 204 else "✗"
+        print(f"  {ok} GitHub returned HTTP {code} (expect 204)")
 
     print(
         "\nGive GitHub ~10 seconds to register the dispatches, then verify:\n"
