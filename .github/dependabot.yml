@@ -1,0 +1,14 @@
+# Keep GitHub Actions versions current. Especially important for this repo
+# because we run 6+ workflows (refresh, refresh_direct, weekly_report,
+# export_gam_deals, daily-report, ci) — any one of them hard-failing after
+# the Sept 2026 Node 20 removal would disrupt a live data pipeline.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
