@@ -4794,1374 +4794,1382 @@ if st.session_state.active_view == "configure":
     # Sub-tab labels include unmapped count badges.
     _pmp_tab_label    = f"PMP deals  {_pmp_unmapped_total}" if _pmp_unmapped_total > 0 else "PMP deals"
     _direct_tab_label = f"Direct campaigns  {_direct_unmapped_total}" if _direct_unmapped_total > 0 else "Direct campaigns"
-    _settings_pmp_tab, _settings_direct_tab = st.tabs([_pmp_tab_label, _direct_tab_label])
+    # Wrap the entire Configure body in a form so cell edits across the
+    # sub-tabs (PMP / Direct) and every data_editor don't trigger a page
+    # rerun on each keystroke. All edits batch until the user clicks the
+    # form submit button at the bottom. Reactive elements like the
+    # unmapped-values banner and tab-label counts reflect the LAST SAVED
+    # state, not in-progress edits — that's the tradeoff for a stable
+    # editing experience.
+    with st.form("configure_form", clear_on_submit=False):
+        _settings_pmp_tab, _settings_direct_tab = st.tabs([_pmp_tab_label, _direct_tab_label])
 
-    with _settings_pmp_tab:
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 1 — Sources
-        # ────────────────────────────────────────────────────────────────────
-        _n_pmp_enabled = sum(1 for s in _s.get("ssps", []) if s.get("enabled", True))
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:8px">'
-            f'<span class="cfg-eyebrow">Section 1 — Sources</span>'
-            f'<span class="cfg-count">{_n_pmp_enabled} active</span></div>'
-            f'<div class="cfg-desc">Each row is one SSP feeding the PMP table. '
-            f'Disabling an SSP hides it everywhere downstream.</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="cfg-card-title">PMP data sources '
-            f'<span class="cfg-card-meta">· {_n_pmp_enabled} active</span></div>',
-            unsafe_allow_html=True,
-        )
-
-        _ssp_rows = [
-            {
-                "SSP Name":            s["name"],
-                "Enabled":             s.get("enabled", True),
-                "Database Table":      s["table"],
-                "Deal Types":          ", ".join(s.get("deal_types", [])),
-                "Default Deal Source": s.get("deal_source_default", ""),
-            }
-            for s in _s["ssps"]
-        ]
-        _ssp_edit = st.data_editor(
-            pd.DataFrame(_ssp_rows),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_ssps",
-            column_config={
-                "SSP Name":       st.column_config.TextColumn("SSP Name", required=True),
-                "Enabled":        st.column_config.CheckboxColumn("Enabled"),
-                "Database Table": st.column_config.TextColumn(
-                    "Database Table",
-                    help="SQLite/Postgres table populated by refresh_cache.py",
-                ),
-                "Deal Types": st.column_config.TextColumn(
-                    "Deal Types",
-                    help="Comma-separated list — e.g. Private Auction, Preferred Deal",
-                ),
-                "Default Deal Source": st.column_config.TextColumn(
-                    "Default Deal Source",
-                    help="Fills the Deal Source column for rows where the SSP's data has none. "
-                         "Example: GAM has no deal_source column, so set this to 'Publisher'.",
-                ),
-            },
-        )
-
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 2 — Field mapping
-        # ────────────────────────────────────────────────────────────────────
-        _n_canonical = len(_CANONICAL_FIELDS)
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:24px">'
-            f'<span class="cfg-eyebrow">Section 2 — Field mapping</span>'
-            f'<span class="cfg-count">{_n_canonical} fields mapped</span></div>'
-            f'<div class="cfg-desc">Map each canonical display field to the source column in each SSP. '
-            f'<span class="cfg-pill-info">auto</span> = parsed from deal name. '
-            f'<i><span class="cfg-na">N/A</span></i> = not available from that SSP.</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="cfg-card-title">Metrics &amp; dimensions '
-            f'<span class="cfg-card-meta">· {_n_canonical} fields mapped</span></div>',
-            unsafe_allow_html=True,
-        )
-
-        _edited_ssp_names = [
-            str(row["SSP Name"]).strip()
-            for _, row in _ssp_edit.iterrows()
-            if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
-        ]
-        _existing_col_maps = {s["name"]: s.get("columns", {}) for s in _s["ssps"]}
-        _ssp_table_map = {
-            str(row["SSP Name"]).strip(): str(row.get("Database Table", "")).strip()
-            for _, row in _ssp_edit.iterrows()
-            if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
-        }
-
-        # Fetch the actual column names from each SSP's table so dropdowns show real options
-        _SPECIAL_OPTS = ["N/A", "[auto]"]
-
-        def _table_cols(table: str) -> list:
-            try:
-                with _engine().connect() as _c:
-                    _r = _c.execute(sqlalchemy.text(f'SELECT * FROM "{table}" LIMIT 0'))
-                    return [col for col in _r.keys() if not col.startswith("_")]
-            except Exception:
-                return []
-
-        # Build options list per SSP: special values + real columns + any currently-stored custom values
-        _ssp_opts: dict = {}
-        for _sn in _edited_ssp_names:
-            _tbl = _ssp_table_map.get(_sn, "")
-            _real_cols = _table_cols(_tbl)
-            _opts = _SPECIAL_OPTS + [c for c in _real_cols if c not in _SPECIAL_OPTS]
-            # Ensure any currently-stored value is always a valid option
-            for _f in _CANONICAL_FIELDS:
-                _cur = _existing_col_maps.get(_sn, {}).get(_f, "")
-                if _cur and _cur not in _opts:
-                    _opts.append(_cur)
-            _ssp_opts[_sn] = _opts
-
-        # Build matrix DataFrame
-        _map_rows = []
-        for _f in _CANONICAL_FIELDS:
-            _row: dict = {"Field": _f}
-            for _sn in _edited_ssp_names:
-                _raw = _existing_col_maps.get(_sn, {}).get(_f, "") or ""
-                _row[_sn] = _raw if _raw else "N/A"
-            _map_rows.append(_row)
-        _map_df = pd.DataFrame(_map_rows)
-
-        _map_col_cfg: dict = {
-            "Field": st.column_config.TextColumn("Field", disabled=True, width="small"),
-        }
-        for _sn in _edited_ssp_names:
-            _tbl = _ssp_table_map.get(_sn, "")
-            _map_col_cfg[_sn] = st.column_config.SelectboxColumn(
-                _sn,
-                options=_ssp_opts[_sn],
-                width="medium",
-                help=f"Source column from `{_tbl}`. N/A = not available. [auto] = parsed from deal name.",
-                required=False,
+        with _settings_pmp_tab:
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 1 — Sources
+            # ────────────────────────────────────────────────────────────────────
+            _n_pmp_enabled = sum(1 for s in _s.get("ssps", []) if s.get("enabled", True))
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:8px">'
+                f'<span class="cfg-eyebrow">Section 1 — Sources</span>'
+                f'<span class="cfg-count">{_n_pmp_enabled} active</span></div>'
+                f'<div class="cfg-desc">Each row is one SSP feeding the PMP table. '
+                f'Disabling an SSP hides it everywhere downstream.</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="cfg-card-title">PMP data sources '
+                f'<span class="cfg-card-meta">· {_n_pmp_enabled} active</span></div>',
+                unsafe_allow_html=True,
             )
 
-        _map_edit = st.data_editor(
-            _map_df,
-            use_container_width=True,
-            hide_index=True,
-            key="settings_colmap",
-            column_config=_map_col_cfg,
-            disabled=["Field"],
-        )
+            _ssp_rows = [
+                {
+                    "SSP Name":            s["name"],
+                    "Enabled":             s.get("enabled", True),
+                    "Database Table":      s["table"],
+                    "Deal Types":          ", ".join(s.get("deal_types", [])),
+                    "Default Deal Source": s.get("deal_source_default", ""),
+                }
+                for s in _s["ssps"]
+            ]
+            _ssp_edit = st.data_editor(
+                pd.DataFrame(_ssp_rows),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_ssps",
+                column_config={
+                    "SSP Name":       st.column_config.TextColumn("SSP Name", required=True),
+                    "Enabled":        st.column_config.CheckboxColumn("Enabled"),
+                    "Database Table": st.column_config.TextColumn(
+                        "Database Table",
+                        help="SQLite/Postgres table populated by refresh_cache.py",
+                    ),
+                    "Deal Types": st.column_config.TextColumn(
+                        "Deal Types",
+                        help="Comma-separated list — e.g. Private Auction, Preferred Deal",
+                    ),
+                    "Default Deal Source": st.column_config.TextColumn(
+                        "Default Deal Source",
+                        help="Fills the Deal Source column for rows where the SSP's data has none. "
+                             "Example: GAM has no deal_source column, so set this to 'Publisher'.",
+                    ),
+                },
+            )
 
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 3 — Value normalization
-        # ────────────────────────────────────────────────────────────────────
-        _n_dt_aliases  = len(_s.get("deal_type_aliases", {}) or {})
-        _n_dsp_aliases = len(_s.get("dsp_aliases", {}) or {})
-        _n_fmt_aliases = len(_s.get("format_aliases", {}) or {})
-        _n_ds_aliases  = len(_s.get("deal_source_aliases", {}) or {})
-        _total_aliases = _n_dt_aliases + _n_dsp_aliases + _n_fmt_aliases + _n_ds_aliases
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:24px">'
-            f'<span class="cfg-eyebrow">Section 3 — Value normalization</span>'
-            f'<span class="cfg-count">{_total_aliases} aliases · {_total_unmapped if _total_unmapped else 0} unmapped</span></div>'
-            f'<div class="cfg-desc">Map raw values returned by each SSP to your canonical labels. '
-            f'Applied globally after combining all SSP data.</div>',
-            unsafe_allow_html=True,
-        )
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 2 — Field mapping
+            # ────────────────────────────────────────────────────────────────────
+            _n_canonical = len(_CANONICAL_FIELDS)
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:24px">'
+                f'<span class="cfg-eyebrow">Section 2 — Field mapping</span>'
+                f'<span class="cfg-count">{_n_canonical} fields mapped</span></div>'
+                f'<div class="cfg-desc">Map each canonical display field to the source column in each SSP. '
+                f'<span class="cfg-pill-info">auto</span> = parsed from deal name. '
+                f'<i><span class="cfg-na">N/A</span></i> = not available from that SSP.</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="cfg-card-title">Metrics &amp; dimensions '
+                f'<span class="cfg-card-meta">· {_n_canonical} fields mapped</span></div>',
+                unsafe_allow_html=True,
+            )
 
-        # ── 3a: Deal Type Mapping (canonical labels — kept here as related).
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:8px">Deal type codes '
-            f'<span class="cfg-card-meta">· {len(_s.get("deal_type_codes", {}) or {})} mapped</span></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Short codes used inside deal/order names → canonical labels.</div>',
-            unsafe_allow_html=True,
-        )
+            _edited_ssp_names = [
+                str(row["SSP Name"]).strip()
+                for _, row in _ssp_edit.iterrows()
+                if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
+            ]
+            _existing_col_maps = {s["name"]: s.get("columns", {}) for s in _s["ssps"]}
+            _ssp_table_map = {
+                str(row["SSP Name"]).strip(): str(row.get("Database Table", "")).strip()
+                for _, row in _ssp_edit.iterrows()
+                if pd.notna(row["SSP Name"]) and str(row["SSP Name"]).strip()
+            }
 
-        _dt_rows = [{"Code": k, "Label": v} for k, v in sorted(_s["deal_type_codes"].items())]
-        _dt_edit = st.data_editor(
-            pd.DataFrame(_dt_rows) if _dt_rows else pd.DataFrame(columns=["Code", "Label"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_dt",
-            column_config={
-                "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. PA, PD, PG, PMP"),
-                "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
-            },
-        )
+            # Fetch the actual column names from each SSP's table so dropdowns show real options
+            _SPECIAL_OPTS = ["N/A", "[auto]"]
 
-        # ── Section 4: Deal Type Value Aliases ──────────────────────────────
-        _unm_dt_html = (f' · <span class="cfg-warn-count">{len(_unmapped_dt)} unmapped</span>'
-                        if _unmapped_dt else "")
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Deal type aliases '
-            f'<span class="cfg-card-meta">· {_n_dt_aliases} mapped{_unm_dt_html}</span></div>',
-            unsafe_allow_html=True,
-        )
-        # placeholder so the existing st.markdown("#### Deal Type Value Aliases") gets replaced
-        _placeholder_dt_alias = None  # noqa: F841
-        st.caption(
-            "Map raw values returned by SSP APIs to canonical deal type labels. "
-            "For example, GAM's REST API returns \"Preferred Deals\" (plural) — alias it to "
-            "\"Preferred Deal\" so it matches the canonical label used across all SSPs."
-        )
-        _alias_rows = [
-            {"Raw Value": k, "Canonical Deal Type": v}
-            for k, v in _s.get("deal_type_aliases", {}).items()
-        ]
-        _alias_edit = st.data_editor(
-            pd.DataFrame(_alias_rows) if _alias_rows else pd.DataFrame(
-                columns=["Raw Value", "Canonical Deal Type"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_deal_type_aliases",
-            column_config={
-                "Raw Value": st.column_config.TextColumn(
-                    "Raw Value", help="Exact string returned by the SSP API", required=True
+            def _table_cols(table: str) -> list:
+                try:
+                    with _engine().connect() as _c:
+                        _r = _c.execute(sqlalchemy.text(f'SELECT * FROM "{table}" LIMIT 0'))
+                        return [col for col in _r.keys() if not col.startswith("_")]
+                except Exception:
+                    return []
+
+            # Build options list per SSP: special values + real columns + any currently-stored custom values
+            _ssp_opts: dict = {}
+            for _sn in _edited_ssp_names:
+                _tbl = _ssp_table_map.get(_sn, "")
+                _real_cols = _table_cols(_tbl)
+                _opts = _SPECIAL_OPTS + [c for c in _real_cols if c not in _SPECIAL_OPTS]
+                # Ensure any currently-stored value is always a valid option
+                for _f in _CANONICAL_FIELDS:
+                    _cur = _existing_col_maps.get(_sn, {}).get(_f, "")
+                    if _cur and _cur not in _opts:
+                        _opts.append(_cur)
+                _ssp_opts[_sn] = _opts
+
+            # Build matrix DataFrame
+            _map_rows = []
+            for _f in _CANONICAL_FIELDS:
+                _row: dict = {"Field": _f}
+                for _sn in _edited_ssp_names:
+                    _raw = _existing_col_maps.get(_sn, {}).get(_f, "") or ""
+                    _row[_sn] = _raw if _raw else "N/A"
+                _map_rows.append(_row)
+            _map_df = pd.DataFrame(_map_rows)
+
+            _map_col_cfg: dict = {
+                "Field": st.column_config.TextColumn("Field", disabled=True, width="small"),
+            }
+            for _sn in _edited_ssp_names:
+                _tbl = _ssp_table_map.get(_sn, "")
+                _map_col_cfg[_sn] = st.column_config.SelectboxColumn(
+                    _sn,
+                    options=_ssp_opts[_sn],
+                    width="medium",
+                    help=f"Source column from `{_tbl}`. N/A = not available. [auto] = parsed from deal name.",
+                    required=False,
+                )
+
+            _map_edit = st.data_editor(
+                _map_df,
+                use_container_width=True,
+                hide_index=True,
+                key="settings_colmap",
+                column_config=_map_col_cfg,
+                disabled=["Field"],
+            )
+
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 3 — Value normalization
+            # ────────────────────────────────────────────────────────────────────
+            _n_dt_aliases  = len(_s.get("deal_type_aliases", {}) or {})
+            _n_dsp_aliases = len(_s.get("dsp_aliases", {}) or {})
+            _n_fmt_aliases = len(_s.get("format_aliases", {}) or {})
+            _n_ds_aliases  = len(_s.get("deal_source_aliases", {}) or {})
+            _total_aliases = _n_dt_aliases + _n_dsp_aliases + _n_fmt_aliases + _n_ds_aliases
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:24px">'
+                f'<span class="cfg-eyebrow">Section 3 — Value normalization</span>'
+                f'<span class="cfg-count">{_total_aliases} aliases · {_total_unmapped if _total_unmapped else 0} unmapped</span></div>'
+                f'<div class="cfg-desc">Map raw values returned by each SSP to your canonical labels. '
+                f'Applied globally after combining all SSP data.</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 3a: Deal Type Mapping (canonical labels — kept here as related).
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:8px">Deal type codes '
+                f'<span class="cfg-card-meta">· {len(_s.get("deal_type_codes", {}) or {})} mapped</span></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Short codes used inside deal/order names → canonical labels.</div>',
+                unsafe_allow_html=True,
+            )
+
+            _dt_rows = [{"Code": k, "Label": v} for k, v in sorted(_s["deal_type_codes"].items())]
+            _dt_edit = st.data_editor(
+                pd.DataFrame(_dt_rows) if _dt_rows else pd.DataFrame(columns=["Code", "Label"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_dt",
+                column_config={
+                    "Code":  st.column_config.TextColumn("Code", required=True, help="e.g. PA, PD, PG, PMP"),
+                    "Label": st.column_config.TextColumn("Label", required=True, help="e.g. Private Auction"),
+                },
+            )
+
+            # ── Section 4: Deal Type Value Aliases ──────────────────────────────
+            _unm_dt_html = (f' · <span class="cfg-warn-count">{len(_unmapped_dt)} unmapped</span>'
+                            if _unmapped_dt else "")
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Deal type aliases '
+                f'<span class="cfg-card-meta">· {_n_dt_aliases} mapped{_unm_dt_html}</span></div>',
+                unsafe_allow_html=True,
+            )
+            # placeholder so the existing st.markdown("#### Deal Type Value Aliases") gets replaced
+            _placeholder_dt_alias = None  # noqa: F841
+            st.caption(
+                "Map raw values returned by SSP APIs to canonical deal type labels. "
+                "For example, GAM's REST API returns \"Preferred Deals\" (plural) — alias it to "
+                "\"Preferred Deal\" so it matches the canonical label used across all SSPs."
+            )
+            _alias_rows = [
+                {"Raw Value": k, "Canonical Deal Type": v}
+                for k, v in _s.get("deal_type_aliases", {}).items()
+            ]
+            _alias_edit = st.data_editor(
+                pd.DataFrame(_alias_rows) if _alias_rows else pd.DataFrame(
+                    columns=["Raw Value", "Canonical Deal Type"]
                 ),
-                "Canonical Deal Type": st.column_config.SelectboxColumn(
-                    "Canonical Deal Type",
-                    options=list(_s.get("deal_type_codes", {}).values()),
-                    help="Canonical label used in the dashboard",
-                    required=True,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_deal_type_aliases",
+                column_config={
+                    "Raw Value": st.column_config.TextColumn(
+                        "Raw Value", help="Exact string returned by the SSP API", required=True
+                    ),
+                    "Canonical Deal Type": st.column_config.SelectboxColumn(
+                        "Canonical Deal Type",
+                        options=list(_s.get("deal_type_codes", {}).values()),
+                        help="Canonical label used in the dashboard",
+                        required=True,
+                    ),
+                },
+            )
+
+            # ── Section 4: DSP Name Aliases ─────────────────────────────────────
+            _unm_dsp_html = (f' · <span class="cfg-warn-count">{len(_unmapped_dsps)} unmapped</span>'
+                             if _unmapped_dsps else "")
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">DSP name aliases '
+                f'<span class="cfg-card-meta">· {_n_dsp_aliases} mapped{_unm_dsp_html}</span></div>',
+                unsafe_allow_html=True,
+            )
+            _placeholder_dsp_alias = None  # noqa: F841
+            st.caption(
+                "Normalize DSP names that appear under multiple spellings across SSPs. "
+                "Applied globally after combining Magnite, GAM, and Pubmatic data."
+            )
+            _dsp_alias_rows = [
+                {"Raw Value": k, "Canonical DSP Name": v}
+                for k, v in _s.get("dsp_aliases", {}).items()
+            ]
+            _dsp_alias_edit = st.data_editor(
+                pd.DataFrame(_dsp_alias_rows) if _dsp_alias_rows else pd.DataFrame(
+                    columns=["Raw Value", "Canonical DSP Name"]
                 ),
-            },
-        )
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_dsp_aliases",
+                column_config={
+                    "Raw Value":         st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
+                    "Canonical DSP Name": st.column_config.TextColumn("Canonical DSP Name", help="Preferred display name", required=True),
+                },
+            )
 
-        # ── Section 4: DSP Name Aliases ─────────────────────────────────────
-        _unm_dsp_html = (f' · <span class="cfg-warn-count">{len(_unmapped_dsps)} unmapped</span>'
-                         if _unmapped_dsps else "")
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">DSP name aliases '
-            f'<span class="cfg-card-meta">· {_n_dsp_aliases} mapped{_unm_dsp_html}</span></div>',
-            unsafe_allow_html=True,
-        )
-        _placeholder_dsp_alias = None  # noqa: F841
-        st.caption(
-            "Normalize DSP names that appear under multiple spellings across SSPs. "
-            "Applied globally after combining Magnite, GAM, and Pubmatic data."
-        )
-        _dsp_alias_rows = [
-            {"Raw Value": k, "Canonical DSP Name": v}
-            for k, v in _s.get("dsp_aliases", {}).items()
-        ]
-        _dsp_alias_edit = st.data_editor(
-            pd.DataFrame(_dsp_alias_rows) if _dsp_alias_rows else pd.DataFrame(
-                columns=["Raw Value", "Canonical DSP Name"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_dsp_aliases",
-            column_config={
-                "Raw Value":         st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
-                "Canonical DSP Name": st.column_config.TextColumn("Canonical DSP Name", help="Preferred display name", required=True),
-            },
-        )
+            # ── Section 5: Format Name Aliases ──────────────────────────────────
+            _unm_fmt_html = (f' · <span class="cfg-warn-count">{len(_unmapped_formats)} unmapped</span>'
+                             if _unmapped_formats else "")
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Format aliases '
+                f'<span class="cfg-card-meta">· {_n_fmt_aliases} mapped{_unm_fmt_html}</span></div>',
+                unsafe_allow_html=True,
+            )
+            _placeholder_fmt_alias = None  # noqa: F841
+            st.caption(
+                "Normalize Format names that appear under multiple spellings across SSPs. "
+                "Applied globally after combining Magnite, GAM, and Pubmatic data."
+            )
+            _format_alias_rows = [
+                {"Raw Value": k, "Canonical Format Name": v}
+                for k, v in _s.get("format_aliases", {}).items()
+            ]
+            _format_alias_edit = st.data_editor(
+                pd.DataFrame(_format_alias_rows) if _format_alias_rows else pd.DataFrame(
+                    columns=["Raw Value", "Canonical Format Name"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_format_aliases",
+                column_config={
+                    "Raw Value":            st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
+                    "Canonical Format Name": st.column_config.TextColumn("Canonical Format Name", help="Preferred display name", required=True),
+                },
+            )
 
-        # ── Section 5: Format Name Aliases ──────────────────────────────────
-        _unm_fmt_html = (f' · <span class="cfg-warn-count">{len(_unmapped_formats)} unmapped</span>'
-                         if _unmapped_formats else "")
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Format aliases '
-            f'<span class="cfg-card-meta">· {_n_fmt_aliases} mapped{_unm_fmt_html}</span></div>',
-            unsafe_allow_html=True,
-        )
-        _placeholder_fmt_alias = None  # noqa: F841
-        st.caption(
-            "Normalize Format names that appear under multiple spellings across SSPs. "
-            "Applied globally after combining Magnite, GAM, and Pubmatic data."
-        )
-        _format_alias_rows = [
-            {"Raw Value": k, "Canonical Format Name": v}
-            for k, v in _s.get("format_aliases", {}).items()
-        ]
-        _format_alias_edit = st.data_editor(
-            pd.DataFrame(_format_alias_rows) if _format_alias_rows else pd.DataFrame(
-                columns=["Raw Value", "Canonical Format Name"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_format_aliases",
-            column_config={
-                "Raw Value":            st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
-                "Canonical Format Name": st.column_config.TextColumn("Canonical Format Name", help="Preferred display name", required=True),
-            },
-        )
-
-        # ── Section 6: Deal Source Aliases ──────────────────────────────────
-        _unm_ds_html = (f' · <span class="cfg-warn-count">{len(_unmapped_ds)} unmapped</span>'
-                        if _unmapped_ds else "")
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Deal source aliases '
-            f'<span class="cfg-card-meta">· {_n_ds_aliases} mapped{_unm_ds_html}</span></div>',
-            unsafe_allow_html=True,
-        )
-        _placeholder_ds_alias = None  # noqa: F841
-        st.caption(
-            "Normalize Deal Source names that differ across SSPs (e.g. Magnite's 'Publisher Deals' → 'Publisher'). "
-            "Applied globally after combining all SSP data."
-        )
-        _deal_source_alias_rows = [
-            {"Raw Value": k, "Canonical Deal Source Name": v}
-            for k, v in _s.get("deal_source_aliases", {}).items()
-        ]
-        _deal_source_alias_edit = st.data_editor(
-            pd.DataFrame(_deal_source_alias_rows) if _deal_source_alias_rows else pd.DataFrame(
-                columns=["Raw Value", "Canonical Deal Source Name"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_deal_source_aliases",
-            column_config={
-                "Raw Value":                 st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
-                "Canonical Deal Source Name": st.column_config.TextColumn("Canonical Deal Source Name", help="Preferred display name", required=True),
-            },
-        )
+            # ── Section 6: Deal Source Aliases ──────────────────────────────────
+            _unm_ds_html = (f' · <span class="cfg-warn-count">{len(_unmapped_ds)} unmapped</span>'
+                            if _unmapped_ds else "")
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Deal source aliases '
+                f'<span class="cfg-card-meta">· {_n_ds_aliases} mapped{_unm_ds_html}</span></div>',
+                unsafe_allow_html=True,
+            )
+            _placeholder_ds_alias = None  # noqa: F841
+            st.caption(
+                "Normalize Deal Source names that differ across SSPs (e.g. Magnite's 'Publisher Deals' → 'Publisher'). "
+                "Applied globally after combining all SSP data."
+            )
+            _deal_source_alias_rows = [
+                {"Raw Value": k, "Canonical Deal Source Name": v}
+                for k, v in _s.get("deal_source_aliases", {}).items()
+            ]
+            _deal_source_alias_edit = st.data_editor(
+                pd.DataFrame(_deal_source_alias_rows) if _deal_source_alias_rows else pd.DataFrame(
+                    columns=["Raw Value", "Canonical Deal Source Name"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_deal_source_aliases",
+                column_config={
+                    "Raw Value":                 st.column_config.TextColumn("Raw Value", help="Exact string as it appears in the data", required=True),
+                    "Canonical Deal Source Name": st.column_config.TextColumn("Canonical Deal Source Name", help="Preferred display name", required=True),
+                },
+            )
 
 
-    with _settings_direct_tab:
-        # ────────────────────────────────────────────────────────────────────
-        # Header — title + "Last saved" stamp.
-        # ────────────────────────────────────────────────────────────────────
-        _last_saved_label = "—"
-        try:
-            with _engine().connect() as _conn_s:
-                _row = _conn_s.execute(sqlalchemy.text(
-                    "SELECT updated_at FROM dashboard_settings WHERE key='main'"
-                )).fetchone()
-                if _row and _row[0]:
-                    _last_saved_label = pd.to_datetime(_row[0]).strftime("%Y-%m-%d %H:%M UTC")
-        except Exception:
-            pass
-
-        st.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 14px 0;">'
-            f'<div><div class="nw-eyebrow">Yield &amp; pacing</div>'
-            f'<div style="font-size:22px;font-weight:600;color:rgba(250,250,250,0.92);">Configure</div></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.45);">Last saved: {_last_saved_label}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── Pre-compute everything used by counts and previews ──────────
-        _gam_for_counts = None
-        try:
-            _gam_for_counts = load("gam_campaigns")
-        except Exception:
-            _gam_for_counts = pd.DataFrame()
-
-        # Match counts per Included Order Pattern.
-        def _matches_for_pattern(pat):
-            if not isinstance(pat, str) or not pat.strip() or _gam_for_counts is None or _gam_for_counts.empty:
-                return 0
-            prefix = pat.replace("%", "")
-            if "order_name" not in _gam_for_counts.columns:
-                return 0
-            distinct_orders = _gam_for_counts.loc[
-                _gam_for_counts["order_name"].fillna("").str.startswith(prefix), "order_name"
-            ].nunique()
-            return int(distinct_orders)
-
-        # Line item count per ad_format — mirrors the runtime logic that the
-        # Direct Campaigns table actually uses, so the Benchmarks editor's
-        # "Applies to" column matches reality:
-        #   0. Derive ad_format from line_item_name's position-10 token,
-        #      because gam_campaigns doesn't store it as a column — the
-        #      Campaigns rendering computes it via .apply(_li_part, idx=10).
-        #   1. Apply format_aliases (e.g. "Banner" → "Display") so the
-        #      benchmark keys (which are post-alias) match the count.
-        #   2. Apply the >30s preroll recategorization (join gam_lica +
-        #      gam_creatives on line_item_id → creative_id, take max
-        #      duration per LI, bump any Video line whose max creative
-        #      duration > 30s to "Video Preroll >30s").
-        def _li_format_part(name):
-            if not isinstance(name, str):
-                return ""
-            parts = name.split("_")
-            return parts[10].strip() if len(parts) > 10 else ""
-
-        _format_counts = {}
-        if (_gam_for_counts is not None
-            and not _gam_for_counts.empty
-            and ("inventory_format_name" in _gam_for_counts.columns
-                 or "line_item_name" in _gam_for_counts.columns)):
-            # Prefer the canonical GAM dimension when present; fall back to
-            # position-10 parse of line_item_name for older cached rows.
-            if "inventory_format_name" in _gam_for_counts.columns:
-                _api_fmt = (_gam_for_counts["inventory_format_name"]
-                            .astype("string").str.strip()
-                            .replace({"": pd.NA}))
-                _name_fmt = _gam_for_counts["line_item_name"].apply(_li_format_part) \
-                    if "line_item_name" in _gam_for_counts.columns else pd.Series(pd.NA, index=_gam_for_counts.index)
-                _fmt_series = _api_fmt.fillna(pd.Series(_name_fmt, index=_gam_for_counts.index)) \
-                                       .fillna("").astype("string")
-            else:
-                _fmt_series = (_gam_for_counts["line_item_name"]
-                               .apply(_li_format_part)
-                               .fillna("").astype("string"))
-            _aliases = _s.get("format_aliases") or {}
-            if _aliases:
-                _fmt_series = _fmt_series.replace(_aliases)
-            # Recategorize >30s preroll using the pre-aggregated SQL
-            # GROUP BY (same data as the campaigns view, same cache).
+        with _settings_direct_tab:
+            # ────────────────────────────────────────────────────────────────────
+            # Header — title + "Last saved" stamp.
+            # ────────────────────────────────────────────────────────────────────
+            _last_saved_label = "—"
             try:
-                _max_dur = _load_li_max_duration()
-                if (not _max_dur.empty
-                    and "line_item_id" in _gam_for_counts.columns):
-                    _li_to_dur = dict(zip(_max_dur["line_item_id"].astype(str),
-                                          _max_dur["_creative_max_dur"]))
-                    _li_ids = _gam_for_counts["line_item_id"].astype(str)
-                    _durs = _li_ids.map(_li_to_dur)
-                    _is_video = _fmt_series.str.lower().str.contains("video", na=False)
-                    _is_long = _durs.fillna(0).astype(float) > 30
-                    _fmt_series = _fmt_series.where(~(_is_video & _is_long),
-                                                   "Video Preroll >30s")
+                with _engine().connect() as _conn_s:
+                    _row = _conn_s.execute(sqlalchemy.text(
+                        "SELECT updated_at FROM dashboard_settings WHERE key='main'"
+                    )).fetchone()
+                    if _row and _row[0]:
+                        _last_saved_label = pd.to_datetime(_row[0]).strftime("%Y-%m-%d %H:%M UTC")
             except Exception:
                 pass
-            _format_counts = _fmt_series.value_counts().to_dict()
-        def _format_count(fmt):
-            if not isinstance(fmt, str) or not fmt: return 0
-            # Direct match (post-alias + recategorization) — fast path.
-            if fmt in _format_counts:
-                return int(_format_counts[fmt])
-            # Case-insensitive direct match — handles minor casing drift
-            # between the benchmarks dict key and the stored value.
-            fmt_lower = fmt.lower()
-            for k, v in _format_counts.items():
-                if isinstance(k, str) and k.lower() == fmt_lower:
-                    return int(v)
-            # Substring fallback for column values that include extra
-            # qualifiers (e.g. "Video Spectacular" → counts under "Video").
-            # Only fires for the more specific benchmark name, not the
-            # generic one — "Video Preroll >30s" matches "Video Preroll
-            # 60s" but plain "Video" doesn't slurp up every video subtype.
-            if len(fmt_lower) >= 6:  # avoid 3-char generic names
-                return int(sum(v for k, v in _format_counts.items()
-                              if isinstance(k, str) and fmt_lower in k.lower()))
-            return 0
 
-        # Debug: trace exactly why "Applies to" might be 0 across all rows.
-        # Reports the state of _gam_for_counts (None / empty / columns) plus
-        # any captured load error, then shows raw vs aliased distributions
-        # when data is available. Also offers an explicit cache-clear button.
-        with st.expander("ad_format distribution (debug)", expanded=False):
-            if st.button("Clear cache + re-query gam_campaigns",
-                         key="cfg_dbg_clear_cache"):
-                st.cache_data.clear()
-                st.rerun()
-            _g = _gam_for_counts
-            if _g is None:
-                st.error("`_gam_for_counts` is None — load() never returned.")
-            elif _g.empty and len(_g.columns) == 0:
-                st.error("`gam_campaigns` load returned an empty DataFrame "
-                         "with no columns (likely a connection or query error).")
-            elif _g.empty:
-                st.warning(f"`gam_campaigns` has 0 rows but columns present: "
-                           f"{list(_g.columns)[:15]}")
-            elif "ad_format" not in _g.columns:
-                st.warning(
-                    "`gam_campaigns` has rows but **no `ad_format` column**. "
-                    "Available columns: " + ", ".join(list(_g.columns)[:25])
-                )
-            else:
-                st.success(f"`gam_campaigns` loaded — {len(_g):,} rows, "
-                           f"ad_format present.")
-                _raw_counts = (_g["ad_format"].fillna("(null)")
-                               .value_counts().head(25))
-                st.markdown("**Raw `gam_campaigns.ad_format` (top 25):**")
-                st.dataframe(_raw_counts, use_container_width=True)
-                if _format_counts:
-                    st.markdown("**After format_aliases + Video Preroll >30s recategorization:**")
-                    st.dataframe(
-                        pd.Series(_format_counts).rename("count")
-                          .sort_values(ascending=False).head(25),
-                        use_container_width=True,
-                    )
-            # Surface load errors captured by load() itself.
-            if "gam_campaigns" in _load_errors:
-                st.code(f"load_errors['gam_campaigns']: {_load_errors['gam_campaigns']}",
-                        language="text")
-
-        # Seller usage (used by Seller Colors "Currently used in table").
-        _seller_usage = {}
-        if _gam_for_counts is not None and "salesperson" in _gam_for_counts.columns:
-            _sp_norm = _gam_for_counts["salesperson"].apply(_parse_gam_salesperson)
-            _seller_usage = _sp_norm.dropna().value_counts().to_dict()
-        def _seller_count(name):
-            if not isinstance(name, str) or not name: return 0
-            return int(_seller_usage.get(name, 0))
-
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 1 — Scope & sources
-        # ────────────────────────────────────────────────────────────────────
-        _n_sources  = sum(1 for s in _s.get("direct_sources", []) if s.get("enabled", True))
-        _n_patterns = len(_s.get("included_order_patterns", []) or [])
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:8px">'
-            f'<span class="cfg-eyebrow">Section 1 — Scope &amp; sources</span>'
-            f'<span class="cfg-count">{_n_sources} source · {_n_patterns} patterns</span></div>'
-            f'<div class="cfg-desc">Which data sources feed the Direct Campaigns table, '
-            f'which orders are included, and what\'s pre-selected on load.</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── 1a: Direct Campaign Sources
-        st.markdown(
-            f'<div class="cfg-card-title">Direct campaign sources '
-            f'<span class="cfg-card-meta">· {_n_sources} active</span></div>',
-            unsafe_allow_html=True,
-        )
-        _direct_rows = [
-            {
-                "Source Name":    s["name"],
-                "Enabled":        s.get("enabled", True),
-                "Database Table": s["table"],
-            }
-            for s in _s.get("direct_sources", [])
-        ]
-        _direct_edit = st.data_editor(
-            pd.DataFrame(_direct_rows) if _direct_rows else pd.DataFrame(
-                columns=["Source Name", "Enabled", "Database Table"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_direct_sources_v2",
-            column_config={
-                "Source Name":    st.column_config.TextColumn("Source name", required=True),
-                "Enabled":        st.column_config.CheckboxColumn("Enabled"),
-                "Database Table": st.column_config.TextColumn(
-                    "Database table",
-                    help="Table populated by refresh_cache.py (e.g. gam_campaigns)",
-                ),
-            },
-        )
-
-        # ── 1b: Included Order Patterns — with live match counts.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Included order patterns '
-            f'<span class="cfg-card-meta">· {_n_patterns} patterns · use % as wildcard</span></div>',
-            unsafe_allow_html=True,
-        )
-        _incl_rows = [
-            {"Pattern": p, "Currently matches": f"~{_matches_for_pattern(p)} orders"}
-            for p in _s.get("included_order_patterns", ["Newsweek_Direct%"])
-        ]
-        _incl_edit = st.data_editor(
-            pd.DataFrame(_incl_rows) if _incl_rows else pd.DataFrame(columns=["Pattern", "Currently matches"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_included_order_patterns",
-            column_config={
-                "Pattern": st.column_config.TextColumn("Pattern",
-                    help="Order name prefix, use % as wildcard (e.g. Newsweek_Direct%)"),
-                "Currently matches": st.column_config.TextColumn("Currently matches", disabled=True),
-            },
-            disabled=["Currently matches"],
-        )
-
-        # ── 1c: Default Status Filter.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Default status filter</div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Pre-selected when the table first loads.</div>',
-            unsafe_allow_html=True,
-        )
-        _all_known_statuses = ["Delivering", "Upcoming", "Completed", "Paused", "Paused inventory released", "Inactive"]
-        _default_statuses_edit = st.multiselect(
-            "Default statuses",
-            options=_all_known_statuses,
-            default=_s.get("default_statuses", ["Delivering", "Upcoming"]),
-            key="settings_default_statuses",
-            label_visibility="collapsed",
-        )
-
-        # ── 1d: GAM Network ID — powers "Open in GAM" deep links from the drawer.
-        _existing_net_id = (_s.get("gam_network_id") or "").strip()
-        _env_net_id = os.environ.get("GAM_NETWORK_ID", "").strip()
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">GAM integration</div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Network ID used to build the deep link in every drawer\'s '
-            f'<span style="color:rgba(250,250,250,0.85)">Open in GAM ↗</span> button. '
-            f'Find it in any GAM URL after <code>admanager.google.com/</code>.</div>',
-            unsafe_allow_html=True,
-        )
-        _net_col_in, _net_col_hint = st.columns([2, 4])
-        with _net_col_in:
-            _gam_network_id_edit = st.text_input(
-                "GAM Network ID",
-                value=_existing_net_id,
-                placeholder=_env_net_id or "e.g. 1234567",
-                key="settings_gam_network_id",
-                label_visibility="collapsed",
-            )
-        with _net_col_hint:
-            if (_gam_network_id_edit or _existing_net_id):
-                _eff = (_gam_network_id_edit or _existing_net_id).strip()
-                st.markdown(
-                    f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
-                    f'Sample link: <span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">'
-                    f'admanager.google.com/{_eff}#delivery/line_item/detail/line_item_id=…</span></div>',
-                    unsafe_allow_html=True,
-                )
-            elif _env_net_id:
-                st.markdown(
-                    f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
-                    f'Currently falling back to <code>GAM_NETWORK_ID</code> env var '
-                    f'(<span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">{_env_net_id}</span>). '
-                    f'Set above to override.</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div style="font-size:11px;color:rgba(40,90%,60%,0.85);padding-top:6px">'
-                    f'⚠ Not set — drawer "Open in GAM" buttons will be disabled.</div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ── 1e: Manual long-preroll override ──
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Long preroll override '
-            f'<span class="cfg-card-meta">· manual flag for &gt;30s preroll lines</span></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Force matching lines into the '
-            f'<span style="color:rgba(250,250,250,0.85)">Video Preroll &gt;30s</span> '
-            f'benchmark. Use this when Newsweek\'s 3rd-party video tags '
-            f'(Innovid / DCM) hide creative duration behind JS so neither '
-            f'the GAM API nor VAST parse can detect it. '
-            f'<i>Match field</i>: order_name (substring), line_item_name (substring), '
-            f'or line_item_id (exact).</div>',
-            unsafe_allow_html=True,
-        )
-        _lp_rows = list(_s.get("long_preroll_lines") or [])
-        _lp_edit = st.data_editor(
-            pd.DataFrame(_lp_rows) if _lp_rows
-            else pd.DataFrame(columns=["match_field", "match_value"]),
-            use_container_width=True, hide_index=True, num_rows="dynamic",
-            key="settings_long_preroll_lines",
-            column_config={
-                "match_field": st.column_config.SelectboxColumn(
-                    "Match field",
-                    options=["order_name", "line_item_name", "line_item_id"],
-                    required=True,
-                    help="What to match against in the line item row.",
-                ),
-                "match_value": st.column_config.TextColumn(
-                    "Match value",
-                    required=True,
-                    help="Substring (case-insensitive) for order_name / line_item_name. "
-                         "Exact match for line_item_id.",
-                ),
-            },
-        )
-
-        # ── 1f: AirTable ticket integration ──
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">AirTable integration</div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Powers the drawer\'s '
-            f'<span style="color:rgba(250,250,250,0.85)">🎫 AirTable ticket</span> button. '
-            f'Routes Request Type automatically based on the drawer\'s state.</div>',
-            unsafe_allow_html=True,
-        )
-        _at_b_col, _at_f_col, _at_r_col = st.columns(3)
-        with _at_b_col:
-            st.markdown('<div class="nw-filter-label">Base ID</div>', unsafe_allow_html=True)
-            _at_base_edit = st.text_input(
-                "Base ID",
-                value=(_s.get("airtable_base_id") or "").strip(),
-                placeholder="appX7xp1veDq9ndUe",
-                key="settings_airtable_base_id",
-                label_visibility="collapsed",
-            )
-        with _at_f_col:
-            st.markdown('<div class="nw-filter-label">Form ID</div>', unsafe_allow_html=True)
-            _at_form_edit = st.text_input(
-                "Form ID",
-                value=(_s.get("airtable_form_id") or "").strip(),
-                placeholder="pagN88p2kwQBcjqZf",
-                key="settings_airtable_form_id",
-                label_visibility="collapsed",
-            )
-        with _at_r_col:
-            st.markdown('<div class="nw-filter-label">Reporter</div>', unsafe_allow_html=True)
-            _at_reporter_edit = st.text_input(
-                "Reporter",
-                value=(_s.get("airtable_reporter") or "").strip(),
-                placeholder="Roger Hirano",
-                key="settings_airtable_reporter",
-                label_visibility="collapsed",
-            )
-
-        # Request Type routing table — drawer context → AirTable enum value.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:12px">Request Type routing '
-            f'<span class="cfg-card-meta">· drawer context → AirTable enum</span></div>',
-            unsafe_allow_html=True,
-        )
-        _at_routing_rows = _s.get("airtable_request_type_routing") or []
-        _at_routing_edit = st.data_editor(
-            pd.DataFrame(_at_routing_rows) if _at_routing_rows else pd.DataFrame(
-                columns=["context", "request_type"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_airtable_routing",
-            column_config={
-                "context": st.column_config.TextColumn(
-                    "Drawer context",
-                    help="When this state matches, route to the Request Type below.",
-                ),
-                "request_type": st.column_config.TextColumn(
-                    "Request Type",
-                    help="Must match an AirTable enum value exactly "
-                         "(e.g. 'Direct Campaign - Troubleshooting', spaces around the hyphen).",
-                ),
-            },
-        )
-
-        # Field name mapping — canonical name → AirTable form's actual field name.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:12px">Field name mapping '
-            f'<span class="cfg-card-meta">· canonical → AirTable form\'s actual field name</span></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'AirTable\'s prefill URL parameters must match the form\'s actual field names. '
-            f'Verify via AirTable → Share → Copy prefilled link.</div>',
-            unsafe_allow_html=True,
-        )
-        _at_field_dict = _s.get("airtable_field_names") or {}
-        _at_field_rows = [
-            {"canonical": k, "airtable_field_name": v}
-            for k, v in _at_field_dict.items()
-        ]
-        _at_fields_edit = st.data_editor(
-            pd.DataFrame(_at_field_rows) if _at_field_rows else pd.DataFrame(
-                columns=["canonical", "airtable_field_name"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_airtable_fields",
-            column_config={
-                "canonical": st.column_config.TextColumn(
-                    "Canonical name", help="Internal field name the dashboard uses.",
-                ),
-                "airtable_field_name": st.column_config.TextColumn(
-                    "AirTable field name", help="Exact name as it appears in the AirTable form.",
-                ),
-            },
-        )
-
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 2 — Field mapping
-        # ────────────────────────────────────────────────────────────────────
-        _DIRECT_FIELDS = [
-            "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
-            "Start Date", "End Date", "Goal", "CPM Rate",
-            "Delivered", "Remaining", "Clicks",
-            "Pace", "Δ", "Viewability %", "CTR %", "VCR %", "Revenue",
-        ]
-        _DIRECT_COMPUTED = ["seller_ae", "salesperson", "advertiser", "campaign_name", "ad_format", "remaining_impressions", "pacing_delta"]
-
-        _existing_direct_maps = {s["name"]: s.get("columns", {}) for s in _s.get("direct_sources", [])}
-        _direct_src_names = [
-            str(r["Source Name"]).strip()
-            for _, r in _direct_edit.iterrows()
-            if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
-        ]
-        _direct_table_map = {
-            str(r["Source Name"]).strip(): str(r.get("Database Table", "")).strip()
-            for _, r in _direct_edit.iterrows()
-            if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
-        }
-
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:24px">'
-            f'<span class="cfg-eyebrow">Section 2 — Field mapping</span>'
-            f'<span class="cfg-count">{len(_DIRECT_FIELDS)} fields mapped</span></div>'
-            f'<div class="cfg-desc">Map each canonical display field to the source column. '
-            f'<span class="cfg-computed">computed</span> = derived by the dashboard from raw fields.</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="cfg-card-title">Metrics &amp; dimensions '
-            f'<span class="cfg-card-meta">· {len(_DIRECT_FIELDS)} fields mapped</span></div>',
-            unsafe_allow_html=True,
-        )
-
-        _direct_ssp_opts: dict = {}
-        for _dsn in _direct_src_names:
-            _dtbl = _direct_table_map.get(_dsn, "")
-            _dreal = _table_cols(_dtbl)
-            _dopts = ["N/A"] + _DIRECT_COMPUTED + [c for c in _dreal if c not in (["N/A"] + _DIRECT_COMPUTED)]
-            for _f in _DIRECT_FIELDS:
-                _cur = _existing_direct_maps.get(_dsn, {}).get(_f, "")
-                if _cur and _cur not in _dopts:
-                    _dopts.append(_cur)
-            _direct_ssp_opts[_dsn] = _dopts
-
-        _direct_map_rows = []
-        for _f in _DIRECT_FIELDS:
-            _row2: dict = {"Field": _f}
-            for _dsn in _direct_src_names:
-                _raw = _existing_direct_maps.get(_dsn, {}).get(_f, "") or ""
-                _row2[_dsn] = _raw if _raw else "N/A"
-            _direct_map_rows.append(_row2)
-
-        _direct_map_col_cfg: dict = {
-            "Field": st.column_config.TextColumn("Canonical field", disabled=True, width="small"),
-        }
-        for _dsn in _direct_src_names:
-            _dtbl = _direct_table_map.get(_dsn, "")
-            _direct_map_col_cfg[_dsn] = st.column_config.SelectboxColumn(
-                f"{_dsn} source column",
-                options=_direct_ssp_opts[_dsn],
-                width="medium",
-                help=f"Source column from `{_dtbl}`. Computed columns: seller_ae, advertiser, campaign_name, ad_format.",
-                required=False,
-            )
-
-        _direct_map_edit = st.data_editor(
-            pd.DataFrame(_direct_map_rows) if _direct_map_rows else pd.DataFrame(columns=["Field"]),
-            use_container_width=True,
-            hide_index=True,
-            key="settings_direct_colmap",
-            column_config=_direct_map_col_cfg,
-            disabled=["Field"],
-        )
-
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 3 — Performance benchmarks
-        # ────────────────────────────────────────────────────────────────────
-        _benchmarks_default = _s.get("benchmarks_by_format", {}) or {}
-        _n_benchmark_formats = len(_benchmarks_default)
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:24px">'
-            f'<span class="cfg-eyebrow">Section 3 — Performance benchmarks</span>'
-            f'<span class="cfg-count">{_n_benchmark_formats} formats configured</span></div>'
-            f'<div class="cfg-desc">Threshold values that drive cell coloring on the Direct Campaigns table. '
-            f'Below benchmark → red→green gradient. Blank = no coloring for that metric.</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── 3a: Pacing Target with inline gradient preview.
-        _pacing_target_existing = float(_s.get("pacing_target_pct", 100.0))
-        st.markdown(
-            f'<div class="cfg-card-title">Pacing target</div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);">'
-            f'Solid green at or above target.</div>',
-            unsafe_allow_html=True,
-        )
-        _pt1, _pt2 = st.columns([1, 5])
-        with _pt1:
-            _pacing_target_edit = st.number_input(
-                "Target pacing %",
-                value=_pacing_target_existing,
-                min_value=0.0,
-                step=1.0,
-                format="%.1f",
-                key="settings_pacing_target",
-                label_visibility="collapsed",
-            )
-        with _pt2:
-            _tgt_pct = max(0.0, min(100.0, _pacing_target_edit))
             st.markdown(
-                f'<div class="cfg-gradient">'
-                f'<div class="cfg-gradient-marker" style="left:{_tgt_pct:.1f}%;"></div></div>'
-                f'<div class="cfg-gradient-axis"><span>0%</span><span>→ 100%</span></div>',
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 14px 0;">'
+                f'<div><div class="nw-eyebrow">Yield &amp; pacing</div>'
+                f'<div style="font-size:22px;font-weight:600;color:rgba(250,250,250,0.92);">Configure</div></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.45);">Last saved: {_last_saved_label}</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
-        # ── 3b: Benchmarks by Format — with usage count and explicit blanks.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Benchmarks by format '
-            f'<span class="cfg-card-meta">· {_n_benchmark_formats} formats</span></div>',
-            unsafe_allow_html=True,
-        )
+            # ── Pre-compute everything used by counts and previews ──────────
+            _gam_for_counts = None
+            try:
+                _gam_for_counts = load("gam_campaigns")
+            except Exception:
+                _gam_for_counts = pd.DataFrame()
 
-        # Detect "mostly blank" — most cells null → suggest enabling.
-        _bench_blanks = 0
-        _bench_total = 0
-        for _fmt, _vals in _benchmarks_default.items():
-            for _k in ("viewability_pct", "ctr_pct", "vcr_pct"):
-                _bench_total += 1
-                if _vals.get(_k) is None:
-                    _bench_blanks += 1
-        if _bench_total > 0 and _bench_blanks / _bench_total > 0.5:
-            st.markdown(
-                '<div class="cfg-suggest">💡 <b>Suggested:</b> enable CTR &amp; VCR benchmarks. '
-                'All formats currently have CTR and VCR blank — those columns will render '
-                'uncolored on the table. Industry defaults: Display CTR 0.08%, Video VCR 65%.</div>',
-                unsafe_allow_html=True,
-            )
+            # Match counts per Included Order Pattern.
+            def _matches_for_pattern(pat):
+                if not isinstance(pat, str) or not pat.strip() or _gam_for_counts is None or _gam_for_counts.empty:
+                    return 0
+                prefix = pat.replace("%", "")
+                if "order_name" not in _gam_for_counts.columns:
+                    return 0
+                distinct_orders = _gam_for_counts.loc[
+                    _gam_for_counts["order_name"].fillna("").str.startswith(prefix), "order_name"
+                ].nunique()
+                return int(distinct_orders)
 
-        # Color bands: each metric has a green floor (the "%" column) and an
-        # optional red ceiling (the "red <" column). Anything ≥ green is
-        # green; anything below "red <" is red; in between is amber. Leave
-        # "red <" blank to keep the implicit fallback (target × 0.85).
-        st.markdown(
-            '<div class="cfg-helper" style="font-size:12px;color:rgba(250,250,250,0.55);'
-            'margin:-4px 0 6px 0">'
-            'Color bands: cell is <span style="color:hsl(120,50%,65%)">green</span> ≥ target, '
-            '<span style="color:hsl(35,70%,65%)">amber</span> between target and red threshold, '
-            '<span style="color:hsl(0,55%,70%)">red</span> below threshold. '
-            'Leave “red &lt;” blank to default to 85% of target.'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        _bench_rows = [
-            {"Format": fmt,
-             "Viewability %":     vals.get("viewability_pct"),
-             "Viewability red <": vals.get("viewability_red_below"),
-             "CTR %":             vals.get("ctr_pct"),
-             "CTR red <":         vals.get("ctr_red_below"),
-             "VCR %":             vals.get("vcr_pct"),
-             "VCR red <":         vals.get("vcr_red_below"),
-             "Applies to":        f"~{_format_count(fmt)} line items"}
-            for fmt, vals in sorted(_benchmarks_default.items())
-        ]
-        _bench_edit = st.data_editor(
-            pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
-                columns=["Format",
-                         "Viewability %", "Viewability red <",
-                         "CTR %", "CTR red <",
-                         "VCR %", "VCR red <",
-                         "Applies to"]
-            ),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_benchmarks_by_format",
-            column_config={
-                "Format":            st.column_config.TextColumn("Format", required=True),
-                "Viewability %":     st.column_config.NumberColumn(
-                    "Viewability %", format="%.1f",
-                    help="Green floor — values at or above this render green."),
-                "Viewability red <": st.column_config.NumberColumn(
-                    "Viewability red <", format="%.1f",
-                    help="Red ceiling — values below this render red. Blank = 85% of target."),
-                "CTR %":             st.column_config.NumberColumn(
-                    "CTR %", format="%.2f",
-                    help="Green floor — values at or above this render green."),
-                "CTR red <":         st.column_config.NumberColumn(
-                    "CTR red <", format="%.2f",
-                    help="Red ceiling — values below this render red. Blank = 85% of target."),
-                "VCR %":             st.column_config.NumberColumn(
-                    "VCR %", format="%.1f",
-                    help="Green floor — values at or above this render green."),
-                "VCR red <":         st.column_config.NumberColumn(
-                    "VCR red <", format="%.1f",
-                    help="Red ceiling — values below this render red. Blank = 85% of target."),
-                "Applies to":        st.column_config.TextColumn("Applies to", disabled=True),
-            },
-            disabled=["Applies to"],
-        )
+            # Line item count per ad_format — mirrors the runtime logic that the
+            # Direct Campaigns table actually uses, so the Benchmarks editor's
+            # "Applies to" column matches reality:
+            #   0. Derive ad_format from line_item_name's position-10 token,
+            #      because gam_campaigns doesn't store it as a column — the
+            #      Campaigns rendering computes it via .apply(_li_part, idx=10).
+            #   1. Apply format_aliases (e.g. "Banner" → "Display") so the
+            #      benchmark keys (which are post-alias) match the count.
+            #   2. Apply the >30s preroll recategorization (join gam_lica +
+            #      gam_creatives on line_item_id → creative_id, take max
+            #      duration per LI, bump any Video line whose max creative
+            #      duration > 30s to "Video Preroll >30s").
+            def _li_format_part(name):
+                if not isinstance(name, str):
+                    return ""
+                parts = name.split("_")
+                return parts[10].strip() if len(parts) > 10 else ""
 
-        # ────────────────────────────────────────────────────────────────────
-        # SECTION 4 — Identity & theming
-        # ────────────────────────────────────────────────────────────────────
-        _n_ae   = len(_s.get("ae_names", {}))
-        _n_aes_distinct = len(set(_s.get("ae_names", {}).values()))
-        st.markdown(
-            f'<div class="cfg-section-head" style="margin-top:24px">'
-            f'<span class="cfg-eyebrow">Section 4 — Identity &amp; theming</span>'
-            f'<span class="cfg-count">{_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>'
-            f'<div class="cfg-desc">Normalize AE names and team codes; assign colors to statuses and '
-            f'sellers for consistent visual identity across the dashboard.</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── 4a: Seller Mapping with grouped preview.
-        st.markdown(
-            f'<div class="cfg-card-title">Seller mapping '
-            f'<span class="cfg-card-meta">· {_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>',
-            unsafe_allow_html=True,
-        )
-        _ae_rows = [{"Code": k, "Full Name": v} for k, v in sorted(_s["ae_names"].items())]
-        _ae_edit = st.data_editor(
-            pd.DataFrame(_ae_rows) if _ae_rows else pd.DataFrame(columns=["Code", "Full Name"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_ae",
-            column_config={
-                "Code":      st.column_config.TextColumn("Code in order/line item name", required=True),
-                "Full Name": st.column_config.TextColumn("Display name", required=True),
-            },
-        )
-
-        # ── 4b: Team Mapping.
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Team mapping</div>',
-            unsafe_allow_html=True,
-        )
-        _team_rows = [{"Code": k, "Label": v} for k, v in sorted(_s.get("team_names", {}).items())]
-        _team_edit = st.data_editor(
-            pd.DataFrame(_team_rows) if _team_rows else pd.DataFrame(columns=["Code", "Label"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_team",
-            column_config={
-                "Code":  st.column_config.TextColumn("Code in line item name", required=True),
-                "Label": st.column_config.TextColumn("Display label", required=True),
-            },
-        )
-
-        # ── 4c: Account Manager mapping.
-        # Maps an AE code (Seller / field 14 of the LI name) to the Account
-        # Manager who operates the campaign. The Direct campaigns view in
-        # Overall Performance uses this map for the "Account Manager"
-        # filter dropdown — each line's AM is looked up from its seller_ae.
-        # AE codes not assigned to an AM fall into the "Unassigned" bucket
-        # in the filter.
-        #
-        # AM is constrained to a small allowlist via a Selectbox column.
-        # When the team grows past these two, just extend _AM_CHOICES.
-        _AM_CHOICES = ["JC", "Jen"]
-        _am_map = _s.get("account_managers", {}) or {}
-        _n_assigned    = sum(1 for v in _am_map.values() if v)
-        _n_unassigned  = sum(1 for v in _am_map.values() if not v)
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Account Manager mapping '
-            f'<span class="cfg-card-meta">· {_n_assigned} assigned · {_n_unassigned} blank</span></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Each AE (Seller) can be paired with one of the Account Managers below. '
-            f'Surfaces as the Account Manager filter on Direct campaigns. '
-            f'Leave blank to keep the AE in the "Unassigned" bucket.</div>',
-            unsafe_allow_html=True,
-        )
-        # Coerce stored values into the allowlist or None so the Selectbox
-        # column doesn't reject pre-existing free-text values (e.g. from a
-        # prior schema where AM was a TextColumn). Anything not in
-        # _AM_CHOICES becomes None (blank) for the editor.
-        _am_rows = [
-            {"AE Code": k,
-             "Account Manager": (v if v in _AM_CHOICES else None)}
-            for k, v in sorted(_am_map.items())
-        ]
-        _am_edit = st.data_editor(
-            pd.DataFrame(_am_rows) if _am_rows
-            else pd.DataFrame(columns=["AE Code", "Account Manager"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_account_managers",
-            column_config={
-                "AE Code":         st.column_config.TextColumn(
-                    "AE Code (matches Seller mapping above)", required=True,
-                    help="The AE code as it appears in field 14 of the line item name "
-                         "(e.g. AShah, JMakin). Must match a Code in the Seller mapping above."),
-                "Account Manager": st.column_config.SelectboxColumn(
-                    "Account Manager",
-                    options=_AM_CHOICES,
-                    required=False,
-                    help="Pick the AM paired with this AE. Leave blank to keep the AE unassigned."),
-            },
-        )
-
-        # ── 4d: Status Colors + live preview.
-        _status_color_rows = _s.get("status_colors", []) or []
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Status colors</div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'First substring match wins.</div>',
-            unsafe_allow_html=True,
-        )
-        _status_color_editor = st.data_editor(
-            pd.DataFrame(_status_color_rows) if _status_color_rows
-            else pd.DataFrame(columns=["keyword", "color"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_status_colors",
-            column_config={
-                "keyword": st.column_config.TextColumn("Status keyword", required=True),
-                "color":   st.column_config.TextColumn("Color", required=True,
-                              help="Hex like #2E7D32 or any CSS color"),
-            },
-        )
-        # Live preview pills underneath.
-        if _status_color_rows:
-            def _cfg_esc(s):
-                return (str(s).replace("&", "&amp;").replace("<", "&lt;")
-                        .replace(">", "&gt;").replace('"', "&quot;"))
-            _pills = "".join(
-                f'<span class="cfg-pill-preview" style="background:{_cfg_esc(r.get("color",""))};'
-                f'color:#fff;margin-right:8px;opacity:0.95;">{_cfg_esc(r.get("keyword",""))}</span>'
-                for r in _status_color_rows
-                if r.get("keyword") and r.get("color")
-            )
-            st.markdown(
-                f'<div style="margin:8px 0 0 0;font-size:10px;color:rgba(250,250,250,0.45);'
-                f'letter-spacing:0.08em;text-transform:uppercase">Preview</div>'
-                f'<div style="margin-top:4px">{_pills}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # ── 4d: Seller Colors — usage count + hash fallback + Show all toggle.
-        _existing_seller_colors = _s.get("seller_colors", {}) or {}
-        _known_ae_names = sorted(set(_s.get("ae_names", {}).values()))
-
-        _seller_card_meta = "stable hash fallback when blank"
-        st.markdown(
-            f'<div class="cfg-card-title" style="margin-top:14px">Seller colors '
-            f'<span class="cfg-card-meta">· {_seller_card_meta}</span></div>'
-            f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
-            f'Used in tables, filters, and chart legends.</div>',
-            unsafe_allow_html=True,
-        )
-        _show_all_sellers = st.toggle(
-            "Show all sellers (default: only those active in the table)",
-            value=False,
-            key="settings_show_all_sellers",
-        )
-
-        def _hash_fallback_color(name):
-            import hashlib as _hashlib
-            h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
-            return f"hsl({h % 360}, 55%, 38%)"
-
-        _seller_color_rows = []
-        for _name in _known_ae_names:
-            _used = _seller_count(_name)
-            if not _show_all_sellers and _used == 0:
-                continue
-            _override = _existing_seller_colors.get(_name, "")
-            _used_str = (f"{_used} line item{'s' if _used != 1 else ''}"
-                         if _used > 0 else "— no active lines")
-            _seller_color_rows.append({
-                "seller": _name,
-                "color":  _override,
-                "Used in table": _used_str,
-            })
-        # Also surface seller_colors keys not in ae_names (so user can remove them).
-        for _extra in sorted(set(_existing_seller_colors.keys()) - set(_known_ae_names)):
-            _seller_color_rows.append({
-                "seller": _extra,
-                "color":  _existing_seller_colors[_extra],
-                "Used in table": "— not in AE mapping",
-            })
-        _seller_color_editor = st.data_editor(
-            pd.DataFrame(_seller_color_rows) if _seller_color_rows
-            else pd.DataFrame(columns=["seller", "color", "Used in table"]),
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            key="settings_seller_colors",
-            column_config={
-                "seller": st.column_config.TextColumn("Seller", required=True),
-                "color":  st.column_config.TextColumn("Override color",
-                              help="Hex like #1976D2; leave blank to use hash fallback"),
-                "Used in table": st.column_config.TextColumn("Used in table", disabled=True),
-            },
-            disabled=["Used in table"],
-        )
-        # Hash-fallback explainer for rows with blank overrides.
-        _hash_fb_rows = [r for r in _seller_color_rows
-                         if not (r.get("color") and str(r["color"]).strip())]
-        if _hash_fb_rows:
-            _swatches = "".join(
-                f'<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px;'
-                f'font-size:11px;color:rgba(250,250,250,0.55)">'
-                f'<span style="width:10px;height:10px;border-radius:2px;'
-                f'background:{_hash_fallback_color(r["seller"])}"></span>'
-                f'{r["seller"]} <span class="cfg-tertiary">(hash fallback)</span>'
-                f'</span>'
-                for r in _hash_fb_rows[:8]
-            )
-            st.markdown(
-                f'<div style="margin-top:6px;font-size:11px;color:rgba(250,250,250,0.45);'
-                f'letter-spacing:0.05em">{_swatches}</div>',
-                unsafe_allow_html=True,
-            )
-
-
-    # ── Save ─────────────────────────────────────────────────────────────
-    st.divider()
-    if st.button("💾  Save Settings", type="primary"):
-        try:
-            _new_ssps = []
-            for _, _row in _ssp_edit.iterrows():
-                _ssp_name = str(_row.get("SSP Name", "")).strip()
-                if not _ssp_name:
-                    continue
-                if _ssp_name in _map_edit.columns:
-                    _col_map_new = {}
-                    for _, _mr in _map_edit.iterrows():
-                        _src = str(_mr[_ssp_name]).strip() if pd.notna(_mr[_ssp_name]) else "N/A"
-                        _col_map_new[str(_mr["Field"])] = "" if _src == "N/A" else _src
+            _format_counts = {}
+            if (_gam_for_counts is not None
+                and not _gam_for_counts.empty
+                and ("inventory_format_name" in _gam_for_counts.columns
+                     or "line_item_name" in _gam_for_counts.columns)):
+                # Prefer the canonical GAM dimension when present; fall back to
+                # position-10 parse of line_item_name for older cached rows.
+                if "inventory_format_name" in _gam_for_counts.columns:
+                    _api_fmt = (_gam_for_counts["inventory_format_name"]
+                                .astype("string").str.strip()
+                                .replace({"": pd.NA}))
+                    _name_fmt = _gam_for_counts["line_item_name"].apply(_li_format_part) \
+                        if "line_item_name" in _gam_for_counts.columns else pd.Series(pd.NA, index=_gam_for_counts.index)
+                    _fmt_series = _api_fmt.fillna(pd.Series(_name_fmt, index=_gam_for_counts.index)) \
+                                           .fillna("").astype("string")
                 else:
-                    _col_map_new = _existing_col_maps.get(_ssp_name, {})
-                _dt_raw = str(_row.get("Deal Types", "")).strip()
-                _ds_default = str(_row.get("Default Deal Source", "") or "").strip()
-                _new_ssp_entry = {
-                    "name":       _ssp_name,
-                    "enabled":    bool(_row.get("Enabled", True)),
-                    "table":      str(_row.get("Database Table", "")).strip(),
-                    "deal_types": [t.strip() for t in _dt_raw.split(",") if t.strip()],
-                    "columns":    _col_map_new,
-                }
-                if _ds_default:
-                    _new_ssp_entry["deal_source_default"] = _ds_default
-                _new_ssps.append(_new_ssp_entry)
-
-            _new_ae = {
-                str(r["Code"]).strip(): str(r["Full Name"]).strip()
-                for _, r in _ae_edit.iterrows()
-                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
-            }
-            _new_team = {
-                str(r["Code"]).strip(): str(r["Label"]).strip()
-                for _, r in _team_edit.iterrows()
-                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
-            }
-            # Preserve every AE Code, even when the Account Manager column is
-            # blank. The Configure table is pre-populated with all known AE
-            # codes so the user can fill in AMs incrementally — dropping
-            # blank-AM rows on save would lose that scaffolding the first
-            # time someone saves before completing the assignments. Blank
-            # AMs are treated as "Unassigned" by the dashboard filter, so
-            # behavior stays consistent whether the row is missing or
-            # blank-valued.
-            _new_account_managers = {
-                str(r["AE Code"]).strip(): (
-                    str(r["Account Manager"]).strip()
-                    if pd.notna(r.get("Account Manager")) else ""
-                )
-                for _, r in _am_edit.iterrows()
-                if pd.notna(r.get("AE Code")) and str(r["AE Code"]).strip()
-            }
-            _new_dt = {
-                str(r["Code"]).strip(): str(r["Label"]).strip()
-                for _, r in _dt_edit.iterrows()
-                if pd.notna(r.get("Code")) and str(r["Code"]).strip()
-            }
-            def _bench_val(v):
-                if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
-                    return None
+                    _fmt_series = (_gam_for_counts["line_item_name"]
+                                   .apply(_li_format_part)
+                                   .fillna("").astype("string"))
+                _aliases = _s.get("format_aliases") or {}
+                if _aliases:
+                    _fmt_series = _fmt_series.replace(_aliases)
+                # Recategorize >30s preroll using the pre-aggregated SQL
+                # GROUP BY (same data as the campaigns view, same cache).
                 try:
-                    return float(v)
+                    _max_dur = _load_li_max_duration()
+                    if (not _max_dur.empty
+                        and "line_item_id" in _gam_for_counts.columns):
+                        _li_to_dur = dict(zip(_max_dur["line_item_id"].astype(str),
+                                              _max_dur["_creative_max_dur"]))
+                        _li_ids = _gam_for_counts["line_item_id"].astype(str)
+                        _durs = _li_ids.map(_li_to_dur)
+                        _is_video = _fmt_series.str.lower().str.contains("video", na=False)
+                        _is_long = _durs.fillna(0).astype(float) > 30
+                        _fmt_series = _fmt_series.where(~(_is_video & _is_long),
+                                                       "Video Preroll >30s")
                 except Exception:
-                    return None
-            _new_benchmarks = {}
-            for _, r in _bench_edit.iterrows():
-                _fmt = str(r.get("Format", "")).strip()
-                if not _fmt:
+                    pass
+                _format_counts = _fmt_series.value_counts().to_dict()
+            def _format_count(fmt):
+                if not isinstance(fmt, str) or not fmt: return 0
+                # Direct match (post-alias + recategorization) — fast path.
+                if fmt in _format_counts:
+                    return int(_format_counts[fmt])
+                # Case-insensitive direct match — handles minor casing drift
+                # between the benchmarks dict key and the stored value.
+                fmt_lower = fmt.lower()
+                for k, v in _format_counts.items():
+                    if isinstance(k, str) and k.lower() == fmt_lower:
+                        return int(v)
+                # Substring fallback for column values that include extra
+                # qualifiers (e.g. "Video Spectacular" → counts under "Video").
+                # Only fires for the more specific benchmark name, not the
+                # generic one — "Video Preroll >30s" matches "Video Preroll
+                # 60s" but plain "Video" doesn't slurp up every video subtype.
+                if len(fmt_lower) >= 6:  # avoid 3-char generic names
+                    return int(sum(v for k, v in _format_counts.items()
+                                  if isinstance(k, str) and fmt_lower in k.lower()))
+                return 0
+
+            # Debug: trace exactly why "Applies to" might be 0 across all rows.
+            # Reports the state of _gam_for_counts (None / empty / columns) plus
+            # any captured load error, then shows raw vs aliased distributions
+            # when data is available. Also offers an explicit cache-clear button.
+            with st.expander("ad_format distribution (debug)", expanded=False):
+                if st.button("Clear cache + re-query gam_campaigns",
+                             key="cfg_dbg_clear_cache"):
+                    st.cache_data.clear()
+                    st.rerun()
+                _g = _gam_for_counts
+                if _g is None:
+                    st.error("`_gam_for_counts` is None — load() never returned.")
+                elif _g.empty and len(_g.columns) == 0:
+                    st.error("`gam_campaigns` load returned an empty DataFrame "
+                             "with no columns (likely a connection or query error).")
+                elif _g.empty:
+                    st.warning(f"`gam_campaigns` has 0 rows but columns present: "
+                               f"{list(_g.columns)[:15]}")
+                elif "ad_format" not in _g.columns:
+                    st.warning(
+                        "`gam_campaigns` has rows but **no `ad_format` column**. "
+                        "Available columns: " + ", ".join(list(_g.columns)[:25])
+                    )
+                else:
+                    st.success(f"`gam_campaigns` loaded — {len(_g):,} rows, "
+                               f"ad_format present.")
+                    _raw_counts = (_g["ad_format"].fillna("(null)")
+                                   .value_counts().head(25))
+                    st.markdown("**Raw `gam_campaigns.ad_format` (top 25):**")
+                    st.dataframe(_raw_counts, use_container_width=True)
+                    if _format_counts:
+                        st.markdown("**After format_aliases + Video Preroll >30s recategorization:**")
+                        st.dataframe(
+                            pd.Series(_format_counts).rename("count")
+                              .sort_values(ascending=False).head(25),
+                            use_container_width=True,
+                        )
+                # Surface load errors captured by load() itself.
+                if "gam_campaigns" in _load_errors:
+                    st.code(f"load_errors['gam_campaigns']: {_load_errors['gam_campaigns']}",
+                            language="text")
+
+            # Seller usage (used by Seller Colors "Currently used in table").
+            _seller_usage = {}
+            if _gam_for_counts is not None and "salesperson" in _gam_for_counts.columns:
+                _sp_norm = _gam_for_counts["salesperson"].apply(_parse_gam_salesperson)
+                _seller_usage = _sp_norm.dropna().value_counts().to_dict()
+            def _seller_count(name):
+                if not isinstance(name, str) or not name: return 0
+                return int(_seller_usage.get(name, 0))
+
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 1 — Scope & sources
+            # ────────────────────────────────────────────────────────────────────
+            _n_sources  = sum(1 for s in _s.get("direct_sources", []) if s.get("enabled", True))
+            _n_patterns = len(_s.get("included_order_patterns", []) or [])
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:8px">'
+                f'<span class="cfg-eyebrow">Section 1 — Scope &amp; sources</span>'
+                f'<span class="cfg-count">{_n_sources} source · {_n_patterns} patterns</span></div>'
+                f'<div class="cfg-desc">Which data sources feed the Direct Campaigns table, '
+                f'which orders are included, and what\'s pre-selected on load.</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 1a: Direct Campaign Sources
+            st.markdown(
+                f'<div class="cfg-card-title">Direct campaign sources '
+                f'<span class="cfg-card-meta">· {_n_sources} active</span></div>',
+                unsafe_allow_html=True,
+            )
+            _direct_rows = [
+                {
+                    "Source Name":    s["name"],
+                    "Enabled":        s.get("enabled", True),
+                    "Database Table": s["table"],
+                }
+                for s in _s.get("direct_sources", [])
+            ]
+            _direct_edit = st.data_editor(
+                pd.DataFrame(_direct_rows) if _direct_rows else pd.DataFrame(
+                    columns=["Source Name", "Enabled", "Database Table"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_direct_sources_v2",
+                column_config={
+                    "Source Name":    st.column_config.TextColumn("Source name", required=True),
+                    "Enabled":        st.column_config.CheckboxColumn("Enabled"),
+                    "Database Table": st.column_config.TextColumn(
+                        "Database table",
+                        help="Table populated by refresh_cache.py (e.g. gam_campaigns)",
+                    ),
+                },
+            )
+
+            # ── 1b: Included Order Patterns — with live match counts.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Included order patterns '
+                f'<span class="cfg-card-meta">· {_n_patterns} patterns · use % as wildcard</span></div>',
+                unsafe_allow_html=True,
+            )
+            _incl_rows = [
+                {"Pattern": p, "Currently matches": f"~{_matches_for_pattern(p)} orders"}
+                for p in _s.get("included_order_patterns", ["Newsweek_Direct%"])
+            ]
+            _incl_edit = st.data_editor(
+                pd.DataFrame(_incl_rows) if _incl_rows else pd.DataFrame(columns=["Pattern", "Currently matches"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_included_order_patterns",
+                column_config={
+                    "Pattern": st.column_config.TextColumn("Pattern",
+                        help="Order name prefix, use % as wildcard (e.g. Newsweek_Direct%)"),
+                    "Currently matches": st.column_config.TextColumn("Currently matches", disabled=True),
+                },
+                disabled=["Currently matches"],
+            )
+
+            # ── 1c: Default Status Filter.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Default status filter</div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Pre-selected when the table first loads.</div>',
+                unsafe_allow_html=True,
+            )
+            _all_known_statuses = ["Delivering", "Upcoming", "Completed", "Paused", "Paused inventory released", "Inactive"]
+            _default_statuses_edit = st.multiselect(
+                "Default statuses",
+                options=_all_known_statuses,
+                default=_s.get("default_statuses", ["Delivering", "Upcoming"]),
+                key="settings_default_statuses",
+                label_visibility="collapsed",
+            )
+
+            # ── 1d: GAM Network ID — powers "Open in GAM" deep links from the drawer.
+            _existing_net_id = (_s.get("gam_network_id") or "").strip()
+            _env_net_id = os.environ.get("GAM_NETWORK_ID", "").strip()
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">GAM integration</div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Network ID used to build the deep link in every drawer\'s '
+                f'<span style="color:rgba(250,250,250,0.85)">Open in GAM ↗</span> button. '
+                f'Find it in any GAM URL after <code>admanager.google.com/</code>.</div>',
+                unsafe_allow_html=True,
+            )
+            _net_col_in, _net_col_hint = st.columns([2, 4])
+            with _net_col_in:
+                _gam_network_id_edit = st.text_input(
+                    "GAM Network ID",
+                    value=_existing_net_id,
+                    placeholder=_env_net_id or "e.g. 1234567",
+                    key="settings_gam_network_id",
+                    label_visibility="collapsed",
+                )
+            with _net_col_hint:
+                if (_gam_network_id_edit or _existing_net_id):
+                    _eff = (_gam_network_id_edit or _existing_net_id).strip()
+                    st.markdown(
+                        f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
+                        f'Sample link: <span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">'
+                        f'admanager.google.com/{_eff}#delivery/line_item/detail/line_item_id=…</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                elif _env_net_id:
+                    st.markdown(
+                        f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
+                        f'Currently falling back to <code>GAM_NETWORK_ID</code> env var '
+                        f'(<span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">{_env_net_id}</span>). '
+                        f'Set above to override.</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="font-size:11px;color:rgba(40,90%,60%,0.85);padding-top:6px">'
+                        f'⚠ Not set — drawer "Open in GAM" buttons will be disabled.</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # ── 1e: Manual long-preroll override ──
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Long preroll override '
+                f'<span class="cfg-card-meta">· manual flag for &gt;30s preroll lines</span></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Force matching lines into the '
+                f'<span style="color:rgba(250,250,250,0.85)">Video Preroll &gt;30s</span> '
+                f'benchmark. Use this when Newsweek\'s 3rd-party video tags '
+                f'(Innovid / DCM) hide creative duration behind JS so neither '
+                f'the GAM API nor VAST parse can detect it. '
+                f'<i>Match field</i>: order_name (substring), line_item_name (substring), '
+                f'or line_item_id (exact).</div>',
+                unsafe_allow_html=True,
+            )
+            _lp_rows = list(_s.get("long_preroll_lines") or [])
+            _lp_edit = st.data_editor(
+                pd.DataFrame(_lp_rows) if _lp_rows
+                else pd.DataFrame(columns=["match_field", "match_value"]),
+                use_container_width=True, hide_index=True, num_rows="dynamic",
+                key="settings_long_preroll_lines",
+                column_config={
+                    "match_field": st.column_config.SelectboxColumn(
+                        "Match field",
+                        options=["order_name", "line_item_name", "line_item_id"],
+                        required=True,
+                        help="What to match against in the line item row.",
+                    ),
+                    "match_value": st.column_config.TextColumn(
+                        "Match value",
+                        required=True,
+                        help="Substring (case-insensitive) for order_name / line_item_name. "
+                             "Exact match for line_item_id.",
+                    ),
+                },
+            )
+
+            # ── 1f: AirTable ticket integration ──
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">AirTable integration</div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Powers the drawer\'s '
+                f'<span style="color:rgba(250,250,250,0.85)">🎫 AirTable ticket</span> button. '
+                f'Routes Request Type automatically based on the drawer\'s state.</div>',
+                unsafe_allow_html=True,
+            )
+            _at_b_col, _at_f_col, _at_r_col = st.columns(3)
+            with _at_b_col:
+                st.markdown('<div class="nw-filter-label">Base ID</div>', unsafe_allow_html=True)
+                _at_base_edit = st.text_input(
+                    "Base ID",
+                    value=(_s.get("airtable_base_id") or "").strip(),
+                    placeholder="appX7xp1veDq9ndUe",
+                    key="settings_airtable_base_id",
+                    label_visibility="collapsed",
+                )
+            with _at_f_col:
+                st.markdown('<div class="nw-filter-label">Form ID</div>', unsafe_allow_html=True)
+                _at_form_edit = st.text_input(
+                    "Form ID",
+                    value=(_s.get("airtable_form_id") or "").strip(),
+                    placeholder="pagN88p2kwQBcjqZf",
+                    key="settings_airtable_form_id",
+                    label_visibility="collapsed",
+                )
+            with _at_r_col:
+                st.markdown('<div class="nw-filter-label">Reporter</div>', unsafe_allow_html=True)
+                _at_reporter_edit = st.text_input(
+                    "Reporter",
+                    value=(_s.get("airtable_reporter") or "").strip(),
+                    placeholder="Roger Hirano",
+                    key="settings_airtable_reporter",
+                    label_visibility="collapsed",
+                )
+
+            # Request Type routing table — drawer context → AirTable enum value.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:12px">Request Type routing '
+                f'<span class="cfg-card-meta">· drawer context → AirTable enum</span></div>',
+                unsafe_allow_html=True,
+            )
+            _at_routing_rows = _s.get("airtable_request_type_routing") or []
+            _at_routing_edit = st.data_editor(
+                pd.DataFrame(_at_routing_rows) if _at_routing_rows else pd.DataFrame(
+                    columns=["context", "request_type"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_airtable_routing",
+                column_config={
+                    "context": st.column_config.TextColumn(
+                        "Drawer context",
+                        help="When this state matches, route to the Request Type below.",
+                    ),
+                    "request_type": st.column_config.TextColumn(
+                        "Request Type",
+                        help="Must match an AirTable enum value exactly "
+                             "(e.g. 'Direct Campaign - Troubleshooting', spaces around the hyphen).",
+                    ),
+                },
+            )
+
+            # Field name mapping — canonical name → AirTable form's actual field name.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:12px">Field name mapping '
+                f'<span class="cfg-card-meta">· canonical → AirTable form\'s actual field name</span></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'AirTable\'s prefill URL parameters must match the form\'s actual field names. '
+                f'Verify via AirTable → Share → Copy prefilled link.</div>',
+                unsafe_allow_html=True,
+            )
+            _at_field_dict = _s.get("airtable_field_names") or {}
+            _at_field_rows = [
+                {"canonical": k, "airtable_field_name": v}
+                for k, v in _at_field_dict.items()
+            ]
+            _at_fields_edit = st.data_editor(
+                pd.DataFrame(_at_field_rows) if _at_field_rows else pd.DataFrame(
+                    columns=["canonical", "airtable_field_name"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_airtable_fields",
+                column_config={
+                    "canonical": st.column_config.TextColumn(
+                        "Canonical name", help="Internal field name the dashboard uses.",
+                    ),
+                    "airtable_field_name": st.column_config.TextColumn(
+                        "AirTable field name", help="Exact name as it appears in the AirTable form.",
+                    ),
+                },
+            )
+
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 2 — Field mapping
+            # ────────────────────────────────────────────────────────────────────
+            _DIRECT_FIELDS = [
+                "Seller", "Advertiser", "Campaign", "Line Item", "Format", "Status",
+                "Start Date", "End Date", "Goal", "CPM Rate",
+                "Delivered", "Remaining", "Clicks",
+                "Pace", "Δ", "Viewability %", "CTR %", "VCR %", "Revenue",
+            ]
+            _DIRECT_COMPUTED = ["seller_ae", "salesperson", "advertiser", "campaign_name", "ad_format", "remaining_impressions", "pacing_delta"]
+
+            _existing_direct_maps = {s["name"]: s.get("columns", {}) for s in _s.get("direct_sources", [])}
+            _direct_src_names = [
+                str(r["Source Name"]).strip()
+                for _, r in _direct_edit.iterrows()
+                if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
+            ]
+            _direct_table_map = {
+                str(r["Source Name"]).strip(): str(r.get("Database Table", "")).strip()
+                for _, r in _direct_edit.iterrows()
+                if pd.notna(r["Source Name"]) and str(r["Source Name"]).strip()
+            }
+
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:24px">'
+                f'<span class="cfg-eyebrow">Section 2 — Field mapping</span>'
+                f'<span class="cfg-count">{len(_DIRECT_FIELDS)} fields mapped</span></div>'
+                f'<div class="cfg-desc">Map each canonical display field to the source column. '
+                f'<span class="cfg-computed">computed</span> = derived by the dashboard from raw fields.</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="cfg-card-title">Metrics &amp; dimensions '
+                f'<span class="cfg-card-meta">· {len(_DIRECT_FIELDS)} fields mapped</span></div>',
+                unsafe_allow_html=True,
+            )
+
+            _direct_ssp_opts: dict = {}
+            for _dsn in _direct_src_names:
+                _dtbl = _direct_table_map.get(_dsn, "")
+                _dreal = _table_cols(_dtbl)
+                _dopts = ["N/A"] + _DIRECT_COMPUTED + [c for c in _dreal if c not in (["N/A"] + _DIRECT_COMPUTED)]
+                for _f in _DIRECT_FIELDS:
+                    _cur = _existing_direct_maps.get(_dsn, {}).get(_f, "")
+                    if _cur and _cur not in _dopts:
+                        _dopts.append(_cur)
+                _direct_ssp_opts[_dsn] = _dopts
+
+            _direct_map_rows = []
+            for _f in _DIRECT_FIELDS:
+                _row2: dict = {"Field": _f}
+                for _dsn in _direct_src_names:
+                    _raw = _existing_direct_maps.get(_dsn, {}).get(_f, "") or ""
+                    _row2[_dsn] = _raw if _raw else "N/A"
+                _direct_map_rows.append(_row2)
+
+            _direct_map_col_cfg: dict = {
+                "Field": st.column_config.TextColumn("Canonical field", disabled=True, width="small"),
+            }
+            for _dsn in _direct_src_names:
+                _dtbl = _direct_table_map.get(_dsn, "")
+                _direct_map_col_cfg[_dsn] = st.column_config.SelectboxColumn(
+                    f"{_dsn} source column",
+                    options=_direct_ssp_opts[_dsn],
+                    width="medium",
+                    help=f"Source column from `{_dtbl}`. Computed columns: seller_ae, advertiser, campaign_name, ad_format.",
+                    required=False,
+                )
+
+            _direct_map_edit = st.data_editor(
+                pd.DataFrame(_direct_map_rows) if _direct_map_rows else pd.DataFrame(columns=["Field"]),
+                use_container_width=True,
+                hide_index=True,
+                key="settings_direct_colmap",
+                column_config=_direct_map_col_cfg,
+                disabled=["Field"],
+            )
+
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 3 — Performance benchmarks
+            # ────────────────────────────────────────────────────────────────────
+            _benchmarks_default = _s.get("benchmarks_by_format", {}) or {}
+            _n_benchmark_formats = len(_benchmarks_default)
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:24px">'
+                f'<span class="cfg-eyebrow">Section 3 — Performance benchmarks</span>'
+                f'<span class="cfg-count">{_n_benchmark_formats} formats configured</span></div>'
+                f'<div class="cfg-desc">Threshold values that drive cell coloring on the Direct Campaigns table. '
+                f'Below benchmark → red→green gradient. Blank = no coloring for that metric.</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 3a: Pacing Target with inline gradient preview.
+            _pacing_target_existing = float(_s.get("pacing_target_pct", 100.0))
+            st.markdown(
+                f'<div class="cfg-card-title">Pacing target</div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);">'
+                f'Solid green at or above target.</div>',
+                unsafe_allow_html=True,
+            )
+            _pt1, _pt2 = st.columns([1, 5])
+            with _pt1:
+                _pacing_target_edit = st.number_input(
+                    "Target pacing %",
+                    value=_pacing_target_existing,
+                    min_value=0.0,
+                    step=1.0,
+                    format="%.1f",
+                    key="settings_pacing_target",
+                    label_visibility="collapsed",
+                )
+            with _pt2:
+                _tgt_pct = max(0.0, min(100.0, _pacing_target_edit))
+                st.markdown(
+                    f'<div class="cfg-gradient">'
+                    f'<div class="cfg-gradient-marker" style="left:{_tgt_pct:.1f}%;"></div></div>'
+                    f'<div class="cfg-gradient-axis"><span>0%</span><span>→ 100%</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── 3b: Benchmarks by Format — with usage count and explicit blanks.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Benchmarks by format '
+                f'<span class="cfg-card-meta">· {_n_benchmark_formats} formats</span></div>',
+                unsafe_allow_html=True,
+            )
+
+            # Detect "mostly blank" — most cells null → suggest enabling.
+            _bench_blanks = 0
+            _bench_total = 0
+            for _fmt, _vals in _benchmarks_default.items():
+                for _k in ("viewability_pct", "ctr_pct", "vcr_pct"):
+                    _bench_total += 1
+                    if _vals.get(_k) is None:
+                        _bench_blanks += 1
+            if _bench_total > 0 and _bench_blanks / _bench_total > 0.5:
+                st.markdown(
+                    '<div class="cfg-suggest">💡 <b>Suggested:</b> enable CTR &amp; VCR benchmarks. '
+                    'All formats currently have CTR and VCR blank — those columns will render '
+                    'uncolored on the table. Industry defaults: Display CTR 0.08%, Video VCR 65%.</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Color bands: each metric has a green floor (the "%" column) and an
+            # optional red ceiling (the "red <" column). Anything ≥ green is
+            # green; anything below "red <" is red; in between is amber. Leave
+            # "red <" blank to keep the implicit fallback (target × 0.85).
+            st.markdown(
+                '<div class="cfg-helper" style="font-size:12px;color:rgba(250,250,250,0.55);'
+                'margin:-4px 0 6px 0">'
+                'Color bands: cell is <span style="color:hsl(120,50%,65%)">green</span> ≥ target, '
+                '<span style="color:hsl(35,70%,65%)">amber</span> between target and red threshold, '
+                '<span style="color:hsl(0,55%,70%)">red</span> below threshold. '
+                'Leave “red &lt;” blank to default to 85% of target.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _bench_rows = [
+                {"Format": fmt,
+                 "Viewability %":     vals.get("viewability_pct"),
+                 "Viewability red <": vals.get("viewability_red_below"),
+                 "CTR %":             vals.get("ctr_pct"),
+                 "CTR red <":         vals.get("ctr_red_below"),
+                 "VCR %":             vals.get("vcr_pct"),
+                 "VCR red <":         vals.get("vcr_red_below"),
+                 "Applies to":        f"~{_format_count(fmt)} line items"}
+                for fmt, vals in sorted(_benchmarks_default.items())
+            ]
+            _bench_edit = st.data_editor(
+                pd.DataFrame(_bench_rows) if _bench_rows else pd.DataFrame(
+                    columns=["Format",
+                             "Viewability %", "Viewability red <",
+                             "CTR %", "CTR red <",
+                             "VCR %", "VCR red <",
+                             "Applies to"]
+                ),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_benchmarks_by_format",
+                column_config={
+                    "Format":            st.column_config.TextColumn("Format", required=True),
+                    "Viewability %":     st.column_config.NumberColumn(
+                        "Viewability %", format="%.1f",
+                        help="Green floor — values at or above this render green."),
+                    "Viewability red <": st.column_config.NumberColumn(
+                        "Viewability red <", format="%.1f",
+                        help="Red ceiling — values below this render red. Blank = 85% of target."),
+                    "CTR %":             st.column_config.NumberColumn(
+                        "CTR %", format="%.2f",
+                        help="Green floor — values at or above this render green."),
+                    "CTR red <":         st.column_config.NumberColumn(
+                        "CTR red <", format="%.2f",
+                        help="Red ceiling — values below this render red. Blank = 85% of target."),
+                    "VCR %":             st.column_config.NumberColumn(
+                        "VCR %", format="%.1f",
+                        help="Green floor — values at or above this render green."),
+                    "VCR red <":         st.column_config.NumberColumn(
+                        "VCR red <", format="%.1f",
+                        help="Red ceiling — values below this render red. Blank = 85% of target."),
+                    "Applies to":        st.column_config.TextColumn("Applies to", disabled=True),
+                },
+                disabled=["Applies to"],
+            )
+
+            # ────────────────────────────────────────────────────────────────────
+            # SECTION 4 — Identity & theming
+            # ────────────────────────────────────────────────────────────────────
+            _n_ae   = len(_s.get("ae_names", {}))
+            _n_aes_distinct = len(set(_s.get("ae_names", {}).values()))
+            st.markdown(
+                f'<div class="cfg-section-head" style="margin-top:24px">'
+                f'<span class="cfg-eyebrow">Section 4 — Identity &amp; theming</span>'
+                f'<span class="cfg-count">{_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>'
+                f'<div class="cfg-desc">Normalize AE names and team codes; assign colors to statuses and '
+                f'sellers for consistent visual identity across the dashboard.</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 4a: Seller Mapping with grouped preview.
+            st.markdown(
+                f'<div class="cfg-card-title">Seller mapping '
+                f'<span class="cfg-card-meta">· {_n_aes_distinct} AEs · {_n_ae} code aliases</span></div>',
+                unsafe_allow_html=True,
+            )
+            _ae_rows = [{"Code": k, "Full Name": v} for k, v in sorted(_s["ae_names"].items())]
+            _ae_edit = st.data_editor(
+                pd.DataFrame(_ae_rows) if _ae_rows else pd.DataFrame(columns=["Code", "Full Name"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_ae",
+                column_config={
+                    "Code":      st.column_config.TextColumn("Code in order/line item name", required=True),
+                    "Full Name": st.column_config.TextColumn("Display name", required=True),
+                },
+            )
+
+            # ── 4b: Team Mapping.
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Team mapping</div>',
+                unsafe_allow_html=True,
+            )
+            _team_rows = [{"Code": k, "Label": v} for k, v in sorted(_s.get("team_names", {}).items())]
+            _team_edit = st.data_editor(
+                pd.DataFrame(_team_rows) if _team_rows else pd.DataFrame(columns=["Code", "Label"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_team",
+                column_config={
+                    "Code":  st.column_config.TextColumn("Code in line item name", required=True),
+                    "Label": st.column_config.TextColumn("Display label", required=True),
+                },
+            )
+
+            # ── 4c: Account Manager mapping.
+            # Maps an AE code (Seller / field 14 of the LI name) to the Account
+            # Manager who operates the campaign. The Direct campaigns view in
+            # Overall Performance uses this map for the "Account Manager"
+            # filter dropdown — each line's AM is looked up from its seller_ae.
+            # AE codes not assigned to an AM fall into the "Unassigned" bucket
+            # in the filter.
+            #
+            # AM is constrained to a small allowlist via a Selectbox column.
+            # When the team grows past these two, just extend _AM_CHOICES.
+            _AM_CHOICES = ["JC", "Jen"]
+            _am_map = _s.get("account_managers", {}) or {}
+            _n_assigned    = sum(1 for v in _am_map.values() if v)
+            _n_unassigned  = sum(1 for v in _am_map.values() if not v)
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Account Manager mapping '
+                f'<span class="cfg-card-meta">· {_n_assigned} assigned · {_n_unassigned} blank</span></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Each AE (Seller) can be paired with one of the Account Managers below. '
+                f'Surfaces as the Account Manager filter on Direct campaigns. '
+                f'Leave blank to keep the AE in the "Unassigned" bucket.</div>',
+                unsafe_allow_html=True,
+            )
+            # Coerce stored values into the allowlist or None so the Selectbox
+            # column doesn't reject pre-existing free-text values (e.g. from a
+            # prior schema where AM was a TextColumn). Anything not in
+            # _AM_CHOICES becomes None (blank) for the editor.
+            _am_rows = [
+                {"AE Code": k,
+                 "Account Manager": (v if v in _AM_CHOICES else None)}
+                for k, v in sorted(_am_map.items())
+            ]
+            _am_edit = st.data_editor(
+                pd.DataFrame(_am_rows) if _am_rows
+                else pd.DataFrame(columns=["AE Code", "Account Manager"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_account_managers",
+                column_config={
+                    "AE Code":         st.column_config.TextColumn(
+                        "AE Code (matches Seller mapping above)", required=True,
+                        help="The AE code as it appears in field 14 of the line item name "
+                             "(e.g. AShah, JMakin). Must match a Code in the Seller mapping above."),
+                    "Account Manager": st.column_config.SelectboxColumn(
+                        "Account Manager",
+                        options=_AM_CHOICES,
+                        required=False,
+                        help="Pick the AM paired with this AE. Leave blank to keep the AE unassigned."),
+                },
+            )
+
+            # ── 4d: Status Colors + live preview.
+            _status_color_rows = _s.get("status_colors", []) or []
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Status colors</div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'First substring match wins.</div>',
+                unsafe_allow_html=True,
+            )
+            _status_color_editor = st.data_editor(
+                pd.DataFrame(_status_color_rows) if _status_color_rows
+                else pd.DataFrame(columns=["keyword", "color"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_status_colors",
+                column_config={
+                    "keyword": st.column_config.TextColumn("Status keyword", required=True),
+                    "color":   st.column_config.TextColumn("Color", required=True,
+                                  help="Hex like #2E7D32 or any CSS color"),
+                },
+            )
+            # Live preview pills underneath.
+            if _status_color_rows:
+                def _cfg_esc(s):
+                    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+                            .replace(">", "&gt;").replace('"', "&quot;"))
+                _pills = "".join(
+                    f'<span class="cfg-pill-preview" style="background:{_cfg_esc(r.get("color",""))};'
+                    f'color:#fff;margin-right:8px;opacity:0.95;">{_cfg_esc(r.get("keyword",""))}</span>'
+                    for r in _status_color_rows
+                    if r.get("keyword") and r.get("color")
+                )
+                st.markdown(
+                    f'<div style="margin:8px 0 0 0;font-size:10px;color:rgba(250,250,250,0.45);'
+                    f'letter-spacing:0.08em;text-transform:uppercase">Preview</div>'
+                    f'<div style="margin-top:4px">{_pills}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── 4d: Seller Colors — usage count + hash fallback + Show all toggle.
+            _existing_seller_colors = _s.get("seller_colors", {}) or {}
+            _known_ae_names = sorted(set(_s.get("ae_names", {}).values()))
+
+            _seller_card_meta = "stable hash fallback when blank"
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">Seller colors '
+                f'<span class="cfg-card-meta">· {_seller_card_meta}</span></div>'
+                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'Used in tables, filters, and chart legends.</div>',
+                unsafe_allow_html=True,
+            )
+            _show_all_sellers = st.toggle(
+                "Show all sellers (default: only those active in the table)",
+                value=False,
+                key="settings_show_all_sellers",
+            )
+
+            def _hash_fallback_color(name):
+                import hashlib as _hashlib
+                h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
+                return f"hsl({h % 360}, 55%, 38%)"
+
+            _seller_color_rows = []
+            for _name in _known_ae_names:
+                _used = _seller_count(_name)
+                if not _show_all_sellers and _used == 0:
                     continue
-                _new_benchmarks[_fmt] = {
-                    "viewability_pct":       _bench_val(r.get("Viewability %")),
-                    "viewability_red_below": _bench_val(r.get("Viewability red <")),
-                    "ctr_pct":               _bench_val(r.get("CTR %")),
-                    "ctr_red_below":         _bench_val(r.get("CTR red <")),
-                    "vcr_pct":               _bench_val(r.get("VCR %")),
-                    "vcr_red_below":         _bench_val(r.get("VCR red <")),
+                _override = _existing_seller_colors.get(_name, "")
+                _used_str = (f"{_used} line item{'s' if _used != 1 else ''}"
+                             if _used > 0 else "— no active lines")
+                _seller_color_rows.append({
+                    "seller": _name,
+                    "color":  _override,
+                    "Used in table": _used_str,
+                })
+            # Also surface seller_colors keys not in ae_names (so user can remove them).
+            for _extra in sorted(set(_existing_seller_colors.keys()) - set(_known_ae_names)):
+                _seller_color_rows.append({
+                    "seller": _extra,
+                    "color":  _existing_seller_colors[_extra],
+                    "Used in table": "— not in AE mapping",
+                })
+            _seller_color_editor = st.data_editor(
+                pd.DataFrame(_seller_color_rows) if _seller_color_rows
+                else pd.DataFrame(columns=["seller", "color", "Used in table"]),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic",
+                key="settings_seller_colors",
+                column_config={
+                    "seller": st.column_config.TextColumn("Seller", required=True),
+                    "color":  st.column_config.TextColumn("Override color",
+                                  help="Hex like #1976D2; leave blank to use hash fallback"),
+                    "Used in table": st.column_config.TextColumn("Used in table", disabled=True),
+                },
+                disabled=["Used in table"],
+            )
+            # Hash-fallback explainer for rows with blank overrides.
+            _hash_fb_rows = [r for r in _seller_color_rows
+                             if not (r.get("color") and str(r["color"]).strip())]
+            if _hash_fb_rows:
+                _swatches = "".join(
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px;'
+                    f'font-size:11px;color:rgba(250,250,250,0.55)">'
+                    f'<span style="width:10px;height:10px;border-radius:2px;'
+                    f'background:{_hash_fallback_color(r["seller"])}"></span>'
+                    f'{r["seller"]} <span class="cfg-tertiary">(hash fallback)</span>'
+                    f'</span>'
+                    for r in _hash_fb_rows[:8]
+                )
+                st.markdown(
+                    f'<div style="margin-top:6px;font-size:11px;color:rgba(250,250,250,0.45);'
+                    f'letter-spacing:0.05em">{_swatches}</div>',
+                    unsafe_allow_html=True,
+                )
+
+
+        # ── Save ─────────────────────────────────────────────────────────────
+        st.divider()
+        if st.form_submit_button("💾  Save Settings", type="primary"):
+            try:
+                _new_ssps = []
+                for _, _row in _ssp_edit.iterrows():
+                    _ssp_name = str(_row.get("SSP Name", "")).strip()
+                    if not _ssp_name:
+                        continue
+                    if _ssp_name in _map_edit.columns:
+                        _col_map_new = {}
+                        for _, _mr in _map_edit.iterrows():
+                            _src = str(_mr[_ssp_name]).strip() if pd.notna(_mr[_ssp_name]) else "N/A"
+                            _col_map_new[str(_mr["Field"])] = "" if _src == "N/A" else _src
+                    else:
+                        _col_map_new = _existing_col_maps.get(_ssp_name, {})
+                    _dt_raw = str(_row.get("Deal Types", "")).strip()
+                    _ds_default = str(_row.get("Default Deal Source", "") or "").strip()
+                    _new_ssp_entry = {
+                        "name":       _ssp_name,
+                        "enabled":    bool(_row.get("Enabled", True)),
+                        "table":      str(_row.get("Database Table", "")).strip(),
+                        "deal_types": [t.strip() for t in _dt_raw.split(",") if t.strip()],
+                        "columns":    _col_map_new,
+                    }
+                    if _ds_default:
+                        _new_ssp_entry["deal_source_default"] = _ds_default
+                    _new_ssps.append(_new_ssp_entry)
+
+                _new_ae = {
+                    str(r["Code"]).strip(): str(r["Full Name"]).strip()
+                    for _, r in _ae_edit.iterrows()
+                    if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+                }
+                _new_team = {
+                    str(r["Code"]).strip(): str(r["Label"]).strip()
+                    for _, r in _team_edit.iterrows()
+                    if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+                }
+                # Preserve every AE Code, even when the Account Manager column is
+                # blank. The Configure table is pre-populated with all known AE
+                # codes so the user can fill in AMs incrementally — dropping
+                # blank-AM rows on save would lose that scaffolding the first
+                # time someone saves before completing the assignments. Blank
+                # AMs are treated as "Unassigned" by the dashboard filter, so
+                # behavior stays consistent whether the row is missing or
+                # blank-valued.
+                _new_account_managers = {
+                    str(r["AE Code"]).strip(): (
+                        str(r["Account Manager"]).strip()
+                        if pd.notna(r.get("Account Manager")) else ""
+                    )
+                    for _, r in _am_edit.iterrows()
+                    if pd.notna(r.get("AE Code")) and str(r["AE Code"]).strip()
+                }
+                _new_dt = {
+                    str(r["Code"]).strip(): str(r["Label"]).strip()
+                    for _, r in _dt_edit.iterrows()
+                    if pd.notna(r.get("Code")) and str(r["Code"]).strip()
+                }
+                def _bench_val(v):
+                    if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
+                        return None
+                    try:
+                        return float(v)
+                    except Exception:
+                        return None
+                _new_benchmarks = {}
+                for _, r in _bench_edit.iterrows():
+                    _fmt = str(r.get("Format", "")).strip()
+                    if not _fmt:
+                        continue
+                    _new_benchmarks[_fmt] = {
+                        "viewability_pct":       _bench_val(r.get("Viewability %")),
+                        "viewability_red_below": _bench_val(r.get("Viewability red <")),
+                        "ctr_pct":               _bench_val(r.get("CTR %")),
+                        "ctr_red_below":         _bench_val(r.get("CTR red <")),
+                        "vcr_pct":               _bench_val(r.get("VCR %")),
+                        "vcr_red_below":         _bench_val(r.get("VCR red <")),
+                    }
+
+                _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
+
+                _new_status_colors = []
+                for _, r in _status_color_editor.iterrows():
+                    _kw  = str(r.get("keyword", "")).strip()
+                    _col = str(r.get("color", "")).strip()
+                    if _kw and _col:
+                        _new_status_colors.append({"keyword": _kw, "color": _col})
+
+                _new_seller_colors = {}
+                for _, r in _seller_color_editor.iterrows():
+                    _name = str(r.get("seller", "")).strip()
+                    _col  = str(r.get("color", "")).strip()
+                    if _name and _col:
+                        _new_seller_colors[_name] = _col
+
+                _new_direct = []
+                for _, _row in _direct_edit.iterrows():
+                    _dsrc_name = str(_row.get("Source Name", "")).strip()
+                    if not _dsrc_name:
+                        continue
+                    if _dsrc_name in _direct_map_edit.columns:
+                        _dcol_map = {}
+                        for _, _mr in _direct_map_edit.iterrows():
+                            _src = str(_mr[_dsrc_name]).strip() if pd.notna(_mr[_dsrc_name]) else "N/A"
+                            _dcol_map[str(_mr["Field"])] = "" if _src == "N/A" else _src
+                    else:
+                        _dcol_map = _existing_direct_maps.get(_dsrc_name, {})
+                    _new_direct.append({
+                        "name":             _dsrc_name,
+                        "enabled":          bool(_row.get("Enabled", True)),
+                        "table":            str(_row.get("Database Table", "")).strip(),
+
+                        "columns":          _dcol_map,
+                    })
+
+                _new_aliases = {
+                    str(r["Raw Value"]).strip(): str(r["Canonical Deal Type"]).strip()
+                    for _, r in _alias_edit.iterrows()
+                    if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                    and pd.notna(r.get("Canonical Deal Type")) and str(r["Canonical Deal Type"]).strip()
+                }
+                _new_dsp_aliases = {
+                    str(r["Raw Value"]).strip(): str(r["Canonical DSP Name"]).strip()
+                    for _, r in _dsp_alias_edit.iterrows()
+                    if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                    and pd.notna(r.get("Canonical DSP Name")) and str(r["Canonical DSP Name"]).strip()
+                }
+                _new_format_aliases = {
+                    str(r["Raw Value"]).strip(): str(r["Canonical Format Name"]).strip()
+                    for _, r in _format_alias_edit.iterrows()
+                    if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                    and pd.notna(r.get("Canonical Format Name")) and str(r["Canonical Format Name"]).strip()
+                }
+                _new_deal_source_aliases = {
+                    str(r["Raw Value"]).strip(): str(r["Canonical Deal Source Name"]).strip()
+                    for _, r in _deal_source_alias_edit.iterrows()
+                    if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
+                    and pd.notna(r.get("Canonical Deal Source Name")) and str(r["Canonical Deal Source Name"]).strip()
                 }
 
-            _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
-
-            _new_status_colors = []
-            for _, r in _status_color_editor.iterrows():
-                _kw  = str(r.get("keyword", "")).strip()
-                _col = str(r.get("color", "")).strip()
-                if _kw and _col:
-                    _new_status_colors.append({"keyword": _kw, "color": _col})
-
-            _new_seller_colors = {}
-            for _, r in _seller_color_editor.iterrows():
-                _name = str(r.get("seller", "")).strip()
-                _col  = str(r.get("color", "")).strip()
-                if _name and _col:
-                    _new_seller_colors[_name] = _col
-
-            _new_direct = []
-            for _, _row in _direct_edit.iterrows():
-                _dsrc_name = str(_row.get("Source Name", "")).strip()
-                if not _dsrc_name:
-                    continue
-                if _dsrc_name in _direct_map_edit.columns:
-                    _dcol_map = {}
-                    for _, _mr in _direct_map_edit.iterrows():
-                        _src = str(_mr[_dsrc_name]).strip() if pd.notna(_mr[_dsrc_name]) else "N/A"
-                        _dcol_map[str(_mr["Field"])] = "" if _src == "N/A" else _src
-                else:
-                    _dcol_map = _existing_direct_maps.get(_dsrc_name, {})
-                _new_direct.append({
-                    "name":             _dsrc_name,
-                    "enabled":          bool(_row.get("Enabled", True)),
-                    "table":            str(_row.get("Database Table", "")).strip(),
-
-                    "columns":          _dcol_map,
+                _new_incl_patterns = [
+                    str(r["Pattern"]).strip()
+                    for _, r in _incl_edit.iterrows()
+                    if pd.notna(r.get("Pattern")) and str(r["Pattern"]).strip()
+                ]
+                # AirTable routing + field name mapping from data editors.
+                _new_at_routing = [
+                    {"context": str(r.get("context") or "").strip(),
+                     "request_type": str(r.get("request_type") or "").strip()}
+                    for _, r in _at_routing_edit.iterrows()
+                    if str(r.get("context") or "").strip()
+                    and str(r.get("request_type") or "").strip()
+                ]
+                _new_at_fields = {
+                    str(r.get("canonical") or "").strip():
+                        str(r.get("airtable_field_name") or "").strip()
+                    for _, r in _at_fields_edit.iterrows()
+                    if str(r.get("canonical") or "").strip()
+                    and str(r.get("airtable_field_name") or "").strip()
+                }
+                _save_settings({
+                    "ssps": _new_ssps, "ae_names": _new_ae, "team_names": _new_team,
+                    "account_managers": _new_account_managers,
+                    "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
+                    "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
+                    "deal_source_aliases": _new_deal_source_aliases,
+                    "included_order_patterns": _new_incl_patterns,
+                    "default_statuses": list(_default_statuses_edit),
+                    "direct_sources": _new_direct,
+                    "benchmarks_by_format": _new_benchmarks,
+                    "pacing_target_pct":   _new_pacing_target,
+                    "status_colors":       _new_status_colors,
+                    "seller_colors":       _new_seller_colors,
+                    "gam_network_id":      (_gam_network_id_edit or "").strip(),
+                    "long_preroll_lines": [
+                        {"match_field": str(r.get("match_field") or "").strip(),
+                         "match_value": str(r.get("match_value") or "").strip()}
+                        for _, r in _lp_edit.iterrows()
+                        if str(r.get("match_field") or "").strip()
+                        and str(r.get("match_value") or "").strip()
+                    ],
+                    "airtable_base_id":    (_at_base_edit or "").strip(),
+                    "airtable_form_id":    (_at_form_edit or "").strip(),
+                    "airtable_reporter":   (_at_reporter_edit or "").strip(),
+                    "airtable_request_type_routing": _new_at_routing,
+                    "airtable_field_names": _new_at_fields,
                 })
-
-            _new_aliases = {
-                str(r["Raw Value"]).strip(): str(r["Canonical Deal Type"]).strip()
-                for _, r in _alias_edit.iterrows()
-                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
-                and pd.notna(r.get("Canonical Deal Type")) and str(r["Canonical Deal Type"]).strip()
-            }
-            _new_dsp_aliases = {
-                str(r["Raw Value"]).strip(): str(r["Canonical DSP Name"]).strip()
-                for _, r in _dsp_alias_edit.iterrows()
-                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
-                and pd.notna(r.get("Canonical DSP Name")) and str(r["Canonical DSP Name"]).strip()
-            }
-            _new_format_aliases = {
-                str(r["Raw Value"]).strip(): str(r["Canonical Format Name"]).strip()
-                for _, r in _format_alias_edit.iterrows()
-                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
-                and pd.notna(r.get("Canonical Format Name")) and str(r["Canonical Format Name"]).strip()
-            }
-            _new_deal_source_aliases = {
-                str(r["Raw Value"]).strip(): str(r["Canonical Deal Source Name"]).strip()
-                for _, r in _deal_source_alias_edit.iterrows()
-                if pd.notna(r.get("Raw Value")) and str(r["Raw Value"]).strip()
-                and pd.notna(r.get("Canonical Deal Source Name")) and str(r["Canonical Deal Source Name"]).strip()
-            }
-
-            _new_incl_patterns = [
-                str(r["Pattern"]).strip()
-                for _, r in _incl_edit.iterrows()
-                if pd.notna(r.get("Pattern")) and str(r["Pattern"]).strip()
-            ]
-            # AirTable routing + field name mapping from data editors.
-            _new_at_routing = [
-                {"context": str(r.get("context") or "").strip(),
-                 "request_type": str(r.get("request_type") or "").strip()}
-                for _, r in _at_routing_edit.iterrows()
-                if str(r.get("context") or "").strip()
-                and str(r.get("request_type") or "").strip()
-            ]
-            _new_at_fields = {
-                str(r.get("canonical") or "").strip():
-                    str(r.get("airtable_field_name") or "").strip()
-                for _, r in _at_fields_edit.iterrows()
-                if str(r.get("canonical") or "").strip()
-                and str(r.get("airtable_field_name") or "").strip()
-            }
-            _save_settings({
-                "ssps": _new_ssps, "ae_names": _new_ae, "team_names": _new_team,
-                "account_managers": _new_account_managers,
-                "deal_type_codes": _new_dt, "deal_type_aliases": _new_aliases,
-                "dsp_aliases": _new_dsp_aliases, "format_aliases": _new_format_aliases,
-                "deal_source_aliases": _new_deal_source_aliases,
-                "included_order_patterns": _new_incl_patterns,
-                "default_statuses": list(_default_statuses_edit),
-                "direct_sources": _new_direct,
-                "benchmarks_by_format": _new_benchmarks,
-                "pacing_target_pct":   _new_pacing_target,
-                "status_colors":       _new_status_colors,
-                "seller_colors":       _new_seller_colors,
-                "gam_network_id":      (_gam_network_id_edit or "").strip(),
-                "long_preroll_lines": [
-                    {"match_field": str(r.get("match_field") or "").strip(),
-                     "match_value": str(r.get("match_value") or "").strip()}
-                    for _, r in _lp_edit.iterrows()
-                    if str(r.get("match_field") or "").strip()
-                    and str(r.get("match_value") or "").strip()
-                ],
-                "airtable_base_id":    (_at_base_edit or "").strip(),
-                "airtable_form_id":    (_at_form_edit or "").strip(),
-                "airtable_reporter":   (_at_reporter_edit or "").strip(),
-                "airtable_request_type_routing": _new_at_routing,
-                "airtable_field_names": _new_at_fields,
-            })
-            st.cache_data.clear()
-            st.success("Settings saved — reloading dashboard…")
-            st.rerun()
-        except Exception as _e:
-            st.error(f"Failed to save: {_e}")
+                st.cache_data.clear()
+                st.success("Settings saved — reloading dashboard…")
+                st.rerun()
+            except Exception as _e:
+                st.error(f"Failed to save: {_e}")
