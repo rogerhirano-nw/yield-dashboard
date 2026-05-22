@@ -35,66 +35,32 @@ svc = soap.GetService("YieldGroupService", version=client._SOAP_API_VERSION)
 sb = ad_manager.StatementBuilder(version=client._SOAP_API_VERSION)
 sb.Limit(500)
 
-groups = []
-while True:
-    resp = svc.getYieldGroupsByStatement(sb.ToStatement())
-    results = getattr(resp, "results", None) or []
-    if not results:
-        break
-    for yg in results:
-        groups.append({
-            "id":          getattr(yg, "id", None),
-            "name":        getattr(yg, "name", None),
-            "type":        getattr(yg, "type", None),     # EXCHANGE_BIDDING | MEDIATION
-            "status":      getattr(yg, "status", None),
-            "ad_format":   getattr(yg, "adFormat", None),
-        })
-    sb.offset += sb.limit
-    if sb.offset >= getattr(resp, "totalResultSetSize", 0):
-        break
+resp = svc.getYieldGroupsByStatement(sb.ToStatement())
+results = getattr(resp, "results", None) or []
+print(f"Returned {len(results)} yield groups, totalResultSetSize={getattr(resp, 'totalResultSetSize', '?')}\n")
 
-print(f"Total yield groups: {len(groups)}\n")
-print("By type:")
-by_type = {}
-for g in groups:
-    by_type[g["type"]] = by_type.get(g["type"], 0) + 1
-for k, v in sorted(by_type.items(), key=lambda kv: -kv[1]):
-    print(f"  {k}: {v}")
+# Introspect the first object so we can see what fields the v202605 SOAP
+# schema actually uses. zeep `dir()` includes inherited methods; we want
+# data attrs. Try serializing to dict via zeep.helpers.
+from zeep import helpers as zeep_helpers  # noqa: E402
 
-print("\nAll yield groups:")
-print(f"{'id':<14} {'type':<18} {'status':<10} {'ad_format':<12} name")
-print("-" * 80)
-for g in sorted(groups, key=lambda x: (str(x["type"]), str(x["name"]))):
-    print(f"{str(g['id']):<14} {str(g['type']):<18} {str(g['status']):<10} {str(g['ad_format']):<12} {g['name']}")
-
-# Now drill into the yield-group partner assignments to find which groups
-# include Index Exchange as a partner. SOAP YieldGroup objects carry a
-# `yieldPartners` list, but it may not be populated on the list response —
-# fetch each group individually if needed.
-print("\nYield groups containing Index Exchange as a partner:")
-hits = 0
-for g in groups:
-    yg_id = g["id"]
+for i, yg in enumerate(results):
+    print(f"=== yield_group[{i}] — raw repr ===")
+    print(repr(yg))
+    print(f"\n=== yield_group[{i}] — zeep serialize ===")
     try:
-        sb2 = ad_manager.StatementBuilder(version=client._SOAP_API_VERSION)
-        sb2.Where("id = :id").WithBindVariable("id", yg_id).Limit(1)
-        full = svc.getYieldGroupsByStatement(sb2.ToStatement())
-        items = getattr(full, "results", None) or []
-        if not items:
-            continue
-        yg = items[0]
-        partners = getattr(yg, "yieldPartners", None) or []
-        for p in partners:
-            tag = getattr(p, "thirdPartyCompanyId", None) or getattr(p, "yieldPartnerName", None) or str(p)
-            name = str(tag)
-            # The "Index Exchange" company shows up either by company id
-            # or by display name within the yieldPartner record.
-            if "index" in name.lower():
-                hits += 1
-                print(f"  yield_group={g['name']!r} type={g['type']} partner_tag={name}")
+        as_dict = zeep_helpers.serialize_object(yg, target_cls=dict)
+        # Pretty-print, but truncate long children
+        import json
+        def _trunc(o, depth=0):
+            if isinstance(o, dict):
+                return {k: _trunc(v, depth+1) for k, v in o.items()}
+            if isinstance(o, list):
+                return [_trunc(x, depth+1) for x in o[:5]] + (["…"] if len(o) > 5 else [])
+            if isinstance(o, str) and len(o) > 200:
+                return o[:200] + "…"
+            return o
+        print(json.dumps(_trunc(as_dict), indent=2, default=str))
     except Exception as e:
-        print(f"  (failed to inspect yield group {yg_id}: {e})")
-
-if hits == 0:
-    print("  (no partner records mentioned 'index' by name; partner lookup may need a")
-    print("   separate CompanyService call to resolve thirdPartyCompanyId → company name)")
+        print(f"  serialize failed: {e}")
+    print()
