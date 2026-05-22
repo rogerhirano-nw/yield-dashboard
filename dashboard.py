@@ -1899,6 +1899,73 @@ if st.session_state.active_view == "opensincera":
                         pd.to_numeric(view["avg_ads_to_content_ratio"], errors="coerce") * 100
                     )
 
+                # ── Newsweek vs. peer-median scorecard ──────────────
+                # Each metric: (column, label, lower_is_better).
+                # Quality framing (Sincera's own framing) — lower A2CR /
+                # ads-in-view / page weight / CPU / resellers = better;
+                # higher ID-absorption = better. Ad refresh is omitted
+                # from the win/loss banner because the direction depends
+                # on whether you optimise for UX or for impressions.
+                _scorecard_metrics = [
+                    ("avg_ads_to_content_ratio_pct", "A2CR %",        True,  "%.1f%%"),
+                    ("avg_ads_in_view",              "Ads in view",   True,  "%.2f"),
+                    ("avg_page_weight",              "Page wt (MB)",  True,  "%.2f"),
+                    ("avg_cpu",                      "CPU (s)",       True,  "%.2f"),
+                    ("id_absorption_rate",           "ID absorption", False, "%.3f"),
+                    ("reseller_count",               "Resellers",     True,  "%.0f"),
+                ]
+
+                _nw_row = view[view["domain"].str.contains("newsweek", case=False, na=False)]
+                if _nw_row.empty:
+                    st.info("Newsweek not in the watch-list — scorecard skipped.")
+                else:
+                    nw = _nw_row.iloc[0]
+                    peers = view[~view.index.isin(_nw_row.index)]
+
+                    st.subheader(f"Newsweek vs. {len(peers)} peers")
+
+                    wins = losses = ties = 0
+                    cols = st.columns(len(_scorecard_metrics))
+                    for col, (m, label, lower_better, fmt) in zip(cols, _scorecard_metrics):
+                        if m not in view.columns:
+                            col.metric(label, "—")
+                            continue
+                        nw_val = pd.to_numeric(nw.get(m), errors="coerce")
+                        peer_median = pd.to_numeric(peers[m], errors="coerce").median()
+                        if pd.isna(nw_val) or pd.isna(peer_median):
+                            col.metric(label, "—")
+                            continue
+                        delta = nw_val - peer_median
+                        # st.metric "normal" colors green-up/red-down; "inverse"
+                        # flips for metrics where lower is better.
+                        delta_color = "inverse" if lower_better else "normal"
+                        col.metric(
+                            label,
+                            (fmt % nw_val),
+                            delta=f"{delta:+.2f} vs peer median",
+                            delta_color=delta_color,
+                            help=f"Peer median: {fmt % peer_median}",
+                        )
+                        # Tie tolerance: treat anything within 1% of the
+                        # median as a tie so noise doesn't flip the count.
+                        tol = abs(peer_median) * 0.01
+                        if abs(delta) <= tol:
+                            ties += 1
+                        elif (delta < 0 and lower_better) or (delta > 0 and not lower_better):
+                            wins += 1
+                        else:
+                            losses += 1
+
+                    if wins + losses + ties:
+                        st.caption(
+                            f"Newsweek beats peer median on **{wins}** metric(s), "
+                            f"loses on **{losses}**, ties on **{ties}**."
+                        )
+
+                # Pin Newsweek to the top of the table for quick scanning.
+                view["_is_newsweek"] = view["domain"].str.contains("newsweek", case=False, na=False)
+                view = view.sort_values(["_is_newsweek", "domain"], ascending=[False, True])
+
                 display_cols = [
                     c for c in [
                         "name", "domain", "primary_supply_type",
@@ -1929,18 +1996,28 @@ if st.session_state.active_view == "opensincera":
                     },
                 )
 
-                # Side-by-side ranking charts for the two most-actionable metrics.
+                # Side-by-side ranking charts for the two most-actionable
+                # metrics. Newsweek's bar is coloured distinctly so it
+                # pops out of the per-publisher comparison.
+                _nw_color   = "#d72638"   # Newsweek brand red
+                _peer_color = "#5b8def"
                 col_a2cr, col_refresh = st.columns(2)
                 if "avg_ads_to_content_ratio_pct" in view.columns and not view["avg_ads_to_content_ratio_pct"].dropna().empty:
                     with col_a2cr:
                         st.subheader("A2CR by publisher (lower is better)")
+                        _src = view.dropna(subset=["avg_ads_to_content_ratio_pct"]).copy()
                         chart = (
-                            alt.Chart(view.dropna(subset=["avg_ads_to_content_ratio_pct"]))
+                            alt.Chart(_src)
                             .mark_bar()
                             .encode(
                                 x=alt.X("avg_ads_to_content_ratio_pct:Q", title="A2CR (%)"),
                                 y=alt.Y("domain:N", sort="-x", title=None,
                                         axis=alt.Axis(labelLimit=200)),
+                                color=alt.condition(
+                                    "datum._is_newsweek",
+                                    alt.value(_nw_color),
+                                    alt.value(_peer_color),
+                                ),
                                 tooltip=[
                                     alt.Tooltip("name:N", title="Publisher"),
                                     alt.Tooltip("domain:N", title="Domain"),
@@ -1954,13 +2031,19 @@ if st.session_state.active_view == "opensincera":
                 if "avg_ad_refresh" in view.columns and not view["avg_ad_refresh"].dropna().empty:
                     with col_refresh:
                         st.subheader("Ad refresh by publisher (higher is slower)")
+                        _src = view.dropna(subset=["avg_ad_refresh"]).copy()
                         chart = (
-                            alt.Chart(view.dropna(subset=["avg_ad_refresh"]))
+                            alt.Chart(_src)
                             .mark_bar()
                             .encode(
                                 x=alt.X("avg_ad_refresh:Q", title="Refresh (s)"),
                                 y=alt.Y("domain:N", sort="-x", title=None,
                                         axis=alt.Axis(labelLimit=200)),
+                                color=alt.condition(
+                                    "datum._is_newsweek",
+                                    alt.value(_nw_color),
+                                    alt.value(_peer_color),
+                                ),
                                 tooltip=[
                                     alt.Tooltip("name:N", title="Publisher"),
                                     alt.Tooltip("domain:N", title="Domain"),
