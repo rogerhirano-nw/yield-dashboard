@@ -41,3 +41,4 @@ jobs:
           PUBMATIC_TOKEN:             ${{ secrets.PUBMATIC_TOKEN }}
           PUBMATIC_REFRESH_TOKEN:     ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
           PUBMATIC_EMAIL:             ${{ secrets.PUBMATIC_EMAIL }}
+          OPENSINCERA_TOKEN:          ${{ secrets.OPENSINCERA_TOKEN }}
