@@ -1,13 +1,16 @@
 """
-Diagnostic: figure out whether the Index Exchange yield groups at Newsweek
-are Open Bidding (Exchange Bidding) or Mediation. Tries a few report
-combinations because GAM rejects HEADER_BIDDER_INTEGRATION_TYPE_NAME
-alongside the full YIELD_GROUP_* dimension set.
+Diagnostic: determine whether the Index Exchange yield groups at Newsweek
+are Open Bidding (EXCHANGE_BIDDING) or Mediation.
+
+The GAM REST reporting API rejects HEADER_BIDDER_INTEGRATION_TYPE_NAME
+alongside every YIELD_GROUP_* metric we tried, so we fall back to the
+legacy SOAP YieldGroupService (already used in gam_client.py for
+creatives/LICA) and inspect the `type` field on each yield group
+directly.
 """
 
 import os
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -24,55 +27,74 @@ if env_file.exists():
 
 from gam_client import GAMClient  # noqa: E402
 
-end_date   = date.today() - timedelta(days=1)
-start_date = end_date - timedelta(days=6)
-
 client = GAMClient()
+soap = client._get_soap_client()
+from googleads import ad_manager  # noqa: E402
 
+svc = soap.GetService("YieldGroupService", version=client._SOAP_API_VERSION)
+sb = ad_manager.StatementBuilder(version=client._SOAP_API_VERSION)
+sb.Limit(500)
 
-def try_query(label, dims, metrics):
-    print(f"\n=== {label} ===")
-    print(f"    dims={dims}")
-    print(f"    metrics={metrics}")
+groups = []
+while True:
+    resp = svc.getYieldGroupsByStatement(sb.ToStatement())
+    results = getattr(resp, "results", None) or []
+    if not results:
+        break
+    for yg in results:
+        groups.append({
+            "id":          getattr(yg, "id", None),
+            "name":        getattr(yg, "name", None),
+            "type":        getattr(yg, "type", None),     # EXCHANGE_BIDDING | MEDIATION
+            "status":      getattr(yg, "status", None),
+            "ad_format":   getattr(yg, "adFormat", None),
+        })
+    sb.offset += sb.limit
+    if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+        break
+
+print(f"Total yield groups: {len(groups)}\n")
+print("By type:")
+by_type = {}
+for g in groups:
+    by_type[g["type"]] = by_type.get(g["type"], 0) + 1
+for k, v in sorted(by_type.items(), key=lambda kv: -kv[1]):
+    print(f"  {k}: {v}")
+
+print("\nAll yield groups:")
+print(f"{'id':<14} {'type':<18} {'status':<10} {'ad_format':<12} name")
+print("-" * 80)
+for g in sorted(groups, key=lambda x: (str(x["type"]), str(x["name"]))):
+    print(f"{str(g['id']):<14} {str(g['type']):<18} {str(g['status']):<10} {str(g['ad_format']):<12} {g['name']}")
+
+# Now drill into the yield-group partner assignments to find which groups
+# include Index Exchange as a partner. SOAP YieldGroup objects carry a
+# `yieldPartners` list, but it may not be populated on the list response —
+# fetch each group individually if needed.
+print("\nYield groups containing Index Exchange as a partner:")
+hits = 0
+for g in groups:
+    yg_id = g["id"]
     try:
-        df = client._run_report(
-            dimensions=dims, metrics=metrics,
-            start_date=start_date, end_date=end_date,
-        )
-        if "yield_group_buyer_name" in df.columns:
-            df = df[df["yield_group_buyer_name"].str.contains("Index", case=False, na=False)]
-        print(f"    OK — {len(df)} rows")
-        if not df.empty:
-            print(df.to_string(index=False))
+        sb2 = ad_manager.StatementBuilder(version=client._SOAP_API_VERSION)
+        sb2.Where("id = :id").WithBindVariable("id", yg_id).Limit(1)
+        full = svc.getYieldGroupsByStatement(sb2.ToStatement())
+        items = getattr(full, "results", None) or []
+        if not items:
+            continue
+        yg = items[0]
+        partners = getattr(yg, "yieldPartners", None) or []
+        for p in partners:
+            tag = getattr(p, "thirdPartyCompanyId", None) or getattr(p, "yieldPartnerName", None) or str(p)
+            name = str(tag)
+            # The "Index Exchange" company shows up either by company id
+            # or by display name within the yieldPartner record.
+            if "index" in name.lower():
+                hits += 1
+                print(f"  yield_group={g['name']!r} type={g['type']} partner_tag={name}")
     except Exception as e:
-        msg = str(e)
-        print(f"    FAILED: {msg[:200]}")
+        print(f"  (failed to inspect yield group {yg_id}: {e})")
 
-
-# 1) yield group name + integration type (no buyer dim, no per-buyer metrics)
-try_query(
-    "yield_group_name + integration_type",
-    ["YIELD_GROUP_NAME", "HEADER_BIDDER_INTEGRATION_TYPE_NAME"],
-    ["YIELD_GROUP_CALLOUTS"],
-)
-
-# 2) integration type by itself — coarsest, just confirms OB vs Mediation totals exist
-try_query(
-    "integration_type only",
-    ["HEADER_BIDDER_INTEGRATION_TYPE_NAME"],
-    ["YIELD_GROUP_CALLOUTS"],
-)
-
-# 3) buyer + integration type
-try_query(
-    "buyer + integration_type",
-    ["YIELD_GROUP_BUYER_NAME", "HEADER_BIDDER_INTEGRATION_TYPE_NAME"],
-    ["YIELD_GROUP_CALLOUTS"],
-)
-
-# 4) buyer + integration type — different metric (AD_REQUESTS instead of YIELD_GROUP_*)
-try_query(
-    "buyer + integration_type + AD_REQUESTS metric",
-    ["YIELD_GROUP_BUYER_NAME", "HEADER_BIDDER_INTEGRATION_TYPE_NAME"],
-    ["AD_REQUESTS"],
-)
+if hits == 0:
+    print("  (no partner records mentioned 'index' by name; partner lookup may need a")
+    print("   separate CompanyService call to resolve thirdPartyCompanyId → company name)")

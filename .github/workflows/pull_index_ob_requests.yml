@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas
+        run: pip install google-ads-admanager google-auth pandas googleads
 
       - name: Run pull
         env:
