@@ -6,7 +6,6 @@ on:
     branches: [claude/fervent-hawking-nZ2eZ]
     paths:
       - 'scripts/pull_index_ob_requests.py'
-      - 'scripts/pull_index_ob_diagnose.py'
       - '.github/workflows/pull_index_ob_requests.yml'
 
 permissions:
@@ -24,7 +23,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas googleads
+        run: pip install google-ads-admanager google-auth pandas
 
       - name: Run pull
         env:
@@ -32,11 +31,7 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
         run: |
           set -o pipefail
-          if [ -f scripts/pull_index_ob_diagnose.py ]; then
-            python scripts/pull_index_ob_diagnose.py 2>&1 | tee /tmp/output.txt
-          else
-            python scripts/pull_index_ob_requests.py 2>&1 | tee /tmp/output.txt
-          fi
+          python scripts/pull_index_ob_requests.py 2>&1 | tee /tmp/output.txt
 
       - name: Post output as PR comment
         if: always()
