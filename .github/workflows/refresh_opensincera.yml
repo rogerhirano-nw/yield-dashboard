@@ -1,0 +1,31 @@
+name: Refresh OpenSincera cache
+
+# Manually triggered from the Actions tab. Runs `refresh_cache.py
+# --mode=opensincera`, which hits only the OpenSincera endpoints
+# (ecosystem, publishers, adsystems, mapping_modules) — no Magnite,
+# GAM, or Pubmatic calls. Useful for one-off backfills without paying
+# the cost of the full 5 AM sweep.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - run: python refresh_cache.py --mode=opensincera
+        env:
+          DATABASE_URL:      ${{ secrets.DATABASE_URL }}
+          OPENSINCERA_TOKEN: ${{ secrets.OPENSINCERA_TOKEN }}

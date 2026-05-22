@@ -539,8 +539,8 @@ def main() -> None:
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
-    if mode not in ("all", "direct"):
-        logger.error("Unknown --mode=%s (use 'all' or 'direct')", mode)
+    if mode not in ("all", "direct", "opensincera"):
+        logger.error("Unknown --mode=%s (use 'all', 'direct', or 'opensincera')", mode)
         raise SystemExit(2)
     logger.info("refresh_cache v3 — mode=%s", mode)
 
@@ -553,6 +553,21 @@ def main() -> None:
         except Exception:
             logger.exception("Refresh failed for gam_campaigns")
         logger.info("Done (direct-only). %d rows written.", total)
+        return
+
+    if mode == "opensincera":
+        total = 0
+        for fn in (
+            refresh_opensincera_ecosystem,
+            refresh_opensincera_publishers,
+            refresh_opensincera_adsystems,
+            refresh_opensincera_modules,
+        ):
+            try:
+                total += fn()
+            except Exception:
+                logger.exception("Refresh failed for %s — continuing", fn.__name__)
+        logger.info("Done (opensincera-only). %d rows written.", total)
         return
 
     # Full sweep below — everything in dependency-independent order.
