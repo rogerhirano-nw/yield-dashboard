@@ -6,6 +6,7 @@ on:
     branches: [claude/fervent-hawking-nZ2eZ]
     paths:
       - 'scripts/pull_index_ob_requests.py'
+      - 'scripts/pull_index_ob_diagnose.py'
       - '.github/workflows/pull_index_ob_requests.yml'
 
 permissions:
@@ -31,7 +32,11 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
         run: |
           set -o pipefail
-          python scripts/pull_index_ob_requests.py 2>&1 | tee /tmp/output.txt
+          if [ -f scripts/pull_index_ob_diagnose.py ]; then
+            python scripts/pull_index_ob_diagnose.py 2>&1 | tee /tmp/output.txt
+          else
+            python scripts/pull_index_ob_requests.py 2>&1 | tee /tmp/output.txt
+          fi
 
       - name: Post output as PR comment
         if: always()
