@@ -31,22 +31,31 @@ end_date   = date.today() - timedelta(days=1)
 start_date = end_date - timedelta(days=6)
 
 client = GAMClient()
+# HEADER_BIDDER_INTEGRATION_TYPE_NAME is incompatible with YIELD_GROUP_*
+# metrics (GAM returns REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY). Use
+# YIELD_GROUP_NAME instead — at Newsweek the yield-group name typically
+# encodes the integration type (e.g. "OpenBidding_…") which is enough to
+# spot OB vs mediation rows.
 df = client._run_report(
-    dimensions=["DATE", "YIELD_GROUP_BUYER_NAME", "HEADER_BIDDER_INTEGRATION_TYPE_NAME"],
-    metrics=["YIELD_GROUP_CALLOUTS"],
+    dimensions=["DATE", "YIELD_GROUP_NAME", "YIELD_GROUP_BUYER_NAME"],
+    metrics=["YIELD_GROUP_CALLOUTS", "YIELD_GROUP_BIDS", "YIELD_GROUP_AUCTIONS_WON", "YIELD_GROUP_IMPRESSIONS"],
     start_date=start_date,
     end_date=end_date,
 )
 
-mask = (
-    df["yield_group_buyer_name"].str.contains("Index", case=False, na=False)
-    & (df["header_bidder_integration_type_name"] == "Exchange Bidding")
-)
-df = df.loc[mask].sort_values("date").reset_index(drop=True)
+mask = df["yield_group_buyer_name"].str.contains("Index", case=False, na=False)
+df = df.loc[mask].sort_values(["date", "yield_group_name"]).reset_index(drop=True)
 
-print(f"Index Exchange — Open Bidding ad requests, {start_date} → {end_date}\n")
+print(f"Index Exchange — Yield Group activity, {start_date} → {end_date}\n")
 if df.empty:
-    print("(no rows returned — check buyer name spelling in GAM UI)")
+    print("(no rows for Index — check buyer name spelling in the GAM UI)")
 else:
-    print(df[["date", "yield_group_buyer_name", "yield_group_callouts"]].to_string(index=False))
-    print(f"\nTotal: {int(df['yield_group_callouts'].sum()):,}")
+    print(df.to_string(index=False))
+    print(f"\nTotal callouts (ad requests): {int(df['yield_group_callouts'].sum()):,}")
+    print(f"Total bids:                   {int(df['yield_group_bids'].sum()):,}")
+    print(f"Total auctions won:           {int(df['yield_group_auctions_won'].sum()):,}")
+    print(f"Total impressions:            {int(df['yield_group_impressions'].sum()):,}")
+    print()
+    print("Distinct yield groups Index appears in:")
+    for yg in sorted(df["yield_group_name"].dropna().unique()):
+        print(f"  - {yg}")
