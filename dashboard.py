@@ -1819,8 +1819,12 @@ if st.session_state.active_view == "opensincera":
         if last_pull_candidates:
             st.caption(f"Last refresh: {_fmt_last_refresh(max(last_pull_candidates))}")
 
-        sub_eco, sub_pubs, sub_sys, sub_mod = st.tabs(
-            ["Ecosystem", "Publishers", "Ad systems", "Prebid modules"]
+        # Publishers leads because that's where the Newsweek-vs-peers
+        # scorecard lives — the primary view ad-ops opens this tab for.
+        # Streamlit's st.tabs() shows the first label by default, so the
+        # order of the list IS the default-tab order.
+        sub_pubs, sub_eco, sub_sys, sub_mod = st.tabs(
+            ["Publishers", "Ecosystem", "Ad systems", "Prebid modules"]
         )
 
         # ── Ecosystem ───────────────────────────────────────────────────
