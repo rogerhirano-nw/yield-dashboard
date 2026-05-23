@@ -409,6 +409,10 @@ OPENSINCERA_WATCHLIST = [
     "thedailybeast.com",
     "huffpost.com",
     "buzzfeed.com",
+    "cnn.com",
+    "usatoday.com",
+    "nytimes.com",
+    "washingtonpost.com",
 ]
 
 
