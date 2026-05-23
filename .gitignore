@@ -12,3 +12,5 @@ __pycache__/
 # Claude Code: track shared settings, ignore local/session state
 .claude/*
 !.claude/settings.json
+!.claude/hooks
+!.claude/hooks/**
