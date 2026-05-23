@@ -3,9 +3,24 @@
 See `README.md` for project overview, files, and quickstart.
 
 ## Conventions
-- Python (Streamlit dashboard + per-source clients). Cache layer is SQLite.
-- One client module per data source (`*_client.py`), one `refresh_<ssp>` function in `refresh_cache.py`, called from `main()`.
+- Python (Streamlit dashboard + per-source clients). Cache layer is SQLite locally, Postgres in prod (`DATABASE_URL` Supabase).
+- One client module per data source (`*_client.py`), one `refresh_<source>` function in `refresh_cache.py`, called from `main()`.
 - Pull yesterday's data, not today's — same-day data has latency.
+
+## Data sources currently wired
+When auditing or adding data, the four production sources are:
+
+| Source | Client module | Cache tables (prefix) | Provenance |
+|---|---|---|---|
+| **Magnite DV+** | `client.py` (`MagniteClient`) | `magnite_*` | SSP delivery + deals |
+| **Google Ad Manager** | `gam_client.py` (`GAMClient`) | `gam_*` (campaigns, pmp_deals, creatives, lica, …) | Direct delivery + PMP/PA/PD/PG |
+| **Pubmatic** | `pubmatic_client.py` (`PubmaticClient`) | `pubmatic_*` | PMP deal report |
+| **OpenSincera** | `opensincera_client.py` (`OpenSinceraClient`) | `opensincera_*` (ecosystem, publishers, adsystems, mapping_modules) | TTD's sell-side transparency / inventory metadata. Added 2026-05-22 (PR #44 + #46). Powers the OpenSincera dashboard tab with a Newsweek-vs-peers scorecard. |
+
+`refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work.
+
+## Streamlit Cloud deploy
+**Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
 ## Subsystems with their own docs
 - `docs/confiant_blocklist.md` — weekly Confiant -> GAM Protection sync. Not a
