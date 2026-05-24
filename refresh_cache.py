@@ -27,6 +27,7 @@ from sqlalchemy import inspect as sa_inspect, text
 
 from client import MagniteClient
 from dv_attention_client import pull_dv_attention
+from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
@@ -450,6 +451,61 @@ def refresh_dv_attention() -> int:
     return len(df)
 
 
+def refresh_dv_ivt() -> int:
+    """Poll newsweek@agentmail.to for DV IVT CSV emails (subject:
+    'Unified Analytics Report: IVT'), parse, upsert by date.
+
+    NOTE on what this report contains and doesn't: each (Date, Line Item)
+    appears as multiple rows — one per Traffic Validity bucket
+    (Valid Traffic / Fraud/SIVT / Fraud/GIVT). The three rate columns
+    are tautological (1.0 = "this row is in that bucket", 0.0 = "isn't"),
+    NOT impression-weighted percentages. The CSV does not include
+    impression counts.
+
+    The dashboard derives a *day-prevalence* IVT proxy (count of distinct
+    dates a line has any Fraud row / total dates seen) — see the
+    `_ivt_html` column rendering. For a true impression-weighted IVT%
+    you'd need DV to add an Impressions metric to the Pinnacle export.
+
+    Same skip-silently-when-creds-missing pattern as refresh_dv_attention."""
+    logger.info("Refreshing dv_ivt (DoubleVerify IVT classification rows)")
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    if not api_key or not inbox_id:
+        logger.warning(
+            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "skipping DV IVT refresh"
+        )
+        return 0
+
+    df = pull_dv_ivt(api_key, inbox_id)
+    if df.empty:
+        logger.warning("No DV IVT CSV attachments found in inbox")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "dv_ivt"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            else:
+                dates = [d.isoformat() if d is not None else None
+                         for d in df["date"].dropna().unique().tolist()]
+                if dates:
+                    conn.execute(
+                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
+                        {"dates": dates},
+                    )
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 # Hardcoded watch-list for the OpenSincera /publishers endpoint.
 # Newsweek + editorial peers we care about for quality benchmarking
 # (A2CR, ads-in-view, ad refresh, page weight, ID absorption).
@@ -724,6 +780,11 @@ def main() -> None:
         total += refresh_dv_attention()
     except Exception:
         logger.exception("Refresh failed for dv_attention — continuing")
+
+    try:
+        total += refresh_dv_ivt()
+    except Exception:
+        logger.exception("Refresh failed for dv_ivt — continuing")
 
 
 if __name__ == "__main__":

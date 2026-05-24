@@ -484,6 +484,29 @@ def _attention_html(idx) -> str:
     return f'<div class="txt-green">{v:.0f}</div>'
 
 
+def _ivt_html(pct) -> str:
+    """Render a DV IVT day-prevalence percentage. NOT a true
+    impression-weighted IVT% — the DV Pinnacle export we have doesn't
+    include impression counts, so we derive (days with detected IVT /
+    total days seen). See dv_ivt_client.py for the limitation note.
+
+    Color bands tuned to the day-prevalence interpretation for a 7-day
+    window:
+      green  0%     (no IVT detected any day)
+      green  0-15%  (≈ 1 of 7 days; isolated incidents)
+      amber  15-30% (≈ 1-2 of 7 days; recurring but bounded)
+      red    ≥ 30%  (≥ 3 of 7 days; persistent problem worth investigating)
+    None / NaN → em-dash."""
+    if pct is None or pd.isna(pct):
+        return '<div class="cell-dash">—</div>'
+    v = float(pct)
+    if v >= 30:
+        return f'<div class="pill pill-red">{v:.0f}%</div>'
+    if v >= 15:
+        return f'<div class="txt-amber">{v:.0f}%</div>'
+    return f'<div class="txt-green">{v:.0f}%</div>'
+
+
 PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
 
 
@@ -840,9 +863,9 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-rows .nw-row-header,
 .nw-rows .nw-row > summary {
   display: grid;
-  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | CTR | VCR | Seller | Progress */
+  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | IVT | CTR | VCR | Seller | Progress */
   grid-template-columns:
-    22fr 10fr 9fr 11fr 9fr 9fr 8fr 7fr 10fr 14fr;
+    22fr 10fr 9fr 11fr 9fr 9fr 7fr 8fr 7fr 10fr 14fr;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -1072,8 +1095,8 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-pmp-rows .nw-row-header,
 .nw-pmp-rows .nw-pmp-row {
   display: grid;
-  /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | Seller */
-  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 13fr;
+  /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | IVT | Seller */
+  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 7fr 13fr;
   gap: 10px; align-items: center; padding: 10px 12px;
   border-bottom: 0.5px solid rgba(255,255,255,0.05);
   font-size: 13px; color: rgba(250,250,250,0.85);
@@ -2199,6 +2222,39 @@ if st.session_state.active_view == "campaigns":
                               .groupby("order_name", as_index=False)["attention_index"]
                               .mean())
             _dv_by_order = dict(zip(_dv_ord_agg["order_name"], _dv_ord_agg["attention_index"]))
+
+    # DV IVT — daily Pinnacle CSV emailed to newsweek@agentmail.to with
+    # subject "Unified Analytics Report: IVT". Polled by refresh_dv_ivt()
+    # into the dv_ivt table. The CSV doesn't include impression counts,
+    # so we can't compute a true impression-weighted IVT%. What we CAN
+    # derive: a day-prevalence ratio = (distinct dates with any Fraud row
+    # for this line) / (total distinct dates seen for this line) * 100.
+    # See _ivt_html for the color bands.
+    try:
+        ivt_df = load("dv_ivt")
+    except Exception:
+        ivt_df = pd.DataFrame()
+    _ivt_by_li: dict = {}
+    _ivt_by_order: dict = {}
+    if not ivt_df.empty and {"traffic_validity", "date"}.issubset(ivt_df.columns):
+        # Mark each row as fraud or valid.
+        _is_fraud = ivt_df["traffic_validity"].astype(str).str.startswith("Fraud")
+
+        def _day_prevalence(group_col: str) -> dict:
+            sub = ivt_df.dropna(subset=[group_col]).copy()
+            sub["_is_fraud"] = _is_fraud.reindex(sub.index, fill_value=False)
+            # Count distinct dates per line for both total and fraud-only
+            tot   = sub.groupby(group_col)["date"].nunique()
+            fraud = (sub[sub["_is_fraud"]]
+                        .groupby(group_col)["date"].nunique())
+            joined = pd.DataFrame({"total": tot, "fraud": fraud}).fillna(0)
+            joined["pct"] = (joined["fraud"] / joined["total"] * 100).where(joined["total"] > 0)
+            return joined["pct"].dropna().to_dict()
+
+        if "line_item_name" in ivt_df.columns:
+            _ivt_by_li = _day_prevalence("line_item_name")
+        if "order_name" in ivt_df.columns:
+            _ivt_by_order = _day_prevalence("order_name")
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4150,11 +4206,12 @@ if st.session_state.active_view == "campaigns":
                     _display_name = "_".join(_tokens[2:])
                 else:
                     _display_name = _li_clean
-                # DV Attention Index — joined by exact line_item_name match
-                # against _dv_by_li (built once at view load from dv_attention
-                # table). Rows with no DV coverage get None → em-dash via
-                # _attention_html.
+                # DV Attention Index + IVT day-prevalence — both joined by
+                # exact line_item_name. Built once at view load from
+                # dv_attention / dv_ivt tables. Rows with no DV coverage
+                # get None → em-dash via their respective formatters.
                 _attn = _dv_by_li.get(_li_clean) if _dv_by_li else None
+                _ivt  = _ivt_by_li.get(_li_clean) if _ivt_by_li else None
                 _rows_html.append(
                     '<details class="nw-row" name="cmprow">'
                     '<summary>'
@@ -4165,6 +4222,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
                     f'<div class="num">{_viewability_html(_vw, _fmt_str)}</div>'
                     f'<div class="num">{_attention_html(_attn)}</div>'
+                    f'<div class="num">{_ivt_html(_ivt)}</div>'
                     f'<div class="num">{_ctr_html(_ctr, _fmt_str)}</div>'
                     f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str)}</div>'
                     f'<div>{_seller_html}</div>'
@@ -4194,6 +4252,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="num">Pace</div>'
                 '<div class="num">Viewable</div>'
                 '<div class="num" title="DV Attention Index — 100 = industry median">Attention</div>'
+                '<div class="num" title="DV IVT day-prevalence: % of days with detected invalid traffic. Not impression-weighted.">IVT</div>'
                 '<div class="num">CTR</div>'
                 '<div class="num">VCR</div>'
                 '<div>Seller</div>'
@@ -5030,10 +5089,12 @@ if st.session_state.active_view == "campaigns":
             if _sub:
                 _name_html += f'<div class="pmp-name-sub">{_pmp_esc(_sub)}</div>'
 
-            # DV Attention for PMP — joined by exact deal_name (== Order in
-            # the DV CSV). GAM PMP rows are the only ones that get DV
-            # coverage; Magnite/Pubmatic-only deals fall through to "—".
-            _pmp_attn = _dv_by_order.get(row.get("Deal")) if _dv_by_order else None
+            # DV Attention + IVT for PMP — joined by exact deal_name
+            # (== Order in the DV CSV). GAM PMP rows are the only ones
+            # that get DV coverage; Magnite/Pubmatic-only deals fall
+            # through to "—".
+            _pmp_attn = _dv_by_order.get(row.get("Deal"))  if _dv_by_order else None
+            _pmp_ivt  = _ivt_by_order.get(row.get("Deal")) if _ivt_by_order else None
             _pmp_rows_html.append(
                 '<details name="pmp-cmprow">'
                 '<summary class="nw-pmp-row">'
@@ -5046,6 +5107,7 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="num">{_impr_cell(row.get("Paid Impressions"))}</div>'
                 f'<div class="num">{_ecpm_cell(row.get("eCPM"), _floor_val)}</div>'
                 f'<div class="num">{_attention_html(_pmp_attn)}</div>'
+                f'<div class="num">{_ivt_html(_pmp_ivt)}</div>'
                 f'<div>{_seller_html}</div>'
                 '</summary>'
                 + _pmp_drawer_html(row) +
@@ -5069,6 +5131,7 @@ if st.session_state.active_view == "campaigns":
             '<div class="num">Revenue</div><div class="num">Impressions</div>'
             '<div class="num">eCPM</div>'
             '<div class="num" title="DV Attention Index — 100 = industry median. GAM PMP rows only.">Attention</div>'
+            '<div class="num" title="DV IVT day-prevalence: % of days with detected invalid traffic. Not impression-weighted. GAM PMP rows only.">IVT</div>'
             '<div>Seller</div>'
             '</div>'
             + "".join(_pmp_rows_html) +

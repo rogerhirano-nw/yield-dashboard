@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Seed (or backfill) the `dv_attention` table from a manually-downloaded
-DV Pinnacle Attention CSV.
+Seed (or backfill) one of the DV cache tables from a manually-downloaded
+DV Pinnacle CSV. Auto-detects which report type from the header row:
+
+  - "Date,..." with "Attention Index"   → dv_attention
+  - "Traffic Validity,..."              → dv_ivt
 
 Two situations where this is the right tool:
   1. First-time seeding before the agentmail polling kicks in tomorrow.
@@ -11,10 +14,11 @@ Two situations where this is the right tool:
 
 Usage:
     export DATABASE_URL='...'
-    python3 scripts/seed_dv_attention.py /path/to/Attention_<start>_<end>.csv
+    python3 scripts/seed_dv_attention.py /path/to/<CSV>
 
-The CSV format must match what `dv_attention_client.parse_dv_csv` expects:
-4-line "# …" preamble + blank + header starting with "Date" + data rows.
+Despite the filename it handles both DV report types — the original
+file was named when only the Attention report existed. Kept stable to
+avoid breaking any documented invocations.
 """
 from __future__ import annotations
 
@@ -30,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sqlalchemy
 from sqlalchemy import inspect as sa_inspect, text
 
-from dv_attention_client import parse_dv_csv
+from dv_attention_client import parse_dv_csv as parse_attention_csv
+from dv_ivt_client       import parse_dv_ivt_csv as parse_ivt_csv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,9 +44,6 @@ logger = logging.getLogger(__name__)
 def _engine() -> sqlalchemy.Engine:
     url = os.environ.get("DATABASE_URL")
     if not url:
-        # Fallback: read from .env (repo root) so the script works without
-        # the user pre-exporting the variable. Same convention refresh_cache
-        # uses via _load_dotenv().
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if env_path.exists():
             for line in env_path.read_text().splitlines():
@@ -53,16 +55,32 @@ def _engine() -> sqlalchemy.Engine:
     return sqlalchemy.create_engine(url)
 
 
+def _detect_and_parse(content: bytes) -> tuple[str, "pandas.DataFrame"]:
+    """Sniff the header to pick the right parser + return (table_name, df)."""
+    head = content[:4000].decode("utf-8-sig", errors="replace")
+    if "Traffic Validity" in head:
+        logger.info("Detected DV IVT report (Traffic Validity header)")
+        return ("dv_ivt", parse_ivt_csv(content))
+    if "Attention Index" in head:
+        logger.info("Detected DV Attention report (Attention Index header)")
+        return ("dv_attention", parse_attention_csv(content))
+    raise SystemExit(
+        "Could not identify CSV report type — header had neither "
+        "'Traffic Validity' (IVT) nor 'Attention Index' (Attention)."
+    )
+
+
 def main(csv_path: str) -> int:
     path = Path(csv_path)
     if not path.exists():
         raise SystemExit(f"CSV not found: {path}")
 
     logger.info("Loading %s", path)
-    df = parse_dv_csv(path.read_bytes())
-    logger.info("Parsed %d rows, %d distinct dates, %d distinct line items",
-                len(df), df["date"].nunique(), df["line_item_name"].nunique())
-
+    table, df = _detect_and_parse(path.read_bytes())
+    logger.info("Parsed %d rows, %d distinct dates, %d distinct line items into %s",
+                len(df), df["date"].nunique(),
+                df["line_item_name"].nunique() if "line_item_name" in df.columns else 0,
+                table)
     if df.empty:
         logger.warning("CSV parsed to zero rows; nothing to write")
         return 0
@@ -70,7 +88,6 @@ def main(csv_path: str) -> int:
     df["_pulled_at"]        = datetime.now(timezone.utc).isoformat()
     df["_email_message_id"] = f"manual-seed:{path.name}"
 
-    table = "dv_attention"
     with _engine().begin() as conn:
         if table in sa_inspect(conn).get_table_names():
             existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
