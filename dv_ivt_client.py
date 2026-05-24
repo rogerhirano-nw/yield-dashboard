@@ -54,15 +54,24 @@ AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 DV_SUBJECT = "Unified Analytics Report: IVT"
 
 # Verbatim CSV header → snake_case DB column. Keep stable.
+#
+# 2026-05-24: DV added 3 impression-count columns (Monitored Ads /
+# Eligible Impressions / Total Calls) at our request. `Monitored Ads`
+# is DV's standard "DV-measured impressions" metric and is the right
+# basis for impression-weighted IVT% (the dashboard divides
+# Σ Monitored Ads(Fraud rows) / Σ Monitored Ads(all rows)).
 COLUMN_MAP = {
-    "Traffic Validity":  "traffic_validity",
-    "Date":              "date",
-    "Advertiser":        "advertiser",
-    "Order":             "order_name",
-    "Line Item":         "line_item_name",
-    "Fraud/SIVT Rate":   "fraud_sivt_rate",
-    "GIVT Rate":         "givt_rate",
-    "IVT-Rate":          "ivt_rate",
+    "Traffic Validity":     "traffic_validity",
+    "Date":                 "date",
+    "Advertiser":           "advertiser",
+    "Order":                "order_name",
+    "Line Item":            "line_item_name",
+    "Fraud/SIVT Rate":      "fraud_sivt_rate",
+    "GIVT Rate":            "givt_rate",
+    "IVT-Rate":             "ivt_rate",
+    "Monitored Ads":        "monitored_ads",
+    "Eligible Impressions": "eligible_impressions",
+    "Total Calls":          "total_calls",
 }
 
 
@@ -141,7 +150,8 @@ def parse_dv_ivt_csv(content: bytes) -> pd.DataFrame:
     df = df[keep].copy()
 
     # Coerce numerics + date
-    for col in ("fraud_sivt_rate", "givt_rate", "ivt_rate"):
+    for col in ("fraud_sivt_rate", "givt_rate", "ivt_rate",
+                "monitored_ads", "eligible_impressions", "total_calls"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date

@@ -485,14 +485,11 @@ def _attention_html(idx) -> str:
 
 
 def _ivt_html(pct) -> str:
-    """Render a DV IVT day-prevalence percentage (used by both the SIVT
-    and GIVT columns — same color bands since they're both "% of days
-    fraud detected" signals).
+    """Render a DV IVT impression-weighted percentage (used by both
+    the SIVT and GIVT columns).
 
-    NOT a true impression-weighted IVT% — the DV Pinnacle export we have
-    doesn't include impression counts, so we derive (days with detected
-    IVT of this type / total days seen). See dv_ivt_client.py for the
-    limitation note.
+    Calculation (per-line, last 7 days):
+        IVT % = Σ Monitored Ads (Fraud rows) / Σ Monitored Ads (all rows) × 100
 
     Why SIVT and GIVT are tracked separately (MRC standard):
       - GIVT = General Invalid Traffic: self-identifies as invalid;
@@ -500,28 +497,29 @@ def _ivt_html(pct) -> str:
       - SIVT = Sophisticated Invalid Traffic: hard to detect; needs
         advanced analytics. Sub-categories include Data Center Traffic,
         Bot Fraud, Hijacked Devices, Emulator Devices, App/Site Fraud,
-        Injected Ads, Laundering.
-      - The split matters for buyer conversations: e.g. Data Center
-        Traffic can be benign (Alexa, Siri, server-side rendering)
-        rather than malicious. The sub-category breakdown is in DV
-        Pinnacle but not in the current daily export — see memory file
-        project_yield_dashboard_dv_attention.md for the asks-of-DV list.
+        Injected Ads, Laundering. The sub-category breakdown isn't in
+        the current export — see project_yield_dashboard_dv_attention.md
+        memory note for the asks-of-DV list.
 
-    Color bands tuned to the day-prevalence interpretation for a 7-day
-    window:
-      green  0%     (no detection any day)
-      green  0-15%  (≈ 1 of 7 days; isolated incidents)
-      amber  15-30% (≈ 1-2 of 7 days; recurring but bounded)
-      red    ≥ 30%  (≥ 3 of 7 days; persistent problem worth investigating)
-    None / NaN → em-dash."""
+    Color bands tuned to industry-standard impression-weighted IVT
+    thresholds:
+      green  < 1%   (excellent — Newsweek's overall publisher IVT
+                     hovers around 0.5-1% per the 2026-05-24 export)
+      amber  1-3%   (acceptable but watch — typical industry tolerance)
+      red    ≥ 3%   (problem — escalate; risk to buyer relationships
+                     and IAB Tag Lab cert)
+    Shows 2 decimal places under 1% (where small movements matter) and
+    1 decimal at higher values. None / NaN → em-dash."""
     if pct is None or pd.isna(pct):
         return '<div class="cell-dash">—</div>'
     v = float(pct)
-    if v >= 30:
-        return f'<div class="pill pill-red">{v:.0f}%</div>'
-    if v >= 15:
-        return f'<div class="txt-amber">{v:.0f}%</div>'
-    return f'<div class="txt-green">{v:.0f}%</div>'
+    if v >= 3:
+        return f'<div class="pill pill-red">{v:.1f}%</div>'
+    if v >= 1:
+        return f'<div class="txt-amber">{v:.1f}%</div>'
+    if v == 0:
+        return '<div class="txt-green">0%</div>'
+    return f'<div class="txt-green">{v:.2f}%</div>'
 
 
 PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
@@ -2242,26 +2240,25 @@ if st.session_state.active_view == "campaigns":
 
     # DV IVT — daily Pinnacle CSV emailed to newsweek@agentmail.to with
     # subject "Unified Analytics Report: IVT". Polled by refresh_dv_ivt()
-    # into the dv_ivt table. The CSV doesn't include impression counts,
-    # so we can't compute a true impression-weighted IVT%. What we CAN
-    # derive: a day-prevalence ratio = (distinct dates with any Fraud row
-    # of this type for this line) / (total distinct dates seen for this
-    # line) × 100.
+    # into the dv_ivt table. As of 2026-05-24 the export includes a
+    # `Monitored Ads` impression count, so we compute a TRUE
+    # impression-weighted IVT% per the MRC standard:
     #
-    # We split SIVT and GIVT into two separate lookups per the MRC
-    # standard distinction — they behave differently and matter
-    # differently to buyers:
-    #   - GIVT  = self-identifying invalid (declared bots, known DC IPs)
-    #   - SIVT  = sophisticated (Data Center Traffic, Bot Fraud,
-    #             Hijacked Devices, Emulator Devices, App/Site Fraud,
-    #             Injected Ads, Laundering). Hard to detect; needs
-    #             advanced analytics. Some SIVT subcategories like Data
-    #             Center Traffic CAN be benign (Alexa/Siri/SSR) — knowing
-    #             SIVT vs GIVT is the first step toward defending lines
-    #             with buyers.
-    # The sub-category breakdown (Data Center / Bot Fraud / Hijacked
-    # Devices / etc.) isn't in this export — DV would need to add an
-    # "Incident Type" dimension to the daily Pinnacle config.
+    #   IVT % = Σ Monitored Ads (Fraud rows of this type) /
+    #           Σ Monitored Ads (all rows) × 100
+    #
+    # (Earlier versions used a day-prevalence proxy because the export
+    # didn't include impression counts. Pre-history of why this matters
+    # for buyer conversations is in project_yield_dashboard_dv_attention.md.)
+    #
+    # Split SIVT / GIVT per MRC standard:
+    #   - GIVT = self-identifying invalid (declared bots, known DC IPs).
+    #            Unambiguously bad.
+    #   - SIVT = sophisticated (Data Center, Bot Fraud, Hijacked
+    #            Devices, Emulator, App/Site Fraud, Injected Ads,
+    #            Laundering). Some sub-categories can be benign — Data
+    #            Center includes Alexa/Siri/SSR. The 8-way sub-category
+    #            breakdown isn't in the current export.
     try:
         ivt_df = load("dv_ivt")
     except Exception:
@@ -2270,30 +2267,31 @@ if st.session_state.active_view == "campaigns":
     _givt_by_li:    dict = {}
     _sivt_by_order: dict = {}
     _givt_by_order: dict = {}
-    if not ivt_df.empty and {"traffic_validity", "date"}.issubset(ivt_df.columns):
+    if (not ivt_df.empty
+            and {"traffic_validity", "monitored_ads"}.issubset(ivt_df.columns)):
+        _ads = pd.to_numeric(ivt_df["monitored_ads"], errors="coerce").fillna(0)
         _validity_str = ivt_df["traffic_validity"].astype(str)
 
-        def _day_prevalence(group_col: str, fraud_label: str) -> dict:
-            """Per group (line item or order), what % of days had at
-            least one row with traffic_validity == fraud_label?
-            Denominator is the line's total days seen (across any
-            validity bucket)."""
+        def _imp_share(group_col: str, fraud_label: str) -> dict:
+            """Per group (line item or order), share of Monitored Ads
+            classified into `fraud_label` over total Monitored Ads."""
             sub = ivt_df.dropna(subset=[group_col])
             if sub.empty:
                 return {}
-            tot = sub.groupby(group_col)["date"].nunique()
+            ads_sub = _ads.reindex(sub.index)
+            tot = ads_sub.groupby(sub[group_col]).sum()
             mask = _validity_str.reindex(sub.index) == fraud_label
-            frd = sub[mask].groupby(group_col)["date"].nunique()
+            frd = ads_sub[mask].groupby(sub.loc[mask, group_col]).sum()
             joined = pd.DataFrame({"total": tot, "fraud": frd}).fillna(0)
             joined["pct"] = (joined["fraud"] / joined["total"] * 100).where(joined["total"] > 0)
             return joined["pct"].dropna().to_dict()
 
         if "line_item_name" in ivt_df.columns:
-            _sivt_by_li = _day_prevalence("line_item_name", "Fraud/SIVT")
-            _givt_by_li = _day_prevalence("line_item_name", "Fraud/GIVT")
+            _sivt_by_li = _imp_share("line_item_name", "Fraud/SIVT")
+            _givt_by_li = _imp_share("line_item_name", "Fraud/GIVT")
         if "order_name" in ivt_df.columns:
-            _sivt_by_order = _day_prevalence("order_name", "Fraud/SIVT")
-            _givt_by_order = _day_prevalence("order_name", "Fraud/GIVT")
+            _sivt_by_order = _imp_share("order_name", "Fraud/SIVT")
+            _givt_by_order = _imp_share("order_name", "Fraud/GIVT")
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4293,8 +4291,8 @@ if st.session_state.active_view == "campaigns":
                 '<div class="num">Pace</div>'
                 '<div class="num">Viewable</div>'
                 '<div class="num" title="DV Attention Index — 100 = industry median">Attention</div>'
-                '<div class="num" title="Sophisticated Invalid Traffic — DV day-prevalence: % of days with detected SIVT (data center, bot fraud, hijacked devices, emulators, etc.). Not impression-weighted.">SIVT</div>'
-                '<div class="num" title="General Invalid Traffic — DV day-prevalence: % of days with detected GIVT (self-identifying bots, declared crawlers). Not impression-weighted.">GIVT</div>'
+                '<div class="num" title="Sophisticated Invalid Traffic — impression-weighted: Σ SIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. SIVT includes data center, bot fraud, hijacked devices, emulators, app/site fraud, injected ads, laundering.">SIVT</div>'
+                '<div class="num" title="General Invalid Traffic — impression-weighted: Σ GIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. GIVT is self-identifying invalid: declared bots, known crawlers, etc.">GIVT</div>'
                 '<div class="num">CTR</div>'
                 '<div class="num">VCR</div>'
                 '<div>Seller</div>'
@@ -5175,8 +5173,8 @@ if st.session_state.active_view == "campaigns":
             '<div class="num">Revenue</div><div class="num">Impressions</div>'
             '<div class="num">eCPM</div>'
             '<div class="num" title="DV Attention Index — 100 = industry median. GAM PMP rows only.">Attention</div>'
-            '<div class="num" title="Sophisticated Invalid Traffic — DV day-prevalence: % of days with detected SIVT (data center, bot fraud, hijacked devices, emulators). GAM PMP rows only.">SIVT</div>'
-            '<div class="num" title="General Invalid Traffic — DV day-prevalence: % of days with detected GIVT (self-identifying bots, declared crawlers). GAM PMP rows only.">GIVT</div>'
+            '<div class="num" title="Sophisticated Invalid Traffic — impression-weighted: Σ SIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. GAM PMP rows only.">SIVT</div>'
+            '<div class="num" title="General Invalid Traffic — impression-weighted: Σ GIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. GAM PMP rows only.">GIVT</div>'
             '<div>Seller</div>'
             '</div>'
             + "".join(_pmp_rows_html) +
