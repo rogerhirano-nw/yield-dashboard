@@ -463,6 +463,27 @@ def _parse_gam_salesperson(val):
     return m.group(1).strip() if m else val.strip()
 
 
+def _attention_html(idx) -> str:
+    """Render the DV Attention Index. 100 = DV's industry median; higher
+    = better attention. Color bands:
+      red    < 85   (15%+ below median — meaningful underperformance)
+      amber  85-100 (slightly below median)
+      green  ≥ 100  (at or above median)
+    None / NaN → em-dash (line/deal not in the DV report).
+
+    Defined at module level (not inside the campaigns view) because both
+    the Direct campaigns table AND the PMP deals table use it — each from
+    a different scope inside the active_view block."""
+    if idx is None or pd.isna(idx):
+        return '<div class="cell-dash">—</div>'
+    v = float(idx)
+    if v < 85:
+        return f'<div class="pill pill-red">{v:.0f}</div>'
+    if v < 100:
+        return f'<div class="txt-amber">{v:.0f}</div>'
+    return f'<div class="txt-green">{v:.0f}</div>'
+
+
 PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
 
 
@@ -1051,7 +1072,8 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-pmp-rows .nw-row-header,
 .nw-pmp-rows .nw-pmp-row {
   display: grid;
-  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 13fr;
+  /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | Seller */
+  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 13fr;
   gap: 10px; align-items: center; padding: 10px 12px;
   border-bottom: 0.5px solid rgba(255,255,255,0.05);
   font-size: 13px; color: rgba(250,250,250,0.85);
@@ -2161,11 +2183,22 @@ if st.session_state.active_view == "campaigns":
     except Exception:
         dv_df = pd.DataFrame()
     _dv_by_li: dict = {}
-    if not dv_df.empty and "line_item_name" in dv_df.columns and "attention_index" in dv_df.columns:
-        _dv_agg = (dv_df.dropna(subset=["line_item_name"])
-                       .groupby("line_item_name", as_index=False)["attention_index"]
-                       .mean())
-        _dv_by_li = dict(zip(_dv_agg["line_item_name"], _dv_agg["attention_index"]))
+    _dv_by_order: dict = {}
+    if not dv_df.empty and "attention_index" in dv_df.columns:
+        if "line_item_name" in dv_df.columns:
+            _dv_agg = (dv_df.dropna(subset=["line_item_name"])
+                           .groupby("line_item_name", as_index=False)["attention_index"]
+                           .mean())
+            _dv_by_li = dict(zip(_dv_agg["line_item_name"], _dv_agg["attention_index"]))
+        if "order_name" in dv_df.columns:
+            # PMP deals (combined_pmp.Deal) join by order_name — DV emits
+            # the deal name in the Order column for PMP rows. Build a
+            # parallel lookup so the PMP table can resolve attention
+            # without depending on the Line Item being populated.
+            _dv_ord_agg = (dv_df.dropna(subset=["order_name"])
+                              .groupby("order_name", as_index=False)["attention_index"]
+                              .mean())
+            _dv_by_order = dict(zip(_dv_ord_agg["order_name"], _dv_ord_agg["attention_index"]))
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -3434,21 +3467,9 @@ if st.session_state.active_view == "campaigns":
                     return f'<div class="txt-amber">{p:.1f}%</div>'
                 return f'<div class="txt-green">{p:.1f}%</div>'
 
-            def _attention_html(idx):
-                """Render the DV Attention Index. 100 = DV's industry median;
-                higher = better attention. Color bands:
-                  red    < 85   (15%+ below median — meaningful underperformance)
-                  amber  85-100 (slightly below median)
-                  green  ≥ 100  (at or above median)
-                None / NaN → em-dash (line item not in the DV report)."""
-                if idx is None or pd.isna(idx):
-                    return '<div class="cell-dash">—</div>'
-                v = float(idx)
-                if v < 85:
-                    return f'<div class="pill pill-red">{v:.0f}</div>'
-                if v < 100:
-                    return f'<div class="txt-amber">{v:.0f}</div>'
-                return f'<div class="txt-green">{v:.0f}</div>'
+            # _attention_html now lives at module level so the PMP table
+            # can use it too (different lexical scope). Kept the reference
+            # site here unchanged.
 
             def _ctr_html(p, fmt=None):
                 # p is already numeric (computed from lifetime clicks/imps *100).
@@ -5009,6 +5030,10 @@ if st.session_state.active_view == "campaigns":
             if _sub:
                 _name_html += f'<div class="pmp-name-sub">{_pmp_esc(_sub)}</div>'
 
+            # DV Attention for PMP — joined by exact deal_name (== Order in
+            # the DV CSV). GAM PMP rows are the only ones that get DV
+            # coverage; Magnite/Pubmatic-only deals fall through to "—".
+            _pmp_attn = _dv_by_order.get(row.get("Deal")) if _dv_by_order else None
             _pmp_rows_html.append(
                 '<details name="pmp-cmprow">'
                 '<summary class="nw-pmp-row">'
@@ -5020,6 +5045,7 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="num">{_rev_cell(row.get("Revenue"))}</div>'
                 f'<div class="num">{_impr_cell(row.get("Paid Impressions"))}</div>'
                 f'<div class="num">{_ecpm_cell(row.get("eCPM"), _floor_val)}</div>'
+                f'<div class="num">{_attention_html(_pmp_attn)}</div>'
                 f'<div>{_seller_html}</div>'
                 '</summary>'
                 + _pmp_drawer_html(row) +
@@ -5041,7 +5067,9 @@ if st.session_state.active_view == "campaigns":
             '<div class="nw-row-header">'
             '<div>Deal</div><div>Type</div><div>DSP</div><div>SSP</div><div>Format</div>'
             '<div class="num">Revenue</div><div class="num">Impressions</div>'
-            '<div class="num">eCPM</div><div>Seller</div>'
+            '<div class="num">eCPM</div>'
+            '<div class="num" title="DV Attention Index — 100 = industry median. GAM PMP rows only.">Attention</div>'
+            '<div>Seller</div>'
             '</div>'
             + "".join(_pmp_rows_html) +
             '</div>'
