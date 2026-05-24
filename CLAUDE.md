@@ -16,8 +16,11 @@ When auditing or adding data, the four production sources are:
 | **Google Ad Manager** | `gam_client.py` (`GAMClient`) | `gam_*` (campaigns, pmp_deals, creatives, lica, …) | Direct delivery + PMP/PA/PD/PG |
 | **Pubmatic** | `pubmatic_client.py` (`PubmaticClient`) | `pubmatic_*` | PMP deal report |
 | **OpenSincera** | `opensincera_client.py` (`OpenSinceraClient`) | `opensincera_*` (ecosystem, publishers, adsystems, mapping_modules) | TTD's sell-side transparency / inventory metadata. Added 2026-05-22 (PR #44 + #46). Powers the OpenSincera dashboard tab with a Newsweek-vs-peers scorecard. |
+| **DoubleVerify Attention** | `dv_attention_client.py` (`pull_dv_attention`) | `dv_attention` | DV Pinnacle "Authentic Attention" metrics per line item — 100-baseline indices (Attention / Engagement / Exposure / Intensity / Prominence / User Presence / Ad Interaction / View Presence) plus DV's view of viewability. Ingested via email: DV team mails the daily CSV to `newsweek@agentmail.to`, we poll the inbox via agentmail's v0 API and parse the attachment. Surfaces as the "Attention" column on the Direct campaigns table, joined to `gam_campaigns.line_item_name`. Reuses `AGENTMAIL_API_KEY` + `AGENTMAIL_INBOX_ID` secrets. Added 2026-05-24. |
 
-`refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work.
+`refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
+
+For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
