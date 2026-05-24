@@ -26,6 +26,7 @@ import sqlalchemy
 from sqlalchemy import inspect as sa_inspect, text
 
 from client import MagniteClient
+from dv_attention_client import pull_dv_attention
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
@@ -395,6 +396,60 @@ def refresh_pubmatic() -> int:
     return len(df)
 
 
+def refresh_dv_attention() -> int:
+    """Poll the newsweek@agentmail.to inbox for daily DV Attention CSV
+    emails, parse the latest, write to `dv_attention` table.
+
+    The DV team mails the Pinnacle "Unified Analytics Report: Attention
+    Metrics" CSV each morning. We poll the agentmail inbox for matching
+    subjects, download every CSV attachment, parse, and upsert by date:
+    any date present in the new batch is deleted from the table first
+    so the latest email wins. Older dates stay untouched as historical
+    backfill.
+
+    Skips silently (returns 0) when agentmail credentials aren't set —
+    so local refreshes without `.env` don't crash."""
+    logger.info("Refreshing dv_attention (DoubleVerify Attention metrics)")
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    if not api_key or not inbox_id:
+        logger.warning(
+            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "skipping DV Attention refresh"
+        )
+        return 0
+
+    df = pull_dv_attention(api_key, inbox_id)
+    if df.empty:
+        logger.warning("No DV Attention CSV attachments found in inbox")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "dv_attention"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            else:
+                # Upsert-by-date: delete any rows for dates the new batch
+                # covers, so the freshest email's view wins. Older dates
+                # stay (historical backfill survives).
+                dates = [d.isoformat() if d is not None else None
+                         for d in df["date"].dropna().unique().tolist()]
+                if dates:
+                    conn.execute(
+                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
+                        {"dates": dates},
+                    )
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
 # Hardcoded watch-list for the OpenSincera /publishers endpoint.
 # Newsweek + editorial peers we care about for quality benchmarking
 # (A2CR, ads-in-view, ad refresh, page weight, ID absorption).
@@ -664,6 +719,11 @@ def main() -> None:
         total += refresh_opensincera_modules()
     except Exception:
         logger.exception("Refresh failed for opensincera_modules — continuing")
+
+    try:
+        total += refresh_dv_attention()
+    except Exception:
+        logger.exception("Refresh failed for dv_attention — continuing")
 
 
 if __name__ == "__main__":

@@ -819,8 +819,9 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-rows .nw-row-header,
 .nw-rows .nw-row > summary {
   display: grid;
+  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | CTR | VCR | Seller | Progress */
   grid-template-columns:
-    22fr 10fr 9fr 11fr 9fr 8fr 7fr 10fr 14fr;
+    22fr 10fr 9fr 11fr 9fr 9fr 8fr 7fr 10fr 14fr;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -2149,6 +2150,23 @@ if st.session_state.active_view == "campaigns":
         gam_df = pd.DataFrame()
         st.info("No GAM data yet. The gam_campaigns table will be created on the next scheduled refresh.")
 
+    # DV Attention — daily Pinnacle CSV emailed to newsweek@agentmail.to,
+    # parsed by refresh_dv_attention() into the dv_attention table. We
+    # average the Attention Index per line_item_name across whatever
+    # window the latest email covered (typically last 7 days) and join
+    # into gam_df for the per-row "Attention" cell. Missing lines render
+    # as "—" via the _attention_html helper.
+    try:
+        dv_df = load("dv_attention")
+    except Exception:
+        dv_df = pd.DataFrame()
+    _dv_by_li: dict = {}
+    if not dv_df.empty and "line_item_name" in dv_df.columns and "attention_index" in dv_df.columns:
+        _dv_agg = (dv_df.dropna(subset=["line_item_name"])
+                       .groupby("line_item_name", as_index=False)["attention_index"]
+                       .mean())
+        _dv_by_li = dict(zip(_dv_agg["line_item_name"], _dv_agg["attention_index"]))
+
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
     else:
@@ -3416,6 +3434,22 @@ if st.session_state.active_view == "campaigns":
                     return f'<div class="txt-amber">{p:.1f}%</div>'
                 return f'<div class="txt-green">{p:.1f}%</div>'
 
+            def _attention_html(idx):
+                """Render the DV Attention Index. 100 = DV's industry median;
+                higher = better attention. Color bands:
+                  red    < 85   (15%+ below median — meaningful underperformance)
+                  amber  85-100 (slightly below median)
+                  green  ≥ 100  (at or above median)
+                None / NaN → em-dash (line item not in the DV report)."""
+                if idx is None or pd.isna(idx):
+                    return '<div class="cell-dash">—</div>'
+                v = float(idx)
+                if v < 85:
+                    return f'<div class="pill pill-red">{v:.0f}</div>'
+                if v < 100:
+                    return f'<div class="txt-amber">{v:.0f}</div>'
+                return f'<div class="txt-green">{v:.0f}</div>'
+
             def _ctr_html(p, fmt=None):
                 # p is already numeric (computed from lifetime clicks/imps *100).
                 if p is None or pd.isna(p):
@@ -4095,6 +4129,11 @@ if st.session_state.active_view == "campaigns":
                     _display_name = "_".join(_tokens[2:])
                 else:
                     _display_name = _li_clean
+                # DV Attention Index — joined by exact line_item_name match
+                # against _dv_by_li (built once at view load from dv_attention
+                # table). Rows with no DV coverage get None → em-dash via
+                # _attention_html.
+                _attn = _dv_by_li.get(_li_clean) if _dv_by_li else None
                 _rows_html.append(
                     '<details class="nw-row" name="cmprow">'
                     '<summary>'
@@ -4104,6 +4143,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_delivered_html(_delivered)}</div>'
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
                     f'<div class="num">{_viewability_html(_vw, _fmt_str)}</div>'
+                    f'<div class="num">{_attention_html(_attn)}</div>'
                     f'<div class="num">{_ctr_html(_ctr, _fmt_str)}</div>'
                     f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str)}</div>'
                     f'<div>{_seller_html}</div>'
@@ -4132,6 +4172,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="num">Delivered</div>'
                 '<div class="num">Pace</div>'
                 '<div class="num">Viewable</div>'
+                '<div class="num" title="DV Attention Index — 100 = industry median">Attention</div>'
                 '<div class="num">CTR</div>'
                 '<div class="num">VCR</div>'
                 '<div>Seller</div>'
