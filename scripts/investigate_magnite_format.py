@@ -262,7 +262,23 @@ else:
 print("\n\n## 3 · Top Magnite sites by format — 2026-05-24\n")
 print("Pulling site × format data …", file=sys.stderr)
 
+def _print_site_table(df: pd.DataFrame) -> None:
+    site_agg = df.groupby("site").agg(
+        impressions=("impressions", "sum"),
+        revenue=("publisher_gross_revenue", "sum"),
+    ).reset_index()
+    site_agg["ecpm"] = ecpm_calc(site_agg["revenue"], site_agg["impressions"])
+    site_agg = site_agg[site_agg["impressions"] >= 1000].sort_values("revenue", ascending=False).head(15)
+    print("| Site | Imps | Revenue | eCPM |")
+    print("|------|------|---------|------|")
+    for _, r in site_agg.iterrows():
+        print(f"| {str(r['site']):<40} | {int(r['impressions']):>9,} | "
+              f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
+
+
+# Try site × format first; fall back to site-only if Magnite rejects the combo
 site_fmt_dims = (["site", format_col] if format_col else ["site", "size"])
+_site_done = False
 try:
     site_raw = prep(run(site_fmt_dims))
     if "size" in site_raw.columns and format_col != "size":
@@ -291,21 +307,18 @@ try:
                       f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
             print()
     else:
-        # No format dim, just top sites
-        site_agg = site_raw.groupby("site").agg(
-            impressions=("impressions", "sum"),
-            revenue=("publisher_gross_revenue", "sum"),
-        ).reset_index()
-        site_agg["ecpm"] = ecpm_calc(site_agg["revenue"], site_agg["impressions"])
-        site_agg = site_agg[site_agg["impressions"] >= 1000].sort_values("revenue", ascending=False).head(15)
-        print("| Site | Imps | Revenue | eCPM |")
-        print("|------|------|---------|------|")
-        for _, r in site_agg.iterrows():
-            print(f"| {str(r['site']):<40} | {int(r['impressions']):>9,} | "
-                  f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
-
+        _print_site_table(site_raw)
+    _site_done = True
 except Exception as e:
-    print(f"⚠ Site breakdown failed: {e}\n")
+    print(f"  site × format failed ({e}), retrying site-only …", file=sys.stderr)
+
+if not _site_done:
+    try:
+        site_raw = prep(run(["site"]))
+        print("_(Format breakdown not available for site dim — showing all inventory combined)_\n")
+        _print_site_table(site_raw)
+    except Exception as e:
+        print(f"⚠ Site breakdown failed: {e}\n")
 
 
 # ── 4. DSP breakdown by format ────────────────────────────────────────────────
@@ -313,7 +326,23 @@ except Exception as e:
 print("\n\n## 4 · Top Magnite DSPs by format — 2026-05-24\n")
 print("Pulling DSP × format data …", file=sys.stderr)
 
+def _print_dsp_table(df: pd.DataFrame) -> None:
+    dsp_agg = df.groupby("partner").agg(
+        impressions=("impressions", "sum"),
+        revenue=("publisher_gross_revenue", "sum"),
+    ).reset_index()
+    dsp_agg["ecpm"] = ecpm_calc(dsp_agg["revenue"], dsp_agg["impressions"])
+    dsp_agg = dsp_agg[dsp_agg["impressions"] >= 100].sort_values("revenue", ascending=False).head(15)
+    print("| DSP | Imps | Revenue | eCPM |")
+    print("|-----|------|---------|------|")
+    for _, r in dsp_agg.iterrows():
+        print(f"| {str(r['partner']):<35} | {int(r['impressions']):>9,} | "
+              f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
+
+
+# Try partner × format first; fall back to partner-only if Magnite rejects the combo
 dsp_fmt_dims = (["partner", format_col] if format_col else ["partner", "size"])
+_dsp_done = False
 try:
     dsp_raw = prep(run(dsp_fmt_dims))
     if "size" in dsp_raw.columns and format_col != "size":
@@ -342,20 +371,18 @@ try:
                       f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
             print()
     else:
-        dsp_agg = dsp_raw.groupby("partner").agg(
-            impressions=("impressions", "sum"),
-            revenue=("publisher_gross_revenue", "sum"),
-        ).reset_index()
-        dsp_agg["ecpm"] = ecpm_calc(dsp_agg["revenue"], dsp_agg["impressions"])
-        dsp_agg = dsp_agg[dsp_agg["impressions"] >= 100].sort_values("revenue", ascending=False).head(15)
-        print("| DSP | Imps | Revenue | eCPM |")
-        print("|-----|------|---------|------|")
-        for _, r in dsp_agg.iterrows():
-            print(f"| {str(r['partner']):<35} | {int(r['impressions']):>9,} | "
-                  f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
-
+        _print_dsp_table(dsp_raw)
+    _dsp_done = True
 except Exception as e:
-    print(f"⚠ DSP breakdown failed: {e}\n")
+    print(f"  partner × format failed ({e}), retrying partner-only …", file=sys.stderr)
+
+if not _dsp_done:
+    try:
+        dsp_raw = prep(run(["partner"]))
+        print("_(Format breakdown not available for partner dim — showing all inventory combined)_\n")
+        _print_dsp_table(dsp_raw)
+    except Exception as e:
+        print(f"⚠ DSP breakdown failed: {e}\n")
 
 
 print("\n---\n_Magnite DV+ General dataset. UTC times. Subtract 4h for EDT._\n")
