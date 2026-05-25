@@ -955,9 +955,14 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .nw-rows .nw-row-header,
 .nw-rows .nw-row > summary {
   display: grid;
-  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | SIVT | GIVT | CTR | VCR | Seller | Progress */
+  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | SIVT | GIVT | CTR | VCR | Seller | Progress
+     VCR widened from 7→10fr because its cells render a 2-line
+     value+delta ("68.4%" + "▲ 0.30pp") that was getting cramped
+     against the Seller column. SIVT/GIVT trimmed 7→6fr because they
+     just show "0.19%" / "—" — they had headroom to give. Pace
+     trimmed 11→10fr (already had margin). Net width unchanged. */
   grid-template-columns:
-    22fr 10fr 9fr 11fr 9fr 9fr 7fr 7fr 8fr 7fr 10fr 14fr;
+    22fr 10fr 9fr 10fr 9fr 9fr 6fr 6fr 8fr 10fr 10fr 14fr;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
