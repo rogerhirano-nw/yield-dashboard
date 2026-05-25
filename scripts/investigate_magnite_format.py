@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import sys
+import traceback
 from datetime import date
 
 import pandas as pd
@@ -31,14 +32,22 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from client import MagniteClient, MagniteAPIError
 
+# Unbuffered output so partial output survives a crash
+sys.stdout.reconfigure(line_buffering=True)
+
 # ── auth ──────────────────────────────────────────────────────────────────────
 INVESTIGATE_DATE = "2026-05-24"
 
-client = MagniteClient(
-    api_key=os.environ["MAGNITE_KEY"],
-    api_secret=os.environ["MAGNITE_SECRET"],
-    account_id=os.environ["MAGNITE_PUBLISHER_ID"],
-)
+_key    = os.environ.get("MAGNITE_KEY", "")
+_secret = os.environ.get("MAGNITE_SECRET", "")
+_pub_id = os.environ.get("MAGNITE_PUBLISHER_ID", "")
+
+if not _key or not _secret or not _pub_id:
+    print("⚠ Magnite credentials not configured (MAGNITE_KEY / MAGNITE_SECRET / "
+          "MAGNITE_PUBLISHER_ID secrets missing). Skipping Magnite investigation.\n")
+    sys.exit(0)
+
+client = MagniteClient(api_key=_key, api_secret=_secret, account_id=_pub_id)
 
 BASE_METRICS = ["publisher_gross_revenue", "impressions", "ecpm"]
 
@@ -109,7 +118,7 @@ try:
         format_col = "media_type"
         format_df  = raw.copy()
         print("  media_type ✓", file=sys.stderr)
-except MagniteAPIError as e:
+except Exception as e:
     print(f"  media_type ✗ ({e})", file=sys.stderr)
 
 # Attempt B: size dimension → infer format
@@ -128,7 +137,7 @@ if format_col is None:
             format_col = "format"
             format_df  = raw.copy()
             print("  size → format ✓ (inferred)", file=sys.stderr)
-    except MagniteAPIError as e:
+    except Exception as e:
         print(f"  size ✗ ({e})", file=sys.stderr)
 
 if format_df.empty:
@@ -177,7 +186,7 @@ for h_dim in hour_candidates:
                 hourly_df = raw.copy()
                 print(f"  {dims} ✓", file=sys.stderr)
                 break
-        except MagniteAPIError as e:
+        except Exception as e:
             print(f"  {dims} ✗ ({e})", file=sys.stderr)
 
 # If no format+hour combo worked, try hour alone
@@ -192,7 +201,7 @@ if hour_col is None:
                 hourly_df = raw.copy()
                 print(f"  [{h_dim}] alone ✓", file=sys.stderr)
                 break
-        except MagniteAPIError as e:
+        except Exception as e:
             print(f"  [{h_dim}] ✗ ({e})", file=sys.stderr)
 
 if hourly_df.empty:
@@ -287,7 +296,7 @@ try:
             print(f"| {str(r['site']):<40} | {int(r['impressions']):>9,} | "
                   f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
 
-except MagniteAPIError as e:
+except Exception as e:
     print(f"⚠ Site breakdown failed: {e}\n")
 
 
@@ -337,7 +346,7 @@ try:
             print(f"| {str(r['partner']):<35} | {int(r['impressions']):>9,} | "
                   f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f} |")
 
-except MagniteAPIError as e:
+except Exception as e:
     print(f"⚠ DSP breakdown failed: {e}\n")
 
 
