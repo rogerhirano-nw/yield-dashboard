@@ -40,6 +40,22 @@ def _engine() -> sqlalchemy.Engine:
     return sqlalchemy.create_engine(os.environ["DATABASE_URL"])
 
 
+def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
+    """Write df to table using TRUNCATE when the schema is unchanged, falling
+    back to DROP only when columns differ. TRUNCATE generates a single WAL
+    record vs. per-row WAL from DROP, cutting catalog churn and autovacuum
+    pressure on tables that are replaced daily."""
+    existing_tables = sa_inspect(conn).get_table_names()
+    if table in existing_tables:
+        existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+        if existing_cols == set(df.columns):
+            conn.execute(text(f'TRUNCATE TABLE "{table}"'))
+        else:
+            logger.info("Schema change detected for %s — dropping and recreating", table)
+            conn.execute(text(f'DROP TABLE "{table}"'))
+    df.to_sql(table, conn, if_exists="append", index=False)
+
+
 # Tune these to match the dashboard's actual filter dimensions.
 # Don't grab every dim — the row count blows up fast and you'll hit the 500K cap.
 REPORTS = {
@@ -122,8 +138,9 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
                 conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
             else:
-                # Lookup table with no date column — replace all rows each run.
-                conn.execute(text(f'DELETE FROM "{table}"'))
+                # Lookup table with no date column — TRUNCATE is cheaper than
+                # DELETE for a full-table clear (single WAL record, no dead tuples).
+                conn.execute(text(f'TRUNCATE TABLE "{table}"'))
         df.to_sql(table, conn, if_exists="append", index=False)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -194,7 +211,7 @@ def refresh_gam_pmp_deals() -> int:
 
     table = "gam_pmp_deals"
     with _engine().begin() as conn:
-        df.to_sql(table, conn, if_exists="replace", index=False)
+        _safe_replace(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -219,7 +236,7 @@ def refresh_gam_deal_bids() -> int:
 
     table = "gam_deal_bid_daily"
     with _engine().begin() as conn:
-        df.to_sql(table, conn, if_exists="replace", index=False)
+        _safe_replace(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -235,7 +252,7 @@ def refresh_gam_private_auctions() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_pa_metadata", conn, if_exists="replace", index=False)
+        _safe_replace(df, "gam_pa_metadata", conn)
     logger.info("Wrote %d rows to gam_pa_metadata", len(df))
     return len(df)
 
@@ -252,7 +269,7 @@ def refresh_gam_preferred_deals() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_pd_metadata", conn, if_exists="replace", index=False)
+        _safe_replace(df, "gam_pd_metadata", conn)
     logger.info("Wrote %d rows to gam_pd_metadata", len(df))
     return len(df)
 
@@ -269,7 +286,7 @@ def refresh_gam_creatives() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_creatives", conn, if_exists="replace", index=False)
+        _safe_replace(df, "gam_creatives", conn)
     logger.info("Wrote %d rows to gam_creatives", len(df))
     return len(df)
 
@@ -286,7 +303,7 @@ def refresh_gam_lica() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_lica", conn, if_exists="replace", index=False)
+        _safe_replace(df, "gam_lica", conn)
     logger.info("Wrote %d rows to gam_lica", len(df))
     return len(df)
 
@@ -327,7 +344,7 @@ def refresh_magnite_deal_metadata() -> int:
     agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        agg.to_sql("magnite_deal_metadata", conn, if_exists="replace", index=False)
+        _safe_replace(agg, "magnite_deal_metadata", conn)
     logger.info("Wrote %d Magnite deals to magnite_deal_metadata", len(agg))
     return len(agg)
 
@@ -357,7 +374,7 @@ def refresh_pubmatic_deal_metadata() -> int:
     agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        agg.to_sql("pubmatic_deal_metadata", conn, if_exists="replace", index=False)
+        _safe_replace(agg, "pubmatic_deal_metadata", conn)
     logger.info("Wrote %d Pubmatic deals to pubmatic_deal_metadata", len(agg))
     return len(agg)
 
@@ -572,7 +589,7 @@ def refresh_opensincera_publishers() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        df.to_sql("opensincera_publishers", conn, if_exists="replace", index=False)
+        _safe_replace(df, "opensincera_publishers", conn)
     logger.info("Wrote %d rows to opensincera_publishers", len(df))
     return len(df)
 
@@ -589,7 +606,7 @@ def refresh_opensincera_adsystems() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        df.to_sql("opensincera_adsystems", conn, if_exists="replace", index=False)
+        _safe_replace(df, "opensincera_adsystems", conn)
     logger.info("Wrote %d rows to opensincera_adsystems", len(df))
     return len(df)
 
@@ -606,7 +623,7 @@ def refresh_opensincera_modules() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        df.to_sql("opensincera_modules", conn, if_exists="replace", index=False)
+        _safe_replace(df, "opensincera_modules", conn)
     logger.info("Wrote %d rows to opensincera_modules", len(df))
     return len(df)
 
@@ -654,8 +671,8 @@ def main() -> None:
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
-    if mode not in ("all", "direct", "opensincera"):
-        logger.error("Unknown --mode=%s (use 'all', 'direct', or 'opensincera')", mode)
+    if mode not in ("all", "direct", "opensincera", "deal-metadata"):
+        logger.error("Unknown --mode=%s (use 'all', 'direct', 'opensincera', or 'deal-metadata')", mode)
         raise SystemExit(2)
     logger.info("refresh_cache v3 — mode=%s", mode)
 
@@ -683,6 +700,16 @@ def main() -> None:
             except Exception:
                 logger.exception("Refresh failed for %s — continuing", fn.__name__)
         logger.info("Done (opensincera-only). %d rows written.", total)
+        return
+
+    if mode == "deal-metadata":
+        total = 0
+        for fn in (refresh_magnite_deal_metadata, refresh_pubmatic_deal_metadata):
+            try:
+                total += fn()
+            except Exception:
+                logger.exception("Refresh failed for %s — continuing", fn.__name__)
+        logger.info("Done (deal-metadata). %d rows written.", total)
         return
 
     # Full sweep below — everything in dependency-independent order.
@@ -745,16 +772,6 @@ def main() -> None:
         total += refresh_pubmatic()
     except Exception:
         logger.exception("Refresh failed for pubmatic_deals — continuing")
-
-    try:
-        total += refresh_magnite_deal_metadata()
-    except Exception:
-        logger.exception("Refresh failed for magnite_deal_metadata — continuing")
-
-    try:
-        total += refresh_pubmatic_deal_metadata()
-    except Exception:
-        logger.exception("Refresh failed for pubmatic_deal_metadata — continuing")
 
     try:
         total += refresh_opensincera_ecosystem()
