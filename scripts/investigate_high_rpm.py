@@ -108,20 +108,18 @@ print("\n## 1 · Hourly eCPM curve — all inventory, 2026-05-24\n")
 print("Pulling hourly direct (ad-server) delivery …", file=sys.stderr)
 
 try:
+    # AD_SERVER_AVERAGE_ECPM is incompatible with the HOUR dimension
+    # (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY) — drop it and compute ourselves.
     hourly = run_report(
         dimensions=["DATE", "HOUR"],   # GAM v1 enum: HOUR = 100
-        metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
+        metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
     )
-    hourly = hourly.rename(columns={
-        "ad_server_revenue": "revenue",
-        "ad_server_average_ecpm": "avg_ecpm_gam",
-    })
-    hourly["impressions"]  = pd.to_numeric(hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
-    hourly["revenue"]      = pd.to_numeric(hourly["revenue"], errors="coerce").fillna(0.0)
-    hourly["avg_ecpm_gam"] = pd.to_numeric(hourly["avg_ecpm_gam"], errors="coerce").fillna(0.0)
-    hourly["ecpm_calc"]    = ecpm(hourly["revenue"], hourly["impressions"])
+    hourly = hourly.rename(columns={"ad_server_revenue": "revenue"})
+    hourly["impressions"] = pd.to_numeric(hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
+    hourly["revenue"]     = pd.to_numeric(hourly["revenue"], errors="coerce").fillna(0.0)
+    hourly["ecpm_calc"]   = ecpm(hourly["revenue"], hourly["impressions"])
     hourly["hour"]         = hourly["hour"].astype(int)
     hourly = hourly.sort_values("hour")
 
