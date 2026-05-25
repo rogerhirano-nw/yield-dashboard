@@ -23,3 +23,14 @@ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR
 OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
 ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
+
+NOTE ON PUBLIC VISIBILITY
+
+This repository is publicly visible on GitHub. Public visibility is a
+deployment requirement of Streamlit Community Cloud's free tier
+(https://newsweek.streamlit.app deploys directly from this repo). Public
+visibility does not constitute or imply any license grant. Reading this
+source code does not authorize you to use, copy, modify, or distribute
+it. All rights remain reserved as stated above. "Authorized personnel"
+refers to who is permitted to use the Software, not who is permitted to
+read the source.

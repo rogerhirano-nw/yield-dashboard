@@ -1,5 +1,31 @@
 # Security Policy
 
+## Repository visibility
+
+This repository is **public** on GitHub. Public visibility is a deployment
+requirement of Streamlit Community Cloud's free tier — the dashboard at
+https://newsweek.streamlit.app deploys directly from the `mac-studio`
+branch of this repo, and Streamlit's legacy OAuth integration only supports
+public repositories. The `LICENSE` file makes clear that public visibility
+is not a license grant.
+
+Implications:
+
+- All source code, configuration, commit messages, and issue/PR history
+  are readable by anyone on the internet.
+- Business logic — seller derivation rules, deal-source defaults,
+  threshold rules, AE-code conventions — is exposed.
+- **No credentials, database connection strings, or service-account JSON
+  files are in the repository.** They live only in GitHub Actions Secrets
+  (encrypted at rest, consumed by workflows by name) and in local `.env`
+  files (gitignored, never committed). Verified clean by fingerprint
+  searches across all of git history.
+
+If the repository ever needs to become private, hosting must move off
+Streamlit Community Cloud's free tier first — Streamlit's paid tier,
+Render, Fly.io, or internal infrastructure all support private GitHub
+repos.
+
 ## Reporting a vulnerability or credential leak
 
 If you discover a security issue — a credential committed by mistake, an
