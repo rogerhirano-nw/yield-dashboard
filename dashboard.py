@@ -953,8 +953,15 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 /* Per-column alignment override — used for VCR right now (centered
    reads better when the cell has a value+delta stack and the column
    is wide enough that right-alignment leaves a big gap of empty
-   space on the left). */
-.num.center { text-align: center; }
+   space on the left).
+   Selectors deliberately match the specificity of the table's existing
+   `.nw-row-header .num` / `.nw-row > summary .num` `text-align: right`
+   rules, which are defined further down the stylesheet and would
+   otherwise win on source order if we just wrote `.num.center {}`. */
+.nw-row-header .num.center,
+.nw-rows .nw-row > summary .num.center,
+.nw-pmp-rows .nw-row-header .num.center,
+.nw-pmp-rows .nw-pmp-row .num.center { text-align: center; }
 .bold-rev  { font-weight: 700; }
 /* ── Grid-based row layout + native <details> drawer ─────────────── */
 .nw-rows .nw-row-header,
