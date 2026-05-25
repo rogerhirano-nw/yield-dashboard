@@ -24,6 +24,18 @@ When auditing or adding data, the four production sources are:
 
 For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
 
+## Outbound daily digests
+
+| Digest | Script | Workflow | Recipients (var) | Subject |
+|---|---|---|---|---|
+| Betting CPA (Spinfinite, IO1109) | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
+
+Same outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern as `apple-news/daily_report.py`. Triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late). Suggested cadence: 09:30 America/New_York daily — half an hour after the 09:00 refresh sweep so the freshest Improvado report is already in `betting_conversions`.
+
+Local dry-run (no DB / no send): `python betting_daily_update.py --dry-run`. Requires `DATABASE_URL` in env for the DB read; the `--dry-run` flag skips the send only.
+
+CPA target defaults to $150/FTP. Override with `BETTING_CPA_TARGET` repo variable.
+
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
