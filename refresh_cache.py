@@ -380,6 +380,115 @@ def refresh_pubmatic_deal_metadata() -> int:
     return len(agg)
 
 
+def refresh_pmp_last_bid_date() -> int:
+    """Upsert pmp_last_bid_date with the latest bid-activity date per deal per SSP.
+
+    Cumulative: last_bid_date only ever moves forward. first_seen_date is set
+    on the first insert and never changed. Deals with no bid responses in the
+    current 7-day window keep their previously recorded last_bid_date.
+    """
+    logger.info("Refreshing pmp_last_bid_date")
+    engine = _engine()
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    now_ts    = datetime.now(timezone.utc).isoformat()
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS pmp_last_bid_date (
+                ssp             TEXT NOT NULL,
+                deal_key        TEXT NOT NULL,
+                last_bid_date   TEXT,
+                first_seen_date TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                PRIMARY KEY (ssp, deal_key)
+            )
+        """))
+
+    parts: list[pd.DataFrame] = []
+
+    def _query(sql: str, ssp: str) -> None:
+        try:
+            with engine.connect() as conn:
+                df = pd.read_sql(text(sql), conn)
+            df["ssp"] = ssp
+            parts.append(df)
+        except Exception:
+            logger.warning("pmp_last_bid_date: could not query %s source — skipping", ssp)
+
+    _query("""
+        SELECT
+            CAST(deal_meta_id AS TEXT) AS deal_key,
+            MAX(CASE WHEN non_zero_bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date
+        FROM pubmatic_deals
+        WHERE deal_meta_id IS NOT NULL
+        GROUP BY deal_meta_id
+    """, "Pubmatic")
+
+    _query("""
+        SELECT
+            CAST(deal_id AS TEXT) AS deal_key,
+            MAX(CASE WHEN bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date
+        FROM magnite_deal_daily
+        WHERE deal_id IS NOT NULL
+        GROUP BY deal_id
+    """, "Magnite")
+
+    _query("""
+        SELECT
+            programmatic_deal_name AS deal_key,
+            MAX(CASE WHEN deals_bids > 0 THEN date ELSE NULL END) AS new_last_bid_date
+        FROM gam_deal_bid_daily
+        WHERE programmatic_deal_name IS NOT NULL
+        GROUP BY programmatic_deal_name
+    """, "GAM")
+
+    if not parts:
+        logger.warning("pmp_last_bid_date: no source tables available — skipping")
+        return 0
+
+    new_df = pd.concat(parts, ignore_index=True)
+    # Normalise: SQL NULL / Python None / "None" / "nan" → pd.NA
+    new_df["new_last_bid_date"] = (
+        new_df["new_last_bid_date"]
+        .astype(object)
+        .where(new_df["new_last_bid_date"].notna(), other=pd.NA)
+    )
+
+    with engine.connect() as conn:
+        try:
+            existing = pd.read_sql(text("SELECT * FROM pmp_last_bid_date"), conn)
+        except Exception:
+            existing = pd.DataFrame(
+                columns=["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]
+            )
+
+    merged = pd.merge(
+        existing[["ssp", "deal_key", "last_bid_date", "first_seen_date"]],
+        new_df[["ssp", "deal_key", "new_last_bid_date"]],
+        on=["ssp", "deal_key"],
+        how="outer",
+    )
+    merged["first_seen_date"] = merged["first_seen_date"].fillna(today_str)
+
+    def _max_date(row) -> object:
+        candidates = [v for v in (row["last_bid_date"], row["new_last_bid_date"])
+                      if pd.notna(v) and str(v) not in ("", "None", "nan", "NaT")]
+        return max(candidates) if candidates else None
+
+    merged["last_bid_date"] = merged.apply(_max_date, axis=1)
+    merged["updated_at"] = now_ts
+    merged = merged[["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]]
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM pmp_last_bid_date"))
+        merged.to_sql("pmp_last_bid_date", conn, if_exists="append", index=False)
+
+    n_with_history = int(merged["last_bid_date"].notna().sum())
+    logger.info("pmp_last_bid_date: %d deals tracked, %d with bid history",
+                len(merged), n_with_history)
+    return len(merged)
+
+
 def refresh_pubmatic() -> int:
     """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
@@ -881,6 +990,11 @@ def main() -> None:
         total += refresh_improvado()
     except Exception:
         logger.exception("Refresh failed for improvado — continuing")
+
+    try:
+        total += refresh_pmp_last_bid_date()
+    except Exception:
+        logger.exception("Refresh failed for pmp_last_bid_date — continuing")
 
 
 if __name__ == "__main__":

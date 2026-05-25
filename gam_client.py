@@ -714,6 +714,29 @@ class GAMClient:
             logger.exception("get_preferred_deals (SOAP) failed")
             return pd.DataFrame(columns=_cols)
 
+    def archive_proposal_line_item(self, pli_id: str) -> bool:
+        """Archive a single Proposal Line Item (PD/PG/Sponsorship) by numeric ID via SOAP.
+
+        Returns True when GAM confirms at least one change was made. Logs and
+        returns False on any error so the caller can surface a per-deal failure
+        without aborting a batch.
+        """
+        try:
+            from googleads import ad_manager  # type: ignore
+            client = self._get_soap_client()
+            svc = client.GetService("ProposalLineItemService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Where("id = :id").WithBindVariable("id", int(pli_id))
+            result = svc.performProposalLineItemAction(
+                {"xsi_type": "ArchiveProposalLineItems"}, sb.ToStatement()
+            )
+            n = int(getattr(result, "numChanges", 0) or 0)
+            logger.info("archive_proposal_line_item(%s): %d change(s)", pli_id, n)
+            return n > 0
+        except Exception:
+            logger.exception("archive_proposal_line_item(%s) failed", pli_id)
+            return False
+
     def list_creatives_with_duration(self) -> pd.DataFrame:
         """Fetch all creatives via the SOAP CreativeService. Returns
         creative_id, display_name, creative_type, duration_seconds.
