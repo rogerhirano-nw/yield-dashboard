@@ -108,21 +108,27 @@ print("\n## 1 · Hourly eCPM curve — all inventory, 2026-05-24\n")
 print("Pulling hourly direct (ad-server) delivery …", file=sys.stderr)
 
 try:
-    # DATE + HOUR together is incompatible (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY).
-    # Drop DATE — the date_range already pins us to a single day, so every row
-    # is implicitly 2026-05-24. AD_SERVER_AVERAGE_ECPM also excluded; computed below.
-    hourly = run_report(
-        dimensions=["HOUR"],   # GAM v1 enum: HOUR = 100; no DATE alongside it
+    # AD_SERVER_* metrics require at least one non-time entity dimension alongside
+    # HOUR (HOUR alone → REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY). Add
+    # LINE_ITEM_TYPE_NAME so GAM is happy; aggregate across types in pandas to
+    # get the per-hour total. Bonus: shows Direct vs PG/PD breakdown.
+    hourly_raw = run_report(
+        dimensions=["HOUR", "LINE_ITEM_TYPE_NAME"],
         metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
     )
-    hourly = hourly.rename(columns={"ad_server_revenue": "revenue"})
-    hourly["impressions"] = pd.to_numeric(hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
-    hourly["revenue"]     = pd.to_numeric(hourly["revenue"], errors="coerce").fillna(0.0)
-    hourly["ecpm_calc"]   = ecpm(hourly["revenue"], hourly["impressions"])
-    hourly["hour"]         = hourly["hour"].astype(int)
-    hourly = hourly.sort_values("hour")
+    hourly_raw = hourly_raw.rename(columns={"ad_server_revenue": "revenue"})
+    hourly_raw["impressions"] = pd.to_numeric(hourly_raw["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
+    hourly_raw["revenue"]     = pd.to_numeric(hourly_raw["revenue"], errors="coerce").fillna(0.0)
+    hourly_raw["hour"]        = hourly_raw["hour"].astype(int)
+
+    # Aggregate across line-item types → total hourly curve
+    hourly = hourly_raw.groupby("hour").agg(
+        impressions=("impressions", "sum"),
+        revenue=("revenue", "sum"),
+    ).reset_index().sort_values("hour")
+    hourly["ecpm_calc"] = ecpm(hourly["revenue"], hourly["impressions"])
 
     # Annotate peak hours (eCPM ≥ $40)
     peak      = hourly[hourly["ecpm_calc"] >= 40.0]
@@ -138,6 +144,19 @@ try:
     daily_imps = hourly["impressions"].sum()
     daily_rev  = hourly["revenue"].sum()
     print(f"Day total: {daily_imps:,} impressions, ${daily_rev:,.2f} revenue → ${ecpm(pd.Series([daily_rev]), pd.Series([daily_imps])).iloc[0]:.2f} day-avg eCPM\n")
+
+    # Also show the day-level breakdown by line-item type (explains the eCPM mix)
+    type_agg = hourly_raw.groupby("line_item_type_name").agg(
+        impressions=("impressions", "sum"),
+        revenue=("revenue", "sum"),
+    ).reset_index()
+    type_agg["ecpm"] = ecpm(type_agg["revenue"], type_agg["impressions"])
+    type_agg = type_agg.sort_values("revenue", ascending=False)
+    print(f"\nRevenue by line-item type — full day:\n")
+    print(f"| Type | Impressions | Revenue | eCPM |")
+    print(f"|------|-------------|---------|------|")
+    for _, row in type_agg.iterrows():
+        print(f"| {str(row['line_item_type_name']):<35} | {int(row['impressions']):>11,} | ${row['revenue']:>9.2f} | ${row['ecpm']:>6.2f} |")
 
 except Exception as e:
     print(f"⚠ Hourly curve report failed: {e}\n")
