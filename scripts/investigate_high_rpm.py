@@ -108,10 +108,11 @@ print("\n## 1 · Hourly eCPM curve — all inventory, 2026-05-24\n")
 print("Pulling hourly direct (ad-server) delivery …", file=sys.stderr)
 
 try:
-    # AD_SERVER_AVERAGE_ECPM is incompatible with the HOUR dimension
-    # (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY) — drop it and compute ourselves.
+    # DATE + HOUR together is incompatible (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY).
+    # Drop DATE — the date_range already pins us to a single day, so every row
+    # is implicitly 2026-05-24. AD_SERVER_AVERAGE_ECPM also excluded; computed below.
     hourly = run_report(
-        dimensions=["DATE", "HOUR"],   # GAM v1 enum: HOUR = 100
+        dimensions=["HOUR"],   # GAM v1 enum: HOUR = 100; no DATE alongside it
         metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
@@ -153,7 +154,7 @@ else:
     print("Pulling hourly line-item delivery …", file=sys.stderr)
     try:
         li_hourly = run_report(
-            dimensions=["DATE", "HOUR", "LINE_ITEM_ID", "LINE_ITEM_NAME", "ORDER_NAME"],
+            dimensions=["HOUR", "LINE_ITEM_ID", "LINE_ITEM_NAME", "ORDER_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
             start=INVESTIGATE_DATE,
             end=INVESTIGATE_DATE,
@@ -209,7 +210,7 @@ print("Pulling hourly programmatic deal revenue …", file=sys.stderr)
 
 try:
     deal_hourly = run_report(
-        dimensions=["DATE", "HOUR", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
+        dimensions=["HOUR", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
         metrics=["IMPRESSIONS", "REVENUE_WITHOUT_CPD"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
@@ -268,7 +269,7 @@ print("Pulling yield-group hourly data …", file=sys.stderr)
 
 try:
     ob_hourly = run_report(
-        dimensions=["DATE", "HOUR", "YIELD_GROUP_NAME"],
+        dimensions=["HOUR", "YIELD_GROUP_NAME"],
         metrics=["YIELD_GROUP_IMPRESSIONS", "YIELD_GROUP_ESTIMATED_REVENUE"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
