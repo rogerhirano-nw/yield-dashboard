@@ -774,7 +774,7 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 .nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
 /* KPI strip — single grid so all six tiles render at exactly the same
    height. .nw-kpi-row has no background/border — only individual tiles. */
-.nw-kpi-row { display: grid; grid-template-columns: repeat(7, 1fr);
+.nw-kpi-row { display: grid; grid-template-columns: repeat(9, 1fr);
               gap: 8px; margin: 4px 0 10px;
               background: transparent; border: none; }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
@@ -2937,6 +2937,40 @@ if st.session_state.active_view == "campaigns":
                     _attn_series = _attn_daily.tail(7).tolist()
                     _attn_total = float(_attn_daily.mean())
 
+            # ── DV SIVT and GIVT — publisher-wide impression-weighted %
+            # per day (Σ Monitored Ads of that Fraud bucket / Σ all
+            # Monitored Ads). Both target 1% (industry-standard tolerance);
+            # lower is better, opposite of Attention/Viewability — handled
+            # below by the spark_color call passing `lower_is_worse=False`.
+            _sivt_series: list = []; _sivt_total = None
+            _givt_series: list = []; _givt_total = None
+            if (not ivt_df.empty
+                    and {"traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns)):
+                _ads_all = pd.to_numeric(ivt_df["monitored_ads"], errors="coerce").fillna(0)
+                _val_str = ivt_df["traffic_validity"].astype(str)
+
+                def _ivt_daily_pct(label: str) -> list:
+                    """Per-date impression-weighted % for one Fraud bucket."""
+                    tot_by_day = _ads_all.groupby(ivt_df["date"]).sum()
+                    mask = _val_str == label
+                    frd_by_day = _ads_all[mask].groupby(ivt_df["date"][mask]).sum()
+                    joined = pd.DataFrame({"total": tot_by_day, "fraud": frd_by_day}).fillna(0)
+                    joined["pct"] = (joined["fraud"] / joined["total"] * 100).where(joined["total"] > 0)
+                    return joined["pct"].dropna().sort_index().tail(7).tolist()
+
+                def _ivt_overall_pct(label: str) -> float | None:
+                    """Single publisher-wide % over the whole window."""
+                    tot = _ads_all.sum()
+                    if not tot:
+                        return None
+                    frd = _ads_all[_val_str == label].sum()
+                    return float(frd / tot * 100)
+
+                _sivt_series = _ivt_daily_pct("Fraud/SIVT")
+                _givt_series = _ivt_daily_pct("Fraud/GIVT")
+                _sivt_total  = _ivt_overall_pct("Fraud/SIVT")
+                _givt_total  = _ivt_overall_pct("Fraud/GIVT")
+
             _rev_spark = _sparkline_svg(_rev_series, color="green") if _rev_series else ""
             _pace_spark = _sparkline_svg(
                 _pace_series, target=float(_pacing_target),
@@ -2962,6 +2996,20 @@ if st.session_state.active_view == "campaigns":
                 color=_spark_color(_attn_series, _attn_target, True),
             ) if _attn_series else ""
 
+            # SIVT + GIVT sparklines. Both target = 1% (industry tolerance,
+            # top of green band). lower_is_worse=False because rising IVT
+            # is bad — opposite polarity from Attention/Viewability so the
+            # spark color flips correctly when crossing the 1% line.
+            _ivt_target = 1.0
+            _sivt_spark = _sparkline_svg(
+                _sivt_series, target=_ivt_target,
+                color=_spark_color(_sivt_series, _ivt_target, lower_is_worse=False),
+            ) if _sivt_series else ""
+            _givt_spark = _sparkline_svg(
+                _givt_series, target=_ivt_target,
+                color=_spark_color(_givt_series, _ivt_target, lower_is_worse=False),
+            ) if _givt_series else ""
+
             _view_target_str = f"{_view_target:g}%"
             _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
             _rev_sub  = _trend_delta_label(_rev_series, "pct")[0]
@@ -2971,6 +3019,16 @@ if st.session_state.active_view == "campaigns":
                         if _view_series else f"Target {_view_target_str}"
             _attn_sub = _trend_delta_label(_attn_series, "pp", suffix_target=f"{int(_attn_target)}")[0] \
                         if _attn_series else f"Target {int(_attn_target)}"
+            # IVT subtitles. Target "≤1%" wording communicates the
+            # ceiling-not-floor semantics. _trend_delta_label's existing
+            # arrow polarity ("▲" = neutral) is technically backwards for
+            # IVT (rising IVT is bad) but at sub-1% baseline values the
+            # arrow movement is tiny — flagging in dv_attention memory
+            # note as a follow-up if it becomes a real problem.
+            _sivt_sub = _trend_delta_label(_sivt_series, "pp", suffix_target=f"≤{_ivt_target:g}%")[0] \
+                        if _sivt_series else f"Target ≤{_ivt_target:g}%"
+            _givt_sub = _trend_delta_label(_givt_series, "pp", suffix_target=f"≤{_ivt_target:g}%")[0] \
+                        if _givt_series else f"Target ≤{_ivt_target:g}%"
             if _ctr_bench_str:
                 _ctr_sub = _trend_delta_label(_ctr_series, "pp", suffix_target=_ctr_bench_str)[0] \
                            if _ctr_series else f"Benchmark {_ctr_bench_str}"
@@ -2983,11 +3041,21 @@ if st.session_state.active_view == "campaigns":
             else:
                 _vcr_val = "—"
                 _vcr_sub = "No video"
-            # Single grid container so all seven tiles stretch to equal
-            # height. Attention slots in right after Viewability — both
-            # are quality metrics, both have DV-derived targets, both use
-            # the same color-band convention vs the target line.
+            # Single grid container so all nine tiles stretch to equal
+            # height. Quality metrics (Viewability, Attention, SIVT, GIVT)
+            # cluster in the middle so the eye can compare them in one
+            # sweep. SIVT and GIVT use 2 decimals because Newsweek's
+            # publisher-wide values run sub-1%; integer formatting would
+            # show "1%" for both 0.52% and 1.49% — losing the meaningful
+            # signal of "are we beating or breaking the 1% target".
             _attn_disp = f"{_attn_total:.0f}" if _attn_total is not None else "—"
+            def _ivt_disp(v):
+                if v is None or pd.isna(v): return "—"
+                v = float(v)
+                if v == 0:    return "0%"
+                if v < 1:     return f"{v:.2f}%"
+                if v < 10:    return f"{v:.1f}%"
+                return f"{v:.0f}%"
             st.markdown(
                 '<div class="nw-kpi-row">'
                 + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
@@ -2999,6 +3067,8 @@ if st.session_state.active_view == "campaigns":
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
                             _view_sub, _view_spark)
                 + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark)
+                + _kpi_tile("SIVT", _ivt_disp(_sivt_total), _sivt_sub, _sivt_spark)
+                + _kpi_tile("GIVT", _ivt_disp(_givt_total), _givt_sub, _givt_spark)
                 + _kpi_tile("VCR", _vcr_val, _vcr_sub)
                 + _kpi_tile("CTR",
                             f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
