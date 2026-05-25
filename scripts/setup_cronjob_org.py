@@ -77,6 +77,19 @@ JOBS = [
             "wdays":   [-1],
         },
     },
+    {
+        "repo":     "rogerhirano-nw/seller-comms",
+        "title":    "seller-comms weekly deal health report (Mon 9 AM ET)",
+        "workflow": "weekly_report.yml",
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [9],
+            "minutes": [0],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [1],    # Monday only (Sun=0..Sat=6)
+        },
+    },
 ]
 
 CRONJOB_API = "https://api.cron-job.org"
