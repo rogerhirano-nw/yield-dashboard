@@ -5674,6 +5674,127 @@ if st.session_state.active_view == "campaigns":
                 unsafe_allow_html=True,
             )
 
+        # ── Stale deals — no bid responses for 90+ days ──────────────────────
+        try:
+            _lbd_tbl = load("pmp_last_bid_date")
+        except Exception:
+            _lbd_tbl = pd.DataFrame()
+
+        if not _lbd_tbl.empty:
+            _today = datetime.now(timezone.utc).date()
+            _cutoff = (_today - timedelta(days=90)).isoformat()
+            _lbd_tbl["last_bid_date"]   = _lbd_tbl["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            _lbd_tbl["first_seen_date"] = _lbd_tbl["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            _stale = _lbd_tbl[
+                (_lbd_tbl["last_bid_date"].notna()   & (_lbd_tbl["last_bid_date"]   < _cutoff)) |
+                (_lbd_tbl["last_bid_date"].isna()    & _lbd_tbl["first_seen_date"].notna() & (_lbd_tbl["first_seen_date"] < _cutoff))
+            ].copy()
+
+            if not _stale.empty:
+                def _idle_days(row) -> int:
+                    for _col in ("last_bid_date", "first_seen_date"):
+                        _v = row.get(_col)
+                        if pd.notna(_v) and str(_v) not in ("", "None", "nan"):
+                            try:
+                                return (_today - date.fromisoformat(str(_v))).days
+                            except ValueError:
+                                pass
+                    return 0
+
+                _stale["days_idle"] = _stale.apply(_idle_days, axis=1)
+                _stale = _stale.sort_values("days_idle", ascending=False)
+
+                try:
+                    _pd_meta   = load("gam_pd_metadata")
+                    _pli_by_name = dict(zip(_pd_meta["deal_name"], _pd_meta["line_item_id"]))
+                except Exception:
+                    _pli_by_name = {}
+
+                _gam_stale = _stale[_stale["ssp"] == "GAM"].copy()
+                _gam_stale["line_item_id"] = _gam_stale["deal_key"].map(_pli_by_name)
+                _gam_archivable = _gam_stale[_gam_stale["line_item_id"].notna()]
+
+                _stale_label = (
+                    f"{len(_stale)} stale PMP deal{'s' if len(_stale) != 1 else ''} "
+                    f"· no bid responses for 90+ days"
+                )
+                with st.expander(f"⚠ {_stale_label}"):
+                    _stale_rows_html = []
+                    for _, _sr in _stale.iterrows():
+                        _lbd_disp = str(_sr.get("last_bid_date") or "")
+                        if not _lbd_disp or _lbd_disp in ("None", "nan"): _lbd_disp = "Never"
+                        _pli_id = _gam_archivable.loc[
+                            _gam_archivable["deal_key"] == _sr["deal_key"], "line_item_id"
+                        ].values
+                        _archive_via = (
+                            "GAM API" if _sr["ssp"] == "GAM" and len(_pli_id) > 0
+                            else f"Manual ({_pmp_esc(str(_sr['ssp']))} UI)"
+                        )
+                        _stale_rows_html.append(
+                            '<tr>'
+                            f'<td>{_pmp_esc(str(_sr["ssp"]))}</td>'
+                            f'<td>{_pmp_esc(str(_sr["deal_key"]))}</td>'
+                            f'<td>{_lbd_disp}</td>'
+                            f'<td class="num">{int(_sr["days_idle"])}d</td>'
+                            f'<td>{_archive_via}</td>'
+                            '</tr>'
+                        )
+                    st.markdown(
+                        '<table class="nw-tbl">'
+                        '<thead><tr>'
+                        '<th>SSP</th><th>Deal</th><th>Last Bid</th>'
+                        '<th class="num">Days idle</th><th>Archive via</th>'
+                        '</tr></thead>'
+                        '<tbody>' + "".join(_stale_rows_html) + '</tbody>'
+                        '</table>',
+                        unsafe_allow_html=True,
+                    )
+
+                    if not _gam_archivable.empty:
+                        st.markdown("**Archive GAM deals via API**")
+                        _to_archive = st.multiselect(
+                            "Select deals to archive",
+                            options=_gam_archivable["deal_key"].tolist(),
+                            key="pmp_stale_archive_select",
+                        )
+                        if _to_archive:
+                            if st.button("Archive selected in GAM", key="pmp_stale_archive_btn",
+                                         type="primary"):
+                                from gam_client import GAMClient as _GAMClient  # lazy import
+                                _gam_arc = _GAMClient()
+                                _arc_ok, _arc_fail = [], []
+                                for _deal_name in _to_archive:
+                                    _pid = _gam_archivable.loc[
+                                        _gam_archivable["deal_key"] == _deal_name, "line_item_id"
+                                    ].iloc[0]
+                                    if _gam_arc.archive_proposal_line_item(str(_pid)):
+                                        _arc_ok.append(_deal_name)
+                                    else:
+                                        _arc_fail.append(_deal_name)
+                                if _arc_ok:
+                                    st.success(
+                                        f"Archived {len(_arc_ok)} deal(s) in GAM: "
+                                        + ", ".join(_arc_ok)
+                                    )
+                                if _arc_fail:
+                                    st.error(
+                                        f"Failed to archive {len(_arc_fail)} deal(s): "
+                                        + ", ".join(_arc_fail)
+                                        + " — check logs for details."
+                                    )
+
+                    _manual_ssps = sorted(
+                        _stale.loc[
+                            ~((_stale["ssp"] == "GAM") & _stale["deal_key"].isin(_gam_archivable["deal_key"])),
+                            "ssp",
+                        ].unique().tolist()
+                    )
+                    if _manual_ssps:
+                        st.info(
+                            f"Deals on {', '.join(_manual_ssps)} must be archived manually "
+                            "in their respective SSP UIs — no publisher-side archive API is available."
+                        )
+
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
 if st.session_state.active_view == "configure":

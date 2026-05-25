@@ -23,6 +23,8 @@ When auditing or adding data, the production sources are:
 
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
+`pmp_last_bid_date` is a **cumulative** tracking table (not a 7-day rolling window). Upserted at the end of every full sweep by `refresh_pmp_last_bid_date()`. Schema: `(ssp, deal_key, last_bid_date, first_seen_date, updated_at)`. `deal_key` is `deal_meta_id` (Pubmatic), `deal_id` (Magnite), or `programmatic_deal_name` (GAM). Powers the "Stale deals" expander on the PMP tab — shows deals with no bid responses for 90+ days. GAM PD/PG deals can be archived directly via `GAMClient.archive_proposal_line_item(pli_id)` (SOAP `ProposalLineItemService`). Pubmatic and Magnite require manual action in their SSP UIs (no publisher-side archive API).
+
 For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
 
 ## Outbound daily digests
