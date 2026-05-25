@@ -66,6 +66,7 @@ jobs:
           gh pr comment "$PR" --body-file /tmp/comment_fmt.md
 
       - name: Run Magnite format investigation
+        continue-on-error: true   # investigation script — don't fail CI on crash
         env:
           MAGNITE_KEY: ${{ secrets.MAGNITE_KEY }}
           MAGNITE_SECRET: ${{ secrets.MAGNITE_SECRET }}

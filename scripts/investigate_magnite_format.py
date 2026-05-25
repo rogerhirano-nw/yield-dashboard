@@ -213,45 +213,48 @@ if hourly_df.empty:
     print("⚠ Hourly dimension not supported by Magnite API for this date range.\n")
     print("_(Magnite may only expose hourly data for the current day via the General dataset.)_\n")
 else:
-    hourly_df[hour_col] = hourly_df[hour_col].astype(int)
-    if fmt_dim_h and fmt_dim_h in hourly_df.columns:
-        # Infer format from size if that's what we got
-        if fmt_dim_h == "size":
-            hourly_df["format"] = hourly_df["size"].apply(classify_format)
-            fmt_dim_h = "format"
+    try:
+        hourly_df[hour_col] = pd.to_numeric(hourly_df[hour_col], errors="coerce").fillna(0).astype(int)
+        if fmt_dim_h and fmt_dim_h in hourly_df.columns:
+            # Infer format from size if that's what we got
+            if fmt_dim_h == "size":
+                hourly_df["format"] = hourly_df["size"].apply(classify_format)
+                fmt_dim_h = "format"
 
-        # Show hourly by format
-        formats_found = sorted(hourly_df[fmt_dim_h].unique())
-        for fmt in formats_found:
-            sub = hourly_df[hourly_df[fmt_dim_h] == fmt].groupby(hour_col).agg(
+            # Show hourly by format
+            formats_found = sorted(hourly_df[fmt_dim_h].unique())
+            for fmt in formats_found:
+                sub = hourly_df[hourly_df[fmt_dim_h] == fmt].groupby(hour_col).agg(
+                    impressions=("impressions", "sum"),
+                    revenue=("publisher_gross_revenue", "sum"),
+                ).reset_index().sort_values(hour_col)
+                sub["ecpm"] = ecpm_calc(sub["revenue"], sub["impressions"])
+
+                print(f"### {fmt}\n")
+                print(f"| Hour (UTC) | Imps | Revenue | eCPM |")
+                print(f"|------------|------|---------|------|")
+                for _, r in sub.iterrows():
+                    marker = " ◀ HIGH" if r["ecpm"] >= 40 else ""
+                    print(f"| {int(r[hour_col]):02d}:00       | {int(r['impressions']):>9,} | "
+                          f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f}{marker} |")
+                print()
+        else:
+            # Hour only, no format
+            hourly_df_agg = hourly_df.groupby(hour_col).agg(
                 impressions=("impressions", "sum"),
                 revenue=("publisher_gross_revenue", "sum"),
             ).reset_index().sort_values(hour_col)
-            sub["ecpm"] = ecpm_calc(sub["revenue"], sub["impressions"])
+            hourly_df_agg["ecpm"] = ecpm_calc(hourly_df_agg["revenue"], hourly_df_agg["impressions"])
 
-            print(f"### {fmt}\n")
+            print("_(No format dimension available alongside hour — showing all inventory combined)_\n")
             print(f"| Hour (UTC) | Imps | Revenue | eCPM |")
             print(f"|------------|------|---------|------|")
-            for _, r in sub.iterrows():
+            for _, r in hourly_df_agg.iterrows():
                 marker = " ◀ HIGH" if r["ecpm"] >= 40 else ""
                 print(f"| {int(r[hour_col]):02d}:00       | {int(r['impressions']):>9,} | "
                       f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f}{marker} |")
-            print()
-    else:
-        # Hour only, no format
-        hourly_df_agg = hourly_df.groupby(hour_col).agg(
-            impressions=("impressions", "sum"),
-            revenue=("publisher_gross_revenue", "sum"),
-        ).reset_index().sort_values(hour_col)
-        hourly_df_agg["ecpm"] = ecpm_calc(hourly_df_agg["revenue"], hourly_df_agg["impressions"])
-
-        print("_(No format dimension available alongside hour — showing all inventory combined)_\n")
-        print(f"| Hour (UTC) | Imps | Revenue | eCPM |")
-        print(f"|------------|------|---------|------|")
-        for _, r in hourly_df_agg.iterrows():
-            marker = " ◀ HIGH" if r["ecpm"] >= 40 else ""
-            print(f"| {int(r[hour_col]):02d}:00       | {int(r['impressions']):>9,} | "
-                  f"${r['revenue']:>9.2f} | ${r['ecpm']:>7.2f}{marker} |")
+    except Exception as e:
+        print(f"⚠ Hourly display failed: {e}\n")
 
 
 # ── 3. site breakdown by format ───────────────────────────────────────────────
