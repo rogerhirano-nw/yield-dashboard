@@ -933,12 +933,21 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .pace-delta  { font-size: 11px; margin-top: 4px; color: hsl(0, 50%, 70%); }
 .pace-delta.up { color: hsl(140, 20%, 52%); }
 .pace-delta.amber { color: hsl(40, 60%, 70%); }
-.nw-prog-bar { width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px;
-               overflow: hidden; }
+/* Progress cell: bar + inline % label. Wrapper puts them side-by-side
+   with a small gap so the number sits flush right of the bar without
+   wrapping. Bar fill color is muted gray-green to match the .txt-green
+   palette tuned in the same audit — large block of color in this
+   column was a major contributor to green-overwhelm. */
+.nw-prog-wrap { display: flex; align-items: center; gap: 8px; }
+.nw-prog-bar  { flex: 1; height: 8px; background: rgba(255,255,255,0.06);
+                border-radius: 4px; overflow: hidden; min-width: 40px; }
 .nw-prog-fill { height: 100%; border-radius: 4px; }
+.nw-prog-label{ font-size: 11px; color: rgba(250,250,250,0.55);
+                font-variant-numeric: tabular-nums; min-width: 28px;
+                text-align: right; }
 .prog-red   { background: hsl(0, 50%, 55%); }
 .prog-amber { background: hsl(40, 60%, 50%); }
-.prog-green { background: hsl(120, 40%, 50%); }
+.prog-green { background: hsl(140, 22%, 50%); }
 .seller-prog { font-style: italic; color: rgba(250,250,250,0.45); }
 .cell-dash { display: inline-block; color: rgba(250,250,250,0.30); }
 .bold-rev  { font-weight: 700; }
@@ -3876,9 +3885,17 @@ if st.session_state.active_view == "campaigns":
             def _progress_html(p):
                 if pd.isna(p): return ""
                 pct = max(0.0, min(1.0, p)) * 100
-                # Color the bar by the row's pace band: red if under, amber if off, green if healthy.
+                # Bar color is muted gray-green (the existing pace pill
+                # already communicates red/amber/green by-band; making the
+                # bar match the pace band too would be visual repetition).
+                # Inline % label sits flush-right of the bar.
                 cls = "prog-green"
-                return f'<div class="nw-prog-bar"><div class="nw-prog-fill {cls}" style="width:{pct:.0f}%"></div></div>'
+                return (
+                    '<div class="nw-prog-wrap">'
+                    f'<div class="nw-prog-bar"><div class="nw-prog-fill {cls}" style="width:{pct:.0f}%"></div></div>'
+                    f'<span class="nw-prog-label">{pct:.0f}%</span>'
+                    '</div>'
+                )
 
             # ── Drawer helpers (data + warning matcher + URL builder).
             # Single source of truth for the GAM Network ID — Configure setting
