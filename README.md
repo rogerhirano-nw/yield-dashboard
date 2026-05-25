@@ -7,9 +7,9 @@ cache and serving it through a fast Streamlit dashboard.
 - **Magnite DV+** — programmatic (General + Prebid Analytics datasets)
 - **Google Ad Manager (GAM)** — direct campaigns and PMP deals
 - **Pubmatic** — PMP deal reporting
-- **OpenSincera** — publisher quality + ecosystem metadata (A2CR, ads-in-view,
-  ad refresh, page weight, Prebid module mappings) for a hardcoded watch-list
-  of peer publishers
+- **OpenSincera** — publisher quality + ecosystem metadata (A2CR, ads-in-view, ad refresh, page weight, Prebid module mappings) for a hardcoded watch-list of peer publishers
+- **DoubleVerify Attention** — per-line-item Authentic Attention index (100-baseline) ingested from DV Pinnacle's daily email CSV via agentmail
+- **DoubleVerify IVT** — per-line-item SIVT% and GIVT% (impression-weighted, MRC standard) from the same DV Pinnacle email pipeline
 
 Structured for the live-dashboard use case: scheduled pull → local cache →
 fast dashboard read. No source is queried at render time.
@@ -19,16 +19,19 @@ fast dashboard read. No source is queried at render time.
 - `client.py` — `MagniteClient`: auth, create/poll/paginate loop, 429 backoff.
 - `gam_client.py` — `GAMClient`: GAM delivery, pacing, and PMP deal reports.
 - `pubmatic_client.py` — `PubmaticClient`: Pubmatic deal report.
-- `opensincera_client.py` — `OpenSinceraClient`: ecosystem, publishers,
-  ad systems, and Prebid module mappings from the OpenSincera API.
-- `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into SQLite.
-  Wire to cron / Airflow / systemd timer.
-- `dashboard.py` — minimal Streamlit dashboard reading from the cache.
+- `opensincera_client.py` — `OpenSinceraClient`: ecosystem, publishers, ad systems, and Prebid module mappings from the OpenSincera API.
+- `dv_attention_client.py` — polls agentmail inbox for DV Pinnacle "Attention Metrics" CSV, parses it into `dv_attention` table.
+- `dv_ivt_client.py` — same pipeline for DV Pinnacle "IVT" CSV → `dv_ivt` table (SIVT / GIVT / Valid Traffic rows with `monitored_ads` counts).
+- `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into Postgres (`DATABASE_URL`). Wire to cron / Airflow / systemd timer. Accepts `--mode={all,direct,opensincera}`.
+- `dashboard.py` — Streamlit dashboard reading from the cache. Deployed to Streamlit Cloud from `main`.
 
 ## Quickstart
 
 ```bash
 pip install requests pandas streamlit
+
+# Cache (Postgres in prod; SQLite path accepted locally too)
+export DATABASE_URL=postgresql://...
 
 # Magnite
 export MAGNITE_KEY=...
@@ -45,6 +48,10 @@ export PUBMATIC_PUBLISHER_ID=...
 
 # OpenSincera
 export OPENSINCERA_TOKEN=...
+
+# DoubleVerify (agentmail inbox that receives the DV Pinnacle daily CSVs)
+export AGENTMAIL_API_KEY=...
+export AGENTMAIL_INBOX_ID=...
 
 # 1. populate the cache
 python refresh_cache.py
