@@ -138,8 +138,9 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
                 conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
             else:
-                # Lookup table with no date column — replace all rows each run.
-                conn.execute(text(f'DELETE FROM "{table}"'))
+                # Lookup table with no date column — TRUNCATE is cheaper than
+                # DELETE for a full-table clear (single WAL record, no dead tuples).
+                conn.execute(text(f'TRUNCATE TABLE "{table}"'))
         df.to_sql(table, conn, if_exists="append", index=False)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
