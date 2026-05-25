@@ -1,0 +1,54 @@
+name: Seed pmp_last_bid_date (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of history to pull (default 90)"
+        required: false
+        default: "90"
+      sources:
+        description: "Comma-separated sources: pubmatic,magnite,gam"
+        required: false
+        default: "pubmatic,magnite"
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pandas sqlalchemy psycopg2-binary
+
+      - name: Run seed
+        env:
+          DATABASE_URL:            ${{ secrets.DATABASE_URL }}
+          PUBMATIC_PUBLISHER_ID:   ${{ secrets.PUBMATIC_PUBLISHER_ID }}
+          PUBMATIC_TOKEN:          ${{ secrets.PUBMATIC_TOKEN }}
+          PUBMATIC_REFRESH_TOKEN:  ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
+          MAGNITE_KEY:             ${{ secrets.MAGNITE_KEY }}
+          MAGNITE_SECRET:          ${{ secrets.MAGNITE_SECRET }}
+          MAGNITE_PUBLISHER_ID:    ${{ secrets.MAGNITE_PUBLISHER_ID }}
+        run: |
+          set -o pipefail
+          python scripts/seed_pmp_last_bid_date.py \
+            --days=${{ github.event.inputs.days || '90' }} \
+            --sources=${{ github.event.inputs.sources || 'pubmatic,magnite' }} \
+            2>&1 | tee /tmp/seed_output.txt
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## seed_pmp_last_bid_date" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**days:** ${{ github.event.inputs.days || '90' }}  " >> $GITHUB_STEP_SUMMARY
+          echo "**sources:** ${{ github.event.inputs.sources || 'pubmatic,magnite' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/seed_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
