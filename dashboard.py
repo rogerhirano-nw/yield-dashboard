@@ -12,6 +12,7 @@ of Magnite's queue.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -5135,6 +5136,15 @@ if st.session_state.active_view == "campaigns":
     if sel_pmp_teams and "Team" in combined_pmp.columns:
         combined_pmp = combined_pmp[combined_pmp["Team"].isin(sel_pmp_teams)]
 
+    # Reset pagination when any filter changes.
+    _pmp_filter_sig = str((
+        sorted(sel_pmp_deal_types), sorted(sel_pmp_ssps), sorted(sel_pmp_dsps),
+        sorted(sel_pmp_formats), sorted(sel_pmp_deal_sources), sorted(sel_pmp_teams),
+    ))
+    if st.session_state.get("_pmp_filter_sig") != _pmp_filter_sig:
+        st.session_state["pmp_page"] = 0
+        st.session_state["_pmp_filter_sig"] = _pmp_filter_sig
+
     if combined_pmp.empty:
         # Give a specific reason when we can detect it.
         if not _combined_prefilter.empty and sel_pmp_ssps:
@@ -5490,12 +5500,51 @@ if st.session_state.active_view == "campaigns":
                 '</div>'
             )
 
+        # ── Revenue threshold + pagination ──
+        _REV_MIN = 100.0 * 7           # $100/day × 7-day cache window
+        _show_low_rev = st.checkbox(
+            "Show deals under $100/day",
+            value=False,
+            key="pmp_show_low_rev",
+        )
+        if st.session_state.get("_pmp_prev_show_low_rev") != _show_low_rev:
+            st.session_state["pmp_page"] = 0
+        st.session_state["_pmp_prev_show_low_rev"] = _show_low_rev
+
+        _pmp_display = combined_pmp.copy()
+        if not _show_low_rev and "Revenue" in _pmp_display.columns:
+            _pmp_display = _pmp_display[_pmp_display["Revenue"].fillna(0) >= _REV_MIN]
+
+        _PAGE_SIZE = 25
+        _pmp_display_count = len(_pmp_display)
+        _pmp_total_pages = max(1, math.ceil(_pmp_display_count / _PAGE_SIZE))
+        _cur_page = max(0, min(int(st.session_state.get("pmp_page", 0)), _pmp_total_pages - 1))
+
+        def _pmp_go_prev():
+            st.session_state["pmp_page"] = max(0, _cur_page - 1)
+
+        def _pmp_go_next():
+            st.session_state["pmp_page"] = min(_pmp_total_pages - 1, _cur_page + 1)
+
+        _pmp_page_slice = _pmp_display.iloc[_cur_page * _PAGE_SIZE : (_cur_page + 1) * _PAGE_SIZE]
+
+        if _pmp_total_pages > 1:
+            _nc1, _nc2, _nc3 = st.columns([1, 4, 1])
+            with _nc1:
+                st.button("← Prev", key="pmp_prev_top", on_click=_pmp_go_prev,
+                          disabled=(_cur_page == 0), use_container_width=True)
+            with _nc2:
+                _pg_label = f"Page {_cur_page + 1} of {_pmp_total_pages}"
+                if _pmp_display_count < _pmp_count:
+                    _pg_label += f" · {_pmp_display_count} of {_pmp_count} deals shown"
+                st.caption(_pg_label)
+            with _nc3:
+                st.button("Next →", key="pmp_next_top", on_click=_pmp_go_next,
+                          disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
+
         # ── Table — custom HTML grid matching Direct campaigns design. ──
-        # No row cap: PMP is a flat list and ad-ops needs the whole inventory
-        # visible (75-ish rows today). If row count grows past ~500 and the
-        # custom HTML grid starts to feel slow, reintroduce pagination here.
         _pmp_rows_html = []
-        for _, row in combined_pmp.iterrows():
+        for _, row in _pmp_page_slice.iterrows():
             _primary, _paren, _sub = _parse_pmp_name(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
             _floor_val = _floors.get(_dt) if _dt else None
@@ -5546,11 +5595,19 @@ if st.session_state.active_view == "campaigns":
                 '</details>'
             )
 
+        _pmp_tbl_sub = (
+            f"· {_pmp_display_count} of {_pmp_count} shown · sorted by revenue"
+            if _pmp_display_count < _pmp_count
+            else f"· {_pmp_count} active · sorted by revenue"
+        )
+        if _pmp_total_pages > 1:
+            _pmp_tbl_sub += f" · page {_cur_page + 1}/{_pmp_total_pages}"
+
         st.markdown(
             '<div class="nw-tbl-wrap">'
             '<div class="nw-tbl-head">'
             f'<div class="nw-tbl-title">PMP deals'
-            f'<span class="nw-tbl-sub">· {_pmp_count} active · sorted by revenue</span></div>'
+            f'<span class="nw-tbl-sub">{_pmp_tbl_sub}</span></div>'
             '<div class="nw-legend-pill">'
             '<span><span class="pill-dt pill-dt-pg">PG</span> Programmatic guaranteed</span>'
             '<span><span class="pill-dt pill-dt-pd">PD</span> Preferred deal</span>'
@@ -5573,8 +5630,16 @@ if st.session_state.active_view == "campaigns":
             unsafe_allow_html=True,
         )
 
-        # No row cap on the PMP table; the subtitle above already shows the
-        # active count + sort key, so no separate caption needed.
+        if _pmp_total_pages > 1:
+            _nb1, _nb2, _nb3 = st.columns([1, 4, 1])
+            with _nb1:
+                st.button("← Prev", key="pmp_prev_bot", on_click=_pmp_go_prev,
+                          disabled=(_cur_page == 0), use_container_width=True)
+            with _nb2:
+                st.caption(f"Page {_cur_page + 1} of {_pmp_total_pages}")
+            with _nb3:
+                st.button("Next →", key="pmp_next_bot", on_click=_pmp_go_next,
+                          disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
 
         # ── GAM Private Auction inventory — collapsible card matching dashboard style ──
         if not _pa_inv.empty:
