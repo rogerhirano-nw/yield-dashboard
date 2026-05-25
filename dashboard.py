@@ -1231,6 +1231,24 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 }
 .nw-pmp-rows .nw-row-header .num,
 .nw-pmp-rows .nw-pmp-row .num { text-align: right; }
+
+/* Sticky table headers — both Direct and PMP. Header row sticks to the
+   top of the viewport while the user scrolls through the table body, so
+   the column labels stay visible on long tables. Background must be
+   opaque (≈ wrapper effective fill of Streamlit dark bg #0e1117 + 3%
+   white overlay) so rows scrolling underneath don't show through.
+   z-index 5 = above pace pills + delta rows in the body, below
+   Streamlit's chrome (which uses higher z-indices). Defined LAST in
+   the stylesheet so the position/background props win on source order
+   over the earlier .nw-row-header / .nw-pmp-rows .nw-row-header rules
+   that set typography (specificity is equal). */
+.nw-row-header,
+.nw-pmp-rows .nw-row-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #14171c;
+}
 /* Click-to-expand mechanics — each PMP row becomes <details name="pmp-cmprow">
    so it's a native exclusive-accordion (only one drawer open at a time). */
 .nw-pmp-rows details > summary.nw-pmp-row {
