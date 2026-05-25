@@ -58,6 +58,7 @@ def run(dimensions: list[str], metrics: list[str] = BASE_METRICS,
     return client.run_report(
         dimensions=dimensions,
         metrics=metrics,
+        date_range=None,          # must clear the "yesterday" default when using start/end
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
         filters=extra_filters,
