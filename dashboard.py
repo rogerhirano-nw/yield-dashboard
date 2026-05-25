@@ -859,9 +859,15 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
         font-size: 12px; line-height: 1.4; }
 .pill-red    { background: hsl(0, 35%, 22%);  color: hsl(0, 30%, 80%); }
 .pill-amber  { background: hsl(40, 45%, 22%); color: hsl(40, 35%, 78%); }
-.txt-green   { color: hsl(120, 50%, 65%); font-weight: 600; font-size: 13px; }
-.txt-amber   { color: hsl(40, 70%, 65%); font-weight: 500; font-size: 13px; }
-.txt-red     { color: hsl(0, 60%, 70%); font-weight: 500; font-size: 13px; }
+/* inline-block forces the colored-text spans to shrink to their content
+   width, so they right-align cleanly under a grid cell with `text-align:
+   right` — same behavior as .pill. Without this, the div renders as a
+   block that fills the cell, and the right-edge position can drift a
+   pixel or two off the .num cells that render as inline <span>s (e.g.
+   CTR). Visible misalignment on columns like CTR/VCR was the symptom. */
+.txt-green   { display: inline-block; color: hsl(120, 50%, 65%); font-weight: 600; font-size: 13px; }
+.txt-amber   { display: inline-block; color: hsl(40, 70%, 65%);  font-weight: 500; font-size: 13px; }
+.txt-red     { display: inline-block; color: hsl(0, 60%, 70%);   font-weight: 500; font-size: 13px; }
 .pace-delta  { font-size: 11px; margin-top: 4px; color: hsl(0, 50%, 70%); }
 .pace-delta.up { color: hsl(120, 40%, 70%); }
 .pace-delta.amber { color: hsl(40, 60%, 70%); }
@@ -872,7 +878,7 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .prog-amber { background: hsl(40, 60%, 50%); }
 .prog-green { background: hsl(120, 40%, 50%); }
 .seller-prog { font-style: italic; color: rgba(250,250,250,0.45); }
-.cell-dash { color: rgba(250,250,250,0.30); }
+.cell-dash { display: inline-block; color: rgba(250,250,250,0.30); }
 .bold-rev  { font-weight: 700; }
 /* ── Grid-based row layout + native <details> drawer ─────────────── */
 .nw-rows .nw-row-header,
