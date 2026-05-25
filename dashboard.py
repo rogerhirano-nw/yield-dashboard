@@ -774,7 +774,7 @@ h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4
 .nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
 /* KPI strip — single grid so all six tiles render at exactly the same
    height. .nw-kpi-row has no background/border — only individual tiles. */
-.nw-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr);
+.nw-kpi-row { display: grid; grid-template-columns: repeat(7, 1fr);
               gap: 8px; margin: 4px 0 10px;
               background: transparent; border: none; }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
@@ -2920,6 +2920,23 @@ if st.session_state.active_view == "campaigns":
             _view_series = _ratio_series("viewable_imps", "measurable_imps")
             _pace_series = _pacing_series()
 
+            # ── DV Attention Index — publisher-wide daily mean over the
+            # report window. Sparkline target line is at 100 (DV's industry
+            # median). Falls back gracefully when dv_df is empty (DV email
+            # not yet polled / agentmail creds missing).
+            _attn_series: list = []
+            _attn_total = None
+            if (not dv_df.empty
+                    and "attention_index" in dv_df.columns
+                    and "date" in dv_df.columns):
+                _attn_daily = (dv_df.dropna(subset=["attention_index"])
+                                   .groupby("date")["attention_index"]
+                                   .mean()
+                                   .sort_index())
+                if not _attn_daily.empty:
+                    _attn_series = _attn_daily.tail(7).tolist()
+                    _attn_total = float(_attn_daily.mean())
+
             _rev_spark = _sparkline_svg(_rev_series, color="green") if _rev_series else ""
             _pace_spark = _sparkline_svg(
                 _pace_series, target=float(_pacing_target),
@@ -2935,6 +2952,16 @@ if st.session_state.active_view == "campaigns":
             ) if _view_series else ""
             _ctr_spark = _sparkline_svg(_ctr_series, color="green") if _ctr_series else ""
 
+            # Attention sparkline + subtitle. Target = 100 (DV's industry
+            # median, the same value used for the per-row column's color
+            # bands). "pp" label is technically "points off the 100 index"
+            # but reads correctly as e.g. "▲ 2.1pp · target 100".
+            _attn_target = 100.0
+            _attn_spark = _sparkline_svg(
+                _attn_series, target=_attn_target,
+                color=_spark_color(_attn_series, _attn_target, True),
+            ) if _attn_series else ""
+
             _view_target_str = f"{_view_target:g}%"
             _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
             _rev_sub  = _trend_delta_label(_rev_series, "pct")[0]
@@ -2942,6 +2969,8 @@ if st.session_state.active_view == "campaigns":
                         if _pace_series else f"Target {int(_pacing_target)}%"
             _view_sub = _trend_delta_label(_view_series, "pp", suffix_target=_view_target_str)[0] \
                         if _view_series else f"Target {_view_target_str}"
+            _attn_sub = _trend_delta_label(_attn_series, "pp", suffix_target=f"{int(_attn_target)}")[0] \
+                        if _attn_series else f"Target {int(_attn_target)}"
             if _ctr_bench_str:
                 _ctr_sub = _trend_delta_label(_ctr_series, "pp", suffix_target=_ctr_bench_str)[0] \
                            if _ctr_series else f"Benchmark {_ctr_bench_str}"
@@ -2954,7 +2983,11 @@ if st.session_state.active_view == "campaigns":
             else:
                 _vcr_val = "—"
                 _vcr_sub = "No video"
-            # Single grid container so all six tiles stretch to equal height.
+            # Single grid container so all seven tiles stretch to equal
+            # height. Attention slots in right after Viewability — both
+            # are quality metrics, both have DV-derived targets, both use
+            # the same color-band convention vs the target line.
+            _attn_disp = f"{_attn_total:.0f}" if _attn_total is not None else "—"
             st.markdown(
                 '<div class="nw-kpi-row">'
                 + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
@@ -2965,6 +2998,7 @@ if st.session_state.active_view == "campaigns":
                 + _kpi_tile("Viewability",
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
                             _view_sub, _view_spark)
+                + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark)
                 + _kpi_tile("VCR", _vcr_val, _vcr_sub)
                 + _kpi_tile("CTR",
                             f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
