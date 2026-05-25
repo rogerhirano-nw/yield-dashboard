@@ -492,24 +492,31 @@ def _attention_html(idx, prior=None) -> str:
     return cell
 
 
-def _delta_below_html(d, lower_is_worse: bool = True, unit: str = "pp") -> str:
+def _delta_below_html(
+    d,
+    lower_is_worse: bool = True,
+    unit: str = "pp",
+    *,
+    new_line_threshold: float = 100.0,
+    noise_threshold: float = 0.05,
+) -> str:
     """Return the secondary "▲/▼ X.Xpp" row that sits under a main value
     cell — matches the visual the Pace column has used since the redesign.
 
-    `d` is current − prior, in the same unit as the displayed value (so
-    "pp" for a percentage, "" for raw indices). `lower_is_worse=True`
-    means the metric is "higher = better" (Viewability, Attention,
-    CTR, VCR, Pace). Set False for IVT-style metrics where a rising
-    value is bad (SIVT, GIVT) — the polarity of the up/down classes
-    flips accordingly.
+    `d` is current − prior in pp/index-point units, OR pct change in %
+    (set `unit="%"`). `lower_is_worse=True` means "higher is better"
+    (Viewability, Attention, CTR, VCR, Pace, Revenue, Impressions);
+    set False for IVT-style metrics where rising = bad (SIVT, GIVT).
 
-    Returns "" when there's no signal (None / NaN / |d| < 0.05) so the
-    cell stays compact. Returns the "new line item" italic flag when
-    |d| > 100 (matches Pace's existing behavior for first-day lines).
+    For VOLUME columns (Revenue, Impressions) where doubling vs prior
+    is a real signal not a "this line is new" flag, pass
+    `new_line_threshold=None` to disable the italic-flag branch entirely.
+
+    Returns "" when there's no signal (None / NaN / |d| < noise band).
     """
-    if d is None or pd.isna(d) or abs(d) < 0.05:
+    if d is None or pd.isna(d) or abs(d) < noise_threshold:
         return ""
-    if abs(d) > 100:
+    if new_line_threshold is not None and abs(d) > new_line_threshold:
         return '<div class="pace-delta" style="font-style:italic">new line item</div>'
     arrow = "▲" if d > 0 else "▼"
     is_improvement = (d > 0) if lower_is_worse else (d < 0)
@@ -4525,13 +4532,36 @@ if st.session_state.active_view == "campaigns":
                 _vcr_prior = _lt_minus_1d_ratio("lifetime_video_completes", "video_completes_1d",
                                                 "lifetime_video_starts",    "video_starts_1d")
 
+                # Revenue + Impressions deltas — % change of latest day's
+                # cumulative vs "everything before yesterday". Different
+                # math than the ratios above: volumes need % change, not
+                # pp. `new_line_threshold=None` because a doubling on
+                # these columns is real signal, not a "new line item" flag.
+                def _volume_pct_delta(lifetime_col: str, day_col: str):
+                    if lifetime_col not in row.index or day_col not in row.index:
+                        return None
+                    lt  = pd.to_numeric(row.get(lifetime_col), errors="coerce")
+                    d1  = pd.to_numeric(row.get(day_col),      errors="coerce")
+                    if pd.isna(lt) or pd.isna(d1):
+                        return None
+                    prior = lt - d1
+                    if prior <= 0:
+                        return None
+                    return d1 / prior * 100   # latest day's growth vs prior cumulative
+                _rev_pct   = _volume_pct_delta("lifetime_revenue", "revenue_1d")
+                _imp_pct   = _volume_pct_delta("lifetime_impressions_delivered", "impressions_1d")
+                _rev_delta = _delta_below_html(_rev_pct, lower_is_worse=True,
+                                                unit="%", new_line_threshold=None)
+                _imp_delta = _delta_below_html(_imp_pct, lower_is_worse=True,
+                                                unit="%", new_line_threshold=None)
+
                 _rows_html.append(
                     '<details class="nw-row" name="cmprow">'
                     '<summary>'
                     f'<div><div class="li-name"><span class="nw-chev">›</span>{_ord_html}{_esc(_display_name)}</div>'
                     f'<div class="li-sub">{_esc(_sub) or "—"}</div></div>'
-                    f'<div class="num">{_revenue_html(_rev)}</div>'
-                    f'<div class="num">{_delivered_html(_delivered)}</div>'
+                    f'<div class="num">{_revenue_html(_rev)}{_rev_delta}</div>'
+                    f'<div class="num">{_delivered_html(_delivered)}{_imp_delta}</div>'
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
                     f'<div class="num">{_viewability_html(_vw, _fmt_str, p_prior=_vw_prior)}</div>'
                     f'<div class="num">{_attention_html(_attn, prior=_attn_prior)}</div>'
