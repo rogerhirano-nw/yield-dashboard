@@ -1,15 +1,18 @@
 """
 High-RPM investigation for 2026-05-24.
 
-Pulls three focused reports from GAM to explain why eCPM/RPM was elevated
+Pulls four focused reports from GAM to explain why eCPM/RPM was elevated
 (~$50) at certain hours yesterday:
 
-  1. Hourly eCPM curve  — DATE + HOUR_OF_DAY, all metrics
+  1. Hourly eCPM curve  — DATE + HOUR, all ad-server metrics
   2. Top line-item contributors at peak hours (Direct / PG / PD)
   3. Programmatic deal breakdown by hour (PA / PD / PG)
+  4. Open Bidding yield-group hourly eCPM
 
 Run via the GitHub Actions workflow: .github/workflows/investigate_high_rpm.yml
 Requires GAM_SERVICE_ACCOUNT_JSON and GAM_NETWORK_ID environment variables.
+
+Note: GAM v1 enum uses HOUR (value 100), not HOUR_OF_DAY.
 """
 
 from __future__ import annotations
@@ -106,7 +109,7 @@ print("Pulling hourly direct (ad-server) delivery …", file=sys.stderr)
 
 try:
     hourly = run_report(
-        dimensions=["DATE", "HOUR_OF_DAY"],
+        dimensions=["DATE", "HOUR"],   # GAM v1 enum: HOUR = 100
         metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE", "AD_SERVER_AVERAGE_ECPM"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
@@ -115,23 +118,24 @@ try:
         "ad_server_revenue": "revenue",
         "ad_server_average_ecpm": "avg_ecpm_gam",
     })
-    hourly["impressions"]    = pd.to_numeric(hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
-    hourly["revenue"]        = pd.to_numeric(hourly["revenue"], errors="coerce").fillna(0.0)
-    hourly["avg_ecpm_gam"]   = pd.to_numeric(hourly["avg_ecpm_gam"], errors="coerce").fillna(0.0)
-    hourly["ecpm_calc"]      = ecpm(hourly["revenue"], hourly["impressions"])
-    hourly = hourly.sort_values("hour_of_day")
+    hourly["impressions"]  = pd.to_numeric(hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
+    hourly["revenue"]      = pd.to_numeric(hourly["revenue"], errors="coerce").fillna(0.0)
+    hourly["avg_ecpm_gam"] = pd.to_numeric(hourly["avg_ecpm_gam"], errors="coerce").fillna(0.0)
+    hourly["ecpm_calc"]    = ecpm(hourly["revenue"], hourly["impressions"])
+    hourly["hour"]         = hourly["hour"].astype(int)
+    hourly = hourly.sort_values("hour")
 
     # Annotate peak hours (eCPM ≥ $40)
-    peak = hourly[hourly["ecpm_calc"] >= 40.0]
-    peak_hours = sorted(peak["hour_of_day"].astype(int).tolist())
+    peak      = hourly[hourly["ecpm_calc"] >= 40.0]
+    peak_hours = sorted(peak["hour"].tolist())
 
-    print(f"| Hour (ET) | Impressions | Revenue | eCPM (calc) |")
-    print(f"|-----------|-------------|---------|-------------|")
+    print(f"| Hour (UTC) | Impressions | Revenue | eCPM (calc) |")
+    print(f"|------------|-------------|---------|-------------|")
     for _, row in hourly.iterrows():
         marker = " ◀ HIGH" if row["ecpm_calc"] >= 40 else ""
-        print(f"| {int(row['hour_of_day']):02d}:00     | {int(row['impressions']):>11,} | ${row['revenue']:>7.2f} | ${row['ecpm_calc']:>10.2f}{marker} |")
+        print(f"| {int(row['hour']):02d}:00       | {int(row['impressions']):>11,} | ${row['revenue']:>7.2f} | ${row['ecpm_calc']:>10.2f}{marker} |")
 
-    print(f"\n**Peak hours (eCPM ≥ $40): {peak_hours}**\n")
+    print(f"\n**Peak hours (eCPM ≥ $40, UTC): {peak_hours}**\n")
     daily_imps = hourly["impressions"].sum()
     daily_rev  = hourly["revenue"].sum()
     print(f"Day total: {daily_imps:,} impressions, ${daily_rev:,.2f} revenue → ${ecpm(pd.Series([daily_rev]), pd.Series([daily_imps])).iloc[0]:.2f} day-avg eCPM\n")
@@ -151,7 +155,7 @@ else:
     print("Pulling hourly line-item delivery …", file=sys.stderr)
     try:
         li_hourly = run_report(
-            dimensions=["DATE", "HOUR_OF_DAY", "LINE_ITEM_ID", "LINE_ITEM_NAME", "ORDER_NAME"],
+            dimensions=["DATE", "HOUR", "LINE_ITEM_ID", "LINE_ITEM_NAME", "ORDER_NAME"],
             metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_REVENUE"],
             start=INVESTIGATE_DATE,
             end=INVESTIGATE_DATE,
@@ -159,9 +163,9 @@ else:
         li_hourly = li_hourly.rename(columns={"ad_server_revenue": "revenue"})
         li_hourly["impressions"] = pd.to_numeric(li_hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
         li_hourly["revenue"]     = pd.to_numeric(li_hourly["revenue"], errors="coerce").fillna(0.0)
-        li_hourly["hour_of_day"] = li_hourly["hour_of_day"].astype(int)
+        li_hourly["hour"]        = li_hourly["hour"].astype(int)
 
-        peak_li = li_hourly[li_hourly["hour_of_day"].isin(peak_hours)].copy()
+        peak_li = li_hourly[li_hourly["hour"].isin(peak_hours)].copy()
         peak_li["ecpm"] = ecpm(peak_li["revenue"], peak_li["impressions"])
 
         # Aggregate across peak hours, top-15 by revenue
@@ -173,11 +177,11 @@ else:
         agg["ecpm"] = ecpm(agg["revenue"], agg["impressions"])
         agg = agg.sort_values("revenue", ascending=False).head(15)
 
-        print(f"Top line items during peak hours {peak_hours}:\n")
+        print(f"Top line items during peak hours {peak_hours} (UTC):\n")
         print(f"| Line Item | Order | Imps | Revenue | eCPM |")
         print(f"|-----------|-------|------|---------|------|")
         for _, row in agg.iterrows():
-            li_name = str(row["line_item_name"])[:55]
+            li_name  = str(row["line_item_name"])[:55]
             ord_name = str(row["order_name"])[:35]
             print(f"| {li_name:<55} | {ord_name:<35} | {int(row['impressions']):>8,} | ${row['revenue']:>8.2f} | ${row['ecpm']:>6.2f} |")
 
@@ -207,7 +211,7 @@ print("Pulling hourly programmatic deal revenue …", file=sys.stderr)
 
 try:
     deal_hourly = run_report(
-        dimensions=["DATE", "HOUR_OF_DAY", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
+        dimensions=["DATE", "HOUR", "DEAL_NAME", "PROGRAMMATIC_CHANNEL_NAME"],
         metrics=["IMPRESSIONS", "REVENUE_WITHOUT_CPD"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
@@ -221,23 +225,23 @@ try:
         deal_hourly["deal_name"].notna()
         & ~deal_hourly["deal_name"].isin(["", "(Not applicable)", "nan"])
     ].copy()
-    deal_hourly["impressions"]    = pd.to_numeric(deal_hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
-    deal_hourly["revenue"]        = pd.to_numeric(deal_hourly["revenue"], errors="coerce").fillna(0.0)
-    deal_hourly["hour_of_day"]    = deal_hourly["hour_of_day"].astype(int)
-    deal_hourly["ecpm"]           = ecpm(deal_hourly["revenue"], deal_hourly["impressions"])
+    deal_hourly["impressions"] = pd.to_numeric(deal_hourly["ad_server_impressions"], errors="coerce").fillna(0).astype(int)
+    deal_hourly["revenue"]     = pd.to_numeric(deal_hourly["revenue"], errors="coerce").fillna(0.0)
+    deal_hourly["hour"]        = deal_hourly["hour"].astype(int)
+    deal_hourly["ecpm"]        = ecpm(deal_hourly["revenue"], deal_hourly["impressions"])
 
     # Summarise deal revenue by hour
-    deal_by_hour = deal_hourly.groupby("hour_of_day").agg(
+    deal_by_hour = deal_hourly.groupby("hour").agg(
         impressions=("impressions", "sum"),
         revenue=("revenue", "sum"),
-    ).reset_index().sort_values("hour_of_day")
+    ).reset_index().sort_values("hour")
     deal_by_hour["ecpm"] = ecpm(deal_by_hour["revenue"], deal_by_hour["impressions"])
 
-    print(f"| Hour | Deal Imps | Deal Revenue | Deal eCPM |")
-    print(f"|------|-----------|--------------|-----------|")
+    print(f"| Hour (UTC) | Deal Imps | Deal Revenue | Deal eCPM |")
+    print(f"|------------|-----------|--------------|-----------|")
     for _, row in deal_by_hour.iterrows():
         marker = " ◀ HIGH" if row["ecpm"] >= 40 else ""
-        print(f"| {int(row['hour_of_day']):02d}:00 | {int(row['impressions']):>9,} | ${row['revenue']:>12.2f} | ${row['ecpm']:>8.2f}{marker} |")
+        print(f"| {int(row['hour']):02d}:00       | {int(row['impressions']):>9,} | ${row['revenue']:>12.2f} | ${row['ecpm']:>8.2f}{marker} |")
 
     # Top deals overall
     deal_agg = deal_hourly.groupby(["deal_name", "programmatic_channel_name"]).agg(
@@ -266,27 +270,27 @@ print("Pulling yield-group hourly data …", file=sys.stderr)
 
 try:
     ob_hourly = run_report(
-        dimensions=["DATE", "HOUR_OF_DAY", "YIELD_GROUP_NAME"],
+        dimensions=["DATE", "HOUR", "YIELD_GROUP_NAME"],
         metrics=["YIELD_GROUP_IMPRESSIONS", "YIELD_GROUP_ESTIMATED_REVENUE"],
         start=INVESTIGATE_DATE,
         end=INVESTIGATE_DATE,
     )
     ob_hourly["impressions"] = pd.to_numeric(ob_hourly["yield_group_impressions"], errors="coerce").fillna(0).astype(int)
     ob_hourly["revenue"]     = pd.to_numeric(ob_hourly["yield_group_estimated_revenue"], errors="coerce").fillna(0.0)
-    ob_hourly["hour_of_day"] = ob_hourly["hour_of_day"].astype(int)
+    ob_hourly["hour"]        = ob_hourly["hour"].astype(int)
     ob_hourly["ecpm"]        = ecpm(ob_hourly["revenue"], ob_hourly["impressions"])
 
-    ob_by_hour = ob_hourly.groupby("hour_of_day").agg(
+    ob_by_hour = ob_hourly.groupby("hour").agg(
         impressions=("impressions", "sum"),
         revenue=("revenue", "sum"),
-    ).reset_index().sort_values("hour_of_day")
+    ).reset_index().sort_values("hour")
     ob_by_hour["ecpm"] = ecpm(ob_by_hour["revenue"], ob_by_hour["impressions"])
 
-    print(f"| Hour | OB Imps | OB Revenue | OB eCPM |")
-    print(f"|------|---------|------------|---------|")
+    print(f"| Hour (UTC) | OB Imps | OB Revenue | OB eCPM |")
+    print(f"|------------|---------|------------|---------|")
     for _, row in ob_by_hour.iterrows():
         marker = " ◀ HIGH" if row["ecpm"] >= 40 else ""
-        print(f"| {int(row['hour_of_day']):02d}:00 | {int(row['impressions']):>7,} | ${row['revenue']:>10.2f} | ${row['ecpm']:>7.2f}{marker} |")
+        print(f"| {int(row['hour']):02d}:00       | {int(row['impressions']):>7,} | ${row['revenue']:>10.2f} | ${row['ecpm']:>7.2f}{marker} |")
 
     # OB by yield group
     og_agg = ob_hourly.groupby("yield_group_name").agg(
@@ -304,4 +308,4 @@ except Exception as e:
     print(f"⚠ OB yield-group report failed: {e}\n")
 
 
-print("\n---\n_Investigation complete. All times are UTC (GAM reports in UTC)._\n")
+print("\n---\n_Investigation complete. All times are UTC (GAM reports in UTC). Subtract 4h for EDT._\n")
