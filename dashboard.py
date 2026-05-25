@@ -2925,8 +2925,9 @@ if st.session_state.active_view == "campaigns":
                     f'</div>'
                 )
 
-            # ── Compute the four sparkline series. ───────────────────────
+            # ── Compute the sparkline series. ────────────────────────────
             _rev_series  = _series_sum("revenue")
+            _impr_series = _series_sum("impressions")
             _ctr_series  = _ratio_series("clicks", "impressions")
             _view_series = _ratio_series("viewable_imps", "measurable_imps")
             _pace_series = _pacing_series()
@@ -2985,7 +2986,8 @@ if st.session_state.active_view == "campaigns":
                 _sivt_total  = _ivt_overall_pct("Fraud/SIVT")
                 _givt_total  = _ivt_overall_pct("Fraud/GIVT")
 
-            _rev_spark = _sparkline_svg(_rev_series, color="green") if _rev_series else ""
+            _rev_spark  = _sparkline_svg(_rev_series,  color="green") if _rev_series  else ""
+            _impr_spark = _sparkline_svg(_impr_series, color="green") if _impr_series else ""
             _pace_spark = _sparkline_svg(
                 _pace_series, target=float(_pacing_target),
                 color=_spark_color(_pace_series, float(_pacing_target), True),
@@ -3038,7 +3040,8 @@ if st.session_state.active_view == "campaigns":
 
             _view_target_str = f"{_view_target:g}%"
             _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
-            _rev_sub  = _trend_delta_label(_rev_series, "pct")[0]
+            _rev_sub  = _trend_delta_label(_rev_series,  "pct")[0]
+            _impr_sub = _trend_delta_label(_impr_series, "pct")[0]
             _pace_sub = _trend_delta_label(_pace_series, "pp", suffix_target=f"{int(_pacing_target)}%")[0] \
                         if _pace_series else f"Target {int(_pacing_target)}%"
             _view_sub = _trend_delta_label(_view_series, "pp", suffix_target=_view_target_str)[0] \
@@ -3096,7 +3099,7 @@ if st.session_state.active_view == "campaigns":
             st.markdown(
                 '<div class="nw-kpi-row">'
                 + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
-                + _kpi_tile("Impressions", _fmt_count(total_impr))
+                + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
                 + _kpi_tile("Avg pacing",
                             f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
                             _pace_sub, _pace_spark)
