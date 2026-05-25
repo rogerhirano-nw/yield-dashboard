@@ -914,15 +914,24 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .pill-amber  { background: hsl(40, 45%, 22%); color: hsl(40, 35%, 78%); }
 /* inline-block forces the colored-text spans to shrink to their content
    width, so they right-align cleanly under a grid cell with `text-align:
-   right` — same behavior as .pill. Without this, the div renders as a
-   block that fills the cell, and the right-edge position can drift a
-   pixel or two off the .num cells that render as inline <span>s (e.g.
-   CTR). Visible misalignment on columns like CTR/VCR was the symptom. */
-.txt-green   { display: inline-block; color: hsl(120, 50%, 65%); font-weight: 600; font-size: 13px; }
+   right` — same behavior as .pill.
+
+   Color palette is intentionally asymmetric: amber + red are loud
+   (saturated, brighter) because they need to grab attention. Green is
+   muted (gray-green, lower saturation) because "healthy" should recede
+   into the background — when most of the page is fine, you don't want
+   the eye distracted by a sea of bright greens, only pulled toward the
+   amber/red exceptions. Tuned 2026-05-25 after the green-overwhelm
+   audit. */
+.txt-green   { display: inline-block; color: hsl(140, 22%, 58%); font-weight: 500; font-size: 13px; }
 .txt-amber   { display: inline-block; color: hsl(40, 70%, 65%);  font-weight: 500; font-size: 13px; }
 .txt-red     { display: inline-block; color: hsl(0, 60%, 70%);   font-weight: 500; font-size: 13px; }
+/* Delta-row palette: red (default, "worsening") + amber stay loud;
+   green "up" (improving) is muted gray-green so it doesn't compete
+   with the warning colors for attention. Same asymmetric logic as
+   .txt-green above — healthy = recede, problem = pop. */
 .pace-delta  { font-size: 11px; margin-top: 4px; color: hsl(0, 50%, 70%); }
-.pace-delta.up { color: hsl(120, 40%, 70%); }
+.pace-delta.up { color: hsl(140, 20%, 52%); }
 .pace-delta.amber { color: hsl(40, 60%, 70%); }
 .nw-prog-bar { width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px;
                overflow: hidden; }
