@@ -463,13 +463,17 @@ def _parse_gam_salesperson(val):
     return m.group(1).strip() if m else val.strip()
 
 
-def _attention_html(idx) -> str:
+def _attention_html(idx, prior=None) -> str:
     """Render the DV Attention Index. 100 = DV's industry median; higher
     = better attention. Color bands:
       red    < 85   (15%+ below median — meaningful underperformance)
       amber  85-100 (slightly below median)
       green  ≥ 100  (at or above median)
     None / NaN → em-dash (line/deal not in the DV report).
+
+    Optional `prior` (latest-day-excluded mean) appends a "▲/▼ Xpp"
+    delta below the value, matching the Pace cell's pattern. Higher is
+    better, so up = green, down = red.
 
     Defined at module level (not inside the campaigns view) because both
     the Direct campaigns table AND the PMP deals table use it — each from
@@ -478,15 +482,53 @@ def _attention_html(idx) -> str:
         return '<div class="cell-dash">—</div>'
     v = float(idx)
     if v < 85:
-        return f'<div class="pill pill-red">{v:.0f}</div>'
-    if v < 100:
-        return f'<div class="txt-amber">{v:.0f}</div>'
-    return f'<div class="txt-green">{v:.0f}</div>'
+        cell = f'<div class="pill pill-red">{v:.0f}</div>'
+    elif v < 100:
+        cell = f'<div class="txt-amber">{v:.0f}</div>'
+    else:
+        cell = f'<div class="txt-green">{v:.0f}</div>'
+    if prior is not None and not pd.isna(prior):
+        cell += _delta_below_html(v - float(prior), lower_is_worse=True)
+    return cell
 
 
-def _ivt_html(pct) -> str:
+def _delta_below_html(d, lower_is_worse: bool = True, unit: str = "pp") -> str:
+    """Return the secondary "▲/▼ X.Xpp" row that sits under a main value
+    cell — matches the visual the Pace column has used since the redesign.
+
+    `d` is current − prior, in the same unit as the displayed value (so
+    "pp" for a percentage, "" for raw indices). `lower_is_worse=True`
+    means the metric is "higher = better" (Viewability, Attention,
+    CTR, VCR, Pace). Set False for IVT-style metrics where a rising
+    value is bad (SIVT, GIVT) — the polarity of the up/down classes
+    flips accordingly.
+
+    Returns "" when there's no signal (None / NaN / |d| < 0.05) so the
+    cell stays compact. Returns the "new line item" italic flag when
+    |d| > 100 (matches Pace's existing behavior for first-day lines).
+    """
+    if d is None or pd.isna(d) or abs(d) < 0.05:
+        return ""
+    if abs(d) > 100:
+        return '<div class="pace-delta" style="font-style:italic">new line item</div>'
+    arrow = "▲" if d > 0 else "▼"
+    is_improvement = (d > 0) if lower_is_worse else (d < 0)
+    cls = "pace-delta up" if is_improvement else "pace-delta"
+    # Sub-1 deltas get 2 decimals (so 0.04 vs 0.10 are distinguishable);
+    # larger deltas stay at 1 decimal for tidiness.
+    body = f"{abs(d):.2f}{unit}" if abs(d) < 1 else f"{abs(d):.1f}{unit}"
+    return f'<div class="{cls}">{arrow} {body}</div>'
+
+
+def _ivt_html(pct, prior=None) -> str:
     """Render a DV IVT impression-weighted percentage (used by both
     the SIVT and GIVT columns).
+
+    Optional `prior` (latest-day-excluded mean) appends a "▲/▼ Xpp"
+    delta below the value. IVT is "lower is better", so up = red
+    (rising fraud is bad), down = green (improving). Polarity flipped
+    via lower_is_worse=False.
+
 
     Calculation (per-line, last 7 days):
         IVT % = Σ Monitored Ads (Fraud rows) / Σ Monitored Ads (all rows) × 100
@@ -514,12 +556,16 @@ def _ivt_html(pct) -> str:
         return '<div class="cell-dash">—</div>'
     v = float(pct)
     if v >= 3:
-        return f'<div class="pill pill-red">{v:.1f}%</div>'
-    if v >= 1:
-        return f'<div class="txt-amber">{v:.1f}%</div>'
-    if v == 0:
-        return '<div class="txt-green">0%</div>'
-    return f'<div class="txt-green">{v:.2f}%</div>'
+        cell = f'<div class="pill pill-red">{v:.1f}%</div>'
+    elif v >= 1:
+        cell = f'<div class="txt-amber">{v:.1f}%</div>'
+    elif v == 0:
+        cell = '<div class="txt-green">0%</div>'
+    else:
+        cell = f'<div class="txt-green">{v:.2f}%</div>'
+    if prior is not None and not pd.isna(prior):
+        cell += _delta_below_html(v - float(prior), lower_is_worse=False)
+    return cell
 
 
 PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yesterday", "Custom"]
@@ -2226,23 +2272,39 @@ if st.session_state.active_view == "campaigns":
         dv_df = load("dv_attention")
     except Exception:
         dv_df = pd.DataFrame()
-    _dv_by_li: dict = {}
-    _dv_by_order: dict = {}
+    _dv_by_li:       dict = {}
+    _dv_by_order:    dict = {}
+    _dv_prior_by_li: dict = {}   # latest-day-excluded mean (for the per-row delta)
+    _dv_prior_by_order: dict = {}
     if not dv_df.empty and "attention_index" in dv_df.columns:
+
+        def _attn_current_and_prior(group_col: str) -> tuple[dict, dict]:
+            """Two lookups per group: (current = overall mean, prior =
+            mean excluding the latest date)."""
+            if group_col not in dv_df.columns:
+                return {}, {}
+            sub = dv_df.dropna(subset=[group_col, "attention_index", "date"])
+            if sub.empty:
+                return {}, {}
+            # Per (line, date) mean attention — multiple DV rows per day
+            # can exist when DV measured several creatives on the line.
+            daily = (sub.groupby([group_col, "date"])["attention_index"]
+                        .mean().sort_index())
+            cur, prior = {}, {}
+            for line in daily.index.get_level_values(0).unique():
+                vals = daily.loc[line].sort_index()
+                cur[line] = float(vals.mean())
+                if len(vals) >= 2:
+                    prior[line] = float(vals.iloc[:-1].mean())
+            return cur, prior
+
         if "line_item_name" in dv_df.columns:
-            _dv_agg = (dv_df.dropna(subset=["line_item_name"])
-                           .groupby("line_item_name", as_index=False)["attention_index"]
-                           .mean())
-            _dv_by_li = dict(zip(_dv_agg["line_item_name"], _dv_agg["attention_index"]))
+            _dv_by_li, _dv_prior_by_li = _attn_current_and_prior("line_item_name")
         if "order_name" in dv_df.columns:
             # PMP deals (combined_pmp.Deal) join by order_name — DV emits
-            # the deal name in the Order column for PMP rows. Build a
-            # parallel lookup so the PMP table can resolve attention
-            # without depending on the Line Item being populated.
-            _dv_ord_agg = (dv_df.dropna(subset=["order_name"])
-                              .groupby("order_name", as_index=False)["attention_index"]
-                              .mean())
-            _dv_by_order = dict(zip(_dv_ord_agg["order_name"], _dv_ord_agg["attention_index"]))
+            # the deal name in the Order column for PMP rows. Build the
+            # same current/prior pair so the PMP table can show a delta.
+            _dv_by_order, _dv_prior_by_order = _attn_current_and_prior("order_name")
 
     # DV IVT — daily Pinnacle CSV emailed to newsweek@agentmail.to with
     # subject "Unified Analytics Report: IVT". Polled by refresh_dv_ivt()
@@ -2269,35 +2331,58 @@ if st.session_state.active_view == "campaigns":
         ivt_df = load("dv_ivt")
     except Exception:
         ivt_df = pd.DataFrame()
-    _sivt_by_li:    dict = {}
-    _givt_by_li:    dict = {}
-    _sivt_by_order: dict = {}
-    _givt_by_order: dict = {}
+    _sivt_by_li:        dict = {}
+    _givt_by_li:        dict = {}
+    _sivt_by_order:     dict = {}
+    _givt_by_order:     dict = {}
+    _sivt_prior_by_li:    dict = {}
+    _givt_prior_by_li:    dict = {}
+    _sivt_prior_by_order: dict = {}
+    _givt_prior_by_order: dict = {}
     if (not ivt_df.empty
-            and {"traffic_validity", "monitored_ads"}.issubset(ivt_df.columns)):
+            and {"traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns)):
         _ads = pd.to_numeric(ivt_df["monitored_ads"], errors="coerce").fillna(0)
         _validity_str = ivt_df["traffic_validity"].astype(str)
 
-        def _imp_share(group_col: str, fraud_label: str) -> dict:
-            """Per group (line item or order), share of Monitored Ads
-            classified into `fraud_label` over total Monitored Ads."""
-            sub = ivt_df.dropna(subset=[group_col])
+        def _imp_share_with_prior(group_col: str, fraud_label: str) -> tuple[dict, dict]:
+            """Two lookups per group: (current = whole-window imp-weighted
+            %, prior = imp-weighted % excluding the latest date). Used by
+            the per-row Δ annotation below the SIVT/GIVT cells."""
+            sub = ivt_df.dropna(subset=[group_col, "date"])
             if sub.empty:
-                return {}
+                return {}, {}
             ads_sub = _ads.reindex(sub.index)
-            tot = ads_sub.groupby(sub[group_col]).sum()
             mask = _validity_str.reindex(sub.index) == fraud_label
-            frd = ads_sub[mask].groupby(sub.loc[mask, group_col]).sum()
-            joined = pd.DataFrame({"total": tot, "fraud": frd}).fillna(0)
-            joined["pct"] = (joined["fraud"] / joined["total"] * 100).where(joined["total"] > 0)
-            return joined["pct"].dropna().to_dict()
+
+            # Per-(line, date) impression totals + fraud-bucket totals.
+            tot_pd = ads_sub.groupby([sub[group_col], sub["date"]]).sum()
+            frd_pd = (ads_sub[mask]
+                          .groupby([sub.loc[mask, group_col], sub.loc[mask, "date"]])
+                          .sum())
+            joined = pd.DataFrame({"tot": tot_pd, "frd": frd_pd}).fillna(0)
+
+            cur, prior = {}, {}
+            for line in joined.index.get_level_values(0).unique():
+                rows = joined.loc[line].sort_index()  # ordered by date
+                # Current = whole-window aggregate share.
+                tot_all = rows["tot"].sum()
+                if tot_all <= 0:
+                    continue
+                cur[line] = float(rows["frd"].sum() / tot_all * 100)
+                # Prior = share excluding the latest date.
+                if len(rows) >= 2:
+                    rows_prior = rows.iloc[:-1]
+                    tot_prior = rows_prior["tot"].sum()
+                    if tot_prior > 0:
+                        prior[line] = float(rows_prior["frd"].sum() / tot_prior * 100)
+            return cur, prior
 
         if "line_item_name" in ivt_df.columns:
-            _sivt_by_li = _imp_share("line_item_name", "Fraud/SIVT")
-            _givt_by_li = _imp_share("line_item_name", "Fraud/GIVT")
+            _sivt_by_li, _sivt_prior_by_li = _imp_share_with_prior("line_item_name", "Fraud/SIVT")
+            _givt_by_li, _givt_prior_by_li = _imp_share_with_prior("line_item_name", "Fraud/GIVT")
         if "order_name" in ivt_df.columns:
-            _sivt_by_order = _imp_share("order_name", "Fraud/SIVT")
-            _givt_by_order = _imp_share("order_name", "Fraud/GIVT")
+            _sivt_by_order, _sivt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/SIVT")
+            _givt_by_order, _givt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/GIVT")
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -3697,7 +3782,7 @@ if st.session_state.active_view == "campaigns":
                         return float(v)
                 return target * 0.85 if target else None
 
-            def _viewability_html(p, fmt=None):
+            def _viewability_html(p, fmt=None, p_prior=None):
                 p = _parse_leading_pct(p)
                 if p is None: return '<div class="cell-dash">—</div>'
                 target = _bench_target(fmt, "viewability_pct",
@@ -3705,33 +3790,41 @@ if st.session_state.active_view == "campaigns":
                 red_cut = _bench_red_cut(fmt, "viewability", target,
                                          fallback_key="Display")
                 if p < red_cut:
-                    return f'<div class="pill pill-red">{p:.1f}%</div>'
-                if p < target:
-                    return f'<div class="txt-amber">{p:.1f}%</div>'
-                return f'<div class="txt-green">{p:.1f}%</div>'
+                    cell = f'<div class="pill pill-red">{p:.1f}%</div>'
+                elif p < target:
+                    cell = f'<div class="txt-amber">{p:.1f}%</div>'
+                else:
+                    cell = f'<div class="txt-green">{p:.1f}%</div>'
+                if p_prior is not None and not pd.isna(p_prior):
+                    cell += _delta_below_html(p - float(p_prior), lower_is_worse=True)
+                return cell
 
             # _attention_html now lives at module level so the PMP table
             # can use it too (different lexical scope). Kept the reference
             # site here unchanged.
 
-            def _ctr_html(p, fmt=None):
+            def _ctr_html(p, fmt=None, p_prior=None):
                 # p is already numeric (computed from lifetime clicks/imps *100).
                 if p is None or pd.isna(p):
                     return '<span class="cell-dash">—</span>'
                 target = _bench_target(fmt, "ctr_pct",
                                        fallback_key="Display", fallback=None)
                 if target is None or target <= 0:
-                    # No benchmark configured → uncolored value (original behavior).
-                    return f"{p:.2f}%"
-                red_cut = _bench_red_cut(fmt, "ctr", target,
-                                         fallback_key="Display")
-                if p < red_cut:
-                    return f'<span class="pill pill-red">{p:.2f}%</span>'
-                if p < target:
-                    return f'<span class="txt-amber">{p:.2f}%</span>'
-                return f'<span class="txt-green">{p:.2f}%</span>'
+                    cell = f"{p:.2f}%"
+                else:
+                    red_cut = _bench_red_cut(fmt, "ctr", target,
+                                             fallback_key="Display")
+                    if p < red_cut:
+                        cell = f'<span class="pill pill-red">{p:.2f}%</span>'
+                    elif p < target:
+                        cell = f'<span class="txt-amber">{p:.2f}%</span>'
+                    else:
+                        cell = f'<span class="txt-green">{p:.2f}%</span>'
+                if p_prior is not None and not pd.isna(p_prior):
+                    cell += _delta_below_html(p - float(p_prior), lower_is_worse=True)
+                return cell
 
-            def _vcr_html(p, is_video, fmt=None):
+            def _vcr_html(p, is_video, fmt=None, p_prior=None):
                 if not is_video:
                     return '<div class="cell-dash">—</div>'
                 p = _parse_leading_pct(p)
@@ -3741,10 +3834,14 @@ if st.session_state.active_view == "campaigns":
                 red_cut = _bench_red_cut(fmt, "vcr", target,
                                          fallback_key="Video")
                 if p < red_cut:
-                    return f'<div class="pill pill-red">{p:.1f}%</div>'
-                if p < target:
-                    return f'<div class="txt-amber">{p:.1f}%</div>'
-                return f'<div class="txt-green">{p:.1f}%</div>'
+                    cell = f'<div class="pill pill-red">{p:.1f}%</div>'
+                elif p < target:
+                    cell = f'<div class="txt-amber">{p:.1f}%</div>'
+                else:
+                    cell = f'<div class="txt-green">{p:.1f}%</div>'
+                if p_prior is not None and not pd.isna(p_prior):
+                    cell += _delta_below_html(p - float(p_prior), lower_is_worse=True)
+                return cell
 
             def _delivered_html(v):
                 if pd.isna(v): return '<div class="cell-dash">—</div>'
@@ -4393,13 +4490,41 @@ if st.session_state.active_view == "campaigns":
                     _display_name = "_".join(_tokens[2:])
                 else:
                     _display_name = _li_clean
-                # DV Attention + SIVT + GIVT day-prevalence — joined by
-                # exact line_item_name. Built once at view load from
-                # dv_attention / dv_ivt tables. Rows with no DV coverage
-                # get None → em-dash via the respective formatters.
-                _attn = _dv_by_li.get(_li_clean)   if _dv_by_li   else None
-                _sivt = _sivt_by_li.get(_li_clean) if _sivt_by_li else None
-                _givt = _givt_by_li.get(_li_clean) if _givt_by_li else None
+                # DV Attention + SIVT + GIVT (current values + priors for
+                # the Δ row below each cell). Lookups built once at view
+                # load from dv_attention / dv_ivt tables. Rows with no DV
+                # coverage get None → em-dash via the respective formatters.
+                _attn       = _dv_by_li.get(_li_clean)         if _dv_by_li       else None
+                _attn_prior = _dv_prior_by_li.get(_li_clean)   if _dv_prior_by_li else None
+                _sivt       = _sivt_by_li.get(_li_clean)       if _sivt_by_li     else None
+                _sivt_prior = _sivt_prior_by_li.get(_li_clean) if _sivt_prior_by_li else None
+                _givt       = _givt_by_li.get(_li_clean)       if _givt_by_li     else None
+                _givt_prior = _givt_prior_by_li.get(_li_clean) if _givt_prior_by_li else None
+
+                # Viewability + CTR + VCR priors — same "lifetime minus 1d"
+                # pattern Pace uses (see _prior_pacing). Computed inline so
+                # we don't have to round-trip through a separate lookup;
+                # numerators/denominators are right here on the row.
+                def _lt_minus_1d_ratio(lt_num_col, d1_num_col, lt_den_col, d1_den_col, scale=100.0):
+                    if not all(c in row.index for c in (lt_num_col, d1_num_col, lt_den_col, d1_den_col)):
+                        return None
+                    ltn = pd.to_numeric(row.get(lt_num_col),  errors="coerce")
+                    d1n = pd.to_numeric(row.get(d1_num_col),  errors="coerce")
+                    ltd = pd.to_numeric(row.get(lt_den_col),  errors="coerce")
+                    d1d = pd.to_numeric(row.get(d1_den_col),  errors="coerce")
+                    if any(pd.isna(x) for x in (ltn, d1n, ltd, d1d)):
+                        return None
+                    den = max(ltd - d1d, 0)
+                    if den <= 0:
+                        return None
+                    return (ltn - d1n) / den * scale
+                _vw_prior  = _lt_minus_1d_ratio("lifetime_viewable_imps",   "viewable_imps_1d",
+                                                "lifetime_measurable_imps", "measurable_imps_1d")
+                _ctr_prior = _lt_minus_1d_ratio("lifetime_clicks",          "clicks_1d",
+                                                "lifetime_impressions_delivered", "impressions_1d")
+                _vcr_prior = _lt_minus_1d_ratio("lifetime_video_completes", "video_completes_1d",
+                                                "lifetime_video_starts",    "video_starts_1d")
+
                 _rows_html.append(
                     '<details class="nw-row" name="cmprow">'
                     '<summary>'
@@ -4408,12 +4533,12 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_revenue_html(_rev)}</div>'
                     f'<div class="num">{_delivered_html(_delivered)}</div>'
                     f'<div class="num">{_pace_html(_pace, _pace_prior)}</div>'
-                    f'<div class="num">{_viewability_html(_vw, _fmt_str)}</div>'
-                    f'<div class="num">{_attention_html(_attn)}</div>'
-                    f'<div class="num">{_ivt_html(_sivt)}</div>'
-                    f'<div class="num">{_ivt_html(_givt)}</div>'
-                    f'<div class="num">{_ctr_html(_ctr, _fmt_str)}</div>'
-                    f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str)}</div>'
+                    f'<div class="num">{_viewability_html(_vw, _fmt_str, p_prior=_vw_prior)}</div>'
+                    f'<div class="num">{_attention_html(_attn, prior=_attn_prior)}</div>'
+                    f'<div class="num">{_ivt_html(_sivt, prior=_sivt_prior)}</div>'
+                    f'<div class="num">{_ivt_html(_givt, prior=_givt_prior)}</div>'
+                    f'<div class="num">{_ctr_html(_ctr, _fmt_str, p_prior=_ctr_prior)}</div>'
+                    f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str, p_prior=_vcr_prior)}</div>'
                     f'<div>{_seller_html}</div>'
                     f'<div>{_progress_html(_progress)}</div>'
                     '</summary>'
@@ -5282,10 +5407,15 @@ if st.session_state.active_view == "campaigns":
             # DV Attention + SIVT + GIVT for PMP — joined by exact
             # deal_name (== Order in the DV CSV). GAM PMP rows are the
             # only ones that get DV coverage; Magnite/Pubmatic-only
-            # deals fall through to "—".
-            _pmp_attn = _dv_by_order.get(row.get("Deal"))   if _dv_by_order   else None
-            _pmp_sivt = _sivt_by_order.get(row.get("Deal")) if _sivt_by_order else None
-            _pmp_givt = _givt_by_order.get(row.get("Deal")) if _givt_by_order else None
+            # deals fall through to "—". Priors give us the per-row Δ
+            # underneath each cell (same look as Pace).
+            _deal_key = row.get("Deal")
+            _pmp_attn       = _dv_by_order.get(_deal_key)         if _dv_by_order         else None
+            _pmp_attn_prior = _dv_prior_by_order.get(_deal_key)   if _dv_prior_by_order   else None
+            _pmp_sivt       = _sivt_by_order.get(_deal_key)       if _sivt_by_order       else None
+            _pmp_sivt_prior = _sivt_prior_by_order.get(_deal_key) if _sivt_prior_by_order else None
+            _pmp_givt       = _givt_by_order.get(_deal_key)       if _givt_by_order       else None
+            _pmp_givt_prior = _givt_prior_by_order.get(_deal_key) if _givt_prior_by_order else None
             _pmp_rows_html.append(
                 '<details name="pmp-cmprow">'
                 '<summary class="nw-pmp-row">'
@@ -5297,9 +5427,9 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="num">{_rev_cell(row.get("Revenue"))}</div>'
                 f'<div class="num">{_impr_cell(row.get("Paid Impressions"))}</div>'
                 f'<div class="num">{_ecpm_cell(row.get("eCPM"), _floor_val)}</div>'
-                f'<div class="num">{_attention_html(_pmp_attn)}</div>'
-                f'<div class="num">{_ivt_html(_pmp_sivt)}</div>'
-                f'<div class="num">{_ivt_html(_pmp_givt)}</div>'
+                f'<div class="num">{_attention_html(_pmp_attn, prior=_pmp_attn_prior)}</div>'
+                f'<div class="num">{_ivt_html(_pmp_sivt, prior=_pmp_sivt_prior)}</div>'
+                f'<div class="num">{_ivt_html(_pmp_givt, prior=_pmp_givt_prior)}</div>'
                 f'<div>{_seller_html}</div>'
                 '</summary>'
                 + _pmp_drawer_html(row) +
