@@ -950,6 +950,11 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
 .prog-green { background: hsl(140, 22%, 50%); }
 .seller-prog { font-style: italic; color: rgba(250,250,250,0.45); }
 .cell-dash { display: inline-block; color: rgba(250,250,250,0.30); }
+/* Per-column alignment override — used for VCR right now (centered
+   reads better when the cell has a value+delta stack and the column
+   is wide enough that right-alignment leaves a big gap of empty
+   space on the left). */
+.num.center { text-align: center; }
 .bold-rev  { font-weight: 700; }
 /* ── Grid-based row layout + native <details> drawer ─────────────── */
 .nw-rows .nw-row-header,
@@ -4599,7 +4604,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num">{_ivt_html(_sivt, prior=_sivt_prior)}</div>'
                     f'<div class="num">{_ivt_html(_givt, prior=_givt_prior)}</div>'
                     f'<div class="num">{_ctr_html(_ctr, _fmt_str, p_prior=_ctr_prior)}</div>'
-                    f'<div class="num">{_vcr_html(_vcr_val, _is_video, _fmt_str, p_prior=_vcr_prior)}</div>'
+                    f'<div class="num center">{_vcr_html(_vcr_val, _is_video, _fmt_str, p_prior=_vcr_prior)}</div>'
                     f'<div>{_seller_html}</div>'
                     f'<div>{_progress_html(_progress)}</div>'
                     '</summary>'
@@ -4630,7 +4635,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="num" title="Sophisticated Invalid Traffic — impression-weighted: Σ SIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. SIVT includes data center, bot fraud, hijacked devices, emulators, app/site fraud, injected ads, laundering.">SIVT</div>'
                 '<div class="num" title="General Invalid Traffic — impression-weighted: Σ GIVT Monitored Ads / Σ all Monitored Ads. Industry tolerance ≤ 3%. GIVT is self-identifying invalid: declared bots, known crawlers, etc.">GIVT</div>'
                 '<div class="num">CTR</div>'
-                '<div class="num">VCR</div>'
+                '<div class="num center">VCR</div>'
                 '<div>Seller</div>'
                 '<div>Progress</div>'
                 '</div>'
