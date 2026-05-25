@@ -39,7 +39,7 @@ import urllib.request
 JOBS = [
     {
         "repo":     "rogerhirano-nw/yield-dashboard",
-        "title":    "yield-dashboard refresh (daily 5 AM ET)",
+        "title":    "yield-dashboard refresh ALL (daily 5 AM ET)",
         "workflow": "refresh.yml",
         # All-day, but hours/minutes pinned → fires once at 05:00 NY time.
         "schedule": {
@@ -66,11 +66,11 @@ JOBS = [
     },
     {
         "repo":     "rogerhirano-nw/apple-news",
-        "title":    "apple-news daily report (daily 8 AM ET)",
+        "title":    "apple-news daily report (daily 10 AM ET)",
         "workflow": "daily-report.yml",
         "schedule": {
             "timezone": "America/New_York",
-            "hours":   [8],
+            "hours":   [10],
             "minutes": [0],
             "mdays":   [-1],
             "months":  [-1],
