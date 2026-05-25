@@ -36,7 +36,11 @@ from client import MagniteClient, MagniteAPIError
 sys.stdout.reconfigure(line_buffering=True)
 
 # ── auth ──────────────────────────────────────────────────────────────────────
-INVESTIGATE_DATE = "2026-05-24"
+# Magnite start/end must be full ISO-8601 datetimes — bare dates (yyyy-MM-dd)
+# return 400: "could not be parsed at index 10".
+INVESTIGATE_DATE       = "2026-05-24"          # kept for print labels
+INVESTIGATE_DATE_START = "2026-05-24T00:00:00Z"
+INVESTIGATE_DATE_END   = "2026-05-24T23:59:59Z"
 
 _key    = os.environ.get("MAGNITE_KEY", "")
 _secret = os.environ.get("MAGNITE_SECRET", "")
@@ -58,9 +62,9 @@ def run(dimensions: list[str], metrics: list[str] = BASE_METRICS,
     return client.run_report(
         dimensions=dimensions,
         metrics=metrics,
-        date_range=None,          # must clear the "yesterday" default when using start/end
-        start=INVESTIGATE_DATE,
-        end=INVESTIGATE_DATE,
+        date_range=None,              # must clear the "yesterday" default when using start/end
+        start=INVESTIGATE_DATE_START,
+        end=INVESTIGATE_DATE_END,
         filters=extra_filters,
     )
 
