@@ -2618,7 +2618,18 @@ if st.session_state.active_view == "campaigns":
                     if "ad_server_active_view_viewable_impressions_rate" in view_gam else None
                 )
 
-            avg_vcr = view_gam["vcr"].mean() if "vcr" in view_gam else None
+            # VCR — recompute impression-weighted (Σ completes / Σ starts)
+            # for consistency with the sparkline and the Viewability tile's
+            # pattern. Was previously a per-line mean (each line weighted
+            # equally), which over-weighted small lines. Falls back to the
+            # per-line mean when the lifetime video columns aren't present
+            # (older gam_campaigns schema before #25).
+            if "lifetime_video_starts" in view_gam.columns and "lifetime_video_completes" in view_gam.columns:
+                _vs = pd.to_numeric(view_gam["lifetime_video_starts"],    errors="coerce").sum()
+                _vc = pd.to_numeric(view_gam["lifetime_video_completes"], errors="coerce").sum()
+                avg_vcr = (_vc / _vs * 100) if _vs else None
+            else:
+                avg_vcr = view_gam["vcr"].mean() if "vcr" in view_gam else None
             _video_li_count = 0
             if "ad_format" in view_gam.columns:
                 _video_li_count = view_gam["ad_format"].astype("string").str.lower().str.contains("video", na=False).sum()
@@ -2919,6 +2930,9 @@ if st.session_state.active_view == "campaigns":
             _ctr_series  = _ratio_series("clicks", "impressions")
             _view_series = _ratio_series("viewable_imps", "measurable_imps")
             _pace_series = _pacing_series()
+            # VCR daily series = Σ video_completes per day / Σ video_starts per day.
+            # `_ratio_series` already multiplies by 100 (default scale=100.0).
+            _vcr_series  = _ratio_series("video_completes", "video_starts")
 
             # ── DV Attention Index — publisher-wide daily mean over the
             # report window. Sparkline target line is at 100 (DV's industry
@@ -3010,6 +3024,18 @@ if st.session_state.active_view == "campaigns":
                 color=_spark_color(_givt_series, _ivt_target, lower_is_worse=False),
             ) if _givt_series else ""
 
+            # VCR sparkline. Target sources from Configure → Benchmarks by
+            # format → Video → VCR%; falls back to 70 (the standard benchmark
+            # for in-stream video). Like Viewability/Attention, higher is
+            # better, so default _spark_color polarity is correct.
+            _vcr_bench = ((_cfg.get("benchmarks_by_format") or {})
+                          .get("Video", {}) or {}).get("vcr_pct")
+            _vcr_target = float(_vcr_bench) if _vcr_bench is not None else 70.0
+            _vcr_spark = _sparkline_svg(
+                _vcr_series, target=_vcr_target,
+                color=_spark_color(_vcr_series, _vcr_target, True),
+            ) if _vcr_series else ""
+
             _view_target_str = f"{_view_target:g}%"
             _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
             _rev_sub  = _trend_delta_label(_rev_series, "pct")[0]
@@ -3037,10 +3063,21 @@ if st.session_state.active_view == "campaigns":
 
             if _video_li_count > 0 and pd.notna(avg_vcr):
                 _vcr_val = f"{avg_vcr:.1f}%"
-                _vcr_sub = f"{int(_video_li_count)} video line{'s' if _video_li_count != 1 else ''}"
+                # Match the Viewability/Attention/SIVT/GIVT subtitle pattern:
+                # trend-vs-prior-avg + target. Keep the video-line count too
+                # so the user knows the average is across N lines, not 1 —
+                # rendered as a parenthetical so the trend stays prominent.
+                _vcr_target_str = f"{_vcr_target:g}%"
+                _lines_bit = f"{int(_video_li_count)} video line{'s' if _video_li_count != 1 else ''}"
+                _vcr_trend = _trend_delta_label(
+                    _vcr_series, "pp",
+                    suffix_target=f"{_vcr_target_str} · {_lines_bit}",
+                )[0] if _vcr_series else f"Target {_vcr_target_str} · {_lines_bit}"
+                _vcr_sub = _vcr_trend
             else:
                 _vcr_val = "—"
                 _vcr_sub = "No video"
+                _vcr_spark = ""  # no sparkline when no video data
             # Single grid container so all nine tiles stretch to equal
             # height. Quality metrics (Viewability, Attention, SIVT, GIVT)
             # cluster in the middle so the eye can compare them in one
@@ -3069,7 +3106,7 @@ if st.session_state.active_view == "campaigns":
                 + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark)
                 + _kpi_tile("SIVT", _ivt_disp(_sivt_total), _sivt_sub, _sivt_spark)
                 + _kpi_tile("GIVT", _ivt_disp(_givt_total), _givt_sub, _givt_spark)
-                + _kpi_tile("VCR", _vcr_val, _vcr_sub)
+                + _kpi_tile("VCR", _vcr_val, _vcr_sub, _vcr_spark)
                 + _kpi_tile("CTR",
                             f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
                             _ctr_sub, _ctr_spark)
