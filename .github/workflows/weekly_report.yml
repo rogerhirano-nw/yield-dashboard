@@ -44,6 +44,21 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # 0. Refresh the 180-day deal age proxy tables. These only feed the weekly
+      #    deal health report, so they were removed from the daily 5 AM sweep
+      #    and moved here to run once a week instead.
+      - name: Refresh deal age metadata
+        run: python refresh_cache.py --mode=deal-metadata
+        env:
+          DATABASE_URL:               ${{ secrets.DATABASE_URL }}
+          MAGNITE_KEY:                ${{ secrets.MAGNITE_KEY }}
+          MAGNITE_SECRET:             ${{ secrets.MAGNITE_SECRET }}
+          MAGNITE_PUBLISHER_ID:       ${{ secrets.MAGNITE_PUBLISHER_ID }}
+          PUBMATIC_PUBLISHER_ID:      ${{ secrets.PUBMATIC_PUBLISHER_ID }}
+          PUBMATIC_TOKEN:             ${{ secrets.PUBMATIC_TOKEN }}
+          PUBMATIC_REFRESH_TOKEN:     ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
+          PUBMATIC_EMAIL:             ${{ secrets.PUBMATIC_EMAIL }}
+
       # 1. Generate the HTML email + redacted CSV. --no-publish keeps the
       #    script from touching git; the "Publish CSV" step below handles
       #    the branch dance separately.

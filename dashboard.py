@@ -79,6 +79,7 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 
+@st.cache_resource
 def _engine() -> sqlalchemy.Engine:
     try:
         url = st.secrets["DATABASE_URL"]
