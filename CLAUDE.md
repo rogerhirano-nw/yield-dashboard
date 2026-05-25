@@ -27,6 +27,8 @@ When auditing or adding data, the production sources are:
 
 For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
 
+For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `scripts/seed_pmp_last_bid_date.py` (default `--days=90`, `--sources=pubmatic,magnite,gam`). Safe to re-run — upsert never regresses `last_bid_date`. Supports `--dry-run` to preview without writing.
+
 ## Outbound daily digests
 
 | Digest | Script | Workflow | Recipients (var) | Subject |
