@@ -976,7 +976,14 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   grid-template-columns:
     22fr 10fr 9fr 10fr 9fr 9fr 6fr 6fr 8fr 10fr 10fr 14fr;
   gap: 10px;
-  align-items: center;
+  /* align-items: start so every cell's first line (the value) sits at
+     the same top edge. Was align-items: center, which works only when
+     every cell has the same line count. After adding per-row deltas
+     to most cells, rows mix 1-line (no delta when there's no signal)
+     and 2-line cells, so centering pulled the single-line values down
+     to the row midpoint while the value+delta stack stayed at the top
+     — values across a row no longer aligned horizontally. */
+  align-items: start;
   padding: 10px 12px;
   border-bottom: 0.5px solid rgba(255,255,255,0.05);
 }
@@ -1206,7 +1213,13 @@ h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
   display: grid;
   /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | SIVT | GIVT | Seller */
   grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 7fr 7fr 13fr;
-  gap: 8px; align-items: center; padding: 10px 12px;
+  gap: 8px;
+  /* align-items: start matches the Direct table — see same-named CSS
+     rule above. Same reason: Attention/SIVT/GIVT cells now mix 1-line
+     and 2-line content depending on whether a delta is present, so
+     centering misaligned the values across the row. */
+  align-items: start;
+  padding: 10px 12px;
   border-bottom: 0.5px solid rgba(255,255,255,0.05);
   font-size: 13px; color: rgba(250,250,250,0.85);
   font-variant-numeric: tabular-nums;
