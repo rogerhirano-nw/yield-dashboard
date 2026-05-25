@@ -39,21 +39,44 @@ python -m playwright install chromium
 export GAM_NETWORK_ID=<your network id>
 python confiant_blocklist.py --inspect
 
-# 2. Identify the GAM Protection name you want to append to.
-#    GAM > Delivery > Protections — note the exact name as displayed.
+# 2. Identify the target Protection ID. In GAM > Delivery > Protections,
+#    click into the Protection — the URL ends with .../protection_id=<id>.
+#    For Newsweek today: 28044902 ("Everything", prod catch-all).
 
-# 3. Test in dry-run with a known-good CSV.
+# 3. Sanity-check what's already in that Protection BEFORE we modify it.
+#    --print-existing opens the browser, reads the Advertiser URLs textarea,
+#    prints it to stdout, and exits. No CSV processed, no writes.
+python confiant_blocklist.py --protection-id 28044902 --print-existing \
+    > existing_urls_before.txt
+wc -l existing_urls_before.txt
+
+# 4. Test in dry-run with a known-good CSV.
 python confiant_blocklist.py \
     --csv ~/Downloads/Alert\ Log\ CSV\ By\ Provider_*.csv \
-    --protection-name 'Confiant auto-blocklist' \
+    --protection-id 28044902 --protection-label Everything \
     --dry-run
 
-# 4. Real run on the same CSV (browser will open). Add --debug if you want
-#    screenshots saved to the profile dir.
+# 5. Real run on the same CSV (browser will open). Add --debug for screenshots.
 python confiant_blocklist.py \
     --csv ~/Downloads/Alert\ Log\ CSV\ By\ Provider_*.csv \
-    --protection-name 'Confiant auto-blocklist'
+    --protection-id 28044902 --protection-label Everything \
+    --debug
 ```
+
+## Protection target
+
+The script navigates *directly* to the Protection detail page via its ID, not
+by clicking on a name link. This avoids the most fragile selector in the flow.
+If GAM ever ships a routing change that breaks the URL format, override it
+without code changes:
+
+```bash
+export GAM_PROTECTION_DETAIL_URL_FMT='https://admanager.google.com/{network_id}#delivery/protections/<new format>/{protection_id}'
+```
+
+`--protection-label` is for emails and the state table only — useful to make
+weekly notifications read "Confiant -> GAM blocklist (Everything)" instead of
+"(Protection #28044902)". The script never searches by label.
 
 ## Wiring up the weekly launchd cron
 

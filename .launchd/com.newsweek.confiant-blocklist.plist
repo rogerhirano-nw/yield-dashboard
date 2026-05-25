@@ -28,13 +28,18 @@
     <key>WorkingDirectory</key>
     <string>/Users/roger/code/yield-dashboard</string>
 
+    <!-- Protection 28044902 is "Everything" — the production catch-all
+         Protection that covers all Newsweek inventory. Verify in
+         GAM > Delivery > Protections before changing. -->
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/env</string>
         <string>python3</string>
         <string>/Users/roger/code/yield-dashboard/confiant_blocklist.py</string>
-        <string>--protection-name</string>
-        <string>REPLACE_WITH_PROTECTION_NAME</string>
+        <string>--protection-id</string>
+        <string>28044902</string>
+        <string>--protection-label</string>
+        <string>Everything</string>
     </array>
 
     <key>EnvironmentVariables</key>
