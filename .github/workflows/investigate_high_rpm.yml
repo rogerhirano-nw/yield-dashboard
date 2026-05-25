@@ -6,6 +6,7 @@ on:
     branches: [claude/high-rpm-investigation-Y0hPU]
     paths:
       - 'scripts/investigate_high_rpm.py'
+      - 'scripts/investigate_format_breakdown.py'
       - '.github/workflows/investigate_high_rpm.yml'
 
 permissions:
@@ -34,7 +35,16 @@ jobs:
           python scripts/investigate_high_rpm.py 2>/tmp/stderr.txt | tee /tmp/output.txt
           echo "--- stderr ---" && cat /tmp/stderr.txt
 
-      - name: Post results as PR comment
+      - name: Run format breakdown investigation
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/investigate_format_breakdown.py 2>/tmp/stderr_fmt.txt | tee /tmp/output_fmt.txt
+          echo "--- stderr ---" && cat /tmp/stderr_fmt.txt
+
+      - name: Post format breakdown as PR comment
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,11 +55,11 @@ jobs:
             exit 0
           fi
           {
-            echo '### High-RPM investigation — 2026-05-24'
+            echo '### Format breakdown investigation — 2026-05-24'
             echo ''
             echo "> Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "> All hours are **UTC** (GAM reporting timezone)."
+            echo "> Direct = GAM ad-server · Deals = PA/PD/PG · OB = yield-group estimated"
             echo ''
-            cat /tmp/output.txt
-          } > /tmp/comment.md
-          gh pr comment "$PR" --body-file /tmp/comment.md
+            cat /tmp/output_fmt.txt
+          } > /tmp/comment_fmt.md
+          gh pr comment "$PR" --body-file /tmp/comment_fmt.md
