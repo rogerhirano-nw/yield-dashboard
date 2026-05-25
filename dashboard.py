@@ -4500,7 +4500,11 @@ if st.session_state.active_view == "campaigns":
                 _ctr_rate = (_clk / _imp * 100).where(_imp > 0, other=None)
 
             # Iterate; view_gam is already sorted by |pacing - target| desc.
-            for _i, (_, row) in enumerate(view_gam.head(25).iterrows()):
+            # No row cap: ad-ops needs the whole Direct list visible (~35
+            # rows today). If row count grows past ~500 and the custom
+            # HTML grid starts feeling slow, reintroduce pagination here.
+            # Mirrors the same uncap decision made for the PMP table.
+            for _i, (_, row) in enumerate(view_gam.iterrows()):
                 _li_name = row.get("line_item_name") or "—"
                 _li_clean = re.sub(r"^#\d+\s+", "", str(_li_name))
                 _ord_match = re.match(r"^(#\d+)\s+", str(_li_name))
@@ -4665,8 +4669,9 @@ if st.session_state.active_view == "campaigns":
             )
             st.markdown(_table_html, unsafe_allow_html=True)
 
-            if len(view_gam) > 25:
-                st.caption(f"Showing 25 of {len(view_gam):,} line items, sorted by |pace − target|.")
+            # No row cap on the Direct table; the section subtitle above
+            # already shows the sort key + count, so no separate caption
+            # needed. Removed alongside the .head(25) cap.
 
     # ── Section 2: PMP deals ─────────────────────────────────────────────
     # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
