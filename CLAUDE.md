@@ -45,6 +45,14 @@ CPA target defaults to $150/FTP. Override with `BETTING_CPA_TARGET` repo variabl
   standard SSP client; runs locally via launchd (GAM Protections has no API,
   so Playwright drives the UI). See doc for the Google-UI-changed-and-broke-it
   recovery flow.
+- `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
+  (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
+  the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
+  destinationUrl), the audience-segment picks, the test-LI batch plan,
+  in-flight experiment state, and decision rules for the future engine.
+  Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
+  diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
+  that creates the test LIs + creatives + LICAs and reduces the control goal).
 
 ## GAM facts (network 22541732127)
 - The network has exactly **two yield groups**: `display` (id 680328) and
