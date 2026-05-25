@@ -453,10 +453,12 @@ class GAMClient:
     def _fetch_order_info(self, order_resource_names: set[str]) -> dict[str, dict]:
         """
         Given a set of order resource names, return a dict mapping each to
-        {"order_name": str | None, "salesperson": str | None}.
+        {"order_name": str | None, "salesperson": str | None, "archived": bool}.
 
         Fetches each order individually and resolves the salesperson user's
-        display_name, caching user lookups to avoid redundant calls.
+        display_name, caching user lookups to avoid redundant calls. The
+        `archived` flag is surfaced so callers can drop LIs whose parent
+        order has been archived.
         """
         user_cache: dict[str, Optional[str]] = {}
         result: dict[str, dict] = {}
@@ -479,14 +481,19 @@ class GAMClient:
                 result[order_ref] = {
                     "order_name": order.display_name or None,
                     "salesperson": user_cache.get(sp_ref),
+                    "archived": bool(getattr(order, "archived", False)),
                 }
             except Exception:
-                result[order_ref] = {"order_name": None, "salesperson": None}
+                result[order_ref] = {"order_name": None, "salesperson": None, "archived": False}
         return result
 
     def get_active_line_items(self) -> pd.DataFrame:
         """
         Fetch active line items with their metadata.
+
+        Excludes archived line items at the API level via the
+        `archived = false` filter, and post-filters LIs whose parent
+        order is archived (`_fetch_order_info` surfaces `archived`).
 
         Returns DataFrame with: line_item_id, line_item_name, order_id,
         order_name, line_item_type, impressions_goal, cpm_rate,
@@ -495,15 +502,21 @@ class GAMClient:
         today = date.today()
         cutoff = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
 
-        # First pass: collect all line items and unique order resource names.
+        # First pass: collect all non-archived line items and unique order resource names.
         raw_rows = []
         order_refs: set[str] = set()
+        n_archived_li_skipped = 0
         for li in self._li_client.list_line_items(
             admanager_v1.ListLineItemsRequest(
                 parent=self._parent,
-                filter=f'endTime > "{cutoff}"',
+                filter=f'endTime > "{cutoff}" AND archived = false',
             )
         ):
+            # Defence in depth: drop the row if the API ever returns an
+            # archived LI despite the filter (older client versions, etc.).
+            if bool(getattr(li, "archived", False)):
+                n_archived_li_skipped += 1
+                continue
             li_id_m = re.search(r"/lineItems/(\d+)$", li.name)
             li_id = li_id_m.group(1) if li_id_m else li.name
 
@@ -546,14 +559,24 @@ class GAMClient:
                 "status": li_status,
             })
 
-        # Second pass: fetch order metadata (name + salesperson) for all unique orders.
+        # Second pass: fetch order metadata (name + salesperson + archived) for all unique orders.
         order_info = self._fetch_order_info(order_refs)
-        logger.info("GAM: fetched %d line items across %d orders", len(raw_rows), len(order_refs))
+        n_archived_orders = sum(1 for v in order_info.values() if v.get("archived"))
+        logger.info(
+            "GAM: fetched %d line items across %d orders (skipped %d archived LIs, %d archived orders)",
+            len(raw_rows), len(order_refs), n_archived_li_skipped, n_archived_orders,
+        )
 
         rows = []
+        n_archived_parent_skipped = 0
         for r in raw_rows:
             info = order_info.get(r.pop("_order_ref"), {})
+            if info.get("archived"):
+                n_archived_parent_skipped += 1
+                continue
             rows.append({**r, "order_name": info.get("order_name"), "salesperson": info.get("salesperson")})
+        if n_archived_parent_skipped:
+            logger.info("GAM: dropped %d LIs belonging to archived parent orders", n_archived_parent_skipped)
         return pd.DataFrame(rows)
 
     # ------------------------------------------------------------------
