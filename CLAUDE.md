@@ -6,6 +6,7 @@ See `README.md` for project overview, files, and quickstart.
 - Python (Streamlit dashboard + per-source clients). Cache layer is SQLite locally, Postgres in prod (`DATABASE_URL` Supabase).
 - One client module per data source (`*_client.py`), one `refresh_<source>` function in `refresh_cache.py`, called from `main()`.
 - Pull yesterday's data, not today's — same-day data has latency.
+- **Never push directly to `main`.** Branch protection enforces PRs for everyone including admins. Always work on a branch and open a PR — even for docs-only changes. README/CLAUDE.md updates go in the same PR as the code they describe.
 
 ## Data sources currently wired
 When auditing or adding data, the four production sources are:
