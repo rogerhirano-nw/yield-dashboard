@@ -42,16 +42,22 @@ logger = logging.getLogger(__name__)
 # DB helpers
 # ---------------------------------------------------------------------------
 
+def _load_dotenv() -> None:
+    """Load all key=value pairs from repo-root .env into os.environ (setdefault)."""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
 def _engine() -> sqlalchemy.Engine:
+    _load_dotenv()
     url = os.environ.get("DATABASE_URL")
-    if not url:
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("DATABASE_URL"):
-                    url = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    break
     if not url:
         raise SystemExit("DATABASE_URL not set (env var or repo-root .env)")
     return sqlalchemy.create_engine(url)
@@ -248,6 +254,7 @@ def main() -> int:
                         help="Print what would be written without touching the DB")
     args = parser.parse_args()
 
+    _load_dotenv()
     sources = {s.strip().lower() for s in args.sources.split(",")}
     valid   = {"pubmatic", "magnite", "gam"}
     unknown = sources - valid
