@@ -62,20 +62,17 @@ _SELECTORS = {
     "modal_title":
         "text=/^Advertiser URLs$/ >> visible=true",
 
-    # The textarea inside the modal where you type URLs to add. GAM uses a
-    # placeholder of "Add advertiser URLs" or similar. The helper text
-    # "Separate URLs by a new line" sits right under it, which gives us a
-    # reliable anchor.
+    # The textarea inside the modal where you type URLs to add. Verified
+    # from clickable-element dump: it has aria-label="Add advertiser URLs".
     "modal_textarea":
-        "xpath=//*[contains(normalize-space(text()), 'Separate URLs by a new line')]"
-        "/preceding::textarea[1]",
+        "textarea[aria-label='Add advertiser URLs']",
 
-    # "Add" button inside the modal — applies what's in the textarea to the
-    # right-side blocked-URLs list. Distinct from any Add buttons on the
-    # parent page (which are out of view when the modal is open).
+    # "Add" button inside the modal. The modal contains exactly one button
+    # with exact text "Add" (other Add-like elements are links/headers, not
+    # <button>). The button can be scrolled off-screen when the textarea is
+    # huge, so the caller must scroll_into_view before clicking.
     "modal_add_button":
-        "xpath=//*[contains(normalize-space(text()), 'Separate URLs by a new line')]"
-        "/following::button[normalize-space(.)='Add'][1]",
+        "xpath=//button[normalize-space(.)='Add']",
 
     # "Update" button in the modal header (top-right). Closes the modal
     # and stages the URL list change on the parent Protection page.
@@ -180,46 +177,49 @@ class GAMBlocklistBrowser:
                 page.screenshot(path=str(self.profile_dir / "debug-pre-add.png"), full_page=True)
 
             # 4: Click "Add" in the modal -> domains move to the right-side list.
-            add_btn = page.locator(_SELECTORS["modal_add_button"]).first
-            if not add_btn.count():
-                raise RuntimeError(
-                    "Modal Add button not found. Update _SELECTORS['modal_add_button']."
-                )
+            # GAM uses <material-button role="button"> custom elements rather
+            # than <button>; the helper tries multiple selector strategies and
+            # .first picks the modal's button (appears earlier in DOM than any
+            # parent-page Add). Note: the modal isn't tagged aria-modal="true"
+            # so we can't scope to it; we trust DOM ordering instead.
+            add_btn = self._click_or_dump(page, "Add", "modal Add button")
+            add_btn.scroll_into_view_if_needed()
             add_btn.click()
             self._sleep("post-add settle (modal list updates)", 2.0)
 
             if self.debug:
                 page.screenshot(path=str(self.profile_dir / "debug-pre-update.png"), full_page=True)
 
-            # 5: Click "Update" -> modal closes, change is staged.
-            update_btn = page.locator(_SELECTORS["modal_update_button"]).first
-            if not update_btn.count():
-                raise RuntimeError(
-                    "Modal Update button not found / disabled. The Add may have "
-                    "rejected one of the values; inspect debug-pre-update.png."
-                )
+            # 5: Click "Update" -> modal closes, change is staged on parent.
+            # Update is disabled until the Add above succeeds; wait for it to
+            # become clickable, then click. Same locator-strategy approach.
+            update_btn = self._click_or_dump(page, "Update", "modal Update button")
+            self._wait_until_enabled(update_btn, "modal Update", timeout_s=10)
             update_btn.click()
-            self._sleep("post-update settle (modal closes)", 2.0)
+            self._sleep("post-update settle (modal closes)", 3.0)
 
-            # 6: Click parent Save -> commit to GAM.
+            # 6: Click parent Save -> commit to GAM. Same disabled-until-staged
+            # behavior; wait for enabled.
             if self.debug:
                 page.screenshot(path=str(self.profile_dir / "debug-pre-save.png"), full_page=True)
 
-            save = page.locator(_SELECTORS["parent_save_button"]).first
-            if not save.count():
-                raise RuntimeError(
-                    "Parent Save button not found / disabled after modal Update. "
-                    "Change may not have been staged. Inspect debug-pre-save.png."
-                )
+            save = self._click_or_dump(page, "Save", "parent Save button")
+            self._wait_until_enabled(save, "parent Save", timeout_s=10)
             save.click()
 
+            # Success signal: GAM navigates back to the Protections list after
+            # a successful Save (URL hash changes from /detail/... to /list).
+            # This is more reliable than waiting for a toast (GAM may or may
+            # not render one depending on UI version).
             try:
-                page.locator(_SELECTORS["save_toast"]).first.wait_for(timeout=15_000)
+                page.wait_for_url(lambda u: "/protections/list" in u or
+                                  ("/protections" in u and "/detail" not in u),
+                                  timeout=20_000)
             except PWTimeout:
                 raise RuntimeError(
-                    "Clicked Save but no confirmation toast appeared within 15s. "
-                    "Treat as failure and verify the protection in GAM before "
-                    "the next run."
+                    "Clicked Save but didn't navigate back to the Protections "
+                    "list within 20s. GAM may not have accepted the change — "
+                    "verify the protection in the UI before the next run."
                 )
 
             return len(set(new_domains))
@@ -247,8 +247,10 @@ class GAMBlocklistBrowser:
                 text = (rows.nth(i).inner_text() or "").strip()
                 if text and "." in text and " " not in text:  # crude domain shape filter
                     urls.append(text)
-            # Dismiss the modal (don't save).
-            close = page.locator(_SELECTORS["modal_close_button"]).first
+            # Dismiss the modal (don't save). The X close button has aria-label
+            # "Close" in GAM; if not found by that label, the persistent context
+            # will close the page anyway on exit.
+            close = page.locator("[aria-label='Close']").first
             if close.count():
                 try:
                     close.click()
@@ -316,9 +318,11 @@ class GAMBlocklistBrowser:
                 page.set_default_timeout(self.nav_timeout_ms)
                 try:
                     page.goto(url, wait_until="domcontentloaded")
-                    # GAM is a heavy React SPA; the hash route + detail content
-                    # often take 8-12 seconds to render after DOMContentLoaded.
-                    self._sleep("post-nav settle (SPA hydration)", 12.0)
+                    # GAM is a heavy React SPA. Detail-page content can take
+                    # 12-20s to render. Some runs land on a "New protection"
+                    # creation modal first; the hash route needs settle time
+                    # to redirect to the actual detail view.
+                    self._sleep("post-nav settle (SPA hydration)", 20.0)
                     if self.debug:
                         page.screenshot(
                             path=str(self.profile_dir / "debug-post-nav.png"),
@@ -346,6 +350,108 @@ class GAMBlocklistBrowser:
                     ctx.close()
 
         return _cm()
+
+    def _click_or_dump(self, page, text: str, label: str):
+        """Find a clickable by text, or dump diagnostics + raise if not found."""
+        loc = self._find_clickable_by_text(page, text)
+        if loc is None:
+            self._dump_clickable_diagnostics(page)
+            raise RuntimeError(
+                f"{label} not found via any selector strategy. See stderr for "
+                f"a dump of clickable elements; update the strategies list in "
+                f"_find_clickable_by_text if needed."
+            )
+        return loc
+
+    def _wait_until_enabled(self, loc, label: str, timeout_s: float = 10.0) -> None:
+        """Poll until a locator's element is no longer disabled (handles both
+        the `disabled` property and `aria-disabled='true'` attribute, which
+        material-button uses)."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                is_disabled = loc.evaluate(
+                    "el => el.disabled || el.getAttribute('aria-disabled') === 'true'"
+                )
+                if not is_disabled:
+                    if self.debug:
+                        print(f"  [browser] {label} enabled", file=sys.stderr)
+                    return
+            except Exception:
+                pass
+            time.sleep(0.5)
+        raise RuntimeError(
+            f"{label} did not become enabled within {timeout_s}s — the previous "
+            f"step may not have staged its change correctly."
+        )
+
+    def _find_clickable_by_text(self, page, text: str):
+        """Find a clickable element whose visible text is exactly `text`.
+
+        GAM uses <material-button role="button"> custom elements rather than
+        <button>. We try several strategies in order; first match wins.
+        Returns a Locator (.first) or None.
+
+        DOM ordering note: modal elements appear earlier in the DOM than the
+        underlying parent-page elements, so .first reliably picks the modal's
+        button when one is open. We can't scope to the modal via aria-modal
+        because GAM doesn't set that attribute.
+        """
+        q = _xq(text)
+        strategies = [
+            f"xpath=//button[normalize-space(.)={q}]",
+            f"xpath=//*[@role='button' and normalize-space(.)={q}]",
+            f"xpath=//a[normalize-space(.)={q}]",
+            f"xpath=//*[normalize-space(.)={q} "
+            f"and (self::button or self::a or @role='button' "
+            f"or @role='link' or @tabindex='0')]",
+            f"xpath=//*[normalize-space(text())={q} and not(*)]",
+        ]
+        for sel in strategies:
+            loc = page.locator(sel).first
+            if loc.count():
+                if self.debug:
+                    print(f"  [browser] {text!r} matched: {sel}", file=sys.stderr)
+                return loc
+        return None
+
+    def _dump_clickable_diagnostics(self, page) -> None:
+        """Print every clickable-looking element in the open modal to stderr.
+        Used when Add can't be found — gives us enough info to pick the right
+        selector without needing browser dev tools."""
+        try:
+            modal_html_dump_path = self.profile_dir / "debug-modal-clickables.txt"
+            elements = page.evaluate("""
+                () => {
+                    const root = document.querySelector('[aria-modal=\"true\"]')
+                                 || document.body;
+                    const sel = 'button, a, [role=\"button\"], [role=\"link\"], '
+                                + '[tabindex=\"0\"], input[type=\"submit\"]';
+                    return Array.from(root.querySelectorAll(sel))
+                        .map(el => ({
+                            tag: el.tagName.toLowerCase(),
+                            role: el.getAttribute('role') || '',
+                            ariaLabel: el.getAttribute('aria-label') || '',
+                            text: (el.innerText || '').trim().slice(0, 60),
+                            classes: (el.className || '').toString().slice(0, 80),
+                            disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
+                        }));
+                }
+            """)
+            lines = ["=== modal clickable elements ==="]
+            for i, el in enumerate(elements):
+                lines.append(
+                    f"  [{i}] <{el['tag']}> "
+                    f"role={el['role']!r} "
+                    f"text={el['text']!r} "
+                    f"aria-label={el['ariaLabel']!r} "
+                    f"disabled={el['disabled']}"
+                )
+            dump = "\n".join(lines)
+            print(dump, file=sys.stderr)
+            modal_html_dump_path.write_text(dump)
+        except Exception as e:
+            print(f"  [browser] diagnostic dump failed: {e}", file=sys.stderr)
 
     def _open_advertiser_urls_modal(self, page) -> None:
         """Scroll to and click the Edit button next to the Advertiser URLs
@@ -381,6 +487,17 @@ class GAMBlocklistBrowser:
         if self.debug:
             print(f"  [browser] sleep {seconds:.1f}s ({label})", file=sys.stderr)
         time.sleep(seconds)
+
+
+def _xq(text: str) -> str:
+    """XPath-quote a string. XPath has no escape for quotes, so we use
+    concat() when the string contains both ' and "."""
+    if "'" not in text:
+        return f"'{text}'"
+    if '"' not in text:
+        return f'"{text}"'
+    parts = text.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
 
 
 def default_profile_dir() -> Path:
