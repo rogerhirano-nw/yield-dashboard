@@ -43,26 +43,69 @@ from pathlib import Path
 # Google's class names are auto-generated and rotate often.
 
 _SELECTORS = {
-    # "Ad content" section header on the protection detail page; we click it
-    # to expand the section if it's collapsed.
-    "ad_content_section":
-        "text=/^Ad content$/",
+    # The "Advertiser URLs" section heading on the Protection detail page.
+    # We use it as an anchor — the section's Edit button is the next Edit
+    # button visually after this text.
+    "advertiser_urls_section_label":
+        "text=/^Advertiser URLs$/",
 
-    # The "Advertiser URLs" field. GAM renders this as a chip input or a
-    # textarea depending on entry count. The textarea selector should work
-    # in both cases — its visible label is "Advertiser URLs".
-    "advertiser_urls_textarea":
-        "textarea[aria-label='Advertiser URLs'], "
-        "div[aria-label='Advertiser URLs'] textarea, "
-        "label:has-text('Advertiser URLs') ~ * textarea",
+    # The "Edit" button for the Advertiser URLs section. Located by finding
+    # the Advertiser URLs heading then the next visible Edit button. (The
+    # Protection page has Edit buttons for Sensitive categories, Buyer, etc.
+    # — this XPath targets the one for our section specifically.)
+    "advertiser_urls_edit_button":
+        "xpath=//*[normalize-space(text())='Advertiser URLs']"
+        "/following::*[normalize-space(text())='Edit'][1]",
 
-    # The Save button at the bottom of the protection detail page.
-    "save_button":
-        "button:has-text('Save'):not([disabled])",
+    # Modal-panel title that appears once we click Edit. Used to confirm
+    # the modal opened before we interact with it.
+    "modal_title":
+        "text=/^Advertiser URLs$/ >> visible=true",
 
-    # Save confirmation toast.
+    # The textarea inside the modal where you type URLs to add. GAM uses a
+    # placeholder of "Add advertiser URLs" or similar. The helper text
+    # "Separate URLs by a new line" sits right under it, which gives us a
+    # reliable anchor.
+    "modal_textarea":
+        "xpath=//*[contains(normalize-space(text()), 'Separate URLs by a new line')]"
+        "/preceding::textarea[1]",
+
+    # "Add" button inside the modal — applies what's in the textarea to the
+    # right-side blocked-URLs list. Distinct from any Add buttons on the
+    # parent page (which are out of view when the modal is open).
+    "modal_add_button":
+        "xpath=//*[contains(normalize-space(text()), 'Separate URLs by a new line')]"
+        "/following::button[normalize-space(.)='Add'][1]",
+
+    # "Update" button in the modal header (top-right). Closes the modal
+    # and stages the URL list change on the parent Protection page.
+    "modal_update_button":
+        "xpath=//button[normalize-space(.)='Update' and not(@disabled)]",
+
+    # "X" close button on the modal panel — used by read_existing_urls
+    # to dismiss the modal without changes.
+    "modal_close_button":
+        "xpath=(//button[@aria-label='Close' or contains(@class, 'close')])[last()]",
+
+    # Each blocked URL in the modal's right-side list. We read these as the
+    # current Advertiser URLs in read_existing_urls. The modal shows URLs as
+    # rows of text — extract the visible text per row.
+    "modal_blocked_url_rows":
+        "xpath=//*[contains(normalize-space(text()), 'blocked advertiser URLs')]"
+        "/following::div[normalize-space(text()) "
+        "and not(contains(., 'Note:')) "
+        "and not(contains(., 'indirect transactions'))]",
+
+    # The Save button at the bottom of the Protection detail page. After we
+    # Update the modal, this becomes enabled — clicking it commits the
+    # change to GAM.
+    "parent_save_button":
+        "xpath=//button[normalize-space(.)='Save' and not(@disabled)]",
+
+    # Save confirmation toast (or banner) on the Protection list page after
+    # the parent Save fires.
     "save_toast":
-        "text=/saved|updated successfully/i",
+        "text=/saved|updated successfully|changes have been saved/i",
 
     # Detects the Google login redirect — if we land on accounts.google.com
     # the session expired and the user needs to log in manually.
@@ -71,12 +114,13 @@ _SELECTORS = {
 }
 
 
-# URL format for the Protection detail page. Override via env var if Google
-# ships a routing change (e.g. drops the `detail/` segment, switches to a
-# query-string style, etc.). The braces are str.format() placeholders.
+# URL format for the Protection detail page. Verified against the current GAM
+# UI (May 2026): Protections is a top-level nav section, not under Delivery;
+# `type=AD_CONTENT` lands us directly on the Ad content tab where Advertiser
+# URLs live. Override via env var if Google ships a routing change.
 _PROTECTION_DETAIL_URL_FMT = os.environ.get(
     "GAM_PROTECTION_DETAIL_URL_FMT",
-    "https://admanager.google.com/{network_id}#delivery/protections/detail/protection_id={protection_id}",
+    "https://admanager.google.com/{network_id}#protections/detail/protection_id={protection_id}&type=AD_CONTENT",
 )
 
 
@@ -99,6 +143,14 @@ class GAMBlocklistBrowser:
         Advertiser URLs list. Returns the count of domains actually written
         (post-dedupe within this batch).
 
+        UI flow (verified May 2026):
+          1. Land on Protection detail page (already done by _open_protection_page)
+          2. Click "Edit" next to "Advertiser URLs" section -> right-side modal opens
+          3. Type newline-separated domains into the modal's textarea
+          4. Click modal "Add" button -> domains move to the right-side blocked list
+          5. Click modal "Update" button -> modal closes, change staged on parent
+          6. Click parent "Save" button -> commits to GAM, success toast fires
+
         Raises RuntimeError on any selector miss, login redirect, or save
         failure — the caller is expected to surface this in the failure email.
         """
@@ -110,24 +162,54 @@ class GAMBlocklistBrowser:
         payload = "\n".join(sorted(set(new_domains)))
 
         with self._open_protection_page(protection_id) as (page, ctx):
-            textarea = self._find_advertiser_urls(page)
+            # 1+2: Open the Advertiser URLs edit modal.
+            self._open_advertiser_urls_modal(page)
 
-            existing = (textarea.input_value() or "").strip()
-            suffix = ("\n" if existing else "") + payload
+            # 3: Type new domains into the modal textarea.
+            textarea = page.locator(_SELECTORS["modal_textarea"]).first
+            if not textarea.count():
+                raise RuntimeError(
+                    "Edit modal opened but couldn't find the Add-URLs textarea. "
+                    "Update _SELECTORS['modal_textarea']."
+                )
             textarea.focus()
-            textarea.press("End")
-            textarea.type(suffix, delay=5)
+            textarea.fill(payload)
             self._sleep("post-type settle", 1.0)
 
             if self.debug:
+                page.screenshot(path=str(self.profile_dir / "debug-pre-add.png"), full_page=True)
+
+            # 4: Click "Add" in the modal -> domains move to the right-side list.
+            add_btn = page.locator(_SELECTORS["modal_add_button"]).first
+            if not add_btn.count():
+                raise RuntimeError(
+                    "Modal Add button not found. Update _SELECTORS['modal_add_button']."
+                )
+            add_btn.click()
+            self._sleep("post-add settle (modal list updates)", 2.0)
+
+            if self.debug:
+                page.screenshot(path=str(self.profile_dir / "debug-pre-update.png"), full_page=True)
+
+            # 5: Click "Update" -> modal closes, change is staged.
+            update_btn = page.locator(_SELECTORS["modal_update_button"]).first
+            if not update_btn.count():
+                raise RuntimeError(
+                    "Modal Update button not found / disabled. The Add may have "
+                    "rejected one of the values; inspect debug-pre-update.png."
+                )
+            update_btn.click()
+            self._sleep("post-update settle (modal closes)", 2.0)
+
+            # 6: Click parent Save -> commit to GAM.
+            if self.debug:
                 page.screenshot(path=str(self.profile_dir / "debug-pre-save.png"), full_page=True)
 
-            save = page.locator(_SELECTORS["save_button"]).first
+            save = page.locator(_SELECTORS["parent_save_button"]).first
             if not save.count():
                 raise RuntimeError(
-                    "Save button not found / disabled after entering new "
-                    "domains. The field may have rejected one of the values; "
-                    "inspect debug-pre-save.png in the profile dir."
+                    "Parent Save button not found / disabled after modal Update. "
+                    "Change may not have been staged. Inspect debug-pre-save.png."
                 )
             save.click()
 
@@ -143,12 +225,36 @@ class GAMBlocklistBrowser:
             return len(set(new_domains))
 
     def read_existing_urls(self, protection_id: int) -> list[str]:
-        """Open the Protection and return the current Advertiser URLs as a
-        list (one entry per line, blanks stripped). No modification."""
+        """Open the Protection and return the current Advertiser URLs as a list.
+
+        Same modal-open flow as append_to_protection, but reads the right-side
+        blocked-list and closes the modal without changes.
+        """
         with self._open_protection_page(protection_id) as (page, _):
-            textarea = self._find_advertiser_urls(page)
-            raw = textarea.input_value() or ""
-            return [line.strip() for line in raw.splitlines() if line.strip()]
+            self._open_advertiser_urls_modal(page)
+            self._sleep("modal list render", 1.5)
+
+            if self.debug:
+                page.screenshot(
+                    path=str(self.profile_dir / "debug-modal-open.png"),
+                    full_page=True,
+                )
+
+            rows = page.locator(_SELECTORS["modal_blocked_url_rows"])
+            count = rows.count()
+            urls: list[str] = []
+            for i in range(count):
+                text = (rows.nth(i).inner_text() or "").strip()
+                if text and "." in text and " " not in text:  # crude domain shape filter
+                    urls.append(text)
+            # Dismiss the modal (don't save).
+            close = page.locator(_SELECTORS["modal_close_button"]).first
+            if close.count():
+                try:
+                    close.click()
+                except Exception:
+                    pass
+            return urls
 
     def inspect(self, protection_id: int | None = None) -> None:
         """Open the GAM Protections page in a visible browser and wait. Use
@@ -210,7 +316,14 @@ class GAMBlocklistBrowser:
                 page.set_default_timeout(self.nav_timeout_ms)
                 try:
                     page.goto(url, wait_until="domcontentloaded")
-                    self._sleep("post-nav settle", 3.0)
+                    # GAM is a heavy React SPA; the hash route + detail content
+                    # often take 8-12 seconds to render after DOMContentLoaded.
+                    self._sleep("post-nav settle (SPA hydration)", 12.0)
+                    if self.debug:
+                        page.screenshot(
+                            path=str(self.profile_dir / "debug-post-nav.png"),
+                            full_page=True,
+                        )
 
                     if page.locator(_SELECTORS["login_redirect_marker"]).count():
                         raise RuntimeError(
@@ -219,14 +332,9 @@ class GAMBlocklistBrowser:
                             f"establish the profile at {self.profile_dir}."
                         )
 
-                    # Expand the Ad content section if it's collapsed.
-                    section = page.locator(_SELECTORS["ad_content_section"]).first
-                    if section.count():
-                        try:
-                            section.click()
-                        except PWTimeout:
-                            pass  # already expanded
-                    self._sleep("section expand", 1.0)
+                    # No section-expand step needed: the &type=AD_CONTENT URL
+                    # param lands us directly on the Ad content tab, and
+                    # Advertiser URLs is a top-level section on that page.
 
                     yield page, ctx
                 finally:
@@ -239,19 +347,35 @@ class GAMBlocklistBrowser:
 
         return _cm()
 
-    def _find_advertiser_urls(self, page):
-        """Locate the Advertiser URLs field on a Protection detail page.
-        Raises if not found — the caller turns this into a failure email."""
-        textarea = page.locator(_SELECTORS["advertiser_urls_textarea"]).first
-        if not textarea.count():
+    def _open_advertiser_urls_modal(self, page) -> None:
+        """Scroll to and click the Edit button next to the Advertiser URLs
+        section, then wait for the modal panel to appear. Raises a clear
+        RuntimeError if either step fails."""
+        edit = page.locator(_SELECTORS["advertiser_urls_edit_button"]).first
+        if not edit.count():
             raise RuntimeError(
-                "Could not locate the 'Advertiser URLs' field on the "
-                "Protection detail page. Google likely changed the UI; "
-                "update _SELECTORS['advertiser_urls_textarea'] in "
-                "gam_blocklist_ui.py. Run with --inspect to find the new "
-                "selector."
+                "Could not find the 'Edit' button for the Advertiser URLs "
+                "section on the Protection detail page. Google likely changed "
+                "the section ordering or the Edit label. Update "
+                "_SELECTORS['advertiser_urls_edit_button']. Run with --inspect "
+                "to verify."
             )
-        return textarea
+        edit.scroll_into_view_if_needed()
+        edit.click()
+        self._sleep("modal open animation", 2.0)
+
+        # Confirm the modal actually opened by waiting for its textarea.
+        from playwright.sync_api import TimeoutError as PWTimeout
+        try:
+            page.locator(_SELECTORS["modal_textarea"]).first.wait_for(
+                state="visible", timeout=8000
+            )
+        except PWTimeout:
+            raise RuntimeError(
+                "Clicked Edit but the modal textarea didn't appear within 8s. "
+                "Either the modal didn't open, or its textarea is under a "
+                "different selector. Run with --inspect."
+            )
 
     def _sleep(self, label: str, seconds: float) -> None:
         if self.debug:
