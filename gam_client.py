@@ -88,6 +88,25 @@ def _ts_to_date(ts) -> Optional[str]:
         return None
 
 
+def _soap_date_to_iso(d) -> Optional[str]:
+    """GAM SOAP DateTime values are zeep objects whose repr looks like a dict
+    but behave like attribute-bearing objects: `d.date.year/month/day`. Some
+    upstream code paths also pass real dicts (parsed JSON), so support both."""
+    if d is None:
+        return None
+    inner = d.get("date") if isinstance(d, dict) else getattr(d, "date", None)
+    if inner is None:
+        return None
+    try:
+        if isinstance(inner, dict):
+            y, m, day = int(inner["year"]), int(inner["month"]), int(inner["day"])
+        else:
+            y, m, day = int(inner.year), int(inner.month), int(inner.day)
+        return f"{y:04d}-{m:02d}-{day:02d}"
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+
+
 class GAMClient:
     """Thin wrapper around the google-ads-admanager REST client."""
 
@@ -201,6 +220,11 @@ class GAMClient:
         Returns a DataFrame with columns matching the existing downstream expectations,
         including ad_server_cpm_and_cpc_revenue (mapped from AD_SERVER_GROSS_REVENUE).
         """
+        # INVENTORY_FORMAT_NAME and VIDEO_AD_DURATION both trigger
+        # REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY when added to this
+        # dimension/metric set (verified empirically on two refresh
+        # attempts). Both pulled separately by run_li_metadata_report()
+        # and merged downstream in run_report_with_pacing().
         df = self._run_report(
             dimensions=[
                 "DATE",
@@ -286,9 +310,94 @@ class GAMClient:
                     df["programmatic_channel_name"].value_counts().to_dict() if not df.empty else {})
         return df
 
+    def run_deal_bid_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Per-day per-deal bid metrics (DEALS_BID_REQUESTS / DEALS_BIDS /
+        DEALS_WINNING_BIDS). Lives in a separate report from run_deals_report
+        because GAM rejects DEALS_* metrics alongside ORDER_NAME / DEAL_BUYER_NAME
+        in the same report definition (REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY).
+
+        Deliberately omits PROGRAMMATIC_CHANNEL_NAME: when included, GAM splits
+        the metrics across two row variants per deal (one carries the requests
+        with channel='', the other carries the bids with the channel populated)
+        — see commit history for the bug this caused in the weekly report.
+        Deal type is instead derived from the deal-name prefix (`Newsweek_PA_`,
+        `Newsweek_PD_`, `Newsweek_PG_`) in weekly_report.py.
+        """
+        df = self._run_report(
+            dimensions=["DATE", "DEAL_NAME"],
+            metrics=["DEALS_BID_REQUESTS", "DEALS_BIDS", "DEALS_WINNING_BIDS"],
+            start_date=start_date,
+            end_date=end_date,
+        ).rename(columns={"deal_name": "programmatic_deal_name"})
+
+        for _col in df.select_dtypes(include="object").columns:
+            df[_col] = df[_col].str.strip()
+
+        df = df[
+            df["programmatic_deal_name"].notna()
+            & ~df["programmatic_deal_name"].isin(["", "(Not applicable)"])
+        ].copy()
+
+        for _bid_col in ("deals_bid_requests", "deals_bids", "deals_winning_bids"):
+            df[_bid_col] = pd.to_numeric(df[_bid_col], errors="coerce").fillna(0).astype("int64")
+
+        logger.info("GAM deal-bid report: %d rows", len(df))
+        return df
+
     # ------------------------------------------------------------------
     # Lifetime delivery (for pacing)
     # ------------------------------------------------------------------
+
+    def run_li_metadata_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        Fetch (line_item_id, inventory_format_name, video_ad_duration) for
+        every LI that served in the window — both dimensions GAM rejects
+        as incompatible with the main delivery report's metric set.
+
+        Returns DataFrame columns: line_item_id, inventory_format_name
+        (first non-null), video_ad_duration (max across the window).
+        Empty DataFrame if the report errors. Falls back gracefully when
+        VIDEO_AD_DURATION isn't in the SDK enum — keeps inventory format.
+        """
+        _cols = ["line_item_id", "inventory_format_name", "video_ad_duration"]
+        _dims = ["LINE_ITEM_ID", "INVENTORY_FORMAT_NAME"]
+        if hasattr(_D, "VIDEO_AD_DURATION"):
+            _dims.append("VIDEO_AD_DURATION")
+        try:
+            df = self._run_report(
+                dimensions=_dims,
+                metrics=["AD_SERVER_IMPRESSIONS"],
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception:
+            logger.exception("run_li_metadata_report failed — skipping")
+            return pd.DataFrame(columns=_cols)
+        if df.empty or "line_item_id" not in df.columns:
+            return pd.DataFrame(columns=_cols)
+        df["line_item_id"] = df["line_item_id"].astype(str)
+        agg_spec = {}
+        if "inventory_format_name" in df.columns:
+            agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
+        if "video_ad_duration" in df.columns:
+            df["video_ad_duration"] = pd.to_numeric(df["video_ad_duration"], errors="coerce")
+            agg_spec["video_ad_duration"] = ("video_ad_duration", "max")
+        if not agg_spec:
+            return pd.DataFrame(columns=_cols)
+        agg = df.groupby("line_item_id", as_index=False).agg(**agg_spec)
+        # Ensure both columns exist on the returned frame even if one
+        # dimension was unavailable, so downstream merges are stable.
+        for _c in ("inventory_format_name", "video_ad_duration"):
+            if _c not in agg.columns:
+                agg[_c] = None
+        logger.info(
+            "GAM LI metadata report: %d LIs, %d with format, %d with duration",
+            len(agg),
+            int(agg["inventory_format_name"].notna().sum()),
+            int(agg["video_ad_duration"].notna().sum()),
+        )
+        return agg[_cols]
 
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
@@ -307,6 +416,14 @@ class GAMClient:
                 "AD_SERVER_REVENUE",
                 "AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
                 "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+                # Video starts + completes for campaign-to-date VCR. The 7-day
+                # delivery report also pulls these, but the dashboard's VCR
+                # cell needs the lifetime ratio (consistent with Revenue /
+                # Delivered / Viewable / CTR cells which are all CTD). Added
+                # 2026-05-21 per "data displayed should be always campaign
+                # to date" directive for Direct campaigns table.
+                "VIDEO_VIEWERSHIP_STARTS",
+                "VIDEO_VIEWERSHIP_COMPLETES",
             ],
             start_date=start,
             end_date=end,
@@ -318,6 +435,8 @@ class GAMClient:
             "ad_server_revenue": "lifetime_revenue",
             "ad_server_active_view_viewable_impressions": "lifetime_viewable_imps",
             "ad_server_active_view_measurable_impressions": "lifetime_measurable_imps",
+            "video_viewership_starts": "lifetime_video_starts",
+            "video_viewership_completes": "lifetime_video_completes",
             "line_item_computed_status_name": "status_api",
         })
 
@@ -334,10 +453,12 @@ class GAMClient:
     def _fetch_order_info(self, order_resource_names: set[str]) -> dict[str, dict]:
         """
         Given a set of order resource names, return a dict mapping each to
-        {"order_name": str | None, "salesperson": str | None}.
+        {"order_name": str | None, "salesperson": str | None, "archived": bool}.
 
         Fetches each order individually and resolves the salesperson user's
-        display_name, caching user lookups to avoid redundant calls.
+        display_name, caching user lookups to avoid redundant calls. The
+        `archived` flag is surfaced so callers can drop LIs whose parent
+        order has been archived.
         """
         user_cache: dict[str, Optional[str]] = {}
         result: dict[str, dict] = {}
@@ -360,14 +481,19 @@ class GAMClient:
                 result[order_ref] = {
                     "order_name": order.display_name or None,
                     "salesperson": user_cache.get(sp_ref),
+                    "archived": bool(getattr(order, "archived", False)),
                 }
             except Exception:
-                result[order_ref] = {"order_name": None, "salesperson": None}
+                result[order_ref] = {"order_name": None, "salesperson": None, "archived": False}
         return result
 
     def get_active_line_items(self) -> pd.DataFrame:
         """
         Fetch active line items with their metadata.
+
+        Excludes archived line items at the API level via the
+        `archived = false` filter, and post-filters LIs whose parent
+        order is archived (`_fetch_order_info` surfaces `archived`).
 
         Returns DataFrame with: line_item_id, line_item_name, order_id,
         order_name, line_item_type, impressions_goal, cpm_rate,
@@ -376,15 +502,21 @@ class GAMClient:
         today = date.today()
         cutoff = (today - timedelta(days=30)).isoformat() + "T00:00:00Z"
 
-        # First pass: collect all line items and unique order resource names.
+        # First pass: collect all non-archived line items and unique order resource names.
         raw_rows = []
         order_refs: set[str] = set()
+        n_archived_li_skipped = 0
         for li in self._li_client.list_line_items(
             admanager_v1.ListLineItemsRequest(
                 parent=self._parent,
                 filter=f'endTime > "{cutoff}"',
             )
         ):
+            # Defence in depth: drop the row if the API ever returns an
+            # archived LI despite the filter (older client versions, etc.).
+            if bool(getattr(li, "archived", False)):
+                n_archived_li_skipped += 1
+                continue
             li_id_m = re.search(r"/lineItems/(\d+)$", li.name)
             li_id = li_id_m.group(1) if li_id_m else li.name
 
@@ -427,14 +559,24 @@ class GAMClient:
                 "status": li_status,
             })
 
-        # Second pass: fetch order metadata (name + salesperson) for all unique orders.
+        # Second pass: fetch order metadata (name + salesperson + archived) for all unique orders.
         order_info = self._fetch_order_info(order_refs)
-        logger.info("GAM: fetched %d line items across %d orders", len(raw_rows), len(order_refs))
+        n_archived_orders = sum(1 for v in order_info.values() if v.get("archived"))
+        logger.info(
+            "GAM: fetched %d line items across %d orders (skipped %d archived LIs, %d archived orders)",
+            len(raw_rows), len(order_refs), n_archived_li_skipped, n_archived_orders,
+        )
 
         rows = []
+        n_archived_parent_skipped = 0
         for r in raw_rows:
             info = order_info.get(r.pop("_order_ref"), {})
+            if info.get("archived"):
+                n_archived_parent_skipped += 1
+                continue
             rows.append({**r, "order_name": info.get("order_name"), "salesperson": info.get("salesperson")})
+        if n_archived_parent_skipped:
+            logger.info("GAM: dropped %d LIs belonging to archived parent orders", n_archived_parent_skipped)
         return pd.DataFrame(rows)
 
     # ------------------------------------------------------------------
@@ -447,54 +589,55 @@ class GAMClient:
 
         ListPrivateAuctionDeals takes the network as parent (not an auction).
         One call returns every PA deal on the network; auction display names
-        come from a separate ListPrivateAuctions call and are joined in via
-        each deal's `private_auction` reference.
+        and archive status come from a separate ListPrivateAuctions call,
+        joined in via each deal's `private_auction_id`.
 
-        Returns DataFrame with one row per PA deal: auction_name, deal_name,
+        Returns DataFrame with one row per non-archived PA deal: auction_name,
         external_deal_id, buyer_account_id, floor_price_usd, deal_status,
-        end_time. Note: this is inventory metadata only — GAM's reporting
-        API does not expose PA delivery (impressions/revenue) at the deal
-        level, so this can't be joined to gam_pmp_deals for revenue stats.
+        create_time, end_time. Note: this is inventory metadata only — GAM's
+        reporting API does not expose PA delivery (impressions/revenue) at
+        the deal level, so this can't be joined to gam_pmp_deals for revenue
+        stats; only by deal_name (auction display name) to gam_deal_bid_daily.
         """
         _cols = [
             "auction_name", "external_deal_id",
-            "buyer_account_id", "floor_price_usd", "deal_status", "end_time",
+            "buyer_account_id", "floor_price_usd", "deal_status",
+            "create_time", "end_time",
         ]
         if self._pa_client is None:
             logger.warning("PrivateAuctionServiceClient not available — upgrade google-ads-admanager")
             return pd.DataFrame(columns=_cols)
 
-        # Build auction resource name → display name lookup (skip archived)
-        auction_names: dict[str, str] = {}
+        # Set of archived auction IDs — used to filter their deals out below.
+        archived_auction_ids: set[int] = set()
+        n_auctions = 0
         for auction in self._pa_client.list_private_auctions(
             admanager_v1.ListPrivateAuctionsRequest(parent=self._parent)
         ):
-            if not getattr(auction, "archived", False):
-                auction_names[auction.name] = auction.display_name or ""
+            n_auctions += 1
+            if getattr(auction, "archived", False):
+                archived_auction_ids.add(int(auction.private_auction_id))
 
-        # List all deals at network level — parent must be "networks/*" not per-auction
-
+        # List every PA deal at the network level. Each deal carries its
+        # parent auction's display_name directly on `private_auction_display_name`
+        # — no per-auction lookup needed.
         rows = []
         for deal in self._pad_client.list_private_auction_deals(
             admanager_v1.ListPrivateAuctionDealsRequest(parent=self._parent)
         ):
-            # deal.name = networks/X/privateAuctions/Y/privateAuctionDeals/Z
-            # extract auction ref = networks/X/privateAuctions/Y
-            parts = deal.name.rsplit("/privateAuctionDeals/", 1)
-            auction_ref = parts[0] if len(parts) == 2 else None
-            if auction_ref not in auction_names:
-                continue  # skip deals belonging to archived auctions
+            if int(getattr(deal, "private_auction_id", 0)) in archived_auction_ids:
+                continue
             rows.append({
-                "auction_name":     auction_names[auction_ref],
-                "deal_name":        deal.display_name or None,
+                "auction_name":     deal.private_auction_display_name or None,
                 "external_deal_id": str(deal.external_deal_id) if getattr(deal, "external_deal_id", None) else None,
                 "buyer_account_id": str(deal.buyer_account_id) if getattr(deal, "buyer_account_id", None) else None,
                 "floor_price_usd":  _money(getattr(deal, "floor_price", None)),
                 "deal_status":      _enum_name(deal.status) if getattr(deal, "status", None) else None,
+                "create_time":      _ts_to_date(getattr(deal, "create_time", None)),
                 "end_time":         _ts_to_date(getattr(deal, "end_time", None)),
             })
-
-        logger.info("GAM private auctions: %d deals across %d non-archived auctions", len(rows), len(auction_names))
+        logger.info("GAM private auctions: %d deals across %d total auctions (%d archived skipped)",
+                    len(rows), n_auctions, len(archived_auction_ids))
         return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
@@ -543,13 +686,90 @@ class GAMClient:
         # already seconds. Most GAM video creatives are 5-120s → 5000-120000ms.
         return ms / 1000.0 if ms > 1000 else ms
 
+    def get_preferred_deals(self) -> pd.DataFrame:
+        """
+        Fetch Preferred Deal / Programmatic Guaranteed metadata via SOAP
+        ProposalLineItemService. Used by weekly_report.py for the deal-age
+        (≥ 90 days) threshold on PD deals.
+
+        GAM exposes PD/PG/Sponsorship inventory as ProposalLineItems —
+        `lineItemType` distinguishes them. There is no `creationDateTime` on
+        ProposalLineItem; `startDateTime` (when the deal began running) is the
+        closest proxy for "deal age" and is what weekly_report uses.
+
+        Returns one row per non-archived proposal line item: line_item_id,
+        deal_name (= proposal line item name), line_item_type, start_date,
+        end_date, last_modified.
+        """
+        _cols = ["line_item_id", "deal_name", "line_item_type",
+                 "start_date", "end_date", "last_modified"]
+        try:
+            client = self._get_soap_client()
+            from googleads import ad_manager  # type: ignore
+            svc = client.GetService("ProposalLineItemService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Where("isArchived = false")
+            sb.Limit(500)
+            rows = []
+            while True:
+                resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+                results = getattr(resp, "results", None) or []
+                if not results:
+                    break
+                for li in results:
+                    li_id = getattr(li, "id", None)
+                    rows.append({
+                        "line_item_id":   str(li_id) if li_id is not None else None,
+                        "deal_name":      getattr(li, "name", None),
+                        "line_item_type": getattr(li, "lineItemType", None),
+                        "start_date":     _soap_date_to_iso(getattr(li, "startDateTime", None)),
+                        "end_date":       _soap_date_to_iso(getattr(li, "endDateTime", None)),
+                        "last_modified":  _soap_date_to_iso(getattr(li, "lastModifiedDateTime", None)),
+                    })
+                sb.offset += sb.limit
+                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                    break
+            by_type = pd.Series([r["line_item_type"] for r in rows]).value_counts().to_dict() if rows else {}
+            logger.info("GAM preferred deals (SOAP): %d non-archived proposal line items, by type=%s",
+                        len(rows), by_type)
+            return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
+        except Exception:
+            logger.exception("get_preferred_deals (SOAP) failed")
+            return pd.DataFrame(columns=_cols)
+
+    def archive_proposal_line_item(self, pli_id: str) -> bool:
+        """Archive a single Proposal Line Item (PD/PG/Sponsorship) by numeric ID via SOAP.
+
+        Returns True when GAM confirms at least one change was made. Logs and
+        returns False on any error so the caller can surface a per-deal failure
+        without aborting a batch.
+        """
+        try:
+            from googleads import ad_manager  # type: ignore
+            client = self._get_soap_client()
+            svc = client.GetService("ProposalLineItemService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Where("id = :id").WithBindVariable("id", int(pli_id))
+            result = svc.performProposalLineItemAction(
+                {"xsi_type": "ArchiveProposalLineItems"}, sb.ToStatement()
+            )
+            n = int(getattr(result, "numChanges", 0) or 0)
+            logger.info("archive_proposal_line_item(%s): %d change(s)", pli_id, n)
+            return n > 0
+        except Exception:
+            logger.exception("archive_proposal_line_item(%s) failed", pli_id)
+            return False
+
     def list_creatives_with_duration(self) -> pd.DataFrame:
         """Fetch all creatives via the SOAP CreativeService. Returns
-        (creative_id, display_name, creative_type, duration_seconds).
-        Non-video creatives carry duration_seconds = None. VAST/3rd-party
-        creatives may also be None when GAM doesn't have the duration
-        cached locally."""
-        _cols = ["creative_id", "display_name", "creative_type", "duration_seconds"]
+        creative_id, display_name, creative_type, duration_seconds.
+        Only the ~5% of creatives where GAM cached duration locally
+        (uploaded VideoCreatives and some VastRedirectCreatives) get a
+        non-null value. For the rest (3rd-party tags via Innovid / DCM
+        / etc), duration lives in the executed JS — the manual long-
+        preroll override in Configure handles those."""
+        _cols = ["creative_id", "display_name", "creative_type",
+                 "duration_seconds"]
         try:
             client = self._get_soap_client()
             from googleads import ad_manager  # type: ignore
@@ -564,13 +784,7 @@ class GAMClient:
                 for c in resp.results:
                     cid = getattr(c, "id", None)
                     dn = getattr(c, "name", "") or ""
-                    # SOAP returns polymorphic Creative subclasses — the
-                    # SOAP class name is the type (e.g. "VideoCreative",
-                    # "VastRedirectCreative", "ImageCreative").
                     ct = type(c).__name__
-                    # `duration` is exposed on VideoCreative and
-                    # VastRedirectCreative (in ms); ImageCreative + others
-                    # don't have it.
                     duration_ms = getattr(c, "duration", None)
                     rows.append({
                         "creative_id":      str(cid) if cid is not None else None,
@@ -578,12 +792,14 @@ class GAMClient:
                         "creative_type":    ct,
                         "duration_seconds": self._ms_to_seconds(duration_ms),
                     })
-                # Page through.
                 sb.offset += sb.limit
                 if sb.offset >= getattr(resp, "totalResultSetSize", 0):
                     break
-            logger.info("GAM creatives (SOAP): %d total, %d with duration",
-                        len(rows), sum(1 for r in rows if r["duration_seconds"] is not None))
+            logger.info(
+                "GAM creatives (SOAP): %d total, %d with duration",
+                len(rows),
+                sum(1 for r in rows if r["duration_seconds"] is not None),
+            )
             return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
             logger.exception("list_creatives_with_duration (SOAP) failed")
@@ -667,6 +883,12 @@ class GAMClient:
         for _col in _optional_mean:
             if _col in df_delivery.columns:
                 agg_spec[_col] = (_col, "mean")
+        # Preserve INVENTORY_FORMAT_NAME (canonical GAM ad format) — a line
+        # item has a consistent format across days, so "first" is safe.
+        # Surfaces as `ad_format` post-rename below, replacing the brittle
+        # position-10 token parsing the dashboard previously relied on.
+        if "inventory_format_name" in df_delivery.columns:
+            agg_spec["inventory_format_name"] = ("inventory_format_name", "first")
 
         agg = df_delivery.groupby(["line_item_id"], as_index=False).agg(**agg_spec)
 
@@ -711,6 +933,18 @@ class GAMClient:
         for _i, _d in enumerate(_recent_dates, start=1):
             merged = merged.merge(_per_day(_d, f"{_i}d"), on="line_item_id", how="left")
 
+        # LI metadata (inventory_format_name + video_ad_duration) — both
+        # dimensions are incompatible with the main delivery report's
+        # metric set. Fetch via a separate, smaller report and left-join
+        # by line_item_id. Powers canonical ad_format detection and the
+        # "Video Preroll >30s" recategorization.
+        try:
+            _meta_df = self.run_li_metadata_report(start_date, end_date)
+            if not _meta_df.empty:
+                merged = merged.merge(_meta_df, on="line_item_id", how="left")
+        except Exception:
+            logger.exception("LI metadata merge failed — continuing without it")
+
         # Replace placeholders with real values from the reporting API.
         if "status_api" in merged.columns:
             _had_no_api_status = merged["status_api"].isna()
@@ -720,18 +954,34 @@ class GAMClient:
             merged.loc[_had_no_api_status & (merged["status"] == "Delivering"), "status"] = "Paused"
             merged = merged.drop(columns=["status_api"])
 
-        # VCR — completes / starts. GAM v1's enum exposes these as
-        # VIDEO_VIEWERSHIP_STARTS / VIDEO_VIEWERSHIP_COMPLETES (snake-cased
-        # downstream).
-        _vcr_starts     = "video_viewership_starts"
-        _vcr_completes  = "video_viewership_completes"
-        if _vcr_starts in merged.columns and _vcr_completes in merged.columns:
-            merged["vcr"] = merged.apply(
-                lambda r: (r[_vcr_completes] / r[_vcr_starts] * 100)
-                if pd.notna(r.get(_vcr_starts)) and r.get(_vcr_starts, 0) > 0
-                else (0.0 if pd.notna(r.get(_vcr_starts)) else None),
-                axis=1,
-            )
+        # VCR — completes / starts. Prefer the *lifetime* (campaign-to-date)
+        # ratio so the Direct campaigns table is consistent with the other
+        # CTD cells (Revenue / Delivered / Viewable / CTR). Fall back to the
+        # 7-day aggregate when lifetime starts/completes weren't returned
+        # for the line — e.g. a brand-new video line with zero history yet.
+        _lt_starts    = "lifetime_video_starts"
+        _lt_completes = "lifetime_video_completes"
+        _wk_starts    = "video_viewership_starts"
+        _wk_completes = "video_viewership_completes"
+
+        def _vcr_for(row):
+            # Lifetime first.
+            ls = row.get(_lt_starts); lc = row.get(_lt_completes)
+            if pd.notna(ls) and ls > 0 and pd.notna(lc):
+                return float(lc) / float(ls) * 100
+            if pd.notna(ls) and ls == 0:
+                # Lifetime says zero video starts ever → no VCR (not 0%).
+                pass
+            # 7-day fallback.
+            ws = row.get(_wk_starts); wc = row.get(_wk_completes)
+            if pd.notna(ws) and ws > 0 and pd.notna(wc):
+                return float(wc) / float(ws) * 100
+            return None
+
+        has_lifetime_video = _lt_starts in merged.columns and _lt_completes in merged.columns
+        has_weekly_video   = _wk_starts in merged.columns and _wk_completes in merged.columns
+        if has_lifetime_video or has_weekly_video:
+            merged["vcr"] = merged.apply(_vcr_for, axis=1)
         else:
             merged["vcr"] = None
 
