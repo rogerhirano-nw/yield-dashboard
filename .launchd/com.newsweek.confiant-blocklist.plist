@@ -50,6 +50,10 @@
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>GAM_NETWORK_ID</key>
         <string>REPLACE_ME</string>
+        <key>CONFIANT_API_KEY</key>
+        <string>REPLACE_ME</string>
+        <!-- Agentmail vars are for the outbound summary email only.
+             Inbound CSV ingestion was replaced by the Confiant API. -->
         <key>AGENTMAIL_API_KEY</key>
         <string>REPLACE_ME</string>
         <key>AGENTMAIL_INBOX_ID</key>
@@ -60,8 +64,6 @@
         <string>/Users/roger/.confiant-blocklist/playwright-profile</string>
         <key>CONFIANT_BLOCKLIST_STATE</key>
         <string>/Users/roger/.confiant-blocklist/state.sqlite</string>
-        <key>CONFIANT_CSV_CACHE_DIR</key>
-        <string>/Users/roger/.confiant-blocklist/csv-cache</string>
     </dict>
 
     <key>StandardOutPath</key>
