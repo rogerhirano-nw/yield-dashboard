@@ -42,3 +42,5 @@ jobs:
           PUBMATIC_REFRESH_TOKEN:     ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
           PUBMATIC_EMAIL:             ${{ secrets.PUBMATIC_EMAIL }}
           OPENSINCERA_TOKEN:          ${{ secrets.OPENSINCERA_TOKEN }}
+          AGENTMAIL_API_KEY:          ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:         ${{ secrets.AGENTMAIL_INBOX_ID }}
