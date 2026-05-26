@@ -509,7 +509,7 @@ class GAMClient:
         for li in self._li_client.list_line_items(
             admanager_v1.ListLineItemsRequest(
                 parent=self._parent,
-                filter=f'endTime > "{cutoff}" AND archived = false',
+                filter=f'endTime > "{cutoff}"',
             )
         ):
             # Defence in depth: drop the row if the API ever returns an
