@@ -1,0 +1,97 @@
+name: Investigate high-RPM 2026-05-24 (one-off)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/high-rpm-investigation-Y0hPU]
+    paths:
+      - 'scripts/investigate_high_rpm.py'
+      - 'scripts/investigate_format_breakdown.py'
+      - 'scripts/investigate_magnite_format.py'
+      - '.github/workflows/investigate_high_rpm.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install google-ads-admanager google-auth pandas
+
+      - name: Run high-RPM investigation
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/investigate_high_rpm.py 2>/tmp/stderr.txt | tee /tmp/output.txt
+          echo "--- stderr ---" && cat /tmp/stderr.txt
+
+      - name: Run format breakdown investigation
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/investigate_format_breakdown.py 2>/tmp/stderr_fmt.txt | tee /tmp/output_fmt.txt
+          echo "--- stderr ---" && cat /tmp/stderr_fmt.txt
+
+      - name: Post format breakdown as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }}, skipping comment"
+            exit 0
+          fi
+          {
+            echo '### Format breakdown investigation — 2026-05-24'
+            echo ''
+            echo "> Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "> Direct = GAM ad-server · Deals = PA/PD/PG · OB = yield-group estimated"
+            echo ''
+            cat /tmp/output_fmt.txt
+          } > /tmp/comment_fmt.md
+          gh pr comment "$PR" --body-file /tmp/comment_fmt.md
+
+      - name: Run Magnite format investigation
+        continue-on-error: true   # investigation script — don't fail CI on crash
+        env:
+          MAGNITE_KEY: ${{ secrets.MAGNITE_KEY }}
+          MAGNITE_SECRET: ${{ secrets.MAGNITE_SECRET }}
+          MAGNITE_PUBLISHER_ID: ${{ secrets.MAGNITE_PUBLISHER_ID }}
+        run: |
+          set -o pipefail
+          python scripts/investigate_magnite_format.py 2>/tmp/stderr_mag.txt | tee /tmp/output_mag.txt
+          echo "--- stderr ---" && cat /tmp/stderr_mag.txt
+
+      - name: Post Magnite results as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }}, skipping comment"
+            exit 0
+          fi
+          {
+            echo '### Magnite format investigation — 2026-05-24'
+            echo ''
+            echo "> Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "> Source: Magnite DV+ General dataset · UTC times"
+            echo ''
+            cat /tmp/output_mag.txt
+          } > /tmp/comment_mag.md
+          gh pr comment "$PR" --body-file /tmp/comment_mag.md
