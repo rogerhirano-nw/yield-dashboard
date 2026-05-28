@@ -92,9 +92,12 @@ SETTINGS = json.loads((Path(__file__).parent / "settings.json").read_text())
 AE_NAMES: dict[str, str] = SETTINGS.get("ae_names", {})
 AE_REGEX = re.compile(r"Team-(?:USA|INTL)_([A-Za-z]+)")
 
-ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL", "adops@newsweek.com")
+ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL") or "adops@newsweek.com"
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
-DRY_RUN_TO = os.environ.get("DRY_RUN_TO", "roger.hirano@newsweek.com")
+# Use `or` (not the get() default) so an env var set to "" — which is what
+# GitHub Actions injects for unset secrets — falls back to the literal here
+# instead of bypassing the fallback as a present-but-empty value.
+DRY_RUN_TO = os.environ.get("DRY_RUN_TO") or "roger.hirano@newsweek.com"
 
 # Teams *channel email address* — every Microsoft Teams channel can be assigned
 # one, and emails sent there appear as a channel post. When this is set and
