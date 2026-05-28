@@ -45,7 +45,7 @@ jobs:
           AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
           ADOPS_EMAIL:            ${{ secrets.ADOPS_EMAIL }}
-          DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO }}
+          DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO || 'roger.hirano@newsweek.com' }}
           TEAMS_CHANNEL_EMAIL:    ${{ secrets.TEAMS_CHANNEL_EMAIL }}
           TEAMS_WEBHOOK_URL:      ${{ secrets.TEAMS_WEBHOOK_URL }}
           TEAMS_DRY_RUN_WEBHOOK:  ${{ secrets.TEAMS_DRY_RUN_WEBHOOK }}
