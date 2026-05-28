@@ -92,9 +92,12 @@ SETTINGS = json.loads((Path(__file__).parent / "settings.json").read_text())
 AE_NAMES: dict[str, str] = SETTINGS.get("ae_names", {})
 AE_REGEX = re.compile(r"Team-(?:USA|INTL)_([A-Za-z]+)")
 
-ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL", "adops@newsweek.com")
+ADOPS_EMAIL = os.environ.get("ADOPS_EMAIL") or "adops@newsweek.com"
 DRY_RUN = os.environ.get("DRY_RUN", "1") != "0"
-DRY_RUN_TO = os.environ.get("DRY_RUN_TO", "roger.hirano@newsweek.com")
+# Use `or` (not the get() default) so an env var set to "" — which is what
+# GitHub Actions injects for unset secrets — falls back to the literal here
+# instead of bypassing the fallback as a present-but-empty value.
+DRY_RUN_TO = os.environ.get("DRY_RUN_TO") or "roger.hirano@newsweek.com"
 
 # Teams *channel email address* — every Microsoft Teams channel can be assigned
 # one, and emails sent there appear as a channel post. When this is set and
@@ -281,6 +284,73 @@ def _fmt_flight(start, end) -> str:
     return f"{_fmt_date(start)} - {_fmt_date(end)}"
 
 
+# ── unbilled-LI classification ────────────────────────────────────────────────
+# Newsweek runs delivery-only line items (Added Value, House, Sponsorship)
+# that never accrue GAM AD_SERVER_REVENUE. Without classification the email
+# silently omitted the revenue line OR showed "pending" (in card renderers),
+# both of which read as "data missing" — sellers then chase it. Classify up
+# front so the Revenue cell can say "Added value" / "House" / "Sponsorship"
+# while delivery + pacing keep their normal alert behavior (we still owe the
+# advertiser the impressions even when there's no invoice).
+
+_UNBILLED_LI_TYPES = {"HOUSE", "NETWORK", "AD_EXCHANGE", "BULK"}
+
+
+def classify_li_billing(li) -> str:
+    """Return one of 'billable', 'added_value', 'sponsorship', 'house', 'unbilled'.
+
+    Name signal ('-AV-') wins over type because AE Added-Value lines are
+    sometimes booked at STANDARD priority with a $0 rate, and we still want
+    the email to call them out as AV rather than as a $0 billable line.
+    """
+    name = str(li.get("line_item_name") or "").upper()
+    if "-AV-" in name or "_AV_" in name or "ADDED-VALUE" in name or "ADDEDVALUE" in name:
+        return "added_value"
+
+    lit = str(li.get("line_item_type") or "").upper()
+    if lit == "SPONSORSHIP":
+        return "sponsorship"
+    if lit in {"HOUSE", "NETWORK"}:
+        return "house"
+
+    try:
+        cpm = float(li.get("cpm_rate") or 0)
+    except (TypeError, ValueError):
+        cpm = 0.0
+    if cpm <= 0 and lit in _UNBILLED_LI_TYPES:
+        return "unbilled"
+    return "billable"
+
+
+_BILLING_LABEL = {
+    "added_value": "Added value",
+    "sponsorship": "Sponsorship",
+    "house":       "House",
+    "unbilled":    "No charge",
+}
+
+_BILLING_CHIP_BG = {
+    "added_value": "#f0e6d2",  # warm sand — distinct from any pacing color
+    "sponsorship": "#e6e6f0",
+    "house":       "#e8e8e8",
+    "unbilled":    "#e8e8e8",
+}
+
+
+def _billing_chip_html(state: str) -> str:
+    """Inline chip shown next to the LI title. Empty string for billable."""
+    if state == "billable":
+        return ""
+    bg = _BILLING_CHIP_BG.get(state, "#e8e8e8")
+    label = _BILLING_LABEL.get(state, "")
+    return (
+        f"<span style='display:inline-block;margin-left:8px;padding:1px 6px;"
+        f"font:600 10px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
+        f"letter-spacing:0.04em;text-transform:uppercase;color:#1c1c1e;"
+        f"background:{bg};border-radius:3px'>{label}</span>"
+    )
+
+
 # ── HTML render ────────────────────────────────────────────────────────────────
 
 def _per_day_metrics(daily_li: pd.DataFrame, li: pd.Series) -> dict:
@@ -375,6 +445,8 @@ def _line_item_html(li: pd.Series, daily_li: pd.DataFrame) -> str:
     pm = _per_day_metrics(daily_li, li)
     name = li.get("line_item_name") or "(no name)"
     flight = _fmt_flight(li.get("start_date"), li.get("end_date"))
+    billing_state = classify_li_billing(li)
+    chip = _billing_chip_html(billing_state)
 
     pacing = li.get("pacing_pct")
     pacing_str = "—" if pd.isna(pacing) else f"{float(pacing):.1f}%"
@@ -401,11 +473,16 @@ def _line_item_html(li: pd.Series, daily_li: pd.DataFrame) -> str:
         viewability_line = f"Viewability: {_with_delta(_fmt_pct(y_vw), _delta_pp(y_vw, p_vw))}<br>"
 
     delta_imp_str = _delta_imp(y_imp, p_imp)
-    rev_line = f"Revenue: {_with_delta(_fmt_money(y_rev), _delta_money(y_rev, p_rev))}" if y_rev is not None else ""
+    if billing_state != "billable":
+        rev_line = f"Revenue: {_BILLING_LABEL[billing_state]} (no charge)"
+    elif y_rev is not None:
+        rev_line = f"Revenue: {_with_delta(_fmt_money(y_rev), _delta_money(y_rev, p_rev))}"
+    else:
+        rev_line = ""
 
     p = (
         "<p style='margin:0 0 16px 0;font:14px/1.7 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1c1c1e'>"
-        f"<strong style='font-weight:600'>{name}</strong><br>"
+        f"<strong style='font-weight:600'>{name}</strong>{chip}<br>"
         f"Flight: {flight}<br>"
         f"{pacing_line}<br>"
         f"Goal: {_fmt_int(goal)} IMP<br>"
@@ -438,6 +515,13 @@ def _campaign_html(order_name: str, items: pd.DataFrame, daily: pd.DataFrame) ->
 
 def render_email(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, today: date) -> str:
     n = len(ae_items)
+    # Billable-only id set for the revenue sum; impression sum still spans all
+    # LIs (we owe the impressions either way). Mirrors _rollup().
+    billable_ids = {
+        str(li["line_item_id"])
+        for _, li in ae_items.iterrows()
+        if classify_li_billing(li) == "billable"
+    }
     # Roll-up = yesterday's impressions/revenue across the AE's line items
     if not daily.empty:
         daily_y_per_li = (
@@ -446,7 +530,11 @@ def render_email(ae_name: str, ae_items: pd.DataFrame, daily: pd.DataFrame, toda
         )
         y_subset = daily_y_per_li[daily_y_per_li["line_item_id"].astype(str).isin(ae_items["line_item_id"].astype(str))]
         total_imp = int(y_subset["ad_server_impressions"].fillna(0).sum()) if "ad_server_impressions" in y_subset.columns else 0
-        total_rev = float(y_subset["ad_server_cpm_and_cpc_revenue"].fillna(0).sum()) if "ad_server_cpm_and_cpc_revenue" in y_subset.columns else 0.0
+        if "ad_server_cpm_and_cpc_revenue" in y_subset.columns:
+            rev_subset = y_subset[y_subset["line_item_id"].astype(str).isin(billable_ids)]
+            total_rev = float(rev_subset["ad_server_cpm_and_cpc_revenue"].fillna(0).sum())
+        else:
+            total_rev = 0.0
     else:
         # Fallback: yesterday's impressions come from impressions_1d on gam_campaigns;
         # per-line-item per-day revenue isn't stored there, so the roll-up shows 0.
@@ -513,7 +601,16 @@ def send_one(ae_name: str, ae_email: str, html: str, today: date) -> None:
 # ── Teams (Workflow webhook) ──────────────────────────────────────────────────
 
 def _rollup(ae_items: pd.DataFrame, daily: pd.DataFrame) -> tuple[int, float]:
-    """Yesterday's total impressions + revenue across an AE's line items."""
+    """Yesterday's total impressions + revenue across an AE's line items.
+
+    Impressions span every LI (delivery commitment exists either way).
+    Revenue sums only billable LIs — see classify_li_billing().
+    """
+    billable_ids = {
+        str(li["line_item_id"])
+        for _, li in ae_items.iterrows()
+        if classify_li_billing(li) == "billable"
+    }
     if not daily.empty and "line_item_id" in daily.columns:
         daily_y = (
             daily.sort_values("date", ascending=False)
@@ -522,7 +619,11 @@ def _rollup(ae_items: pd.DataFrame, daily: pd.DataFrame) -> tuple[int, float]:
         ids = ae_items["line_item_id"].astype(str)
         y_subset = daily_y[daily_y["line_item_id"].astype(str).isin(ids)]
         total_imp = int(y_subset["ad_server_impressions"].fillna(0).sum()) if "ad_server_impressions" in y_subset.columns else 0
-        total_rev = float(y_subset["ad_server_cpm_and_cpc_revenue"].fillna(0).sum()) if "ad_server_cpm_and_cpc_revenue" in y_subset.columns else 0.0
+        if "ad_server_cpm_and_cpc_revenue" in y_subset.columns:
+            rev_subset = y_subset[y_subset["line_item_id"].astype(str).isin(billable_ids)]
+            total_rev = float(rev_subset["ad_server_cpm_and_cpc_revenue"].fillna(0).sum())
+        else:
+            total_rev = 0.0
         return total_imp, total_rev
     total_imp = int(ae_items["impressions_1d"].fillna(0).sum()) if "impressions_1d" in ae_items.columns else 0
     return total_imp, 0.0
@@ -617,9 +718,11 @@ def render_teams_card(ae_name: str, ae_email: Optional[str], ae_items: pd.DataFr
         yesterday_bit = f"Yesterday {_fmt_int(y_imp)} imp" + (f" ({delta})" if delta else "")
         ctr_bit = f"CTR {_fmt_pct(y_ctr)}"
 
+        billing_state = classify_li_billing(li)
+        billing_tag = f" · _{_BILLING_LABEL[billing_state]}_" if billing_state != "billable" else ""
         body.append({
             "type": "TextBlock",
-            "text": f"▸ **{_li_friendly_name(li)}**",
+            "text": f"▸ **{_li_friendly_name(li)}**{billing_tag}",
             "wrap": True,
             "spacing": "Medium",
             "separator": True,
