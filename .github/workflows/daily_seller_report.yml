@@ -1,0 +1,56 @@
+name: Daily seller campaign report
+
+# Workflow lives on main so it's dispatchable from the GitHub UI / API, but
+# the schedule trigger is intentionally OFF here — the source files
+# (daily_seller_report.py, settings.json AE map) still live on
+# feat/daily-seller-report. PR #34 will turn the schedule back on when it
+# merges. Until then, dispatch with --ref pointing at the seller branch.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch to check out (must contain daily_seller_report.py)'
+        required: false
+        default: 'feat/daily-seller-report'
+        type: string
+      dry_run:
+        description: 'Route email to DRY_RUN_TO and Teams to TEAMS_DRY_RUN_WEBHOOK; suppress @mentions'
+        required: false
+        default: '1'
+        type: choice
+        options: ['1', '0']
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - run: python daily_seller_report.py
+        env:
+          DATABASE_URL:           ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
+          ADOPS_EMAIL:            ${{ secrets.ADOPS_EMAIL }}
+          DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO }}
+          TEAMS_CHANNEL_EMAIL:    ${{ secrets.TEAMS_CHANNEL_EMAIL }}
+          TEAMS_WEBHOOK_URL:      ${{ secrets.TEAMS_WEBHOOK_URL }}
+          TEAMS_DRY_RUN_WEBHOOK:  ${{ secrets.TEAMS_DRY_RUN_WEBHOOK }}
+          DASHBOARD_URL:          ${{ secrets.DASHBOARD_URL }}
+          ENTRA_TENANT_ID:        ${{ secrets.ENTRA_TENANT_ID }}
+          ENTRA_CLIENT_ID:        ${{ secrets.ENTRA_CLIENT_ID }}
+          ENTRA_CLIENT_SECRET:    ${{ secrets.ENTRA_CLIENT_SECRET }}
+          DRY_RUN:                ${{ github.event.inputs.dry_run }}
