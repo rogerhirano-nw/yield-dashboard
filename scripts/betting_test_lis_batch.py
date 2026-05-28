@@ -73,23 +73,42 @@ assert set(src_crs.keys()) == {(320,50),(300,250),(728,90),(970,250)}, \
     f"unexpected source sizes: {sorted(src_crs.keys())}"
 
 # ---- build new-LI specs ----
+def build_audience_custom_targeting(segment_id: int) -> dict:
+    """Build the customTargeting dict that adds positive audience-segment
+    targeting via AudienceSegmentCriteria. Schema verified against the
+    SOAP v202605 WSDL:
+        CustomCriteriaSet { logicalOperator, children[] }
+          -> AudienceSegmentCriteria { operator, audienceSegmentIds[] }
+    Each polymorphic node carries an explicit xsi_type so the googleads
+    SOAP serializer can dispatch (without these hints it bails with
+    KeyError: 'logicalOperator' on AND/OR sets, or 'audienceSegmentIds'
+    on the leaf)."""
+    return {
+        "xsi_type": "CustomCriteriaSet",
+        "logicalOperator": "AND",
+        "children": [
+            {
+                "xsi_type": "AudienceSegmentCriteria",
+                "operator": "IS",
+                "audienceSegmentIds": [segment_id],
+            }
+        ],
+    }
+
+
 def build_new_li(pick):
-    """Clone targeting from control LI. Audience segment targeting is NOT
-    added by this script — see big note below."""
+    """Clone targeting from control LI + add positive audience-segment
+    targeting for `pick`."""
     # Deep-clone targeting so we don't mutate the snapshot
     targeting = copy.deepcopy(src_li["targeting"])
-    # Strip customTargeting — its CustomCriteriaSet/CustomCriteria polymorphic
-    # tree trips up googleads' SOAP serializer (KeyError: 'logicalOperator')
-    # without explicit xsi_type hints on every node. Test LIs lose the
-    # content-category IS_NOT exclusions; user can re-add via GAM UI if
-    # important.
-    targeting.pop("customTargeting", None)
-    # Audience segments live INSIDE customTargeting in SOAP v202605 (not as a
-    # top-level audienceSegmentIds field). Constructing that polymorphic tree
-    # from scratch with the right xsi_type hints is a deep rabbit hole the
-    # googleads serializer fights. Pragmatic workaround: leave audience
-    # targeting OFF the test LIs, and the user attaches segment {pick}
-    # via GAM UI before approving the DRAFT LI. Cost: ~30 seconds per LI.
+    # Replace the control LI's customTargeting tree with a single
+    # AudienceSegmentCriteria node for this segment. We can't just APPEND
+    # to the control's customTargeting because cloning that polymorphic tree
+    # losslessly is what trips up the SOAP serializer in the first place
+    # (the control's nodes lack xsi_type hints after a zeep round-trip).
+    # Test LIs therefore lose the control LI's content-category IS_NOT
+    # exclusions; add via GAM UI if important.
+    targeting["customTargeting"] = build_audience_custom_targeting(pick["segment_id"])
 
     # Mint name following 14-field convention: swap creative slot to Aud-<handle>
     # Source: Newsweek_Direct_Gambling_NA_NA_NA_NA_Spinfinite_Spinfinite-Digital-Campaign_US_Display_IO1109_1_Team-USA_RShore
@@ -118,7 +137,12 @@ def build_new_li(pick):
         },
         "discountType": src_li.get("discountType", "PERCENTAGE"),
         "discount": src_li.get("discount", 0),
-        "allowOverbook": False,
+        # Bypass forecast check on the narrower audience-targeted LIs. The
+        # segment + ad-unit combination may not project enough inventory to
+        # cover the 215K imp goal; allowOverbook lets the LI reserve anyway
+        # and just deliver what's available. Without this, updateLineItems
+        # / createLineItems return ForecastingError.NOT_ENOUGH_INVENTORY.
+        "allowOverbook": True,
         # Don't carry forward the source's id, status, lastModified, stats, etc
     }
 
