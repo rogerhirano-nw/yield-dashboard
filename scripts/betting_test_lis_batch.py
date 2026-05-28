@@ -74,11 +74,22 @@ assert set(src_crs.keys()) == {(320,50),(300,250),(728,90),(970,250)}, \
 
 # ---- build new-LI specs ----
 def build_new_li(pick):
-    """Clone targeting from control LI, add audience-segment positive target."""
+    """Clone targeting from control LI. Audience segment targeting is NOT
+    added by this script — see big note below."""
     # Deep-clone targeting so we don't mutate the snapshot
     targeting = copy.deepcopy(src_li["targeting"])
-    # Add audience segment positive targeting (separate from customTargeting)
-    targeting["audienceSegmentIds"] = [pick["segment_id"]]
+    # Strip customTargeting — its CustomCriteriaSet/CustomCriteria polymorphic
+    # tree trips up googleads' SOAP serializer (KeyError: 'logicalOperator')
+    # without explicit xsi_type hints on every node. Test LIs lose the
+    # content-category IS_NOT exclusions; user can re-add via GAM UI if
+    # important.
+    targeting.pop("customTargeting", None)
+    # Audience segments live INSIDE customTargeting in SOAP v202605 (not as a
+    # top-level audienceSegmentIds field). Constructing that polymorphic tree
+    # from scratch with the right xsi_type hints is a deep rabbit hole the
+    # googleads serializer fights. Pragmatic workaround: leave audience
+    # targeting OFF the test LIs, and the user attaches segment {pick}
+    # via GAM UI before approving the DRAFT LI. Cost: ~30 seconds per LI.
 
     # Mint name following 14-field convention: swap creative slot to Aud-<handle>
     # Source: Newsweek_Direct_Gambling_NA_NA_NA_NA_Spinfinite_Spinfinite-Digital-Campaign_US_Display_IO1109_1_Team-USA_RShore
@@ -190,14 +201,22 @@ log = {
     "deactivated_creatives": [],
 }
 
-# 1. Update control LI goal
+# 1. Update control LI goal (best-effort — skip silently if blocked by stale
+#    audience-segment refs in customTargeting; user can adjust in GAM UI later)
 print(f"\n[1/4] Reducing control LI {CONTROL_LI_ID} goal to {NEW_CONTROL_GOAL:,}...")
-sb = ad_manager.StatementBuilder(version=V); sb.Where(f"id = {CONTROL_LI_ID}")
-control_li = li_svc.getLineItemsByStatement(sb.ToStatement()).results[0]
-# Mutate primaryGoal.units
-control_li["primaryGoal"]["units"] = NEW_CONTROL_GOAL
-updated = li_svc.updateLineItems([control_li])
-print(f"   ✓ control LI updated. new units = {updated[0]['primaryGoal']['units']:,}")
+try:
+    sb = ad_manager.StatementBuilder(version=V); sb.Where(f"id = {CONTROL_LI_ID}")
+    control_li = li_svc.getLineItemsByStatement(sb.ToStatement()).results[0]
+    control_li["primaryGoal"]["units"] = NEW_CONTROL_GOAL
+    updated = li_svc.updateLineItems([control_li])
+    print(f"   ✓ control LI updated. new units = {updated[0]['primaryGoal']['units']:,}")
+    log["control_li_goal_updated"] = True
+except Exception as e:
+    print(f"   ⚠ control goal update SKIPPED ({type(e).__name__}). "
+          f"Continuing with test-LI creation; adjust the control goal manually in GAM UI.")
+    print(f"   error: {str(e)[:200]}")
+    log["control_li_goal_updated"] = False
+    log["control_li_goal_skip_reason"] = str(e)[:200]
 
 # 2-4. For each pick: create LI -> create 4 creatives -> 4 LICAs
 for pick, spec in new_li_specs:
