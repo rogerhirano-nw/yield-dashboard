@@ -90,6 +90,39 @@ JOBS = [
             "wdays":   [1],    # Monday only (Sun=0..Sat=6)
         },
     },
+    # ── Intraday refresh (feeds the 3-hourly cap digest with today's data) ──
+    # Fires at 10:30, 13:30, 16:30, 19:30 ET Mon–Fri — 30 min before each
+    # cap-digest run — so each digest has data ≤ 30 minutes old.
+    # The 5 AM job above covers overnight and the 8 AM digest run.
+    {
+        "repo":     "rogerhirano-nw/yield-dashboard",
+        "title":    "yield-dashboard refresh ALL (intraday Mon–Fri 10:30/13:30/16:30/19:30 ET)",
+        "workflow": "refresh.yml",
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [10, 13, 16, 19],
+            "minutes": [30],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [1, 2, 3, 4, 5],   # Mon–Fri only
+        },
+    },
+    # ── Cap digest — every 3 hours Mon–Fri ─────────────────────────────────
+    # 8 AM uses data from the 5 AM overnight refresh (full yesterday + early today).
+    # 11 AM, 2 PM, 5 PM, 8 PM each use the intraday refresh 30 min prior.
+    {
+        "repo":     "rogerhirano-nw/seller-comms",
+        "title":    "seller-comms cap digest (Mon–Fri 8:00/11:00/14:00/17:00/20:00 ET)",
+        "workflow": "cap_digest.yml",
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [8, 11, 14, 17, 20],
+            "minutes": [0],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [1, 2, 3, 4, 5],   # Mon–Fri only
+        },
+    },
 ]
 
 CRONJOB_API = "https://api.cron-job.org"
