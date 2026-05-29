@@ -90,14 +90,16 @@ JOBS = [
             "wdays":   [1],    # Monday only (Sun=0..Sat=6)
         },
     },
-    # ── Intraday refresh (feeds the 3-hourly cap digest with today's data) ──
+    # ── Intraday GAM refresh (feeds the 3-hourly cap digest with today's data) ─
+    # Uses refresh_direct.yml (GAM direct + hourly breakdown only — much faster
+    # than the full refresh.yml sweep which re-pulls all SSP feeds).
     # Fires at 10:30, 13:30, 16:30, 19:30 ET Mon–Fri — 30 min before each
     # cap-digest run — so each digest has data ≤ 30 minutes old.
-    # The 5 AM job above covers overnight and the 8 AM digest run.
+    # The 5 AM full refresh covers overnight + the 8 AM digest run.
     {
         "repo":     "rogerhirano-nw/yield-dashboard",
-        "title":    "yield-dashboard refresh ALL (intraday Mon–Fri 10:30/13:30/16:30/19:30 ET)",
-        "workflow": "refresh.yml",
+        "title":    "yield-dashboard refresh DIRECT+HOURLY (intraday Mon–Fri 10:30/13:30/16:30/19:30 ET)",
+        "workflow": "refresh_direct.yml",
         "schedule": {
             "timezone": "America/New_York",
             "hours":   [10, 13, 16, 19],

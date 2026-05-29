@@ -1,16 +1,16 @@
 name: Refresh GAM direct campaigns
 
-# Direct-only refresh: runs ONLY refresh_gam() (writes to gam_campaigns).
-# Skips Magnite, Pubmatic, IX, GAM PMP/PA/PD deals, Creatives, LICA, etc.
-# Used for the intra-day fires (11 AM + 3 PM ET) so direct-campaign
-# delivery on the dashboard stays current without re-pulling the full
-# set of slow SSP feeds.
+# Direct-only refresh: runs refresh_gam() (gam_campaigns) plus, when
+# GAM_HOURLY_LINE_ITEMS is set, refresh_gam_hourly() (gam_campaigns_hourly).
+#
+# Used for intra-day fires so direct-campaign delivery and hourly cap-tracker
+# data stay current without re-pulling the slower Magnite/Pubmatic/PMP feeds.
 #
 # The 5 AM ET daily full sweep still happens via refresh.yml.
 #
-# Triggered externally by cron-job.org via the GitHub API
-# (POST /repos/<owner>/<repo>/actions/workflows/refresh_direct.yml/dispatches)
-# at 11:00 AND 15:00 America/New_York. Manual `gh workflow run` also works.
+# Triggered externally by cron-job.org at 10:30, 13:30, 16:30, 19:30
+# America/New_York Mon–Fri so each 3-hourly cap-digest run has data
+# ≤ 30 minutes old.
 on:
   workflow_dispatch:
 
@@ -31,11 +31,18 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python refresh_cache.py --mode=direct
+      - name: Refresh gam_campaigns (daily Nd snapshots)
+        run: python refresh_cache.py --mode=direct
         env:
-          # Only GAM-related secrets — the direct path doesn't touch
-          # Magnite or Pubmatic at all, but DATABASE_URL is still needed
-          # to write the gam_campaigns rows.
           DATABASE_URL:               ${{ secrets.DATABASE_URL }}
           GAM_NETWORK_ID:             ${{ secrets.GAM_NETWORK_ID }}
           GAM_SERVICE_ACCOUNT_JSON:   ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+
+      - name: Refresh gam_campaigns_hourly (today's hourly breakdown for capped LIs)
+        if: vars.GAM_HOURLY_LINE_ITEMS != ''
+        run: python refresh_cache.py --mode=gam_hourly
+        env:
+          DATABASE_URL:               ${{ secrets.DATABASE_URL }}
+          GAM_NETWORK_ID:             ${{ secrets.GAM_NETWORK_ID }}
+          GAM_SERVICE_ACCOUNT_JSON:   ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_HOURLY_LINE_ITEMS:      ${{ vars.GAM_HOURLY_LINE_ITEMS }}
