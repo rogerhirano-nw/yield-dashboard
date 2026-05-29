@@ -262,6 +262,38 @@ class GAMClient:
     # Programmatic deal report (PA / PD / PG by deal name)
     # ------------------------------------------------------------------
 
+    def run_hourly_report(self, report_date: date, line_item_ids: list[str]) -> pd.DataFrame:
+        """Pull today's hour-by-hour delivery for specific line items.
+
+        Dimensions: DATE, HOUR, LINE_ITEM_ID
+        Metrics: AD_SERVER_IMPRESSIONS
+
+        Used by refresh_gam_hourly() to populate gam_campaigns_hourly.
+        Results are filtered client-side to the provided line_item_ids.
+
+        Returns a DataFrame with columns: date, hour (0–23), line_item_id,
+        ad_server_impressions.  Returns empty DataFrame if no data.
+        """
+        df = self._run_report(
+            dimensions=["DATE", "HOUR", "LINE_ITEM_ID"],
+            metrics=["AD_SERVER_IMPRESSIONS"],
+            start_date=report_date,
+            end_date=report_date,
+        )
+        if df.empty:
+            return df
+
+        df["line_item_id"] = df["line_item_id"].astype(str)
+        if line_item_ids:
+            keep = {str(lid) for lid in line_item_ids}
+            df = df[df["line_item_id"].isin(keep)].copy()
+
+        df["ad_server_impressions"] = (
+            pd.to_numeric(df["ad_server_impressions"], errors="coerce").fillna(0).astype("int64")
+        )
+        df["hour"] = pd.to_numeric(df["hour"], errors="coerce").fillna(0).astype("int64")
+        return df
+
     def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
         Pull PA / PD / PG deals from GAM keyed by ORDER_NAME + DEAL_NAME.

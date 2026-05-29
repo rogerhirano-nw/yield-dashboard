@@ -195,6 +195,46 @@ def refresh_gam() -> int:
     return len(df)
 
 
+def refresh_gam_hourly() -> int:
+    """Pull today's hourly GAM delivery for line items with weekly budget caps.
+
+    Line item IDs are read from the GAM_HOURLY_LINE_ITEMS environment variable
+    (comma-separated string). Only those IDs are queried and stored. Skips
+    silently if the variable is unset.
+
+    Writes to gam_campaigns_hourly (date, hour, line_item_id, ad_server_impressions,
+    pulled_at). Upserts by deleting today's rows for these LIs then re-inserting
+    so re-runs throughout the day always reflect the latest intraday delivery.
+    """
+    import os
+    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
+    if not li_ids_raw:
+        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping hourly refresh")
+        return 0
+
+    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
+    today = datetime.now(timezone.utc).date()
+    logger.info("Refreshing gam_campaigns_hourly for LIs %s, date=%s", li_ids, today)
+
+    gam = GAMClient()
+    df = gam.run_hourly_report(today, li_ids)
+    if df.empty:
+        logger.info("No hourly data returned for date=%s", today)
+        return 0
+
+    df["pulled_at"] = datetime.now(timezone.utc).isoformat()
+    table = "gam_campaigns_hourly"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            conn.execute(
+                text(f"DELETE FROM \"{table}\" WHERE date = :d AND line_item_id::text = ANY(:ids)"),
+                {"d": today.isoformat(), "ids": li_ids},
+            )
+        df.to_sql(table, conn, if_exists="append", index=False)
+    logger.info("Wrote %d hourly rows to %s", len(df), table)
+    return len(df)
+
+
 def refresh_gam_pmp_deals() -> int:
     """Pull GAM PMP deal data (PA / PD / PG) by deal name and write to gam_pmp_deals."""
     logger.info("Refreshing gam_pmp_deals (GAM deals report)")
@@ -854,12 +894,21 @@ def main() -> None:
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
-    if mode not in ("all", "direct", "opensincera", "deal-metadata"):
-        logger.error("Unknown --mode=%s (use 'all', 'direct', 'opensincera', or 'deal-metadata')", mode)
+    if mode not in ("all", "direct", "opensincera", "deal-metadata", "gam_hourly"):
+        logger.error("Unknown --mode=%s (use 'all', 'direct', 'opensincera', 'deal-metadata', or 'gam_hourly')", mode)
         raise SystemExit(2)
     logger.info("refresh_cache v3 — mode=%s", mode)
 
     migrate_table_names()
+
+    if mode == "gam_hourly":
+        total = 0
+        try:
+            total += refresh_gam_hourly()
+        except Exception:
+            logger.exception("Hourly GAM refresh failed")
+        logger.info("Done (gam_hourly). %d rows written.", total)
+        return
 
     if mode == "direct":
         total = 0
