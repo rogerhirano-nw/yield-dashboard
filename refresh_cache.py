@@ -213,8 +213,12 @@ def refresh_gam_hourly() -> int:
         return 0
 
     li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
-    today = datetime.now(timezone.utc).date()
-    logger.info("Refreshing gam_campaigns_hourly for LIs %s, date=%s", li_ids, today)
+    # Use ET date to match what the cap digest queries — the 7:30 PM ET refresh
+    # runs at 23:30 UTC (still May 29 ET) and must write the same date the
+    # 8 PM cap digest (= 00:00 UTC = May 30 UTC) will query.
+    from zoneinfo import ZoneInfo
+    today = datetime.now(tz=ZoneInfo("America/New_York")).date()
+    logger.info("Refreshing gam_campaigns_hourly for LIs %s, date=%s (ET)", li_ids, today)
 
     gam = GAMClient()
     df = gam.run_hourly_report(today, li_ids)
