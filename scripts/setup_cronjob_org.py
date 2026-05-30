@@ -98,7 +98,7 @@ JOBS = [
     # The 5 AM full refresh covers overnight + the 8 AM digest run.
     {
         "repo":     "rogerhirano-nw/yield-dashboard",
-        "title":    "yield-dashboard refresh DIRECT+HOURLY (intraday Mon–Fri 10:30/13:30/16:30/19:30 ET)",
+        "title":    "yield-dashboard refresh DIRECT+HOURLY (intraday daily 10:30/13:30/16:30/19:30 ET)",
         "workflow": "refresh_direct.yml",
         "schedule": {
             "timezone": "America/New_York",
@@ -106,15 +106,15 @@ JOBS = [
             "minutes": [30],
             "mdays":   [-1],
             "months":  [-1],
-            "wdays":   [1, 2, 3, 4, 5],   # Mon–Fri only
+            "wdays":   [-1],   # every day including weekends
         },
     },
-    # ── Cap digest — every 3 hours Mon–Fri ─────────────────────────────────
+    # ── Cap digest — every 3 hours, 7 days a week ───────────────────────────
     # 8 AM uses data from the 5 AM overnight refresh (full yesterday + early today).
     # 11 AM, 2 PM, 5 PM, 8 PM each use the intraday refresh 30 min prior.
     {
         "repo":     "rogerhirano-nw/seller-comms",
-        "title":    "seller-comms cap digest (Mon–Fri 8:00/11:00/14:00/17:00/20:00 ET)",
+        "title":    "seller-comms cap digest (daily 8:00/11:00/14:00/17:00/20:00 ET)",
         "workflow": "cap_digest.yml",
         "schedule": {
             "timezone": "America/New_York",
@@ -122,7 +122,7 @@ JOBS = [
             "minutes": [0],
             "mdays":   [-1],
             "months":  [-1],
-            "wdays":   [1, 2, 3, 4, 5],   # Mon–Fri only
+            "wdays":   [-1],   # every day including weekends
         },
     },
 ]
