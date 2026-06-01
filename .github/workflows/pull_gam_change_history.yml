@@ -1,0 +1,60 @@
+name: Pull GAM Change History (audit)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/vibrant-darwin-2Bhpl]
+    paths:
+      - 'scripts/pull_gam_change_history.py'
+      - '.github/workflows/pull_gam_change_history.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install googleads
+
+      - name: Run change history pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/pull_gam_change_history.py 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }} — printing output only"
+            cat /tmp/output.txt
+            exit 0
+          fi
+          {
+            echo '### GAM Change History audit (2026-05-21 → today)'
+            echo ''
+            echo "Entities: ORDER 4057788230, ORDER 4068491190, LINE_ITEM 7306352098, all PROPOSAL_LINE_ITEMs"
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
