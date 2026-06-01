@@ -129,16 +129,44 @@ def main():
 
     pql_svc = client.GetService("PublisherQueryLanguageService", version=API_VERSION)
 
-    base_query = (
-        "SELECT Id, DateTime, EntityId, EntityType, EntityName, "
-        "ChangeType, UserId, UserName, Application "
-        "FROM ChangeHistory "
-        f"WHERE DateTime >= '{AUDIT_START}' "
-        "ORDER BY DateTime ASC"
-    )
+    # Try progressively simpler queries to find what the API supports.
+    # GAM PQL ChangeHistory notes:
+    #  - T-separator in DateTime literals is rejected; use space separator
+    #  - ORDER BY is not supported on ChangeHistory
+    #  - If ChangeHistory table is unavailable, fall back to SELECT * probe
+    AUDIT_START_PQL = AUDIT_START.replace("T", " ")  # '2026-05-21 00:00:00'
+
+    candidate_queries = [
+        # Full query, space-separated datetime, no ORDER BY
+        (
+            "SELECT Id, DateTime, EntityId, EntityType, EntityName, "
+            "ChangeType, UserId, UserName, Application "
+            "FROM ChangeHistory "
+            f"WHERE DateTime >= '{AUDIT_START_PQL}'"
+        ),
+        # Minimal column set in case some columns don't exist
+        (
+            "SELECT Id, DateTime, EntityId, EntityType, ChangeType, Application "
+            "FROM ChangeHistory "
+            f"WHERE DateTime >= '{AUDIT_START_PQL}'"
+        ),
+        # No filter — table existence probe
+        "SELECT Id, DateTime, EntityId, EntityType, ChangeType, Application FROM ChangeHistory",
+        # Wildcard probe
+        "SELECT * FROM ChangeHistory",
+    ]
+
+    ch_rows = []
+    for attempt, base_query in enumerate(candidate_queries, 1):
+        print(f"  [attempt {attempt}] {base_query[:80]} …", flush=True)
+        rows = _pql_paginate(pql_svc, base_query)
+        if rows:
+            ch_rows = rows
+            print(f"  → {len(rows)} row(s) returned")
+            break
+        print(f"  → no rows (PQL error or empty table)")
 
     print(f"Fetching ChangeHistory rows (>= {AUDIT_START}) …", flush=True)
-    ch_rows = _pql_paginate(pql_svc, base_query)
 
     if not ch_rows:
         print("  No rows returned — ChangeHistory PQL table may be unavailable or empty.")
