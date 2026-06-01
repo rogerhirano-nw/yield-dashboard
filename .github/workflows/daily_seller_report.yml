@@ -37,6 +37,7 @@ jobs:
         with:
           python-version: '3.11'
 
+      - run: pip install -U pip setuptools wheel
       - run: pip install -r requirements.txt
 
       - run: python daily_seller_report.py

@@ -13,6 +13,7 @@ jobs:
         with:
           python-version: "3.11"
 
+      - run: pip install -U pip setuptools wheel
       - run: pip install -r requirements.txt
 
       - name: Export all GAM deals to CSV

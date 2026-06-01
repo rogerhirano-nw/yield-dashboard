@@ -42,6 +42,7 @@ jobs:
         with:
           python-version: '3.11'
 
+      - run: pip install -U pip setuptools wheel
       - run: pip install -r requirements.txt
 
       # 0. Refresh the 180-day deal age proxy tables. These only feed the weekly
