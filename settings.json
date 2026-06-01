@@ -341,17 +341,22 @@
     ],
     "min_flagged_impressions_for_outreach": 5,
     "ssp_contacts": {
+      "Criteo": "REPLACE_ME_criteo_policy@example.com",
       "Google": "REPLACE_ME_google_policy@example.com",
       "Google Video": "REPLACE_ME_google_video_policy@example.com",
-      "Xandr": "REPLACE_ME_xandr_policy@example.com",
-      "Ozone": "REPLACE_ME_ozone_policy@example.com",
+      "GumGum": "liz.lazarow@gumgum.com",
       "InMobi": "REPLACE_ME_inmobi_policy@example.com",
-      "Teads": "REPLACE_ME_teads_policy@example.com",
-      "Ogury": "REPLACE_ME_ogury_policy@example.com",
-      "Criteo": "REPLACE_ME_criteo_policy@example.com",
+      "Insticator": "joe.cohen@cool.co",
+      "Nativo": "mmacvittie@life360.com, r.silva@life360.com",
       "OMS": "REPLACE_ME_oms_policy@example.com",
+      "Ogury": "dana.thomas@ogury.co",
+      "Ozone": "REPLACE_ME_ozone_policy@example.com",
+      "Seedtag": "ziadrasheed@seedtag.com",
+      "Sharethrough": "pkankaria@equativ.com",
       "Smile Wanted": "REPLACE_ME_smilewanted_policy@example.com",
-      "Sparteo": "REPLACE_ME_sparteo_policy@example.com"
+      "Sparteo": "y.alawaye.ext@sparteo.com, l.dussart@sparteo.com, support@meetscale.com, j.strutt@sparteo.com",
+      "Teads": "REPLACE_ME_teads_policy@example.com",
+      "Xandr": "michaeltrinh@microsoft.com"
     }
   }
 }

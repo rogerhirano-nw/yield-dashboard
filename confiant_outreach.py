@@ -245,6 +245,17 @@ def render_email_html(
 
 # ── send via agentmail ───────────────────────────────────────────────────────
 
+def _split_recipients(s: str) -> list[str]:
+    """Split a comma- or semicolon-separated recipient string into a list of
+    clean email addresses. Handles values stored in settings.json like
+    'a@x.com, b@y.com' (which represents multiple SSP contacts that should
+    all be on the same outreach email).
+    """
+    import re
+    parts = re.split(r"[,;]+", s)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _send_email(
     subject: str,
     html: str,
@@ -261,8 +272,14 @@ def _send_email(
             "Set them in .env or the launchd plist."
         )
 
+    # Some SSPs have multiple contacts on file — settings.json stores them as
+    # 'a@x.com, b@x.com'. agentmail's SDK accepts Union[str, List[str]] for
+    # `to`, so we always pass the split list (a single recipient becomes a
+    # one-element list, which the SDK handles identically to a bare string).
+    to_list = _split_recipients(recipient)
+
     client = AgentMail(api_key=api_key)
-    payload = {"to": recipient, "subject": subject, "html": html}
+    payload: dict = {"to": to_list, "subject": subject, "html": html}
     if cc:
         payload["cc"] = cc
     client.inboxes.messages.send(inbox_id, **payload)
