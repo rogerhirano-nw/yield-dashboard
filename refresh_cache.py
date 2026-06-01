@@ -239,6 +239,58 @@ def refresh_gam_hourly() -> int:
     return len(df)
 
 
+def refresh_gam_weekly() -> int:
+    """Pull ~5 weeks of daily GAM delivery for cap-tracked LIs, bucket by week.
+
+    Reads the same GAM_HOURLY_LINE_ITEMS env var (the cap-tracked LIs). Pulls
+    the last 35 days of DATE × LINE_ITEM_ID impressions, buckets each date into
+    a Monday-anchored ISO week, and upserts the per-(LI, week_start) impression
+    totals into gam_campaigns_weekly. Powers the "Last 4 weeks" summary in the
+    seller-comms cap digest.
+
+    Skips silently when GAM_HOURLY_LINE_ITEMS is unset.
+    """
+    import os
+    from datetime import timedelta as _td
+    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
+    if not li_ids_raw:
+        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping weekly refresh")
+        return 0
+
+    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
+    from zoneinfo import ZoneInfo
+    today = datetime.now(tz=ZoneInfo("America/New_York")).date()
+    start = today - _td(days=35)
+    logger.info("Refreshing gam_campaigns_weekly for LIs %s, %s..%s (ET)", li_ids, start, today)
+
+    gam = GAMClient()
+    df = gam.run_daily_li_report(start, today, li_ids)
+    if df.empty:
+        logger.info("No daily data returned for weekly history")
+        return 0
+
+    # Bucket each date into its Monday-anchored week_start, sum impressions.
+    df["_d"] = pd.to_datetime(df["date"]).dt.date
+    df["week_start"] = df["_d"].map(lambda d: (d - _td(days=d.weekday())).isoformat())
+    agg = (
+        df.groupby(["line_item_id", "week_start"], as_index=False)["ad_server_impressions"]
+        .sum()
+    )
+    agg["pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "gam_campaigns_weekly"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            # Replace all rows for these LIs in the pulled window (re-derive fully each run).
+            conn.execute(
+                text(f"DELETE FROM \"{table}\" WHERE line_item_id::text = ANY(:ids) AND week_start >= :ws"),
+                {"ids": li_ids, "ws": (start - _td(days=start.weekday())).isoformat()},
+            )
+        agg.to_sql(table, conn, if_exists="append", index=False)
+    logger.info("Wrote %d weekly rows to %s", len(agg), table)
+    return len(agg)
+
+
 def refresh_gam_pmp_deals() -> int:
     """Pull GAM PMP deal data (PA / PD / PG) by deal name and write to gam_pmp_deals."""
     logger.info("Refreshing gam_pmp_deals (GAM deals report)")
@@ -906,12 +958,19 @@ def main() -> None:
     migrate_table_names()
 
     if mode == "gam_hourly":
+        # Refreshes both the intraday hourly table and the multi-week history
+        # table — both feed the seller-comms cap digest and share the same
+        # GAM_HOURLY_LINE_ITEMS set, so one intraday step keeps both current.
         total = 0
         try:
             total += refresh_gam_hourly()
         except Exception:
             logger.exception("Hourly GAM refresh failed")
-        logger.info("Done (gam_hourly). %d rows written.", total)
+        try:
+            total += refresh_gam_weekly()
+        except Exception:
+            logger.exception("Weekly GAM refresh failed")
+        logger.info("Done (gam_hourly + weekly). %d rows written.", total)
         return
 
     if mode == "direct":

@@ -294,6 +294,37 @@ class GAMClient:
         df["hour"] = pd.to_numeric(df["hour"], errors="coerce").fillna(0).astype("int64")
         return df
 
+    def run_daily_li_report(self, start_date: date, end_date: date, line_item_ids: list[str]) -> pd.DataFrame:
+        """Pull day-by-day delivery for specific line items over a date range.
+
+        Dimensions: DATE, LINE_ITEM_ID
+        Metrics: AD_SERVER_IMPRESSIONS
+
+        Used by refresh_gam_weekly() to build multi-week delivery history for
+        cap-tracked line items. Results are filtered client-side to the given IDs.
+
+        Returns a DataFrame with columns: date (YYYY-MM-DD str), line_item_id,
+        ad_server_impressions. Empty DataFrame if no data.
+        """
+        df = self._run_report(
+            dimensions=["DATE", "LINE_ITEM_ID"],
+            metrics=["AD_SERVER_IMPRESSIONS"],
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if df.empty:
+            return df
+
+        df["line_item_id"] = df["line_item_id"].astype(str)
+        if line_item_ids:
+            keep = {str(lid) for lid in line_item_ids}
+            df = df[df["line_item_id"].isin(keep)].copy()
+
+        df["ad_server_impressions"] = (
+            pd.to_numeric(df["ad_server_impressions"], errors="coerce").fillna(0).astype("int64")
+        )
+        return df
+
     def run_deals_report(self, start_date: date, end_date: date) -> pd.DataFrame:
         """
         Pull PA / PD / PG deals from GAM keyed by ORDER_NAME + DEAL_NAME.
