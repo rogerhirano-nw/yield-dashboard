@@ -1,33 +1,43 @@
-"""One-off: pull every GAM change made by the service account since 2026-05-21.
+"""GAM entity-state audit for Claude-touched entities (2026-05-21 → today).
 
-Primary method: PublisherQueryLanguageService + ChangeHistory PQL table.
-  - Fetches ALL changes network-wide since AUDIT_START
-  - Highlights rows attributed to the API / service account
+GAM does not expose change history via the SOAP or REST API — neither
+ChangeHistoryService nor a ChangeHistory PQL table exist.  For user-level
+attribution (who triggered each API call), check the GAM Admin UI:
+  https://admanager.google.com/22541732127#admin/changeHistory
 
-Supplemental: entity snapshots via OrderService, LineItemService,
-ProposalLineItemService for the specific IDs Claude-assisted code targeted,
-so we can see current state even if PQL history is unavailable.
+This script instead pulls the current state of every entity that Claude-
+assisted code could have written to, answering:
+  - Were LIs in order 4057788230 renamed? (tmp_rename_li workflow)
+  - Were test LIs created in order 4068491190? (betting_test_lis_batch --apply)
+  - Was the control LI 7306352098 goal modified?
+  - Were any Proposal Line Items archived via the dashboard button?
+
+All answers come from the live GAM API (OrderService, LineItemService,
+ProposalLineItemService) using the service account in env.
 
 Service account under audit:
   gam-reports@newsweek-ad-manager-reports.iam.gserviceaccount.com
 """
 
-import os, json, sys, tempfile, datetime, re
+import os, json, sys, tempfile, datetime
 from googleads import ad_manager, oauth2
 
 NETWORK_CODE   = os.environ["GAM_NETWORK_ID"]
 KEY_JSON       = os.environ["GAM_SERVICE_ACCOUNT_JSON"]
 API_VERSION    = "v202605"
-AUDIT_START    = "2026-05-21T00:00:00"
-AUDIT_START_DT = datetime.date(2026, 5, 21)
+AUDIT_START    = datetime.date(2026, 5, 21)
 SVC_ACCOUNT    = "gam-reports@newsweek-ad-manager-reports.iam.gserviceaccount.com"
 
-# Specific entity IDs from code review
-ORDER_IDS   = [4057788230, 4068491190]
-LI_IDS      = [7306352098]
+# Specific IDs from code review
+ORDER_IDS       = [4057788230, 4068491190]
+SPECIFIC_LI_IDS = [7306352098]
 
+# Expected state from the scripts (for comparison)
+RENAME_ORDER_ID     = 4057788230   # tmp_rename_li.yml: THearn → THern
+BETTING_ORDER_ID    = 4068491190   # betting_test_lis_batch.py --apply
+CONTROL_LI_ID       = 7306352098   # goal: 1,875,000 → 1,230,000 (per script)
+EXPECTED_TEST_LIS   = 3            # OnlineCasino, Basketball, SBEnthusiast
 
-# ── client setup ─────────────────────────────────────────────────────────────
 
 def _setup_client():
     key_data = json.loads(KEY_JSON)
@@ -42,58 +52,7 @@ def _setup_client():
     )
 
 
-# ── PQL helpers ───────────────────────────────────────────────────────────────
-
-def _pql_value(v):
-    """Extract a plain Python value from a PQL typed Value object."""
-    if v is None:
-        return None
-    xtype = getattr(v, "_xsi_type", None) or str(type(v))
-    val   = getattr(v, "value", None)
-    if val is None:
-        return None
-    # DateTimeValue wraps a DateTime SOAP object
-    if "DateTime" in str(xtype) and hasattr(val, "date"):
-        d = val.date
-        return f"{d.year:04d}-{d.month:02d}-{d.day:02d}T{getattr(val,'hour',0):02d}:{getattr(val,'minute',0):02d}:{getattr(val,'second',0):02d}"
-    return str(val)
-
-
-def _pql_rows_to_dicts(result_set):
-    if not hasattr(result_set, "columnTypes") or not result_set.columnTypes:
-        return []
-    cols = [c.labelName for c in result_set.columnTypes]
-    out  = []
-    rows = getattr(result_set, "rows", None) or []
-    for row in rows:
-        vals = getattr(row, "values", []) or []
-        out.append(dict(zip(cols, [_pql_value(v) for v in vals])))
-    return out
-
-
-def _pql_paginate(pql_svc, base_query):
-    """Paginate a PQL SELECT, collecting all rows into a list of dicts."""
-    all_rows = []
-    offset   = 0
-    limit    = 500
-    while True:
-        q = f"{base_query} LIMIT {limit} OFFSET {offset}"
-        try:
-            rs = pql_svc.select({"query": q})
-        except Exception as exc:
-            print(f"  [PQL ERROR] {exc}", file=sys.stderr)
-            break
-        batch = _pql_rows_to_dicts(rs)
-        all_rows.extend(batch)
-        if len(batch) < limit:
-            break
-        offset += limit
-    return all_rows
-
-
-# ── SOAP entity helpers ───────────────────────────────────────────────────────
-
-def _soap_paginate(svc, method_name, stmt_builder):
+def _paginate(svc, method_name, stmt_builder):
     rows = []
     method = getattr(svc, method_name)
     while True:
@@ -117,170 +76,119 @@ def _fmt_dt(soap_dt):
         return str(soap_dt)
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+def _sep(label=""):
+    print(f"\n{'─'*72}")
+    if label:
+        print(f"  {label}")
+        print(f"{'─'*72}")
+
 
 def main():
-    client = _setup_client()
+    client   = _setup_client()
+    findings = []   # (label, result, detail)
 
-    # ── Section 1: PQL ChangeHistory (network-wide) ───────────────────────────
     print("=" * 72)
-    print("SECTION 1 — PQL ChangeHistory (all changes since 2026-05-21)")
-    print("=" * 72)
-
-    pql_svc = client.GetService("PublisherQueryLanguageService", version=API_VERSION)
-
-    # Try progressively simpler queries to find what the API supports.
-    # GAM PQL ChangeHistory notes:
-    #  - T-separator in DateTime literals is rejected; use space separator
-    #  - ORDER BY is not supported on ChangeHistory
-    #  - If ChangeHistory table is unavailable, fall back to SELECT * probe
-    AUDIT_START_PQL = AUDIT_START.replace("T", " ")  # '2026-05-21 00:00:00'
-
-    candidate_queries = [
-        # Full query, space-separated datetime, no ORDER BY
-        (
-            "SELECT Id, DateTime, EntityId, EntityType, EntityName, "
-            "ChangeType, UserId, UserName, Application "
-            "FROM ChangeHistory "
-            f"WHERE DateTime >= '{AUDIT_START_PQL}'"
-        ),
-        # Minimal column set in case some columns don't exist
-        (
-            "SELECT Id, DateTime, EntityId, EntityType, ChangeType, Application "
-            "FROM ChangeHistory "
-            f"WHERE DateTime >= '{AUDIT_START_PQL}'"
-        ),
-        # No filter — table existence probe
-        "SELECT Id, DateTime, EntityId, EntityType, ChangeType, Application FROM ChangeHistory",
-        # Wildcard probe
-        "SELECT * FROM ChangeHistory",
-    ]
-
-    ch_rows = []
-    for attempt, base_query in enumerate(candidate_queries, 1):
-        print(f"  [attempt {attempt}] {base_query[:80]} …", flush=True)
-        rows = _pql_paginate(pql_svc, base_query)
-        if rows:
-            ch_rows = rows
-            print(f"  → {len(rows)} row(s) returned")
-            break
-        print(f"  → no rows (PQL error or empty table)")
-
-    print(f"Fetching ChangeHistory rows (>= {AUDIT_START}) …", flush=True)
-
-    if not ch_rows:
-        print("  No rows returned — ChangeHistory PQL table may be unavailable or empty.")
-    else:
-        print(f"  {len(ch_rows)} total change(s) since {AUDIT_START}\n")
-
-        # Separate API/service-account rows from UI rows
-        api_rows  = [r for r in ch_rows if (r.get("Application") or "").upper() in ("API", "BATCH")]
-        ui_rows   = [r for r in ch_rows if r not in api_rows]
-
-        if api_rows:
-            print(f"  ── API-originated changes ({len(api_rows)}) ──")
-            for r in api_rows:
-                marker = "*** SVC_ACCT ***" if SVC_ACCOUNT in (r.get("UserName") or "") else ""
-                print(
-                    f"  {r.get('DateTime','?')[:19]}  "
-                    f"[{(r.get('EntityType') or '?'):20s}] "
-                    f"id={r.get('EntityId','?'):15s}  "
-                    f"{(r.get('ChangeType') or '?'):18s}  "
-                    f"user={r.get('UserName','?')}  "
-                    f"app={r.get('Application','?')}  "
-                    f"{marker}"
-                )
-        else:
-            print("  No API-originated changes found.")
-
-        print()
-        if ui_rows:
-            print(f"  ── UI-originated changes ({len(ui_rows)}) ──")
-            for r in ui_rows:
-                print(
-                    f"  {r.get('DateTime','?')[:19]}  "
-                    f"[{(r.get('EntityType') or '?'):20s}] "
-                    f"id={r.get('EntityId','?'):15s}  "
-                    f"{(r.get('ChangeType') or '?'):18s}  "
-                    f"user={r.get('UserName','?')}  "
-                    f"app={r.get('Application','?')}"
-                )
-        else:
-            print("  No UI-originated changes found.")
-
-    # ── Section 2: Entity snapshots ───────────────────────────────────────────
-    print()
-    print("=" * 72)
-    print("SECTION 2 — Current entity state for Claude-targeted IDs")
+    print("GAM Entity-State Audit")
+    print(f"Service account : {SVC_ACCOUNT}")
+    print(f"Audit window    : {AUDIT_START} → {datetime.date.today()}")
+    print(f"NOTE: GAM does not expose change history via API.")
+    print(f"      For user attribution visit:")
+    print(f"      https://admanager.google.com/22541732127#admin/changeHistory")
     print("=" * 72)
 
-    # Orders
     order_svc = client.GetService("OrderService", version=API_VERSION)
-    for oid in ORDER_IDS:
-        sb = ad_manager.StatementBuilder(version=API_VERSION)
-        sb.Where("id = :id").WithBindVariable("id", int(oid))
-        try:
-            orders = _soap_paginate(order_svc, "getOrdersByStatement", sb)
-            if orders:
-                o = orders[0]
-                print(f"\nORDER {oid}")
-                print(f"  name             : {getattr(o, 'name', '?')}")
-                print(f"  status           : {getattr(o, 'status', '?')}")
-                print(f"  lastModifiedDT   : {_fmt_dt(getattr(o, 'lastModifiedDateTime', None))}")
+    li_svc    = client.GetService("LineItemService", version=API_VERSION)
+    pli_svc   = client.GetService("ProposalLineItemService", version=API_VERSION)
+
+    # ── CHECK 1: LI rename (order 4057788230, THearn → THern) ────────────────
+    _sep("CHECK 1 — tmp_rename_li.yml: was THearn → THern rename applied?")
+    sb = ad_manager.StatementBuilder(version=API_VERSION)
+    sb.Where("orderId = :oid").WithBindVariable("oid", RENAME_ORDER_ID)
+    try:
+        lis = _paginate(li_svc, "getLineItemsByStatement", sb)
+        bad  = [li for li in lis if "THearn" in (getattr(li, "name", "") or "")]
+        good = [li for li in lis if "THern"  in (getattr(li, "name", "") or "") and "THearn" not in (getattr(li, "name", "") or "")]
+        print(f"  Total LIs in order {RENAME_ORDER_ID}: {len(lis)}")
+        print(f"  LIs still with 'THearn' (rename NOT applied): {len(bad)}")
+        print(f"  LIs with 'THern'  (rename applied):           {len(good)}")
+        if bad:
+            print("  STILL WRONG:")
+            for li in bad:
+                print(f"    id={getattr(li,'id','?')}  name={getattr(li,'name','?')}")
+        result = "RENAME APPLIED — all THern, none THearn" if not bad else f"PARTIAL/INCOMPLETE — {len(bad)} still have THearn"
+        findings.append(("tmp_rename_li.yml rename", result, f"{len(good)}/{len(lis)} LIs renamed"))
+    except Exception as exc:
+        print(f"  ERROR: {exc}")
+        findings.append(("tmp_rename_li.yml rename", "ERROR", str(exc)))
+
+    # ── CHECK 2: Betting test LIs created (order 4068491190) ─────────────────
+    _sep("CHECK 2 — betting_test_lis_batch.py: were test LIs created?")
+    sb = ad_manager.StatementBuilder(version=API_VERSION)
+    sb.Where("orderId = :oid").WithBindVariable("oid", BETTING_ORDER_ID)
+    try:
+        lis = _paginate(li_svc, "getLineItemsByStatement", sb)
+        print(f"  Total LIs in order {BETTING_ORDER_ID}: {len(lis)}")
+        for li in lis:
+            goal = getattr(getattr(li, "primaryGoal", None), "units", "?")
+            print(
+                f"  id={getattr(li,'id','?'):15}  "
+                f"status={str(getattr(li,'computedStatus', getattr(li,'status','?'))):15}  "
+                f"goal={goal}  "
+                f"lastMod={_fmt_dt(getattr(li,'lastModifiedDateTime',None))}  "
+                f"name={getattr(li,'name','?')}"
+            )
+        # The script was meant to create 3 audience-segment LIs beyond the 1 control LI
+        test_lis = [li for li in lis if getattr(li, "id", 0) != CONTROL_LI_ID]
+        if len(test_lis) >= EXPECTED_TEST_LIS:
+            result = f"TEST LIs CREATED — {len(test_lis)} non-control LIs exist (expected {EXPECTED_TEST_LIS})"
+        elif len(test_lis) > 0:
+            result = f"PARTIAL — {len(test_lis)} test LIs (expected {EXPECTED_TEST_LIS})"
+        else:
+            result = "NOT RUN — only control LI exists"
+        findings.append(("betting_test_lis_batch --apply", result, f"{len(lis)} total LIs in order"))
+    except Exception as exc:
+        print(f"  ERROR: {exc}")
+        findings.append(("betting_test_lis_batch --apply", "ERROR", str(exc)))
+
+    # ── CHECK 3: Control LI goal ──────────────────────────────────────────────
+    _sep(f"CHECK 3 — Control LI {CONTROL_LI_ID}: was the goal reduced?")
+    sb = ad_manager.StatementBuilder(version=API_VERSION)
+    sb.Where("id = :id").WithBindVariable("id", CONTROL_LI_ID)
+    try:
+        lis = _paginate(li_svc, "getLineItemsByStatement", sb)
+        if lis:
+            li   = lis[0]
+            goal = getattr(getattr(li, "primaryGoal", None), "units", None)
+            print(f"  name             : {getattr(li, 'name', '?')}")
+            print(f"  status           : {getattr(li, 'computedStatus', getattr(li,'status','?'))}")
+            print(f"  primaryGoal.units: {goal}  (original=1875000, script target=1230000)")
+            print(f"  lastModifiedDT   : {_fmt_dt(getattr(li, 'lastModifiedDateTime', None))}")
+            if goal is not None and int(goal) != 1875000:
+                result = f"GOAL MODIFIED — current={goal} (was 1875000)"
+            elif goal is not None:
+                result = "GOAL UNCHANGED — still at original 1875000"
             else:
-                print(f"\nORDER {oid}: not found")
-        except Exception as exc:
-            print(f"\nORDER {oid}: ERROR — {exc}")
+                result = "GOAL UNKNOWN"
+            findings.append(("Control LI goal modification", result, f"primaryGoal.units={goal}"))
+        else:
+            print(f"  LI {CONTROL_LI_ID} not found")
+            findings.append(("Control LI goal modification", "NOT FOUND", ""))
+    except Exception as exc:
+        print(f"  ERROR: {exc}")
+        findings.append(("Control LI goal modification", "ERROR", str(exc)))
 
-    # Line items in those orders + specific LI IDs
-    li_svc = client.GetService("LineItemService", version=API_VERSION)
-
-    for oid in ORDER_IDS:
-        sb = ad_manager.StatementBuilder(version=API_VERSION)
-        sb.Where("orderId = :oid").WithBindVariable("oid", int(oid))
-        try:
-            lis = _soap_paginate(li_svc, "getLineItemsByStatement", sb)
-            print(f"\nLINE ITEMS in order {oid} ({len(lis)} total)")
-            for li in lis:
-                goal  = getattr(getattr(li, "primaryGoal", None), "units", "?")
-                print(
-                    f"  id={getattr(li,'id','?'):15}  "
-                    f"status={str(getattr(li,'computedStatus',getattr(li,'status','?'))):15}  "
-                    f"goal={goal}  "
-                    f"lastMod={_fmt_dt(getattr(li,'lastModifiedDateTime',None))}  "
-                    f"name={getattr(li,'name','?')}"
-                )
-        except Exception as exc:
-            print(f"\nLINE ITEMS in order {oid}: ERROR — {exc}")
-
-    # Specific LI IDs not already covered
-    for lid in LI_IDS:
-        sb = ad_manager.StatementBuilder(version=API_VERSION)
-        sb.Where("id = :id").WithBindVariable("id", int(lid))
-        try:
-            lis = _soap_paginate(li_svc, "getLineItemsByStatement", sb)
-            if lis:
-                li   = lis[0]
-                goal = getattr(getattr(li, "primaryGoal", None), "units", "?")
-                print(f"\nLINE ITEM {lid}")
-                print(f"  name             : {getattr(li, 'name', '?')}")
-                print(f"  status           : {getattr(li, 'computedStatus', getattr(li, 'status', '?'))}")
-                print(f"  primaryGoal.units: {goal}")
-                print(f"  lastModifiedDT   : {_fmt_dt(getattr(li, 'lastModifiedDateTime', None))}")
-        except Exception as exc:
-            print(f"\nLINE ITEM {lid}: ERROR — {exc}")
-
-    # Proposal line items — look for any archived since audit start
-    pli_svc = client.GetService("ProposalLineItemService", version=API_VERSION)
+    # ── CHECK 4: PLI archives via dashboard ───────────────────────────────────
+    _sep("CHECK 4 — archive_proposal_line_item(): were any PLIs archived via dashboard?")
     sb = ad_manager.StatementBuilder(version=API_VERSION)
     sb.Where("status = :s").WithBindVariable("s", "ARCHIVED")
     try:
-        plis = _soap_paginate(pli_svc, "getProposalLineItemsByStatement", sb)
+        plis = _paginate(pli_svc, "getProposalLineItemsByStatement", sb)
         recent = [
             p for p in plis
-            if _fmt_dt(getattr(p, "lastModifiedDateTime", None)) >= AUDIT_START[:10]
+            if _fmt_dt(getattr(p, "lastModifiedDateTime", None)) >= str(AUDIT_START)
         ]
-        print(f"\nPROPOSAL LINE ITEMS — archived (status=ARCHIVED, lastMod >= {AUDIT_START[:10]})")
+        print(f"  Total archived PLIs: {len(plis)}")
+        print(f"  Archived since {AUDIT_START}: {len(recent)}")
         if recent:
             for p in recent:
                 print(
@@ -288,16 +196,28 @@ def main():
                     f"lastMod={_fmt_dt(getattr(p,'lastModifiedDateTime',None))}  "
                     f"name={getattr(p,'name','?')}"
                 )
+            result = f"PLIs ARCHIVED — {len(recent)} archived since {AUDIT_START}"
         else:
-            print("  None found — no PLIs were archived via the dashboard in this window.")
+            result = "NEVER TRIGGERED — no PLIs archived in audit window"
+        findings.append(("Dashboard archive_proposal_line_item()", result, f"{len(recent)} recent archives"))
     except Exception as exc:
-        print(f"\nPROPOSAL LINE ITEMS: ERROR — {exc}")
+        print(f"  ERROR: {exc}")
+        findings.append(("Dashboard archive_proposal_line_item()", "ERROR", str(exc)))
 
+    # ── Summary ───────────────────────────────────────────────────────────────
     print()
     print("=" * 72)
-    print(f"Audit complete. Service account: {SVC_ACCOUNT}")
-    print("Section 1 shows ALL network-wide API changes; Section 2 confirms")
-    print("current state of specific IDs targeted by Claude-assisted code.")
+    print("AUDIT SUMMARY")
+    print("=" * 72)
+    for label, result, detail in findings:
+        print(f"\n  [{label}]")
+        print(f"    Result : {result}")
+        if detail:
+            print(f"    Detail : {detail}")
+
+    print()
+    print("For user-level API attribution (who/when each call was made):")
+    print("  https://admanager.google.com/22541732127#admin/changeHistory")
     print("=" * 72)
 
 
