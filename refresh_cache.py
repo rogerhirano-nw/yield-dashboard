@@ -37,8 +37,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
+_ENGINE: sqlalchemy.Engine | None = None
+
+
 def _engine() -> sqlalchemy.Engine:
-    return sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+    global _ENGINE
+    if _ENGINE is None:
+        _ENGINE = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+    return _ENGINE
 
 
 def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
@@ -55,6 +61,37 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
     df.to_sql(table, conn, if_exists="append", index=False)
+
+
+# (table, index_name, column_expression)
+_INDEXES = [
+    ("magnite_site_daily",    "idx_magnite_site_daily_date",      '"date"'),
+    ("magnite_dsp_daily",     "idx_magnite_dsp_daily_date",       '"date"'),
+    ("magnite_deal_daily",    "idx_magnite_deal_daily_date",      '"date"'),
+    ("gam_campaigns",         "idx_gam_campaigns_report_start",   "report_start"),
+    ("gam_campaigns_hourly",  "idx_gam_campaigns_hourly_date_li", '"date", line_item_id'),
+    ("gam_campaigns_weekly",  "idx_gam_campaigns_weekly_ws_li",   'week_start, line_item_id'),
+    ("pubmatic_deals",        "idx_pubmatic_deals_date",          '"date"'),
+    ("dv_attention",          "idx_dv_attention_date",            '"date"'),
+    ("dv_ivt",                "idx_dv_ivt_date",                  '"date"'),
+    ("betting_conversions",   "idx_betting_conversions_date",     '"date"'),
+    ("opensincera_ecosystem", "idx_opensincera_ecosystem_date",   '"date"'),
+    ("gam_deal_bid_daily",    "idx_gam_deal_bid_daily_date",      '"date"'),
+    ("gam_pmp_deals",         "idx_gam_pmp_deals_date",           '"date"'),
+]
+
+
+def _ensure_indexes() -> None:
+    """Create missing BTree indexes on date/filter columns. Idempotent — skips
+    tables that don't exist yet and is a no-op when indexes are already present."""
+    with _engine().begin() as conn:
+        existing_tables = set(sa_inspect(conn).get_table_names())
+        for table, idx_name, cols in _INDEXES:
+            if table in existing_tables:
+                conn.execute(text(
+                    f'CREATE INDEX IF NOT EXISTS "{idx_name}" ON "{table}" ({cols})'
+                ))
+    logger.info("Index check complete")
 
 
 # Tune these to match the dashboard's actual filter dimensions.
@@ -550,39 +587,34 @@ def refresh_pmp_last_bid_date() -> int:
         .where(new_df["new_last_bid_date"].notna(), other=pd.NA)
     )
 
-    with engine.connect() as conn:
-        try:
-            existing = pd.read_sql(text("SELECT * FROM pmp_last_bid_date"), conn)
-        except Exception:
-            existing = pd.DataFrame(
-                columns=["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]
-            )
-
-    merged = pd.merge(
-        existing[["ssp", "deal_key", "last_bid_date", "first_seen_date"]],
-        new_df[["ssp", "deal_key", "new_last_bid_date"]],
-        on=["ssp", "deal_key"],
-        how="outer",
+    records = new_df.rename(columns={"new_last_bid_date": "last_bid_date"}).copy()
+    # Normalise pd.NA → None so SQLAlchemy passes SQL NULL to GREATEST().
+    records["last_bid_date"] = records["last_bid_date"].where(
+        records["last_bid_date"].notna(), other=None
     )
-    merged["first_seen_date"] = merged["first_seen_date"].fillna(today_str)
+    records["first_seen_date"] = today_str
+    records["updated_at"] = now_ts
 
-    def _max_date(row) -> object:
-        candidates = [v for v in (row["last_bid_date"], row["new_last_bid_date"])
-                      if pd.notna(v) and str(v) not in ("", "None", "nan", "NaT")]
-        return max(candidates) if candidates else None
-
-    merged["last_bid_date"] = merged.apply(_max_date, axis=1)
-    merged["updated_at"] = now_ts
-    merged = merged[["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]]
-
+    # ON CONFLICT keeps last_bid_date monotonically non-decreasing (GREATEST handles
+    # NULLs correctly: GREATEST(NULL, x) = x). first_seen_date is excluded from
+    # DO UPDATE — it stays as set when the row was first inserted.
+    upsert_sql = text("""
+        INSERT INTO pmp_last_bid_date (ssp, deal_key, last_bid_date, first_seen_date, updated_at)
+        VALUES (:ssp, :deal_key, :last_bid_date, :first_seen_date, :updated_at)
+        ON CONFLICT (ssp, deal_key) DO UPDATE SET
+            last_bid_date = GREATEST(EXCLUDED.last_bid_date, pmp_last_bid_date.last_bid_date),
+            updated_at = EXCLUDED.updated_at
+    """)
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM pmp_last_bid_date"))
-        merged.to_sql("pmp_last_bid_date", conn, if_exists="append", index=False)
+        conn.execute(
+            upsert_sql,
+            records[["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]].to_dict("records"),
+        )
 
-    n_with_history = int(merged["last_bid_date"].notna().sum())
-    logger.info("pmp_last_bid_date: %d deals tracked, %d with bid history",
-                len(merged), n_with_history)
-    return len(merged)
+    n_with_history = int(records["last_bid_date"].notna().sum())
+    logger.info("pmp_last_bid_date: %d deals upserted, %d with bid history",
+                len(records), n_with_history)
+    return len(records)
 
 
 def refresh_pubmatic() -> int:
@@ -1107,6 +1139,13 @@ def main() -> None:
         total += refresh_pmp_last_bid_date()
     except Exception:
         logger.exception("Refresh failed for pmp_last_bid_date — continuing")
+
+    try:
+        _ensure_indexes()
+    except Exception:
+        logger.exception("Index maintenance failed — non-fatal, continuing")
+
+    logger.info("Full sweep complete. %d total rows written.", total)
 
 
 if __name__ == "__main__":
