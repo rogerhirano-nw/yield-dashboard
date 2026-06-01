@@ -1,24 +1,28 @@
 """
-confiant_blocklist — weekly job that takes a Confiant "Alert Log CSV By
-Provider" export, picks the Google-served bad creatives, and appends their
-landing-page domains to a named GAM Protection's Advertiser URLs blocklist.
+confiant_blocklist — weekly job that pulls Confiant's flagged-ad data via
+their REST API, picks the Google-served Security-category creatives, and
+appends their landing-page domains to a GAM Protection's Advertiser URLs
+blocklist.
 
 Why this is a local-only script rather than a GitHub Actions cron:
 GAM does not expose Protections via API. Driving the GAM UI with Playwright
 requires a logged-in Google session with 2FA, which can't be done from a
 headless CI runner. See docs/confiant_blocklist.md for the full design note.
 
-Typical use:
+Typical use (API mode — pulls last 7 days from Confiant):
   python confiant_blocklist.py \\
-      --csv ~/Downloads/Alert\\ Log\\ CSV\\ By\\ Provider_20260513_20260519.csv \\
-      --protection-name 'Confiant auto-blocklist' \\
-      --dry-run
+      --protection-id 28044902 --protection-label Everything --dry-run
 
-Real run (remove --dry-run, prepare for browser to open):
-  python confiant_blocklist.py --csv <path> --protection-name '<name>'
+Real run (remove --dry-run; browser will open):
+  python confiant_blocklist.py --protection-id 28044902
 
-First-time setup (log in to Google, dial in selectors):
-  python confiant_blocklist.py --inspect
+Manual CSV mode (fallback if Confiant API is down):
+  python confiant_blocklist.py --csv ~/Downloads/Alert\\ Log\\ CSV.csv \\
+      --protection-id 28044902
+
+Other modes:
+  --inspect          Open the GAM Protections page in a visible browser, wait.
+  --print-existing   Dump the current Advertiser URLs for the target Protection.
 """
 
 from __future__ import annotations
@@ -66,13 +70,16 @@ def _open_state() -> sqlite3.Connection:
             issue_type          TEXT NOT NULL,
             first_seen_in_csv   TEXT NOT NULL,
             first_pushed_to_gam TEXT NOT NULL,
-            protection_name     TEXT NOT NULL
+            protection_id       INTEGER NOT NULL,
+            protection_label    TEXT
         );
         CREATE TABLE IF NOT EXISTS runs (
             run_id               INTEGER PRIMARY KEY AUTOINCREMENT,
             run_at               TEXT NOT NULL,
-            csv_filename         TEXT,
-            protection_name      TEXT,
+            source               TEXT,
+            categories           TEXT,
+            protection_id        INTEGER,
+            protection_label     TEXT,
             total_google_rows    INTEGER,
             blockable_domains    INTEGER,
             new_domains_added    INTEGER,
@@ -89,8 +96,10 @@ def _open_state() -> sqlite3.Connection:
 
 @dataclass
 class RunSummary:
-    csv_path: str
-    protection_name: str
+    source: str                # CSV path or 'api://<endpoint>/<hash>'
+    categories: tuple[str, ...]
+    protection_id: int
+    protection_label: str
     total_google_rows: int
     blockable_domains_in_csv: int
     new_domains: list[tuple[str, str]]  # (domain, issue_type)
@@ -128,7 +137,6 @@ def diff_new_domains(
 def push_and_record(
     conn: sqlite3.Connection,
     summary: RunSummary,
-    protection_name: str,
     profile_dir: Path,
     headless: bool,
     debug: bool,
@@ -146,15 +154,17 @@ def push_and_record(
         headless=headless,
         debug=debug,
     )
-    browser.append_to_protection(protection_name, [d for d, _ in summary.new_domains])
+    browser.append_to_protection(summary.protection_id, [d for d, _ in summary.new_domains])
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     today_date = now[:10]
     conn.executemany(
         """INSERT OR IGNORE INTO blocked_domains
-           (domain, issue_type, first_seen_in_csv, first_pushed_to_gam, protection_name)
-           VALUES (?, ?, ?, ?, ?)""",
-        [(d, t, today_date, now, protection_name) for d, t in summary.new_domains],
+           (domain, issue_type, first_seen_in_csv, first_pushed_to_gam,
+            protection_id, protection_label)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [(d, t, today_date, now, summary.protection_id, summary.protection_label)
+         for d, t in summary.new_domains],
     )
     conn.commit()
 
@@ -162,14 +172,16 @@ def push_and_record(
 def record_run(conn: sqlite3.Connection, summary: RunSummary) -> None:
     conn.execute(
         """INSERT INTO runs
-           (run_at, csv_filename, protection_name, total_google_rows,
-            blockable_domains, new_domains_added, cloaked_rows_skipped,
-            dry_run, status, error)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (run_at, source, categories, protection_id, protection_label,
+            total_google_rows, blockable_domains, new_domains_added,
+            cloaked_rows_skipped, dry_run, status, error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            Path(summary.csv_path).name,
-            summary.protection_name,
+            summary.source,
+            ",".join(summary.categories),
+            summary.protection_id,
+            summary.protection_label,
             summary.total_google_rows,
             summary.blockable_domains_in_csv,
             len(summary.new_domains),
@@ -239,8 +251,10 @@ def _build_email_html(summary: RunSummary) -> str:
     return f"""
 <html><body style='font-family:Arial,sans-serif;color:#333;max-width:900px;margin:auto;padding:20px'>
   <h2 style='color:{color}'>{title}</h2>
-  <p style='color:#666'>CSV: <code>{Path(summary.csv_path).name}</code>
-     &middot; Protection: <strong>{summary.protection_name}</strong></p>
+  <p style='color:#666'>Source: <code>{summary.source}</code>
+     &middot; Categories: <strong>{', '.join(summary.categories)}</strong>
+     &middot; Protection: <strong>{summary.protection_label}</strong>
+     <span style='color:#999'>(ID {summary.protection_id})</span></p>
 
   {error_block}
 
@@ -306,18 +320,39 @@ def _parse_args() -> argparse.Namespace:
         description="Append Confiant-flagged Google domains to a GAM Protection.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    src = p.add_mutually_exclusive_group()
-    src.add_argument("--csv", help="Path to Confiant Alert Log CSV. "
-                     "If omitted, fetches the latest from the agentmail inbox.")
-    src.add_argument("--inspect", action="store_true",
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--inspect", action="store_true",
                      help="Open the GAM Protections page in a visible browser "
                           "and wait — used for first-time login and selector "
                           "verification. No CSV processed.")
-    p.add_argument("--protection-name",
-                   help="Exact name of the existing GAM Protection to append to. "
-                        "Required unless --inspect.")
+    mode.add_argument("--print-existing", action="store_true",
+                     help="Open the target Protection, print the current "
+                          "Advertiser URLs to stdout, and exit. No CSV "
+                          "processed, no modification. Use this before the "
+                          "first real run to see what's already in the prod "
+                          "Protection.")
+
+    p.add_argument("--csv",
+                   help="Path to a Confiant CSV (manual fallback). If omitted, "
+                        "pulls the issue_type_by_domain report from the Confiant "
+                        "API using CONFIANT_API_KEY.")
+    p.add_argument("--api-days", type=int, default=7,
+                   help="When pulling from the API, lookback window in days. "
+                        "Default 7. Ignored if --csv is given.")
+    p.add_argument("--categories", default="Security",
+                   help="Comma-separated Issue Category values to block. "
+                        "Default 'Security'. Pass 'Security,Quality' to also "
+                        "block annoying-but-not-malicious creatives.")
+    p.add_argument("--protection-id", type=int,
+                   help="GAM Protection ID to append to (e.g. 28044902). "
+                        "Required for normal runs and --print-existing.")
+    p.add_argument("--protection-label", default=None,
+                   help="Human-readable name for the Protection (e.g. "
+                        "'Everything'). Used only for email subject lines and "
+                        "state-table display; the script navigates by ID. "
+                        "Defaults to 'Protection #<id>'.")
     p.add_argument("--dry-run", action="store_true",
-                   help="Parse CSV, diff against state, send summary email, "
+                   help="Pull report, diff against state, send summary email, "
                         "but do not launch the browser or modify GAM.")
     p.add_argument("--headless", action="store_true",
                    help="Run Playwright headlessly. NOT recommended — Google "
@@ -332,34 +367,60 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _label_for(args: argparse.Namespace) -> str:
+    return args.protection_label or f"Protection #{args.protection_id}"
+
+
+def _run_inspect(args, profile_dir, network_id) -> int:
+    GAMBlocklistBrowser(profile_dir, network_id, headless=False, debug=True) \
+        .inspect(protection_id=args.protection_id)
+    return 0
+
+
+def _run_print_existing(args, profile_dir, network_id) -> int:
+    if not args.protection_id:
+        print("--protection-id is required for --print-existing.", file=sys.stderr)
+        return 2
+    urls = GAMBlocklistBrowser(profile_dir, network_id,
+                                headless=args.headless, debug=args.debug) \
+        .read_existing_urls(args.protection_id)
+    print(f"# {len(urls)} Advertiser URLs currently in "
+          f"{_label_for(args)} (ID {args.protection_id}):")
+    for u in urls:
+        print(u)
+    return 0
+
+
 def main() -> int:
     _load_dotenv()
     args = _parse_args()
     profile_dir = args.profile_dir or default_profile_dir()
     network_id = os.environ.get("GAM_NETWORK_ID")
 
-    if args.inspect:
+    if args.inspect or args.print_existing:
         if not network_id:
-            print("GAM_NETWORK_ID env var required for --inspect", file=sys.stderr)
+            print("GAM_NETWORK_ID env var required.", file=sys.stderr)
             return 2
-        GAMBlocklistBrowser(profile_dir, network_id, headless=False, debug=True).inspect()
-        return 0
+        if args.inspect:
+            return _run_inspect(args, profile_dir, network_id)
+        return _run_print_existing(args, profile_dir, network_id)
 
-    if not args.protection_name:
-        print("--protection-name is required (or pass --inspect).", file=sys.stderr)
+    if not args.protection_id:
+        print("--protection-id is required (or pass --inspect / --print-existing).",
+              file=sys.stderr)
         return 2
 
-    csv_path = args.csv
-    if not csv_path:
-        save_dir = Path(os.environ.get(
-            "CONFIANT_CSV_CACHE_DIR", "~/.confiant-blocklist/csv-cache"
-        )).expanduser()
-        csv_path = str(confiant_client.fetch_latest_csv_from_inbox(save_dir))
-        print(f"Fetched Confiant CSV from inbox -> {csv_path}")
+    categories = tuple(c.strip() for c in args.categories.split(",") if c.strip())
+    if args.csv:
+        report = confiant_client.parse_csv(args.csv)
+        print(f"Loaded Confiant CSV from {args.csv}")
+    else:
+        report = confiant_client.fetch_via_api(days=args.api_days)
+        print(f"Pulled Confiant API report ({len(report.rows)} rows, "
+              f"source={report.source})")
 
-    report = confiant_client.parse_csv(csv_path)
-    blockable, cloaked = report.blockable_domains()
-    print(f"Google rows: {len(report.google_rows)}  "
+    blockable, cloaked = report.blockable_domains(categories=categories)
+    print(f"Google rows ({'+'.join(categories)}): {len(report.google_rows)}  "
           f"blockable={len(blockable)}  cloaked={len(cloaked)}")
 
     conn = _open_state()
@@ -368,8 +429,10 @@ def main() -> int:
           f"(already in state: {skipped})")
 
     summary = RunSummary(
-        csv_path=csv_path,
-        protection_name=args.protection_name,
+        source=report.source,
+        categories=categories,
+        protection_id=args.protection_id,
+        protection_label=_label_for(args),
         total_google_rows=len(report.google_rows),
         blockable_domains_in_csv=len({d for d, _ in blockable}),
         new_domains=new_domains,
@@ -387,7 +450,6 @@ def main() -> int:
             push_and_record(
                 conn=conn,
                 summary=summary,
-                protection_name=args.protection_name,
                 profile_dir=profile_dir,
                 headless=args.headless,
                 debug=args.debug,
