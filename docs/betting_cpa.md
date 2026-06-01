@@ -271,6 +271,51 @@ is already in `betting_conversions`.
 
 ---
 
+## 2026-06-01 rebalance — format + funnel pivot
+
+After 4 days of test-LI delivery, the data forced a strategy change. Two
+findings:
+
+1. **Traffic quality is pristine — the problem isn't the media.** DoubleVerify
+   on the control line: Attention Index **170**, User Presence **199**, Valid &
+   Viewable **98.4%**, IVT **0.54%**. Real attentive humans, near-zero fraud.
+   So the 0.08% click→FTP rate is a *format-intent + advertiser-funnel*
+   problem, not a media-quality one. This rules out the usual culprit and
+   redirects effort.
+
+2. **320×50 is a volume trap.** It's ~86% of clicks and produced **0** first
+   purchases over 20 days. Every conversion came from the larger formats; the
+   single FTP came from **728×90**. We were spending the campaign's volume on
+   the one format that doesn't convert.
+
+3. **Among test segments, only OnlineCasino delivered.** 17.8K imps in 4 days
+   at 0.157% CTR (vs control 0.094%); Basketball + SBEnthusiast were starved
+   at ~1.1–1.3K imps each (narrow reach), unmeasurable this flight.
+
+**Actions taken (`scripts/betting_rebalance.py`, logged to
+`/tmp/rebalance_betting_log.json`):**
+
+- Halted Basketball (7319885244) + SBEnthusiast (7322268934) by deactivating
+  all their LICAs (PauseLineItems is `NOT_ALLOWED` via API on reserved LIs on
+  this network — LICA deactivation is the reliable halt).
+- OnlineCasino (7319884497) → **large formats only**: deactivated its 320×50
+  LICA; 728×90 / 300×250 / 970×250 remain. Best audience × converting formats.
+- Restored control (7306352098) goal **1,230,000 → 1,660,000** to recover the
+  ~60% total-volume drop the original even split caused. Control stays
+  all-sizes = the volume/awareness arm; OnlineCasino is the conversion arm.
+
+**The biggest lever is the advertiser's, not ours.** With pristine media and a
+0.32% click→registration rate, the dominant drop-off is in the post-click
+funnel (landing page / offer / registration flow). `docs/betting_cpa_funnel_note.md`
+is the DV-backed talking-points doc for the AE to push that conversation with
+Spinfinite — including the two asks (their click→reg benchmark + a mobile
+landing review for the 320×50 tap path).
+
+**Revised decision rules for this flight:** format-intent > segment selection
+when volume is this thin. Bias budget to converting formats (728×90, 300×250)
+and the one delivering segment (OnlineCasino). Per-segment CPA significance is
+unreachable in the remaining flight; value is directional + infra for IO1110.
+
 ## When this is done
 
 The optimization loop is "complete" (for this IO) when:
