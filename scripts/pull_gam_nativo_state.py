@@ -111,14 +111,39 @@ def main():
 
             # Print recently-modified first, then the rest
             for li in sorted(lis, key=lambda x: _fmt_dt(getattr(x, "lastModifiedDateTime", None)), reverse=True):
-                flag = "  *** MODIFIED SINCE 2026-05-21 ***" if _recent(getattr(li, "lastModifiedDateTime", None)) else ""
-                goal = getattr(getattr(li, "primaryGoal", None), "units", "?")
+                flag    = "  *** MODIFIED SINCE 2026-05-21 ***" if _recent(getattr(li, "lastModifiedDateTime", None)) else ""
+                goal    = getattr(getattr(li, "primaryGoal", None), "units", "?")
+                oid     = getattr(li, "orderId", "?")
+                li_type = getattr(li, "lineItemType", "?")
                 print(f"  id={getattr(li,'id','?')}")
-                print(f"    name    : {getattr(li,'name','?')}")
-                print(f"    status  : {getattr(li,'computedStatus', getattr(li,'status','?'))}")
-                print(f"    goal    : {goal}")
-                print(f"    lastMod : {_fmt_dt(getattr(li,'lastModifiedDateTime',None))}{flag}")
+                print(f"    name      : {getattr(li,'name','?')}")
+                print(f"    orderId   : {oid}")
+                print(f"    type      : {li_type}")
+                print(f"    status    : {getattr(li,'computedStatus', getattr(li,'status','?'))}")
+                print(f"    goal      : {goal}")
+                print(f"    lastMod   : {_fmt_dt(getattr(li,'lastModifiedDateTime',None))}{flag}")
                 print()
+
+            # Pull parent order details for any recently-modified LIs
+            recent_oids = list({getattr(li, "orderId") for li in lis
+                                 if _recent(getattr(li, "lastModifiedDateTime", None))
+                                 and getattr(li, "orderId", None)})
+            if recent_oids:
+                print("── PARENT ORDERS for flagged line items ──")
+                for oid in recent_oids:
+                    sb2 = ad_manager.StatementBuilder(version=API_VERSION)
+                    sb2.Where("id = :id").WithBindVariable("id", int(oid))
+                    try:
+                        parent_orders = _paginate(order_svc, "getOrdersByStatement", sb2)
+                        if parent_orders:
+                            o = parent_orders[0]
+                            print(f"  orderId={oid}")
+                            print(f"    name       : {getattr(o,'name','?')}")
+                            print(f"    status     : {getattr(o,'status','?')}")
+                            print(f"    lastMod    : {_fmt_dt(getattr(o,'lastModifiedDateTime',None))}")
+                            print()
+                    except Exception as exc:
+                        print(f"  orderId={oid}: ERROR — {exc}")
     except Exception as exc:
         print(f"  ERROR: {exc}")
 
