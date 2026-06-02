@@ -53,6 +53,31 @@ JOBS = [
     },
     {
         "repo":     "rogerhirano-nw/yield-dashboard",
+        "title":    "yield-dashboard refresh direct campaigns (business hours, hourly)",
+        "workflow": "refresh_direct.yml",
+        # Direct-only refresh keeps gam_campaigns fresh during the trading
+        # day so seller-comms cards / Ivy's intraday view aren't stuck on
+        # yesterday's numbers. Pairs with the 5 AM ET full sweep above.
+        #
+        # Hours pinned to 7 AM – 8 PM ET (14 fires/day). Overnight gap is
+        # intentional — no one's looking at the dashboard at 3 AM and the
+        # 5 AM ET full sweep refills the rest of the SSP feeds anyway.
+        #
+        # This SUPERSEDES the legacy 11 AM + 3 PM ET jobs that were
+        # configured manually on cron-job.org's web UI. After this entry
+        # is provisioned (run scripts/setup_cronjob_org.py), DELETE those
+        # two manual jobs on cron-job.org to stop duplicate fires.
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            "minutes": [0],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [-1],
+        },
+    },
+    {
+        "repo":     "rogerhirano-nw/yield-dashboard",
         "title":    "yield-dashboard weekly seller report (Wed 9 AM ET)",
         "workflow": "weekly_report.yml",
         "schedule": {
