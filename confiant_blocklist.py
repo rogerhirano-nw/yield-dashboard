@@ -290,26 +290,45 @@ def _build_email_html(summary: RunSummary) -> str:
 
 
 def _send_email(summary: RunSummary) -> None:
-    from agentmail import AgentMail
+    import json
+    import urllib.error
+    import urllib.request
     from datetime import date
 
-    api_key = os.environ.get("AGENTMAIL_API_KEY")
-    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    api_key = os.environ.get("RESEND_API_KEY")
+    from_addr = os.environ.get("RESEND_FROM") or "onboarding@resend.dev"
     recipient = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
-    if not (api_key and inbox_id and recipient):
-        print("Skipping email — AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID / "
-              "CONFIANT_REPORT_TO_EMAIL not all set", file=sys.stderr)
+    if not (api_key and recipient):
+        print("Skipping email — RESEND_API_KEY / CONFIANT_REPORT_TO_EMAIL "
+              "not both set", file=sys.stderr)
         return
 
     subject_tag = " (DRY RUN)" if summary.dry_run else (
         "" if summary.success else " (FAILED)"
     )
-    AgentMail(api_key=api_key).inboxes.messages.send(
-        inbox_id,
-        to=recipient,
-        subject=f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
-        html=_build_email_html(summary),
+    payload = {
+        "from":    from_addr,
+        "to":      [recipient],
+        "subject": f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
+        "html":    _build_email_html(summary),
+    }
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
     )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            r.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(
+            f"resend.com send failed: HTTP {e.code} {e.reason} :: "
+            f"{e.read().decode(errors='replace')}"
+        ) from e
     print(f"Summary email sent to {recipient}")
 
 
