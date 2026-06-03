@@ -290,34 +290,39 @@ def _build_email_html(summary: RunSummary) -> str:
 
 
 def _send_email(summary: RunSummary) -> None:
+    import base64
     import json
     import urllib.error
     import urllib.request
     from datetime import date
 
-    api_key = os.environ.get("RESEND_API_KEY")
-    from_addr = os.environ.get("RESEND_FROM") or "onboarding@resend.dev"
-    recipient = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
-    if not (api_key and recipient):
-        print("Skipping email — RESEND_API_KEY / CONFIANT_REPORT_TO_EMAIL "
-              "not both set", file=sys.stderr)
+    api_key    = os.environ.get("MAILJET_API_KEY")
+    secret_key = os.environ.get("MAILJET_SECRET_KEY")
+    from_addr  = os.environ.get("MAILJET_FROM") or "roger.hirano@newsweek.com"
+    from_name  = os.environ.get("MAILJET_FROM_NAME") or "Newsweek yield-dashboard"
+    recipient  = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
+    if not (api_key and secret_key and recipient):
+        print("Skipping email — MAILJET_API_KEY / MAILJET_SECRET_KEY / "
+              "CONFIANT_REPORT_TO_EMAIL not all set", file=sys.stderr)
         return
 
     subject_tag = " (DRY RUN)" if summary.dry_run else (
         "" if summary.success else " (FAILED)"
     )
-    payload = {
-        "from":    from_addr,
-        "to":      [recipient],
-        "subject": f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
-        "html":    _build_email_html(summary),
-    }
+    messages = [{
+        "From":     {"Email": from_addr, "Name": from_name},
+        "To":       [{"Email": recipient}],
+        "Subject":  f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
+        "HTMLPart": _build_email_html(summary),
+    }]
+    auth = base64.b64encode(f"{api_key}:{secret_key}".encode()).decode()
     req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=json.dumps(payload).encode(),
+        "https://api.mailjet.com/v3.1/send",
+        data=json.dumps({"Messages": messages}).encode(),
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Basic {auth}",
             "Content-Type":  "application/json",
+            "User-Agent":    "yield-dashboard/confiant-blocklist",
         },
         method="POST",
     )
@@ -326,7 +331,7 @@ def _send_email(summary: RunSummary) -> None:
             r.read()
     except urllib.error.HTTPError as e:
         raise RuntimeError(
-            f"resend.com send failed: HTTP {e.code} {e.reason} :: "
+            f"mailjet.com send failed: HTTP {e.code} {e.reason} :: "
             f"{e.read().decode(errors='replace')}"
         ) from e
     print(f"Summary email sent to {recipient}")

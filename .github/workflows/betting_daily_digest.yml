@@ -53,8 +53,10 @@ jobs:
           fi
         env:
           DATABASE_URL:          ${{ secrets.DATABASE_URL }}
-          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
-          RESEND_FROM:           ${{ vars.RESEND_FROM }}
+          MAILJET_API_KEY:       ${{ secrets.MAILJET_API_KEY }}
+          MAILJET_SECRET_KEY:    ${{ secrets.MAILJET_SECRET_KEY }}
+          MAILJET_FROM:          ${{ vars.MAILJET_FROM }}
+          MAILJET_FROM_NAME:     ${{ vars.MAILJET_FROM_NAME }}
           BETTING_DIGEST_TO:     ${{ inputs.recipients_override != '' && inputs.recipients_override || vars.BETTING_DIGEST_TO }}
           BETTING_DIGEST_CC:     ${{ vars.BETTING_DIGEST_CC }}
           BETTING_CPA_TARGET:    ${{ vars.BETTING_CPA_TARGET }}
