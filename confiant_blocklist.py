@@ -318,6 +318,9 @@ def _send_email(summary: RunSummary) -> None:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
+            # User-Agent required — Resend's Cloudflare layer rejects
+            # header-less requests as bot traffic (HTTP 403 / cf 1010).
+            "User-Agent":    "yield-dashboard/confiant-blocklist",
         },
         method="POST",
     )

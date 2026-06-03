@@ -300,6 +300,10 @@ def send_via_resend(api_key: str, from_addr: str, to: list[str], cc: list[str],
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
+            # User-Agent is required — Resend sits behind Cloudflare and
+            # rejects requests without one as bot traffic (Cloudflare
+            # error 1010 / HTTP 403). GitHub Actions runners hit this.
+            "User-Agent":    "yield-dashboard/betting-digest",
         },
         method="POST",
     )
