@@ -322,9 +322,12 @@ def main(argv: list[str]) -> int:
                         format="%(asctime)s %(levelname)s %(message)s")
     dry_run = "--dry-run" in argv
 
-    target  = float(os.environ.get("BETTING_CPA_TARGET", DEFAULT_CPA_TARGET))
-    to_env  = os.environ.get("BETTING_DIGEST_TO", DEFAULT_RECIPIENT)
-    cc_env  = os.environ.get("BETTING_DIGEST_CC", "").strip()
+    # Use `or` (not get's default) so an env set to "" — which is what GitHub
+    # Actions injects for unset vars — falls back to the literal default
+    # instead of float-parsing the empty string.
+    target  = float(os.environ.get("BETTING_CPA_TARGET") or DEFAULT_CPA_TARGET)
+    to_env  = os.environ.get("BETTING_DIGEST_TO") or DEFAULT_RECIPIENT
+    cc_env  = (os.environ.get("BETTING_DIGEST_CC") or "").strip()
     recipients = [a.strip() for a in to_env.split(",") if a.strip()]
     cc         = [a.strip() for a in cc_env.split(",") if a.strip()]
 
