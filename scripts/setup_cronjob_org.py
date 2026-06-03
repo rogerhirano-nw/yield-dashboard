@@ -152,6 +152,24 @@ JOBS = [
             "wdays":   [-1],   # every day including weekends
         },
     },
+    # ── Apple News monthly final report ──────────────────────────────────────
+    # One closing report per month with final figures for the prior calendar
+    # month (daily_report.py --monthly). The 3rd at 10:00 ET is late enough
+    # that Apple's slow refresh (~14:00 UTC for yesterday) has fully shipped
+    # the last day of the month. Same recipients as the daily report.
+    {
+        "repo":     "rogerhirano-nw/apple-news",
+        "title":    "apple-news monthly final report (3rd of month, 10 AM ET)",
+        "workflow": "monthly-report.yml",
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [10],
+            "minutes": [0],
+            "mdays":   [3],    # 3rd of each month only
+            "months":  [-1],
+            "wdays":   [-1],
+        },
+    },
     # ── Cap digest — every 3 hours, 7 days a week ───────────────────────────
     # 8 AM uses data from the 5 AM overnight refresh (full yesterday + early today).
     # 11 AM, 2 PM, 5 PM, 8 PM each use the intraday refresh 30 min prior.
