@@ -1,0 +1,26 @@
+name: Render Ivy Tracker (one-off manual)
+
+# One-off renderer for emergencies when seller-comms' cap_digest can't send
+# (AgentMail quota exhausted, DB outage, etc). Outputs HTML to the workflow
+# log between BEGIN_HTML / END_HTML markers. Extract from the log and
+# forward to the AE manually.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install psycopg2-binary sqlalchemy
+      - run: python scripts/render_ivy_tracker_oneoff.py
+        env:
+          DATABASE_URL:           ${{ secrets.DATABASE_URL }}
+          GAM_HOURLY_LINE_ITEMS:  ${{ vars.GAM_HOURLY_LINE_ITEMS }}
