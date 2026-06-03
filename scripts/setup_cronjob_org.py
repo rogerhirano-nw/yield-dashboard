@@ -115,6 +115,24 @@ JOBS = [
             "wdays":   [1],    # Monday only (Sun=0..Sat=6)
         },
     },
+    {
+        "repo":     "rogerhirano-nw/seller-comms",
+        "title":    "seller-comms cap digest (daily 8:15/11:15/14:15/17:15/20:15 ET)",
+        "workflow": "cap_digest.yml",
+        # Fires at :15 past 8, 11, 14, 17, 20 ET — 15 min after yield-dashboard's
+        # hourly refresh_direct fires at :00. That offset keeps cap_digest from
+        # racing the refresh: it needs gam_campaigns_hourly to be populated for
+        # today before it runs, and refresh_direct takes ~8 min end-to-end.
+        # Previously fired at :00 and lost the morning's hourly data on race.
+        "schedule": {
+            "timezone": "America/New_York",
+            "hours":   [8, 11, 14, 17, 20],
+            "minutes": [15],
+            "mdays":   [-1],
+            "months":  [-1],
+            "wdays":   [-1],
+        },
+    },
     # ── Intraday GAM refresh (feeds the 3-hourly cap digest with today's data) ─
     # Uses refresh_direct.yml (GAM direct + hourly breakdown only — much faster
     # than the full refresh.yml sweep which re-pulls all SSP feeds).
