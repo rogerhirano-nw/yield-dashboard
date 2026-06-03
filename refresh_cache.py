@@ -43,7 +43,21 @@ _ENGINE: sqlalchemy.Engine | None = None
 def _engine() -> sqlalchemy.Engine:
     global _ENGINE
     if _ENGINE is None:
-        _ENGINE = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+        # pool_pre_ping: validate before checkout — protects against stale
+        # connections the Supabase pooler may have already closed on its end.
+        # pool_recycle=300: actively drop+remake connections older than 5 min
+        # so the pooler doesn't time them out from under us mid-query.
+        # pool_size + max_overflow kept small because refresh runs are
+        # serial — never need more than 1 connection at a time. Default
+        # (5 + 10 = 15) was hoarding pooler slots needlessly and racing
+        # the cap_digest + dashboard for capacity.
+        _ENGINE = sqlalchemy.create_engine(
+            os.environ["DATABASE_URL"],
+            pool_pre_ping=True,
+            pool_recycle=300,
+            pool_size=2,
+            max_overflow=0,
+        )
     return _ENGINE
 
 
