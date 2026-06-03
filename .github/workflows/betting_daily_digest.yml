@@ -53,8 +53,8 @@ jobs:
           fi
         env:
           DATABASE_URL:          ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:     ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID:    ${{ secrets.AGENTMAIL_INBOX_ID }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM:           ${{ vars.RESEND_FROM }}
           BETTING_DIGEST_TO:     ${{ inputs.recipients_override != '' && inputs.recipients_override || vars.BETTING_DIGEST_TO }}
           BETTING_DIGEST_CC:     ${{ vars.BETTING_DIGEST_CC }}
           BETTING_CPA_TARGET:    ${{ vars.BETTING_CPA_TARGET }}

@@ -11,8 +11,9 @@ Composes a plain-text digest with:
   - Per-creative-size breakdown
   - Alerts (low-volume warnings, broken-attribution rows like the failed macro test)
 
-Sends via agentmail.to to BETTING_DIGEST_TO (default: roger.hirano@newsweek.com),
-using the same outbound pattern as the Apple News daily report:
+Sends via Resend (https://resend.com) to BETTING_DIGEST_TO (default:
+roger.hirano@newsweek.com). Replaced AgentMail after recurring daily-quota
+exhaustion blocked sends mid-day:
     POST /v0/inboxes/<inbox_id>/messages/send
 
 Triggered by `workflow_dispatch` from cron-job.org (same pattern as apple-news)
@@ -22,9 +23,10 @@ because GitHub-native cron drifts ~5-6h. Manual ad-hoc runs:
 
 Env required:
     DATABASE_URL          Postgres (Supabase) — same as refresh_cache.py
-    AGENTMAIL_API_KEY     Bearer token for agentmail.to (same as DV intake)
-    AGENTMAIL_INBOX_ID    "newsweek@agentmail.to"
+    RESEND_API_KEY        Bearer token for resend.com (replaced AgentMail)
 Optional:
+    RESEND_FROM           Sender address. Default: onboarding@resend.dev.
+                          Set to newsweek@<verified-domain> once DNS done.
     BETTING_DIGEST_TO     Default: roger.hirano@newsweek.com
     BETTING_DIGEST_CC     Comma-separated list (default: empty)
     BETTING_CPA_TARGET    Default: 150 (USD per FTP)
@@ -46,7 +48,6 @@ import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
-AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 BETTING_ORDER_ID = "4068491190"
 CONTROL_LI_ID    = "7306352098"
 DEFAULT_RECIPIENT = "roger.hirano@newsweek.com"
@@ -277,22 +278,28 @@ def compose_digest(data: dict, cpa_target: float = DEFAULT_CPA_TARGET) -> tuple[
 # Send
 # ----------------------------------------------------------------------
 
-def send_via_agentmail(api_key: str, inbox_id: str, to: list[str], cc: list[str],
-                        subject: str, text: str) -> dict:
-    """Send a plain-text email via agentmail.to. Mirrors apple-news/daily_report.py."""
-    payload = {
-        "to": to,
+def send_via_resend(api_key: str, from_addr: str, to: list[str], cc: list[str],
+                    subject: str, text: str) -> dict:
+    """Send a plain-text email via Resend (https://resend.com).
+
+    Replaces the prior AgentMail-based sender after AgentMail's daily quota
+    became a recurring bottleneck. Resend's free tier is 100/day which is
+    far more headroom than this digest needs.
+    """
+    payload: dict = {
+        "from":    from_addr,
+        "to":      to,
         "subject": subject,
-        "text": text,
+        "text":    text,
     }
     if cc:
         payload["cc"] = cc
     req = urllib.request.Request(
-        f"{AGENTMAIL_BASE}/inboxes/{inbox_id}/messages/send",
+        "https://api.resend.com/emails",
         data=json.dumps(payload).encode(),
         headers={
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
+            "Content-Type":  "application/json",
         },
         method="POST",
     )
@@ -301,7 +308,7 @@ def send_via_agentmail(api_key: str, inbox_id: str, to: list[str], cc: list[str]
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         raise RuntimeError(
-            f"agentmail.to send failed: HTTP {e.code} {e.reason} :: "
+            f"resend.com send failed: HTTP {e.code} {e.reason} :: "
             f"{e.read().decode(errors='replace')}"
         ) from e
 
@@ -331,14 +338,14 @@ def main(argv: list[str]) -> int:
         print(body)
         return 0
 
-    api_key  = os.environ.get("AGENTMAIL_API_KEY")
-    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
-        logger.error("AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — cannot send")
+    api_key   = os.environ.get("RESEND_API_KEY")
+    from_addr = os.environ.get("RESEND_FROM") or "onboarding@resend.dev"
+    if not api_key:
+        logger.error("RESEND_API_KEY not set — cannot send")
         return 2
 
-    result = send_via_agentmail(api_key, inbox_id, recipients, cc, subject, body)
-    logger.info("Sent digest. agentmail id=%s", result.get("id") or result.get("message_id"))
+    result = send_via_resend(api_key, from_addr, recipients, cc, subject, body)
+    logger.info("Sent digest. resend id=%s", result.get("id"))
     return 0
 
 
