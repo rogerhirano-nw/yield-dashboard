@@ -271,6 +271,42 @@ is already in `betting_conversions`.
 
 ---
 
+## Live LI roles (current state — keep this current!)
+
+`sub_id2 = li<id>` in the Improvado report maps to these LIs. **The LI id is
+stable but its ROLE changes** as we rotate audiences through the challenger
+slot — always cross-check this table before reading a report.
+
+| LI id | role (as of 2026-06-02) | audience | formats | status |
+|---|---|---|---|---|
+| `7306352098` | Control / volume arm | none (broad) | all 4 sizes | delivering, goal 1.66M |
+| `7319884497` | Conversion arm | OnlineCasino `9333427967` | **large only** (728×90/300×250/970×250) | delivering |
+| `7319885244` | **Challenger slot** | **FANDUEL Frequent `9363363991`** (was Basketball `9385007833`) | all 4 sizes | delivering |
+| `7322268934` | Halted (was SBEnthusiast) | — | — | LICAs deactivated |
+
+## Sequential audience exploration (the screen)
+
+Conversions are too sparse to measure per-segment this flight (~0.08% click→FTP
+⇒ ~1,250 clicks per expected FTP; we get ~10–40/day per LI). So we **screen
+audiences on CTR + DV Attention**, not conversions — the same leading
+indicators that earned OnlineCasino its budget off 17.8K imps.
+
+Method (`scripts/betting_challenger.py`):
+- **One** challenger audience at a time through the repurposed Basketball LI
+  (`7319885244`), running **all 4 sizes** for max volume + a format-matched CTR
+  comparison against the all-sizes no-audience control.
+- Repurpose = update audience + rename (`Aud-<handle>` slot) + reactivate the
+  existing LICAs. No new creatives/LIs. `sub_id2=li7319885244` is the stable
+  join key; the role table above records which audience it currently carries.
+- **Promote** an audience to a dedicated large-format conversion line if it
+  beats control's ~0.094% CTR at >5K imps. **Demote** fast otherwise (~3–4 day
+  windows). Mostly this builds the ranked audience playbook for IO1110.
+
+Challenger queue (vetted, ACTIVE, sized for delivery): FANDUEL Frequent
+`9363363991` (3.4M, **running now**) → Online Sportsbooks Regulated `9333586319`
+(2.0M) → DraftKings Big Spenders `9262197606` (69M, Eyeota) → Card Games Poker
+`9385104862` (415K).
+
 ## When this is done
 
 The optimization loop is "complete" (for this IO) when:
