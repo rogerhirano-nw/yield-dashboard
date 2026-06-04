@@ -176,6 +176,11 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         if not msg_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
+        # The RFC822 Message-ID header is wrapped in <...> per spec; the
+        # AgentMail attachment endpoint returns HTTP 400 if those brackets
+        # are left in the URL path. Strip them defensively so either field
+        # name on the message object works.
+        msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
 
         attachments = m.get("attachments")
         if not attachments:
