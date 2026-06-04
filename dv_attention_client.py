@@ -185,6 +185,10 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
         if not msg_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
+        # The RFC822 Message-ID header is wrapped in <...>; AgentMail's
+        # attachment endpoint returns HTTP 400 if the brackets are left
+        # in the URL path. Strip defensively so either id field works.
+        msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
 
         # The list endpoint may omit attachments[]; fetch detail to be safe.
         attachments = m.get("attachments")
