@@ -290,48 +290,26 @@ def _build_email_html(summary: RunSummary) -> str:
 
 
 def _send_email(summary: RunSummary) -> None:
-    import json
-    import urllib.error
-    import urllib.request
+    from agentmail import AgentMail
     from datetime import date
 
-    api_key   = os.environ.get("BREVO_API_KEY")
-    from_addr = os.environ.get("BREVO_FROM") or "roger.hirano@newsweek.com"
-    from_name = os.environ.get("BREVO_FROM_NAME") or "Newsweek yield-dashboard"
+    api_key = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
     recipient = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
-    if not (api_key and recipient):
-        print("Skipping email — BREVO_API_KEY / CONFIANT_REPORT_TO_EMAIL "
-              "not both set", file=sys.stderr)
+    if not (api_key and inbox_id and recipient):
+        print("Skipping email — AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID / "
+              "CONFIANT_REPORT_TO_EMAIL not all set", file=sys.stderr)
         return
 
     subject_tag = " (DRY RUN)" if summary.dry_run else (
         "" if summary.success else " (FAILED)"
     )
-    payload = {
-        "sender":      {"email": from_addr, "name": from_name},
-        "to":          [{"email": recipient}],
-        "subject":     f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
-        "htmlContent": _build_email_html(summary),
-    }
-    req = urllib.request.Request(
-        "https://api.brevo.com/v3/smtp/email",
-        data=json.dumps(payload).encode(),
-        headers={
-            "api-key":      api_key,
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-            "User-Agent":   "yield-dashboard/confiant-blocklist",
-        },
-        method="POST",
+    AgentMail(api_key=api_key).inboxes.messages.send(
+        inbox_id,
+        to=recipient,
+        subject=f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
+        html=_build_email_html(summary),
     )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            r.read()
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(
-            f"brevo.com send failed: HTTP {e.code} {e.reason} :: "
-            f"{e.read().decode(errors='replace')}"
-        ) from e
     print(f"Summary email sent to {recipient}")
 
 

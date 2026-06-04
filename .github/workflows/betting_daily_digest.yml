@@ -53,9 +53,8 @@ jobs:
           fi
         env:
           DATABASE_URL:          ${{ secrets.DATABASE_URL }}
-          BREVO_API_KEY:         ${{ secrets.BREVO_API_KEY }}
-          BREVO_FROM:            ${{ vars.BREVO_FROM }}
-          BREVO_FROM_NAME:       ${{ vars.BREVO_FROM_NAME }}
+          AGENTMAIL_API_KEY:     ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:    ${{ secrets.AGENTMAIL_INBOX_ID }}
           BETTING_DIGEST_TO:     ${{ inputs.recipients_override != '' && inputs.recipients_override || vars.BETTING_DIGEST_TO }}
           BETTING_DIGEST_CC:     ${{ vars.BETTING_DIGEST_CC }}
           BETTING_CPA_TARGET:    ${{ vars.BETTING_CPA_TARGET }}

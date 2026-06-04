@@ -11,11 +11,8 @@ Composes a plain-text digest with:
   - Per-creative-size breakdown
   - Alerts (low-volume warnings, broken-attribution rows like the failed macro test)
 
-Sends via Brevo (https://brevo.com) to BETTING_DIGEST_TO (default:
-roger.hirano@newsweek.com). Replaced Resend after Resend's sandbox
-domain restriction blocked sends to AEs. Brevo supports single-sender
-verification — no DNS / domain ownership needed, just one
-confirmation-link click. 300/day free tier.
+Sends via agentmail.to to BETTING_DIGEST_TO (default: roger.hirano@newsweek.com),
+using the same outbound pattern as the Apple News daily report:
 
 Triggered by `workflow_dispatch` from cron-job.org (same pattern as apple-news)
 because GitHub-native cron drifts ~5-6h. Manual ad-hoc runs:
@@ -24,11 +21,9 @@ because GitHub-native cron drifts ~5-6h. Manual ad-hoc runs:
 
 Env required:
     DATABASE_URL          Postgres (Supabase) — same as refresh_cache.py
-    BREVO_API_KEY         Brevo API key (Settings → SMTP & API → API Keys)
+    AGENTMAIL_API_KEY     Bearer token for agentmail.to (same as DV intake)
+    AGENTMAIL_INBOX_ID    "newsweek@agentmail.to"
 Optional:
-    BREVO_FROM            Verified sender. Default: roger.hirano@newsweek.com.
-                          Must be verified as a sender in Brevo first.
-    BREVO_FROM_NAME       Display name. Default: "Newsweek yield-dashboard".
     BETTING_DIGEST_TO     Default: roger.hirano@newsweek.com
     BETTING_DIGEST_CC     Comma-separated list (default: empty)
     BETTING_CPA_TARGET    Default: 150 (USD per FTP)
@@ -50,6 +45,7 @@ import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
+AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 BETTING_ORDER_ID = "4068491190"
 CONTROL_LI_ID    = "7306352098"
 DEFAULT_RECIPIENT = "roger.hirano@newsweek.com"
@@ -280,32 +276,22 @@ def compose_digest(data: dict, cpa_target: float = DEFAULT_CPA_TARGET) -> tuple[
 # Send
 # ----------------------------------------------------------------------
 
-def send_via_brevo(api_key: str, from_addr: str, from_name: str,
-                   to: list[str], cc: list[str], subject: str, text: str) -> dict:
-    """Send a plain-text email via Brevo (https://brevo.com).
-
-    Replaced Resend after Resend's sandbox restriction (account-owner-only
-    recipients without a verified sending domain) blocked sends to AEs.
-    Mailjet was the first choice but its sender-verification email
-    didn't arrive (likely blocked by Newsweek's filter), so we pivoted
-    to Brevo. Same single-sender flow — 300/day free tier, no DNS.
-    """
+def send_via_agentmail(api_key: str, inbox_id: str, to: list[str], cc: list[str],
+                        subject: str, text: str) -> dict:
+    """Send a plain-text email via agentmail.to. Mirrors apple-news/daily_report.py."""
     payload: dict = {
-        "sender":      {"email": from_addr, "name": from_name},
-        "to":          [{"email": a} for a in to],
-        "subject":     subject,
-        "textContent": text,
+        "to":      to,
+        "subject": subject,
+        "text":    text,
     }
     if cc:
-        payload["cc"] = [{"email": a} for a in cc]
+        payload["cc"] = cc
     req = urllib.request.Request(
-        "https://api.brevo.com/v3/smtp/email",
+        f"{AGENTMAIL_BASE}/inboxes/{inbox_id}/messages/send",
         data=json.dumps(payload).encode(),
         headers={
-            "api-key":      api_key,         # Brevo uses a custom header, not Bearer
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-            "User-Agent":   "yield-dashboard/betting-digest",
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
         },
         method="POST",
     )
@@ -314,7 +300,7 @@ def send_via_brevo(api_key: str, from_addr: str, from_name: str,
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         raise RuntimeError(
-            f"brevo.com send failed: HTTP {e.code} {e.reason} :: "
+            f"agentmail.to send failed: HTTP {e.code} {e.reason} :: "
             f"{e.read().decode(errors='replace')}"
         ) from e
 
@@ -347,16 +333,14 @@ def main(argv: list[str]) -> int:
         print(body)
         return 0
 
-    api_key   = os.environ.get("BREVO_API_KEY")
-    from_addr = os.environ.get("BREVO_FROM") or "roger.hirano@newsweek.com"
-    from_name = os.environ.get("BREVO_FROM_NAME") or "Newsweek yield-dashboard"
-    if not api_key:
-        logger.error("BREVO_API_KEY not set — cannot send")
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    if not (api_key and inbox_id):
+        logger.error("AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — cannot send")
         return 2
 
-    result = send_via_brevo(api_key, from_addr, from_name,
-                            recipients, cc, subject, body)
-    logger.info("Sent digest. brevo messageId=%s", result.get("messageId"))
+    result = send_via_agentmail(api_key, inbox_id, recipients, cc, subject, body)
+    logger.info("Sent digest. agentmail id=%s", result.get("id") or result.get("message_id"))
     return 0
 
 
