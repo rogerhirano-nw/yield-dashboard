@@ -11,11 +11,11 @@ Composes a plain-text digest with:
   - Per-creative-size breakdown
   - Alerts (low-volume warnings, broken-attribution rows like the failed macro test)
 
-Sends via Mailjet (https://mailjet.com) to BETTING_DIGEST_TO (default:
+Sends via Brevo (https://brevo.com) to BETTING_DIGEST_TO (default:
 roger.hirano@newsweek.com). Replaced Resend after Resend's sandbox
-domain restriction (account-owner-only recipients without verified DNS)
-blocked sends to AEs. Mailjet supports single-sender verification — no
-DNS / domain ownership needed, just one confirmation-link click.
+domain restriction blocked sends to AEs. Brevo supports single-sender
+verification — no DNS / domain ownership needed, just one
+confirmation-link click. 300/day free tier.
 
 Triggered by `workflow_dispatch` from cron-job.org (same pattern as apple-news)
 because GitHub-native cron drifts ~5-6h. Manual ad-hoc runs:
@@ -24,12 +24,11 @@ because GitHub-native cron drifts ~5-6h. Manual ad-hoc runs:
 
 Env required:
     DATABASE_URL          Postgres (Supabase) — same as refresh_cache.py
-    MAILJET_API_KEY       Mailjet API Key (Account → API Key Management)
-    MAILJET_SECRET_KEY    Mailjet Secret Key (same place)
+    BREVO_API_KEY         Brevo API key (Settings → SMTP & API → API Keys)
 Optional:
-    MAILJET_FROM          Verified sender. Default: roger.hirano@newsweek.com.
-                          Must be verified as a sender in Mailjet first.
-    MAILJET_FROM_NAME     Display name. Default: "Newsweek yield-dashboard".
+    BREVO_FROM            Verified sender. Default: roger.hirano@newsweek.com.
+                          Must be verified as a sender in Brevo first.
+    BREVO_FROM_NAME       Display name. Default: "Newsweek yield-dashboard".
     BETTING_DIGEST_TO     Default: roger.hirano@newsweek.com
     BETTING_DIGEST_CC     Comma-separated list (default: empty)
     BETTING_CPA_TARGET    Default: 150 (USD per FTP)
@@ -281,33 +280,32 @@ def compose_digest(data: dict, cpa_target: float = DEFAULT_CPA_TARGET) -> tuple[
 # Send
 # ----------------------------------------------------------------------
 
-def send_via_mailjet(api_key: str, secret_key: str, from_addr: str, from_name: str,
-                     to: list[str], cc: list[str], subject: str, text: str) -> dict:
-    """Send a plain-text email via Mailjet (https://mailjet.com).
+def send_via_brevo(api_key: str, from_addr: str, from_name: str,
+                   to: list[str], cc: list[str], subject: str, text: str) -> dict:
+    """Send a plain-text email via Brevo (https://brevo.com).
 
     Replaced Resend after Resend's sandbox restriction (account-owner-only
-    recipients without a verified sending domain) blocked sends to Ivy
-    and other AEs. Mailjet's free tier is 200/day, 6,000/mo and supports
-    single-sender verification — verify one sending address by clicking
-    a link in the confirmation email, then send from it to anyone. No
-    DNS / domain ownership required.
+    recipients without a verified sending domain) blocked sends to AEs.
+    Mailjet was the first choice but its sender-verification email
+    didn't arrive (likely blocked by Newsweek's filter), so we pivoted
+    to Brevo. Same single-sender flow — 300/day free tier, no DNS.
     """
-    messages: list[dict] = [{
-        "From":     {"Email": from_addr, "Name": from_name},
-        "To":       [{"Email": a} for a in to],
-        "Subject":  subject,
-        "TextPart": text,
-    }]
+    payload: dict = {
+        "sender":      {"email": from_addr, "name": from_name},
+        "to":          [{"email": a} for a in to],
+        "subject":     subject,
+        "textContent": text,
+    }
     if cc:
-        messages[0]["Cc"] = [{"Email": a} for a in cc]
-    auth = base64.b64encode(f"{api_key}:{secret_key}".encode()).decode()
+        payload["cc"] = [{"email": a} for a in cc]
     req = urllib.request.Request(
-        "https://api.mailjet.com/v3.1/send",
-        data=json.dumps({"Messages": messages}).encode(),
+        "https://api.brevo.com/v3/smtp/email",
+        data=json.dumps(payload).encode(),
         headers={
-            "Authorization": f"Basic {auth}",
-            "Content-Type":  "application/json",
-            "User-Agent":    "yield-dashboard/betting-digest",
+            "api-key":      api_key,         # Brevo uses a custom header, not Bearer
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+            "User-Agent":   "yield-dashboard/betting-digest",
         },
         method="POST",
     )
@@ -316,7 +314,7 @@ def send_via_mailjet(api_key: str, secret_key: str, from_addr: str, from_name: s
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         raise RuntimeError(
-            f"mailjet.com send failed: HTTP {e.code} {e.reason} :: "
+            f"brevo.com send failed: HTTP {e.code} {e.reason} :: "
             f"{e.read().decode(errors='replace')}"
         ) from e
 
@@ -349,20 +347,16 @@ def main(argv: list[str]) -> int:
         print(body)
         return 0
 
-    api_key    = os.environ.get("MAILJET_API_KEY")
-    secret_key = os.environ.get("MAILJET_SECRET_KEY")
-    from_addr  = os.environ.get("MAILJET_FROM") or "roger.hirano@newsweek.com"
-    from_name  = os.environ.get("MAILJET_FROM_NAME") or "Newsweek yield-dashboard"
-    if not (api_key and secret_key):
-        logger.error("MAILJET_API_KEY / MAILJET_SECRET_KEY not set — cannot send")
+    api_key   = os.environ.get("BREVO_API_KEY")
+    from_addr = os.environ.get("BREVO_FROM") or "roger.hirano@newsweek.com"
+    from_name = os.environ.get("BREVO_FROM_NAME") or "Newsweek yield-dashboard"
+    if not api_key:
+        logger.error("BREVO_API_KEY not set — cannot send")
         return 2
 
-    result = send_via_mailjet(api_key, secret_key, from_addr, from_name,
-                              recipients, cc, subject, body)
-    msg_meta = (result.get("Messages") or [{}])[0]
-    logger.info("Sent digest. mailjet status=%s message-id=%s",
-                msg_meta.get("Status"),
-                (msg_meta.get("To") or [{}])[0].get("MessageID"))
+    result = send_via_brevo(api_key, from_addr, from_name,
+                            recipients, cc, subject, body)
+    logger.info("Sent digest. brevo messageId=%s", result.get("messageId"))
     return 0
 
 
