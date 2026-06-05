@@ -1039,8 +1039,11 @@ def main() -> None:
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
-    if mode not in ("all", "direct", "opensincera", "deal-metadata", "gam_hourly"):
-        logger.error("Unknown --mode=%s (use 'all', 'direct', 'opensincera', 'deal-metadata', or 'gam_hourly')", mode)
+    if mode not in ("all", "direct", "opensincera", "deal-metadata", "gam_hourly", "dv"):
+        logger.error(
+            "Unknown --mode=%s (use 'all', 'direct', 'opensincera', 'deal-metadata', 'gam_hourly', or 'dv')",
+            mode,
+        )
         raise SystemExit(2)
     logger.info("refresh_cache v3 — mode=%s", mode)
 
@@ -1094,6 +1097,16 @@ def main() -> None:
             except Exception:
                 logger.exception("Refresh failed for %s — continuing", fn.__name__)
         logger.info("Done (deal-metadata). %d rows written.", total)
+        return
+
+    if mode == "dv":
+        total = 0
+        for fn in (refresh_dv_attention, refresh_dv_ivt):
+            try:
+                total += fn()
+            except Exception:
+                logger.exception("Refresh failed for %s — continuing", fn.__name__)
+        logger.info("Done (dv-only). %d rows written.", total)
         return
 
     # Full sweep below — everything in dependency-independent order.
