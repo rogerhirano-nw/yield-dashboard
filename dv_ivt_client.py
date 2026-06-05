@@ -209,6 +209,7 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
 
     frames = []
     first_msg_logged = False
+    first_detail_logged = False
     for m in matches:
         if not first_msg_logged:
             logger.info("DIAG first IVT message keys: %s", list(m.keys()))
@@ -221,6 +222,19 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
             continue
         # Strip RFC822 angle brackets defensively (message_id fallback).
         msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
+
+        # Force-call detail for first message to diagnose identifier + URL structure
+        if not first_detail_logged:
+            try:
+                detail_diag = get_message_detail(api_key, inbox_id, msg_id)
+                logger.info("DIAG detail keys: %s", list(detail_diag.keys()))
+                logger.info("DIAG detail (no headers): %r",
+                            {k: v for k, v in detail_diag.items() if k != "headers"})
+                for da in (detail_diag.get("attachments") or [])[:3]:
+                    logger.info("DIAG detail att: %r", da)
+            except Exception as e:
+                logger.info("DIAG detail call failed with msg_id=%r: %s", msg_id, e)
+            first_detail_logged = True
 
         attachments = m.get("attachments")
         if not attachments:
