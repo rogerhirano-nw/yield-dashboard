@@ -89,25 +89,26 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
 
 
 def list_dv_attention_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[dict]:
-    """List recent messages whose subject starts with the DV report subject.
+    """List recent messages matching the DV Attention subject.
+    include_unauthenticated=true is required — DV's noreply sender lands in
+    agentmail's Unauthenticated folder, which the default list call excludes.
     Returns metadata dicts (id, subject, attachments, sent_at). Newest first.
     """
-    raw = _api_get(f"/inboxes/{inbox_id}/messages?limit={limit}", api_key=api_key)
-    # Response may be {"messages": [...]} or a bare list — handle both.
+    subject_enc = urllib.parse.quote(DV_SUBJECT, safe="")
+    raw = _api_get(
+        f"/inboxes/{inbox_id}/messages?limit={limit}"
+        f"&subject={subject_enc}&include_unauthenticated=true",
+        api_key=api_key,
+    )
     if isinstance(raw, dict):
         messages = raw.get("messages") or raw.get("data") or []
     else:
         messages = raw or []
-    matches = []
-    for m in messages:
-        subj = (m.get("subject") or "").strip()
-        if subj.startswith(DV_SUBJECT):
-            matches.append(m)
     logger.info(
-        "agentmail: scanned %d recent message(s); %d match DV Attention subject",
-        len(messages), len(matches),
+        "agentmail: scanned inbox (unauthenticated included); %d match DV Attention subject",
+        len(messages),
     )
-    return matches
+    return messages
 
 
 def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
