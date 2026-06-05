@@ -226,36 +226,42 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         # Try every candidate identifier against the detail endpoint to find
         # which one the backend actually resolves.
         if not first_detail_logged:
-            smtp_id = m.get("smtp_id", "")
-            raw_msg_id = str(m.get("message_id", "")).strip().lstrip("<").rstrip(">")
-            candidates = [
-                ("thread_id", msg_id),
-                ("smtp_id",   smtp_id),
-                ("message_id_clean", raw_msg_id),
-            ]
-            for cname, cval in candidates:
-                if not cval:
-                    continue
-                try:
-                    detail_diag = get_message_detail(api_key, inbox_id, cval)
-                    logger.info("DIAG detail via %s=%r SUCCESS keys=%s",
-                                cname, cval, list(detail_diag.keys()))
-                    for da in (detail_diag.get("attachments") or [])[:2]:
-                        logger.info("DIAG detail att via %s: %r", cname, da)
-                    # Also try attachment download with the first CSV
-                    for da in (detail_diag.get("attachments") or []):
-                        da_fn = da.get("filename") or da.get("name") or ""
-                        da_id = da.get("id") or da.get("attachment_id") or ""
-                        if da_fn.lower().endswith(".csv") and da_id:
-                            try:
-                                test_bytes = fetch_attachment(api_key, inbox_id, cval, da_id)
-                                logger.info("DIAG att download via %s SUCCESS: %d bytes",
-                                            cname, len(test_bytes))
-                            except Exception as ae:
-                                logger.info("DIAG att download via %s FAILED: %s", cname, ae)
-                            break
-                except Exception as e:
-                    logger.info("DIAG detail via %s=%r FAILED: %s", cname, cval, e)
+            first_att_id = ""
+            for _a in (m.get("attachments") or []):
+                _aid = _a.get("id") or _a.get("attachment_id") or ""
+                _afn = _a.get("filename") or _a.get("name") or ""
+                if _afn.lower().endswith(".csv") and _aid:
+                    first_att_id = _aid
+                    break
+
+            # 1) Try the per-attachment direct endpoint (no message path)
+            if first_att_id:
+                for att_path in [
+                    f"/inboxes/{inbox_id}/attachments/{first_att_id}",
+                    f"/attachments/{first_att_id}",
+                ]:
+                    try:
+                        raw = _api_get(att_path, api_key=api_key, raw=True)
+                        logger.info("DIAG direct att path %r SUCCESS: %d bytes", att_path, len(raw))
+                    except Exception as e:
+                        logger.info("DIAG direct att path %r FAILED: %s", att_path, e)
+
+            # 2) List all inbox messages without subject filter, peek at IDs
+            try:
+                all_msgs = _api_get(f"/inboxes/{inbox_id}/messages?limit=5", api_key=api_key)
+                if isinstance(all_msgs, dict):
+                    all_msgs = all_msgs.get("messages") or all_msgs.get("data") or []
+                for am in (all_msgs or [])[:2]:
+                    am_tid = am.get("thread_id", "")
+                    am_sub = am.get("subject", "")
+                    try:
+                        _api_get(f"/inboxes/{inbox_id}/messages/{am_tid}", api_key=api_key)
+                        logger.info("DIAG unfiltered msg tid=%r sub=%r detail: SUCCESS", am_tid, am_sub)
+                    except Exception as e:
+                        logger.info("DIAG unfiltered msg tid=%r sub=%r detail: %s", am_tid, am_sub, e)
+            except Exception as e:
+                logger.info("DIAG unfiltered list FAILED: %s", e)
+
             first_detail_logged = True
 
         attachments = m.get("attachments")
