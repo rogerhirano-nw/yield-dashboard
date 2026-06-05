@@ -4727,7 +4727,8 @@ if st.session_state.active_view == "campaigns":
         return rows
 
     def _sp_date_momentum(df, name_col, rev_col):
-        """Split df by most-recent 3 dates vs prior 3 dates; return (summary, n_gaining, n_losing)."""
+        """Split df by most-recent 7 dates (this week) vs prior 7 dates (last week).
+        Returns (summary, n_gaining, n_losing)."""
         df = df.copy()
         df["_date"] = pd.to_datetime(df["_date"], errors="coerce")
         df[rev_col]  = pd.to_numeric(df[rev_col], errors="coerce").fillna(0)
@@ -4735,8 +4736,8 @@ if st.session_state.active_view == "campaigns":
         if df.empty:
             return pd.DataFrame(), 0, 0
         sorted_dates = sorted(df["_date"].unique(), reverse=True)
-        recent_dates = sorted_dates[:3]
-        prior_dates  = sorted_dates[3:6]
+        recent_dates = sorted_dates[:7]
+        prior_dates  = sorted_dates[7:14]
         if not recent_dates or not prior_dates:
             return pd.DataFrame(), 0, 0
         recent = df[df["_date"].isin(recent_dates)].groupby(name_col)[rev_col].sum()
@@ -4852,8 +4853,8 @@ if st.session_state.active_view == "campaigns":
     _direct_n_gaining = 0
     _direct_n_losing  = 0
     if not gam_df.empty:
-        _rev_recent_cols = [c for c in ["revenue_1d", "revenue_2d", "revenue_3d"] if c in gam_df.columns]
-        _rev_prior_cols  = [c for c in ["revenue_4d", "revenue_5d", "revenue_6d"] if c in gam_df.columns]
+        _rev_recent_cols = [c for c in [f"revenue_{i}d" for i in range(1, 8)]  if c in gam_df.columns]
+        _rev_prior_cols  = [c for c in [f"revenue_{i}d" for i in range(8, 15)] if c in gam_df.columns]
         if _rev_recent_cols and _rev_prior_cols:
             _dir_df = gam_df.copy()
             for _c in _rev_recent_cols + _rev_prior_cols:
@@ -4890,8 +4891,8 @@ if st.session_state.active_view == "campaigns":
         _sp_header = (
             '<div class="sp-row sp-head">'
             '<div>Deal / Advertiser</div>'
-            '<div class="sp-num">Recent 3d</div>'
-            '<div class="sp-num">Prior 3d</div>'
+            '<div class="sp-num">This week</div>'
+            '<div class="sp-num">Last week</div>'
             '<div class="sp-num">Δ</div>'
             '</div>'
         )
@@ -4909,7 +4910,7 @@ if st.session_state.active_view == "campaigns":
 
         with st.expander(
             f"Spend momentum — {_total_gaining} gaining, {_total_losing} losing"
-            f" (last 3d vs prior 3d)",
+            f" (this week vs last week)",
             expanded=False,
         ):
             st.markdown("".join(_sp_parts), unsafe_allow_html=True)

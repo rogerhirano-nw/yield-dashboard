@@ -148,7 +148,8 @@ REPORTS = {
             "ecpm",
             "win_rate",
         ],
-        "date_range": "last_7",
+        "date_range": "last_14",
+        "retention_days": 14,
     },
     # demand_type_ad_resp and revenue_source are "Demand Fields" — incompatible with auction
     # metrics (bid_requests, bid_responses, impressions). Pull separately with ad metrics only
@@ -171,7 +172,18 @@ REPORTS = {
 def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
     """Pull a single report and write it to its own table. Returns row count."""
     logger.info("Refreshing %s", table)
-    df = client.run_report(**config)
+    cfg = dict(config)
+    retention_days = cfg.pop("retention_days", 7)
+    # Tables requesting more than 7 days use explicit start/end so the API
+    # date_range string ("last_7", "last_14", …) doesn't need to be supported.
+    if retention_days > 7:
+        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+        start_date = yesterday - timedelta(days=retention_days - 1)
+        cfg.pop("date_range", None)
+        cfg["start"] = f"{start_date.isoformat()}T00:00:00Z"
+        cfg["end"]   = f"{yesterday.isoformat()}T23:59:59Z"
+        cfg["date_range"] = None
+    df = client.run_report(**cfg)
     if df.empty:
         logger.warning("%s came back empty — nothing to write", table)
         return 0
@@ -187,7 +199,7 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 logger.info("Schema change detected for %s — dropping and recreating", table)
                 conn.execute(text(f'DROP TABLE "{table}"'))
             elif "date" in df.columns:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days + 1)).strftime("%Y-%m-%d")
                 conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
             else:
                 # Lookup table with no date column — TRUNCATE is cheaper than
@@ -199,16 +211,16 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
 
 
 def refresh_gam() -> int:
-    """Pull GAM delivery + pacing for the last 7 days and write to gam_campaigns."""
+    """Pull GAM delivery + pacing for the last 14 days and write to gam_campaigns."""
     from datetime import date as _date
 
     logger.info("Refreshing gam_campaigns (GAM)")
     gam = GAMClient()
 
-    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-    seven_days_ago = yesterday - timedelta(days=6)  # last 7 days inclusive
+    yesterday        = datetime.now(timezone.utc).date() - timedelta(days=1)
+    fourteen_days_ago = yesterday - timedelta(days=13)  # last 14 days inclusive
 
-    df = gam.run_report_with_pacing(seven_days_ago, yesterday)
+    df = gam.run_report_with_pacing(fourteen_days_ago, yesterday)
     if df.empty:
         logger.warning("GAM report came back empty — nothing to write")
         return 0
@@ -218,7 +230,7 @@ def refresh_gam() -> int:
     df["campaign_type"] = "direct"
 
     table = "gam_campaigns"
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=15)).strftime("%Y-%m-%d")
 
     with _engine().begin() as conn:
         if table in sa_inspect(conn).get_table_names():
@@ -347,10 +359,10 @@ def refresh_gam_pmp_deals() -> int:
     logger.info("Refreshing gam_pmp_deals (GAM deals report)")
     gam = GAMClient()
 
-    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
-    seven_days_ago = yesterday - timedelta(days=6)
+    yesterday         = datetime.now(timezone.utc).date() - timedelta(days=1)
+    fourteen_days_ago = yesterday - timedelta(days=13)
 
-    df = gam.run_deals_report(seven_days_ago, yesterday)
+    df = gam.run_deals_report(fourteen_days_ago, yesterday)
     if df.empty:
         logger.warning("GAM deals report came back empty — nothing to write")
         return 0
@@ -632,14 +644,14 @@ def refresh_pmp_last_bid_date() -> int:
 
 
 def refresh_pubmatic() -> int:
-    """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
+    """Pull Pubmatic PMP deal data for the last 14 days and write to pubmatic_deals."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
     client = PubmaticClient()
 
-    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
-    seven_days_ago = yesterday - timedelta(days=6)
+    yesterday         = datetime.now(timezone.utc).date() - timedelta(days=1)
+    fourteen_days_ago = yesterday - timedelta(days=13)
 
-    df = client.run_deal_report(seven_days_ago, yesterday)
+    df = client.run_deal_report(fourteen_days_ago, yesterday)
     if df.empty:
         logger.warning("Pubmatic report came back empty — nothing to write")
         return 0
@@ -647,7 +659,7 @@ def refresh_pubmatic() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     table  = "pubmatic_deals"
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=15)).strftime("%Y-%m-%d")
 
     with _engine().begin() as conn:
         if table in sa_inspect(conn).get_table_names():

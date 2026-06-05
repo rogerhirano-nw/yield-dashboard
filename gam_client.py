@@ -990,9 +990,10 @@ class GAMClient:
 
         merged = df_items.merge(agg, on="line_item_id", how="left")
         merged = merged.merge(df_lifetime, on="line_item_id", how="left")
-        # Per-day breakouts for the last up-to-7 days — suffix 1d = most
-        # recent, 7d = oldest. The KPI-strip sparklines consume these.
-        _recent_dates = list(reversed(sorted_dates[-7:]))  # newest first
+        # Per-day breakouts for the last up-to-14 days — suffix 1d = most
+        # recent, 14d = oldest. Days 1-7 feed the KPI sparklines; days 8-14
+        # give the Spend Momentum expander a full prior-week comparison.
+        _recent_dates = list(reversed(sorted_dates[-14:]))  # newest first
         for _i, _d in enumerate(_recent_dates, start=1):
             merged = merged.merge(_per_day(_d, f"{_i}d"), on="line_item_id", how="left")
 
