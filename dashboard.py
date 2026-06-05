@@ -4693,6 +4693,88 @@ if st.session_state.active_view == "campaigns":
             # already shows the sort key + count, so no separate caption
             # needed. Removed alongside the .head(25) cap.
 
+    # ── Spend momentum ───────────────────────────────────────────────────────
+    # Compares each advertiser's Direct revenue over the most-recent 3 days vs
+    # the prior 3 days so it's easy to spot who is gaining or losing budget
+    # heading into the weekly programmatic email.
+    if not gam_df.empty:
+        _rev_recent_cols = [c for c in ["revenue_1d", "revenue_2d", "revenue_3d"] if c in gam_df.columns]
+        _rev_prior_cols  = [c for c in ["revenue_4d", "revenue_5d", "revenue_6d"] if c in gam_df.columns]
+        if _rev_recent_cols and _rev_prior_cols:
+            _mom_df = gam_df.copy()
+            for _c in _rev_recent_cols + _rev_prior_cols:
+                _mom_df[_c] = pd.to_numeric(_mom_df[_c], errors="coerce").fillna(0)
+            _grp_col = "advertiser" if "advertiser" in _mom_df.columns else "order_name"
+            _mom_df = _mom_df.dropna(subset=[_grp_col])
+            _mom_df["_recent_rev"] = _mom_df[_rev_recent_cols].sum(axis=1)
+            _mom_df["_prior_rev"]  = _mom_df[_rev_prior_cols].sum(axis=1)
+            _mom_summary = (
+                _mom_df.groupby(_grp_col, as_index=False)[["_recent_rev", "_prior_rev"]].sum()
+            )
+            _mom_summary["_delta"] = _mom_summary["_recent_rev"] - _mom_summary["_prior_rev"]
+            _mom_summary["_pct"] = _mom_summary.apply(
+                lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
+                axis=1,
+            )
+            _mom_summary = _mom_summary.sort_values("_delta", ascending=False)
+            _n_gaining = int((_mom_summary["_delta"] > 0).sum())
+            _n_losing  = int((_mom_summary["_delta"] < -0.5).sum())
+
+            def _mom_esc(s):
+                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            def _mom_dollar(v):
+                return f"${v:,.0f}" if pd.notna(v) and abs(v) >= 0.5 else "—"
+
+            _mom_rows = []
+            for _, _mr in _mom_summary.iterrows():
+                _adv  = _mr[_grp_col] or "—"
+                _dlt  = _mr["_delta"]
+                _pct  = _mr["_pct"]
+                _sign = "+" if _dlt > 0 else ""
+                _dlt_s = (
+                    f"{_sign}${abs(_dlt):,.0f}"
+                    if abs(_dlt) >= 0.5 else "—"
+                )
+                _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
+                _clr = "#22c55e" if _dlt > 0 else ("#ef4444" if _dlt < -0.5 else "#6b7280")
+                _mom_rows.append(
+                    f'<div class="sp-row">'
+                    f'<div class="sp-adv">{_mom_esc(_adv)}</div>'
+                    f'<div class="sp-num">{_mom_dollar(_mr["_recent_rev"])}</div>'
+                    f'<div class="sp-num">{_mom_dollar(_mr["_prior_rev"])}</div>'
+                    f'<div class="sp-num" style="color:{_clr}">'
+                    f'{_dlt_s}<span style="opacity:.65">{_pct_s}</span>'
+                    f'</div>'
+                    f'</div>'
+                )
+
+            _mom_label = (
+                f"Spend momentum — {_n_gaining} gaining, {_n_losing} losing"
+                f" (Direct · last 3d vs prior 3d)"
+            )
+            with st.expander(_mom_label, expanded=False):
+                st.markdown(
+                    '<style>'
+                    '.sp-row{display:grid;grid-template-columns:1fr 90px 90px 130px;'
+                    'gap:0 12px;padding:5px 4px;'
+                    'border-bottom:1px solid rgba(255,255,255,.05);'
+                    'font-size:13px;align-items:center}'
+                    '.sp-head{font-size:11px;font-weight:600;color:#888;'
+                    'text-transform:uppercase;letter-spacing:.04em}'
+                    '.sp-adv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+                    '.sp-num{text-align:right;font-variant-numeric:tabular-nums}'
+                    '</style>'
+                    '<div class="sp-row sp-head">'
+                    '<div>Advertiser</div>'
+                    '<div class="sp-num">Recent 3d</div>'
+                    '<div class="sp-num">Prior 3d</div>'
+                    '<div class="sp-num">Δ</div>'
+                    '</div>'
+                    + "".join(_mom_rows),
+                    unsafe_allow_html=True,
+                )
+
     # ── Section 2: PMP deals ─────────────────────────────────────────────
     # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
     st.markdown(
