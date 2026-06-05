@@ -1,14 +1,11 @@
-name: Refresh Magnite cache
+name: Refresh cache
 
-# Triggered externally by cron-job.org via the GitHub API
-# (POST /repos/<owner>/<repo>/actions/workflows/refresh.yml/dispatches)
-# at 05:00 America/New_York. workflow_dispatch fires within seconds of
-# the API call — unlike GitHub's native `schedule:` cron which was
-# drifting 8+ hours late because top-of-hour scheduled runs get
-# deprioritized during system-wide load spikes.
+# Triggered by cron-job.org at 05:00 America/New_York via workflow_dispatch.
+# Six source jobs run in parallel; post-sweep runs after the three jobs whose
+# tables feed pmp_last_bid_date (magnite, gam, pubmatic).
 #
-# Same pattern used by rogerhirano-nw/apple-news/daily-report.yml.
-# Manual `gh workflow run refresh.yml` still works for ad-hoc runs.
+# Wall-clock time: ~20 min (limited by gam-lica).
+# Everything except gam-lica finishes in ~3-5 min.
 on:
   workflow_dispatch:
 
@@ -16,32 +13,130 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  refresh:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
 
+  magnite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4.2.2
-
       - uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.11'
-
       - run: pip install -r requirements.txt
-
-      - run: python refresh_cache.py
+      - run: python refresh_cache.py --mode=magnite
         env:
-          MAGNITE_KEY:                ${{ secrets.MAGNITE_KEY }}
-          MAGNITE_SECRET:             ${{ secrets.MAGNITE_SECRET }}
-          MAGNITE_PUBLISHER_ID:       ${{ secrets.MAGNITE_PUBLISHER_ID }}
-          DATABASE_URL:               ${{ secrets.DATABASE_URL }}
-          GAM_NETWORK_ID:             ${{ secrets.GAM_NETWORK_ID }}
-          GAM_SERVICE_ACCOUNT_JSON:   ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
-          PUBMATIC_PUBLISHER_ID:      ${{ secrets.PUBMATIC_PUBLISHER_ID }}
-          PUBMATIC_TOKEN:             ${{ secrets.PUBMATIC_TOKEN }}
-          PUBMATIC_REFRESH_TOKEN:     ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
-          PUBMATIC_EMAIL:             ${{ secrets.PUBMATIC_EMAIL }}
-          OPENSINCERA_TOKEN:          ${{ secrets.OPENSINCERA_TOKEN }}
-          AGENTMAIL_API_KEY:          ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID:         ${{ secrets.AGENTMAIL_INBOX_ID }}
-          REFRESH_ALERT_TO:           ${{ vars.REFRESH_ALERT_TO }}
+          DATABASE_URL:         ${{ secrets.DATABASE_URL }}
+          MAGNITE_KEY:          ${{ secrets.MAGNITE_KEY }}
+          MAGNITE_SECRET:       ${{ secrets.MAGNITE_SECRET }}
+          MAGNITE_PUBLISHER_ID: ${{ secrets.MAGNITE_PUBLISHER_ID }}
+          AGENTMAIL_API_KEY:    ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:   ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:     ${{ vars.REFRESH_ALERT_TO }}
+
+  gam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=gam
+        env:
+          DATABASE_URL:             ${{ secrets.DATABASE_URL }}
+          GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_HOURLY_LINE_ITEMS:    ${{ vars.GAM_HOURLY_LINE_ITEMS }}
+          AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
+
+  gam-lica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=gam-lica
+        env:
+          DATABASE_URL:             ${{ secrets.DATABASE_URL }}
+          GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
+
+  pubmatic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=pubmatic
+        env:
+          DATABASE_URL:           ${{ secrets.DATABASE_URL }}
+          PUBMATIC_PUBLISHER_ID:  ${{ secrets.PUBMATIC_PUBLISHER_ID }}
+          PUBMATIC_TOKEN:         ${{ secrets.PUBMATIC_TOKEN }}
+          PUBMATIC_REFRESH_TOKEN: ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
+          PUBMATIC_EMAIL:         ${{ secrets.PUBMATIC_EMAIL }}
+          AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:       ${{ vars.REFRESH_ALERT_TO }}
+
+  dv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=dv
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
+
+  opensincera:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=opensincera
+        env:
+          DATABASE_URL:      ${{ secrets.DATABASE_URL }}
+          OPENSINCERA_TOKEN: ${{ secrets.OPENSINCERA_TOKEN }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:  ${{ vars.REFRESH_ALERT_TO }}
+
+  post-sweep:
+    needs: [magnite, gam, pubmatic]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python refresh_cache.py --mode=post-sweep
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}

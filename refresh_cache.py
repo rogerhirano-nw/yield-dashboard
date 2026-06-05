@@ -49,6 +49,26 @@ class _IssueCollector(logging.Handler):
         self.records.append(record)
 
 
+def _run_with_alert(mode_label: str, callables: list) -> int:
+    """Run each callable in sequence, catch exceptions per-callable so one
+    failure doesn't abort the rest. Sends an email alert when any WARNING+
+    log records are emitted. Returns total row count."""
+    collector = _IssueCollector()
+    logging.getLogger().addHandler(collector)
+    total = 0
+    for fn in callables:
+        try:
+            total += fn() or 0
+        except Exception:
+            logger.exception("Refresh failed for %s — continuing",
+                             getattr(fn, "__name__", repr(fn)))
+    logging.getLogger().removeHandler(collector)
+    if collector.records:
+        _send_sweep_alert(collector.records, total)
+    logger.info("Done (%s). %d rows written.", mode_label, total)
+    return total
+
+
 _ENGINE: sqlalchemy.Engine | None = None
 
 
@@ -118,6 +138,7 @@ def _ensure_indexes() -> None:
                     f'CREATE INDEX IF NOT EXISTS "{idx_name}" ON "{table}" ({cols})'
                 ))
     logger.info("Index check complete")
+    return 0
 
 
 # Tune these to match the dashboard's actual filter dimensions.
@@ -466,6 +487,22 @@ def refresh_gam_lica() -> int:
         _safe_replace(df, "gam_lica", conn)
     logger.info("Wrote %d rows to gam_lica", len(df))
     return len(df)
+
+
+def refresh_magnite() -> int:
+    """Pull all four standard Magnite reports (site, DSP, deal, demand)."""
+    logger.info("Refreshing Magnite reports")
+    api_key    = os.environ["MAGNITE_KEY"]
+    api_secret = os.environ["MAGNITE_SECRET"]
+    account_id = os.environ["MAGNITE_PUBLISHER_ID"]
+    client = MagniteClient(api_key=api_key, api_secret=api_secret, account_id=account_id)
+    total = 0
+    for table, config in REPORTS.items():
+        try:
+            total += refresh_one_report(client, table, config)
+        except Exception:
+            logger.exception("Refresh failed for %s — continuing", table)
+    return total
 
 
 def refresh_magnite_deal_metadata() -> int:
@@ -1030,194 +1067,110 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
 def main() -> None:
     _load_dotenv()
 
-    # --mode=direct → only refresh GAM direct campaigns (gam_campaigns).
-    # Used by refresh_direct.yml on its intra-day fires (11 AM + 3 PM ET)
-    # so dashboard users get fresh direct-campaign delivery without
-    # re-pulling the slower PMP / Magnite / Pubmatic feeds. Default mode
-    # is the full sweep — what refresh.yml runs at 5 AM ET.
     mode = "all"
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
-    if mode not in ("all", "direct", "opensincera", "deal-metadata", "gam_hourly", "dv"):
-        logger.error(
-            "Unknown --mode=%s (use 'all', 'direct', 'opensincera', 'deal-metadata', 'gam_hourly', or 'dv')",
-            mode,
-        )
+
+    _VALID_MODES = (
+        "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
+        "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep",
+    )
+    if mode not in _VALID_MODES:
+        logger.error("Unknown --mode=%s  valid: %s", mode, ", ".join(_VALID_MODES))
         raise SystemExit(2)
-    logger.info("refresh_cache v3 — mode=%s", mode)
+    logger.info("refresh_cache — mode=%s", mode)
 
     migrate_table_names()
 
-    if mode == "gam_hourly":
-        # Refreshes both the intraday hourly table and the multi-week history
-        # table — both feed the seller-comms cap digest and share the same
-        # GAM_HOURLY_LINE_ITEMS set, so one intraday step keeps both current.
-        total = 0
-        try:
-            total += refresh_gam_hourly()
-        except Exception:
-            logger.exception("Hourly GAM refresh failed")
-        try:
-            total += refresh_gam_weekly()
-        except Exception:
-            logger.exception("Weekly GAM refresh failed")
-        logger.info("Done (gam_hourly + weekly). %d rows written.", total)
-        return
+    # ── intraday / ad-hoc single-source modes ──────────────────────────────
 
     if mode == "direct":
-        total = 0
-        try:
-            total += refresh_gam()
-        except Exception:
-            logger.exception("Refresh failed for gam_campaigns")
-        logger.info("Done (direct-only). %d rows written.", total)
+        # GAM direct-only; used by refresh_direct.yml at 11 AM + 3 PM ET.
+        _run_with_alert("direct", [refresh_gam])
+        return
+
+    if mode == "gam_hourly":
+        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_weekly])
+        return
+
+    if mode == "dv":
+        _run_with_alert("dv", [refresh_dv_attention, refresh_dv_ivt])
         return
 
     if mode == "opensincera":
-        total = 0
-        for fn in (
+        _run_with_alert("opensincera", [
             refresh_opensincera_ecosystem,
             refresh_opensincera_publishers,
             refresh_opensincera_adsystems,
             refresh_opensincera_modules,
-        ):
-            try:
-                total += fn()
-            except Exception:
-                logger.exception("Refresh failed for %s — continuing", fn.__name__)
-        logger.info("Done (opensincera-only). %d rows written.", total)
+        ])
         return
 
     if mode == "deal-metadata":
-        total = 0
-        for fn in (refresh_magnite_deal_metadata, refresh_pubmatic_deal_metadata):
-            try:
-                total += fn()
-            except Exception:
-                logger.exception("Refresh failed for %s — continuing", fn.__name__)
-        logger.info("Done (deal-metadata). %d rows written.", total)
+        _run_with_alert("deal-metadata", [
+            refresh_magnite_deal_metadata,
+            refresh_pubmatic_deal_metadata,
+        ])
         return
 
-    if mode == "dv":
-        total = 0
-        for fn in (refresh_dv_attention, refresh_dv_ivt):
-            try:
-                total += fn()
-            except Exception:
-                logger.exception("Refresh failed for %s — continuing", fn.__name__)
-        logger.info("Done (dv-only). %d rows written.", total)
+    # ── parallel-sweep modes (one GitHub Actions job each) ─────────────────
+
+    if mode == "magnite":
+        _run_with_alert("magnite", [refresh_magnite, refresh_magnite_deal_metadata])
         return
 
-    # Full sweep below — everything in dependency-independent order.
-    _collector = _IssueCollector()
-    logging.getLogger().addHandler(_collector)
+    if mode == "gam":
+        # All GAM except LICA (which is the slow full-table fetch).
+        _run_with_alert("gam", [
+            refresh_gam,
+            refresh_gam_hourly,
+            refresh_gam_weekly,
+            refresh_gam_pmp_deals,
+            refresh_gam_deal_bids,
+            refresh_gam_private_auctions,
+            refresh_gam_preferred_deals,
+        ])
+        return
 
-    logger.info("refresh_cache v3 — Magnite date_range=%s", next(iter(REPORTS.values()))["date_range"])
-    api_key    = os.environ["MAGNITE_KEY"]
-    api_secret = os.environ["MAGNITE_SECRET"]
-    account_id = os.environ["MAGNITE_PUBLISHER_ID"]
+    if mode == "gam-lica":
+        # Slow full-table pulls; run in its own job so it can't delay others.
+        _run_with_alert("gam-lica", [refresh_gam_creatives, refresh_gam_lica])
+        return
 
-    client = MagniteClient(
-        api_key=api_key,
-        api_secret=api_secret,
-        account_id=account_id,
-    )
+    if mode == "pubmatic":
+        _run_with_alert("pubmatic", [refresh_pubmatic, refresh_pubmatic_deal_metadata])
+        return
 
-    total = 0
-    for table, config in REPORTS.items():
-        try:
-            total += refresh_one_report(client, table, config)
-        except Exception:
-            logger.exception("Refresh failed for %s — continuing with others", table)
+    if mode == "post-sweep":
+        # Runs after magnite + gam + pubmatic complete (needs their tables).
+        _run_with_alert("post-sweep", [refresh_pmp_last_bid_date, _ensure_indexes])
+        return
 
-    logger.info("Done. %d total rows written across %d reports.", total, len(REPORTS))
-
-    try:
-        total += refresh_gam()
-    except Exception:
-        logger.exception("Refresh failed for gam_campaigns — continuing")
-
-    try:
-        total += refresh_gam_pmp_deals()
-    except Exception:
-        logger.exception("Refresh failed for gam_pmp_deals — continuing")
-
-    try:
-        total += refresh_gam_deal_bids()
-    except Exception:
-        logger.exception("Refresh failed for gam_deal_bid_daily — continuing")
-
-    try:
-        total += refresh_gam_private_auctions()
-    except Exception:
-        logger.exception("Refresh failed for gam_pa_metadata — continuing")
-
-    try:
-        total += refresh_gam_preferred_deals()
-    except Exception:
-        logger.exception("Refresh failed for gam_pd_metadata — continuing")
-
-    try:
-        total += refresh_gam_creatives()
-    except Exception:
-        logger.exception("Refresh failed for gam_creatives — continuing")
-
-    try:
-        total += refresh_gam_lica()
-    except Exception:
-        logger.exception("Refresh failed for gam_lica — continuing")
-
-    try:
-        total += refresh_pubmatic()
-    except Exception:
-        logger.exception("Refresh failed for pubmatic_deals — continuing")
-
-    try:
-        total += refresh_opensincera_ecosystem()
-    except Exception:
-        logger.exception("Refresh failed for opensincera_ecosystem — continuing")
-
-    try:
-        total += refresh_opensincera_publishers()
-    except Exception:
-        logger.exception("Refresh failed for opensincera_publishers — continuing")
-
-    try:
-        total += refresh_opensincera_adsystems()
-    except Exception:
-        logger.exception("Refresh failed for opensincera_adsystems — continuing")
-
-    try:
-        total += refresh_opensincera_modules()
-    except Exception:
-        logger.exception("Refresh failed for opensincera_modules — continuing")
-
-    try:
-        total += refresh_dv_attention()
-    except Exception:
-        logger.exception("Refresh failed for dv_attention — continuing")
-
-    try:
-        total += refresh_dv_ivt()
-    except Exception:
-        logger.exception("Refresh failed for dv_ivt — continuing")
-
-    try:
-        total += refresh_pmp_last_bid_date()
-    except Exception:
-        logger.exception("Refresh failed for pmp_last_bid_date — continuing")
-
-    try:
-        _ensure_indexes()
-    except Exception:
-        logger.exception("Index maintenance failed — non-fatal, continuing")
-
-    logging.getLogger().removeHandler(_collector)
-    if _collector.records:
-        _send_sweep_alert(_collector.records, total)
-
-    logger.info("Full sweep complete. %d total rows written.", total)
+    # ── mode=all: sequential full sweep (local dev / backwards compat) ─────
+    _run_with_alert("all", [
+        refresh_magnite,
+        refresh_magnite_deal_metadata,
+        refresh_gam,
+        refresh_gam_hourly,
+        refresh_gam_weekly,
+        refresh_gam_pmp_deals,
+        refresh_gam_deal_bids,
+        refresh_gam_private_auctions,
+        refresh_gam_preferred_deals,
+        refresh_gam_creatives,
+        refresh_gam_lica,
+        refresh_pubmatic,
+        refresh_pubmatic_deal_metadata,
+        refresh_dv_attention,
+        refresh_dv_ivt,
+        refresh_opensincera_ecosystem,
+        refresh_opensincera_publishers,
+        refresh_opensincera_adsystems,
+        refresh_opensincera_modules,
+        refresh_pmp_last_bid_date,
+        _ensure_indexes,
+    ])
 
 
 if __name__ == "__main__":
