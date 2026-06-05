@@ -90,24 +90,52 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
 
 def list_dv_attention_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[dict]:
     """List recent messages matching the DV Attention subject.
-    include_unauthenticated=true is required — DV's noreply sender lands in
-    agentmail's Unauthenticated folder, which the default list call excludes.
-    Returns metadata dicts (id, subject, attachments, sent_at). Newest first.
+
+    Tries authenticated inbox first — whitelisted senders land here and
+    attachment downloads work. Falls back to include_unauthenticated=true if
+    empty; those messages are visible but attachment downloads return 404.
+    Messages from the unauthenticated fallback are tagged _unauthenticated=True
+    so pull_dv_attention() can skip them rather than producing noisy 404s.
     """
     subject_enc = urllib.parse.quote(DV_SUBJECT, safe="")
-    raw = _api_get(
-        f"/inboxes/{inbox_id}/messages?limit={limit}"
-        f"&subject={subject_enc}&include_unauthenticated=true",
-        api_key=api_key,
-    )
+    base_path = f"/inboxes/{inbox_id}/messages?limit={limit}&subject={subject_enc}"
+
+    raw = _api_get(base_path, api_key=api_key)
     if isinstance(raw, dict):
         messages = raw.get("messages") or raw.get("data") or []
     else:
         messages = raw or []
+
+    if messages:
+        logger.info(
+            "agentmail: %d DV Attention messages in authenticated inbox", len(messages)
+        )
+        for m in messages:
+            logger.debug("  msg id=%s from=%s atts=%s",
+                         m.get("id") or m.get("message_id"),
+                         m.get("from") or m.get("sender"),
+                         [a.get("filename") or a.get("name") or a.get("id")
+                          for a in (m.get("attachments") or [])])
+        return messages
+
+    # Authenticated inbox empty — check unauthenticated folder
+    raw2 = _api_get(f"{base_path}&include_unauthenticated=true", api_key=api_key)
+    if isinstance(raw2, dict):
+        messages = raw2.get("messages") or raw2.get("data") or []
+    else:
+        messages = raw2 or []
     logger.info(
-        "agentmail: scanned inbox (unauthenticated included); %d match DV Attention subject",
+        "agentmail: authenticated inbox empty; %d DV Attention messages in "
+        "unauthenticated folder (attachment downloads blocked — whitelist DV's sender)",
         len(messages),
     )
+    for m in messages:
+        logger.debug("  unauth msg id=%s from=%s atts=%s",
+                     m.get("id") or m.get("message_id"),
+                     m.get("from") or m.get("sender"),
+                     [a.get("filename") or a.get("name") or a.get("id")
+                      for a in (m.get("attachments") or [])])
+        m["_unauthenticated"] = True
     return messages
 
 
@@ -202,9 +230,18 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
                 logger.warning("Couldn't fetch detail for %s: %s", msg_id, e)
                 continue
 
+        if m.get("_unauthenticated"):
+            logger.warning(
+                "msg %s is in the unauthenticated folder — skipping attachment "
+                "download (whitelist DV's sender in agentmail to fix)",
+                msg_id,
+            )
+            continue
+
         for att in attachments:
             fn     = att.get("filename") or att.get("name") or ""
             att_id = att.get("id") or att.get("attachment_id") or ""
+            logger.debug("  att object: %r", att)
             if not fn.lower().endswith(".csv") or not att_id:
                 continue
             try:
