@@ -44,3 +44,4 @@ jobs:
           OPENSINCERA_TOKEN:          ${{ secrets.OPENSINCERA_TOKEN }}
           AGENTMAIL_API_KEY:          ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:         ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:           ${{ vars.REFRESH_ALERT_TO }}

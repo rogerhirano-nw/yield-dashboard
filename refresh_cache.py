@@ -15,9 +15,11 @@ Then point Streamlit/Metabase/Looker Studio at magnite_cache.db.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -34,6 +36,17 @@ from pubmatic_client import PubmaticClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+class _IssueCollector(logging.Handler):
+    """Collects WARNING+ log records emitted during a sweep for post-sweep alerting."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
 
 
 _ENGINE: sqlalchemy.Engine | None = None
@@ -983,6 +996,37 @@ def migrate_table_names() -> None:
                 logger.info("Renamed table %s → %s", old, new)
 
 
+def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None:
+    """Email a concise summary of WARNING/ERROR records to REFRESH_ALERT_TO.
+    Silently skips if credentials or recipient are not configured."""
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    to_addr  = os.environ.get("REFRESH_ALERT_TO")
+    if not (api_key and inbox_id and to_addr):
+        return
+
+    today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    subject = f"refresh sweep — {len(records)} issue(s) — {today}"
+    lines   = [f"  {r.levelname:<8}  {r.getMessage()}" for r in records]
+    body    = (
+        f"The daily refresh sweep completed with {len(records)} issue(s):\n\n"
+        + "\n".join(lines)
+        + f"\n\n{total_rows:,} rows written total.\n"
+    )
+    payload = {"to": [to_addr], "subject": subject, "text": body}
+    req = urllib.request.Request(
+        f"https://api.agentmail.to/v0/inboxes/{inbox_id}/messages/send",
+        data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            logger.info("Sweep alert sent to %s", to_addr)
+    except Exception:
+        logger.exception("Failed to send sweep alert")
+
+
 def main() -> None:
     _load_dotenv()
 
@@ -1053,6 +1097,9 @@ def main() -> None:
         return
 
     # Full sweep below — everything in dependency-independent order.
+    _collector = _IssueCollector()
+    logging.getLogger().addHandler(_collector)
+
     logger.info("refresh_cache v3 — Magnite date_range=%s", next(iter(REPORTS.values()))["date_range"])
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
@@ -1152,6 +1199,10 @@ def main() -> None:
         _ensure_indexes()
     except Exception:
         logger.exception("Index maintenance failed — non-fatal, continuing")
+
+    logging.getLogger().removeHandler(_collector)
+    if _collector.records:
+        _send_sweep_alert(_collector.records, total)
 
     logger.info("Full sweep complete. %d total rows written.", total)
 
