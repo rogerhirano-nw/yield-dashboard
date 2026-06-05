@@ -1,0 +1,16 @@
+name: Check DV DB tables
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - run: pip install sqlalchemy psycopg2-binary
+      - run: python scripts/check_dv_db.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
