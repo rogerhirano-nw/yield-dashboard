@@ -28,9 +28,10 @@ Order and Line Item use the 14-field Newsweek GAM naming convention, so
 they join cleanly to `gam_campaigns.line_item_name` / `gam_pmp_deals.deal_name`.
 
 agentmail.to API used (no SDK — plain urllib HTTP):
-    GET /v0/inboxes/{inbox_id}/messages?limit=N
-    GET /v0/inboxes/{inbox_id}/messages/{id}
-    GET /v0/inboxes/{inbox_id}/messages/{id}/attachments/{filename}
+    GET /v0/inboxes/{inbox_id}/messages?limit=N&subject=...
+    GET /v0/inboxes/{inbox_id}/messages/{message_id}   (RFC822 id, URL-encoded)
+    GET /v0/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}
+        → returns JSON with download_url (pre-signed CDN, no auth required)
 """
 from __future__ import annotations
 
