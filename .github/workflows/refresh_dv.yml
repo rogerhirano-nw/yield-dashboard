@@ -1,0 +1,30 @@
+name: Refresh DV (Attention + IVT only)
+
+# Triggered manually for ad-hoc DV-only refreshes or when testing
+# agentmail pipeline changes without waiting for the 25-minute full sweep.
+# Runs in ~30s (agentmail poll + CSV parse) vs ~25min for the full sweep.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  refresh-dv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - run: python refresh_cache.py --mode=dv
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}

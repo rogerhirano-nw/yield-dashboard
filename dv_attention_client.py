@@ -28,9 +28,10 @@ Order and Line Item use the 14-field Newsweek GAM naming convention, so
 they join cleanly to `gam_campaigns.line_item_name` / `gam_pmp_deals.deal_name`.
 
 agentmail.to API used (no SDK — plain urllib HTTP):
-    GET /v0/inboxes/{inbox_id}/messages?limit=N
-    GET /v0/inboxes/{inbox_id}/messages/{id}
-    GET /v0/inboxes/{inbox_id}/messages/{id}/attachments/{filename}
+    GET /v0/inboxes/{inbox_id}/messages?limit=N&subject=...
+    GET /v0/inboxes/{inbox_id}/messages/{message_id}   (RFC822 id, URL-encoded)
+    GET /v0/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}
+        → returns JSON with download_url (pre-signed CDN, no auth required)
 """
 from __future__ import annotations
 
@@ -89,41 +90,85 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
 
 
 def list_dv_attention_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[dict]:
-    """List recent messages whose subject starts with the DV report subject.
-    Returns metadata dicts (id, subject, attachments, sent_at). Newest first.
+    """List recent messages matching the DV Attention subject.
+
+    Tries authenticated inbox first — whitelisted senders land here and
+    attachment downloads work. Falls back to include_unauthenticated=true if
+    empty; those messages are visible but attachment downloads return 404.
+    Messages from the unauthenticated fallback are tagged _unauthenticated=True
+    so pull_dv_attention() can skip them rather than producing noisy 404s.
     """
-    raw = _api_get(f"/inboxes/{inbox_id}/messages?limit={limit}", api_key=api_key)
-    # Response may be {"messages": [...]} or a bare list — handle both.
+    subject_enc = urllib.parse.quote(DV_SUBJECT, safe="")
+    base_path = f"/inboxes/{inbox_id}/messages?limit={limit}&subject={subject_enc}"
+
+    raw = _api_get(base_path, api_key=api_key)
     if isinstance(raw, dict):
         messages = raw.get("messages") or raw.get("data") or []
     else:
         messages = raw or []
-    matches = []
-    for m in messages:
-        subj = (m.get("subject") or "").strip()
-        if subj.startswith(DV_SUBJECT):
-            matches.append(m)
+
+    if messages:
+        logger.info(
+            "agentmail: %d DV Attention messages in authenticated inbox", len(messages)
+        )
+        for m in messages:
+            logger.debug("  msg id=%s from=%s atts=%s",
+                         m.get("id") or m.get("message_id"),
+                         m.get("from") or m.get("sender"),
+                         [a.get("filename") or a.get("name") or a.get("id")
+                          for a in (m.get("attachments") or [])])
+        return messages
+
+    # Authenticated inbox empty — check unauthenticated folder
+    raw2 = _api_get(f"{base_path}&include_unauthenticated=true", api_key=api_key)
+    if isinstance(raw2, dict):
+        messages = raw2.get("messages") or raw2.get("data") or []
+    else:
+        messages = raw2 or []
     logger.info(
-        "agentmail: scanned %d recent message(s); %d match DV Attention subject",
-        len(messages), len(matches),
+        "agentmail: authenticated inbox empty; %d DV Attention messages in "
+        "unauthenticated folder (attachment downloads blocked — whitelist DV's sender)",
+        len(messages),
     )
-    return matches
+    for m in messages:
+        logger.debug("  unauth msg id=%s from=%s atts=%s",
+                     m.get("id") or m.get("message_id"),
+                     m.get("from") or m.get("sender"),
+                     [a.get("filename") or a.get("name") or a.get("id")
+                      for a in (m.get("attachments") or [])])
+        m["_unauthenticated"] = True
+    return messages
 
 
 def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
     """Get a single message's full record — needed because the list endpoint
     sometimes omits the attachments[] array."""
-    return _api_get(f"/inboxes/{inbox_id}/messages/{message_id}", api_key=api_key)
+    encoded = urllib.parse.quote(message_id, safe="")
+    return _api_get(f"/inboxes/{inbox_id}/messages/{encoded}", api_key=api_key)
 
 
-def fetch_attachment(api_key: str, inbox_id: str, message_id: str, filename: str) -> bytes:
-    """Download one attachment as raw bytes. Filename is path-quoted to
-    survive spaces / unicode."""
-    safe = urllib.parse.quote(filename, safe="")
-    return _api_get(
-        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{safe}",
-        api_key=api_key, raw=True,
+def fetch_attachment(api_key: str, inbox_id: str, thread_id: str, attachment_id: str) -> bytes:
+    """Download one attachment as raw bytes.
+
+    The threads attachment endpoint returns JSON with a pre-signed download_url.
+    We follow that URL (no auth required — CDN pre-signed) to get the content.
+    """
+    meta = _api_get(
+        f"/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}",
+        api_key=api_key, raw=False,
     )
+    download_url = meta.get("download_url") or meta.get("url") if isinstance(meta, dict) else None
+    if not download_url:
+        raise RuntimeError(f"No download_url in attachment response: {meta!r}")
+    req = urllib.request.Request(download_url)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"CDN download failed: HTTP {e.code} {e.reason} :: {body[:200]}"
+        ) from e
 
 
 def parse_dv_csv(content: bytes) -> pd.DataFrame:
@@ -181,37 +226,46 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
 
     frames = []
     for m in matches:
-        msg_id = m.get("id") or m.get("message_id")
-        if not msg_id:
+        thread_id = str(m.get("thread_id") or "").strip()
+        rfc822_id = str(m.get("message_id") or "").strip()
+        # thread_id (UUID) goes to the /threads/ download endpoint.
+        # rfc822_id (with angle brackets) goes to the /messages/ detail endpoint.
+        if not thread_id and not rfc822_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
-        # The RFC822 Message-ID header is wrapped in <...>; AgentMail's
-        # attachment endpoint returns HTTP 400 if the brackets are left
-        # in the URL path. Strip defensively so either id field works.
-        msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
+        dedup_id = thread_id or rfc822_id.lstrip("<").rstrip(">")
 
-        # The list endpoint may omit attachments[]; fetch detail to be safe.
         attachments = m.get("attachments")
         if not attachments:
             try:
-                detail = get_message_detail(api_key, inbox_id, msg_id)
+                detail = get_message_detail(api_key, inbox_id, rfc822_id or thread_id)
                 attachments = detail.get("attachments") or []
             except Exception as e:
-                logger.warning("Couldn't fetch detail for %s: %s", msg_id, e)
+                logger.warning("Couldn't fetch detail for %s: %s", dedup_id, e)
                 continue
 
+        if m.get("_unauthenticated"):
+            logger.warning(
+                "msg %s is in the unauthenticated folder — skipping attachment "
+                "download (whitelist DV's sender in agentmail to fix)",
+                dedup_id,
+            )
+            continue
+
         for att in attachments:
-            fn = att.get("filename") or att.get("name") or ""
-            if not fn.lower().endswith(".csv"):
+            fn     = att.get("filename") or att.get("name") or ""
+            att_id = att.get("id") or att.get("attachment_id") or ""
+            logger.debug("  att object: %r", att)
+            if not fn.lower().endswith(".csv") or not att_id:
                 continue
             try:
-                content = fetch_attachment(api_key, inbox_id, msg_id, fn)
+                content = fetch_attachment(api_key, inbox_id, thread_id, att_id)
                 df = parse_dv_csv(content)
-                df["_email_message_id"] = msg_id
-                logger.info("Parsed %d rows from %s (msg %s)", len(df), fn, msg_id)
+                df["_email_message_id"] = dedup_id
+                logger.info("Parsed %d rows from %s (msg %s)", len(df), fn, dedup_id)
                 frames.append(df)
             except Exception as e:
-                logger.exception("Failed to process %s from msg %s: %s", fn, msg_id, e)
+                logger.exception("Failed to process %s from msg %s: %s", fn, dedup_id, e)
 
     if not frames:
         return pd.DataFrame()
