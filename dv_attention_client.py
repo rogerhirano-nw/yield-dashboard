@@ -117,12 +117,10 @@ def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
     return _api_get(f"/inboxes/{inbox_id}/messages/{message_id}", api_key=api_key)
 
 
-def fetch_attachment(api_key: str, inbox_id: str, message_id: str, filename: str) -> bytes:
-    """Download one attachment as raw bytes. Filename is path-quoted to
-    survive spaces / unicode."""
-    safe = urllib.parse.quote(filename, safe="")
+def fetch_attachment(api_key: str, inbox_id: str, message_id: str, attachment_id: str) -> bytes:
+    """Download one attachment as raw bytes using its UUID attachment_id."""
     return _api_get(
-        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{safe}",
+        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{attachment_id}",
         api_key=api_key, raw=True,
     )
 
@@ -202,11 +200,12 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
                 continue
 
         for att in attachments:
-            fn = att.get("filename") or att.get("name") or ""
-            if not fn.lower().endswith(".csv"):
+            fn     = att.get("filename") or att.get("name") or ""
+            att_id = att.get("id") or att.get("attachment_id") or ""
+            if not fn.lower().endswith(".csv") or not att_id:
                 continue
             try:
-                content = fetch_attachment(api_key, inbox_id, msg_id, fn)
+                content = fetch_attachment(api_key, inbox_id, msg_id, att_id)
                 df = parse_dv_csv(content)
                 df["_email_message_id"] = msg_id
                 logger.info("Parsed %d rows from %s (msg %s)", len(df), fn, msg_id)
