@@ -149,13 +149,14 @@ def list_dv_ivt_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[d
 
 
 def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
-    return _api_get(f"/inboxes/{inbox_id}/messages/{message_id}", api_key=api_key)
+    encoded = urllib.parse.quote(message_id, safe="")
+    return _api_get(f"/inboxes/{inbox_id}/messages/{encoded}", api_key=api_key)
 
 
-def fetch_attachment(api_key: str, inbox_id: str, message_id: str, attachment_id: str) -> bytes:
-    """Download one attachment as raw bytes using its UUID attachment_id."""
+def fetch_attachment(api_key: str, inbox_id: str, thread_id: str, attachment_id: str) -> bytes:
+    """Download one attachment as raw bytes via the thread endpoint."""
     return _api_get(
-        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{attachment_id}",
+        f"/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}",
         api_key=api_key, raw=True,
     )
 
@@ -208,93 +209,47 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         return pd.DataFrame()
 
     frames = []
-    first_msg_logged = False
-    first_detail_logged = False
     for m in matches:
-        if not first_msg_logged:
-            logger.info("DIAG first IVT message keys: %s", list(m.keys()))
-            logger.info("DIAG first IVT message: %r", {k: v for k, v in m.items() if k != "headers"})
-            first_msg_logged = True
-
-        msg_id = m.get("thread_id") or m.get("id") or m.get("message_id")
-        if not msg_id:
+        thread_id = str(m.get("thread_id") or "").strip()
+        rfc822_id = str(m.get("message_id") or "").strip()
+        # thread_id is the UUID for the /threads/ download endpoint.
+        # rfc822_id is the RFC822 Message-ID (with angle brackets) for the
+        # /messages/ detail endpoint (URL-encoded on use).
+        if not thread_id and not rfc822_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
-        # Strip RFC822 angle brackets defensively (message_id fallback).
-        msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
-
-        # Try every candidate identifier against the detail endpoint to find
-        # which one the backend actually resolves.
-        if not first_detail_logged:
-            first_att_id = ""
-            for _a in (m.get("attachments") or []):
-                _aid = _a.get("id") or _a.get("attachment_id") or ""
-                _afn = _a.get("filename") or _a.get("name") or ""
-                if _afn.lower().endswith(".csv") and _aid:
-                    first_att_id = _aid
-                    break
-
-            # 1) Try the per-attachment direct endpoint (no message path)
-            if first_att_id:
-                for att_path in [
-                    f"/inboxes/{inbox_id}/attachments/{first_att_id}",
-                    f"/attachments/{first_att_id}",
-                ]:
-                    try:
-                        raw = _api_get(att_path, api_key=api_key, raw=True)
-                        logger.info("DIAG direct att path %r SUCCESS: %d bytes", att_path, len(raw))
-                    except Exception as e:
-                        logger.info("DIAG direct att path %r FAILED: %s", att_path, e)
-
-            # 2) List all inbox messages without subject filter, peek at IDs
-            try:
-                all_msgs = _api_get(f"/inboxes/{inbox_id}/messages?limit=5", api_key=api_key)
-                if isinstance(all_msgs, dict):
-                    all_msgs = all_msgs.get("messages") or all_msgs.get("data") or []
-                for am in (all_msgs or [])[:2]:
-                    am_tid = am.get("thread_id", "")
-                    am_sub = am.get("subject", "")
-                    try:
-                        _api_get(f"/inboxes/{inbox_id}/messages/{am_tid}", api_key=api_key)
-                        logger.info("DIAG unfiltered msg tid=%r sub=%r detail: SUCCESS", am_tid, am_sub)
-                    except Exception as e:
-                        logger.info("DIAG unfiltered msg tid=%r sub=%r detail: %s", am_tid, am_sub, e)
-            except Exception as e:
-                logger.info("DIAG unfiltered list FAILED: %s", e)
-
-            first_detail_logged = True
+        dedup_id = thread_id or rfc822_id.lstrip("<").rstrip(">")
 
         attachments = m.get("attachments")
         if not attachments:
             try:
-                detail = get_message_detail(api_key, inbox_id, msg_id)
+                detail = get_message_detail(api_key, inbox_id, rfc822_id or thread_id)
                 attachments = detail.get("attachments") or []
             except Exception as e:
-                logger.warning("Couldn't fetch detail for %s: %s", msg_id, e)
+                logger.warning("Couldn't fetch detail for %s: %s", dedup_id, e)
                 continue
 
         if m.get("_unauthenticated"):
             logger.warning(
                 "msg %s is in the unauthenticated folder — skipping attachment "
                 "download (whitelist DV's sender in agentmail to fix)",
-                msg_id,
+                dedup_id,
             )
             continue
 
         for att in attachments:
             fn     = att.get("filename") or att.get("name") or ""
             att_id = att.get("id") or att.get("attachment_id") or ""
-            logger.info("DIAG att object: %r", att)
             if not fn.lower().endswith(".csv") or not att_id:
                 continue
             try:
-                content = fetch_attachment(api_key, inbox_id, msg_id, att_id)
+                content = fetch_attachment(api_key, inbox_id, thread_id, att_id)
                 df = parse_dv_ivt_csv(content)
-                df["_email_message_id"] = msg_id
-                logger.info("Parsed %d IVT rows from %s (msg %s)", len(df), fn, msg_id)
+                df["_email_message_id"] = dedup_id
+                logger.info("Parsed %d IVT rows from %s (msg %s)", len(df), fn, dedup_id)
                 frames.append(df)
             except Exception as e:
-                logger.exception("Failed to process %s from msg %s: %s", fn, msg_id, e)
+                logger.exception("Failed to process %s from msg %s: %s", fn, dedup_id, e)
 
     if not frames:
         return pd.DataFrame()
