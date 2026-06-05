@@ -154,11 +154,27 @@ def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
 
 
 def fetch_attachment(api_key: str, inbox_id: str, thread_id: str, attachment_id: str) -> bytes:
-    """Download one attachment as raw bytes via the thread endpoint."""
-    return _api_get(
+    """Download one attachment as raw bytes.
+
+    The threads attachment endpoint returns JSON with a pre-signed download_url.
+    We follow that URL (no auth required — CDN pre-signed) to get the content.
+    """
+    meta = _api_get(
         f"/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}",
-        api_key=api_key, raw=True,
+        api_key=api_key, raw=False,
     )
+    download_url = meta.get("download_url") or meta.get("url") if isinstance(meta, dict) else None
+    if not download_url:
+        raise RuntimeError(f"No download_url in attachment response: {meta!r}")
+    req = urllib.request.Request(download_url)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"CDN download failed: HTTP {e.code} {e.reason} :: {body[:200]}"
+        ) from e
 
 
 def parse_dv_ivt_csv(content: bytes) -> pd.DataFrame:
