@@ -29,7 +29,6 @@ from client import MagniteClient
 from dv_attention_client import pull_dv_attention
 from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
-from improvado_client import pull_improvado
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
 
@@ -1143,11 +1142,6 @@ def main() -> None:
         total += refresh_dv_ivt()
     except Exception:
         logger.exception("Refresh failed for dv_ivt — continuing")
-
-    try:
-        total += refresh_improvado()
-    except Exception:
-        logger.exception("Refresh failed for improvado — continuing")
 
     try:
         total += refresh_pmp_last_bid_date()
