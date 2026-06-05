@@ -211,13 +211,15 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
 
     frames = []
     for m in matches:
-        msg_id = m.get("id") or m.get("message_id")
+        # agentmail messages have no `id` field — primary key is `thread_id`
+        # (a UUID). `message_id` is the RFC822 Message-ID in angle brackets;
+        # the attachment download endpoint returns 404 when the RFC822 form is
+        # used. thread_id is the UUID that the download endpoint resolves.
+        msg_id = m.get("thread_id") or m.get("id") or m.get("message_id")
         if not msg_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
-        # The RFC822 Message-ID header is wrapped in <...>; AgentMail's
-        # attachment endpoint returns HTTP 400 if the brackets are left
-        # in the URL path. Strip defensively so either id field works.
+        # Strip RFC822 angle brackets defensively (message_id fallback).
         msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
 
         # The list endpoint may omit attachments[]; fetch detail to be safe.

@@ -119,9 +119,6 @@ def list_dv_ivt_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[d
         logger.info(
             "agentmail: %d DV IVT messages in authenticated inbox", len(messages)
         )
-        # Log full first message object so we can see all available ID fields
-        logger.info("  first msg keys: %s", list(messages[0].keys()))
-        logger.info("  first msg: %r", {k: v for k, v in messages[0].items() if k != "body"})
         for m in messages:
             logger.debug("  msg id=%s from=%s atts=%s",
                          m.get("id") or m.get("message_id"),
@@ -215,14 +212,15 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
 
     frames = []
     for m in matches:
-        msg_id = m.get("id") or m.get("message_id")
+        # agentmail messages have no `id` field — primary key is `thread_id`
+        # (a UUID). `message_id` is the RFC822 Message-ID in angle brackets;
+        # the attachment download endpoint returns 404 when the RFC822 form is
+        # used. thread_id is the UUID that the download endpoint resolves.
+        msg_id = m.get("thread_id") or m.get("id") or m.get("message_id")
         if not msg_id:
             logger.warning("Skipping message with no id: %r", m)
             continue
-        # The RFC822 Message-ID header is wrapped in <...> per spec; the
-        # AgentMail attachment endpoint returns HTTP 400 if those brackets
-        # are left in the URL path. Strip them defensively so either field
-        # name on the message object works.
+        # Strip RFC822 angle brackets defensively (message_id fallback).
         msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
 
         attachments = m.get("attachments")
