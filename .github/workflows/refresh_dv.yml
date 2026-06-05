@@ -28,3 +28,39 @@ jobs:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+
+      - name: Check DB (row counts + sample line_item_names)
+        run: |
+          python - <<'PYEOF'
+          import os, re, sqlalchemy
+          url = os.environ["DATABASE_URL"]
+          engine = sqlalchemy.create_engine(url)
+          with engine.connect() as conn:
+              for tbl in ("dv_attention", "dv_ivt"):
+                  try:
+                      n = conn.execute(sqlalchemy.text(f'SELECT COUNT(*) FROM "{tbl}"')).scalar()
+                      r = conn.execute(sqlalchemy.text(f'SELECT MIN(date), MAX(date) FROM "{tbl}"')).fetchone()
+                      rows = conn.execute(sqlalchemy.text(
+                          f'SELECT DISTINCT line_item_name FROM "{tbl}" WHERE line_item_name IS NOT NULL LIMIT 5'
+                      )).fetchall()
+                      print(f"\n{tbl}: {n} rows | {r[0]} to {r[1]}")
+                      for row in rows:
+                          print(f"  line_item_name: {row[0]!r}")
+                  except Exception as e:
+                      print(f"\n{tbl}: ERROR — {e}")
+              try:
+                  rows = conn.execute(sqlalchemy.text(
+                      "SELECT DISTINCT line_item_name FROM gam_campaigns "
+                      "WHERE end_date_time >= NOW() - INTERVAL '30 days' LIMIT 5"
+                  )).fetchall()
+                  print("\ngam_campaigns recent line_item_names (cleaned for DV join):")
+                  for row in rows:
+                      cleaned = re.sub(r"^#\d+\s+", "", str(row[0]))
+                      print(f"  GAM {row[0]!r}")
+                      print(f"  ->  {cleaned!r}")
+              except Exception as e:
+                  print(f"\ngam_campaigns: ERROR — {e}")
+          PYEOF
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PYTHONPATH: ${{ github.workspace }}
