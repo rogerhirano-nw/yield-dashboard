@@ -4694,86 +4694,166 @@ if st.session_state.active_view == "campaigns":
             # needed. Removed alongside the .head(25) cap.
 
     # ── Spend momentum ───────────────────────────────────────────────────────
-    # Compares each advertiser's Direct revenue over the most-recent 3 days vs
-    # the prior 3 days so it's easy to spot who is gaining or losing budget
-    # heading into the weekly programmatic email.
+    # Two sub-tables: PD + PA deals (from gam_pmp_deals) and Direct campaigns
+    # (from gam_campaigns). Each compares revenue over the most-recent 3 days
+    # vs the prior 3 days, sorted by delta descending. Intended as a quick
+    # reference before writing the weekly programmatic email.
+
+    def _sp_esc(s):
+        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _sp_dollar(v):
+        return f"${v:,.0f}" if pd.notna(v) and abs(v) >= 0.5 else "—"
+
+    def _sp_rows_for(summary_df, name_col):
+        rows = []
+        for _, _r in summary_df.iterrows():
+            _dlt  = _r["_delta"]
+            _pct  = _r["_pct"]
+            _sign = "+" if _dlt > 0 else ""
+            _dlt_s = f"{_sign}${abs(_dlt):,.0f}" if abs(_dlt) >= 0.5 else "—"
+            _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
+            _clr   = "#22c55e" if _dlt > 0 else ("#ef4444" if _dlt < -0.5 else "#6b7280")
+            rows.append(
+                f'<div class="sp-row">'
+                f'<div class="sp-adv">{_sp_esc(_r[name_col] or "—")}</div>'
+                f'<div class="sp-num">{_sp_dollar(_r["_recent_rev"])}</div>'
+                f'<div class="sp-num">{_sp_dollar(_r["_prior_rev"])}</div>'
+                f'<div class="sp-num" style="color:{_clr}">'
+                f'{_dlt_s}<span style="opacity:.65">{_pct_s}</span>'
+                f'</div>'
+                f'</div>'
+            )
+        return rows
+
+    def _sp_momentum(df, name_col, recent_col_filter, prior_col_filter):
+        """Return (summary_df, n_gaining, n_losing). Columns _recent_rev/_prior_rev/_delta/_pct."""
+        df = df.copy()
+        df["_recent_rev"] = df[recent_col_filter].sum(axis=1)
+        df["_prior_rev"]  = df[prior_col_filter].sum(axis=1)
+        out = df.groupby(name_col, as_index=False)[["_recent_rev", "_prior_rev"]].sum()
+        out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
+        out["_pct"] = out.apply(
+            lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
+            axis=1,
+        )
+        out = out.sort_values("_delta", ascending=False)
+        return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
+
+    # ── PD + PA deals ────────────────────────────────────────────────────────
+    _pmp_mom_rows  = []
+    _pmp_n_gaining = 0
+    _pmp_n_losing  = 0
+    try:
+        _pmp_mom_raw = load("gam_pmp_deals").copy()
+    except Exception:
+        _pmp_mom_raw = pd.DataFrame()
+
+    if (not _pmp_mom_raw.empty
+            and "date" in _pmp_mom_raw.columns
+            and "ad_server_cpm_and_cpc_revenue" in _pmp_mom_raw.columns):
+        _pmp_mom_raw["date"] = pd.to_datetime(_pmp_mom_raw["date"], errors="coerce")
+        _pmp_mom_raw["ad_server_cpm_and_cpc_revenue"] = pd.to_numeric(
+            _pmp_mom_raw["ad_server_cpm_and_cpc_revenue"], errors="coerce"
+        ).fillna(0)
+        _pmp_ch_col = next(
+            (c for c in _pmp_mom_raw.columns if "channel" in c.lower()), None
+        )
+        if _pmp_ch_col:
+            _pmp_mom_raw = _pmp_mom_raw[
+                _pmp_mom_raw[_pmp_ch_col].isin({"Private Auction", "Preferred Deal"})
+            ]
+        _pmp_deal_col = next(
+            (c for c in _pmp_mom_raw.columns if "deal_name" in c), "order_name"
+        )
+        _pmp_mom_raw = _pmp_mom_raw.dropna(subset=[_pmp_deal_col])
+        if not _pmp_mom_raw.empty:
+            _pmp_sorted_dates = sorted(_pmp_mom_raw["date"].dropna().unique(), reverse=True)
+            _pmp_recent_dates = _pmp_sorted_dates[:3]
+            _pmp_prior_dates  = _pmp_sorted_dates[3:6]
+            if _pmp_recent_dates and _pmp_prior_dates:
+                _pmp_recent = (
+                    _pmp_mom_raw[_pmp_mom_raw["date"].isin(_pmp_recent_dates)]
+                    .groupby(_pmp_deal_col)["ad_server_cpm_and_cpc_revenue"].sum()
+                )
+                _pmp_prior = (
+                    _pmp_mom_raw[_pmp_mom_raw["date"].isin(_pmp_prior_dates)]
+                    .groupby(_pmp_deal_col)["ad_server_cpm_and_cpc_revenue"].sum()
+                )
+                _pmp_summ = (
+                    pd.DataFrame({"_recent_rev": _pmp_recent, "_prior_rev": _pmp_prior})
+                    .fillna(0).reset_index()
+                )
+                _pmp_summ["_delta"] = _pmp_summ["_recent_rev"] - _pmp_summ["_prior_rev"]
+                _pmp_summ["_pct"] = _pmp_summ.apply(
+                    lambda r: r["_delta"] / r["_prior_rev"] * 100
+                    if r["_prior_rev"] > 0 else float("nan"),
+                    axis=1,
+                )
+                _pmp_summ = _pmp_summ.sort_values("_delta", ascending=False)
+                _pmp_n_gaining = int((_pmp_summ["_delta"] > 0).sum())
+                _pmp_n_losing  = int((_pmp_summ["_delta"] < -0.5).sum())
+                _pmp_mom_rows  = _sp_rows_for(_pmp_summ, _pmp_deal_col)
+
+    # ── Direct campaigns ──────────────────────────────────────────────────────
+    _direct_mom_rows  = []
+    _direct_n_gaining = 0
+    _direct_n_losing  = 0
     if not gam_df.empty:
         _rev_recent_cols = [c for c in ["revenue_1d", "revenue_2d", "revenue_3d"] if c in gam_df.columns]
         _rev_prior_cols  = [c for c in ["revenue_4d", "revenue_5d", "revenue_6d"] if c in gam_df.columns]
         if _rev_recent_cols and _rev_prior_cols:
-            _mom_df = gam_df.copy()
+            _dir_df = gam_df.copy()
             for _c in _rev_recent_cols + _rev_prior_cols:
-                _mom_df[_c] = pd.to_numeric(_mom_df[_c], errors="coerce").fillna(0)
-            _grp_col = "advertiser" if "advertiser" in _mom_df.columns else "order_name"
-            _mom_df = _mom_df.dropna(subset=[_grp_col])
-            _mom_df["_recent_rev"] = _mom_df[_rev_recent_cols].sum(axis=1)
-            _mom_df["_prior_rev"]  = _mom_df[_rev_prior_cols].sum(axis=1)
-            _mom_summary = (
-                _mom_df.groupby(_grp_col, as_index=False)[["_recent_rev", "_prior_rev"]].sum()
+                _dir_df[_c] = pd.to_numeric(_dir_df[_c], errors="coerce").fillna(0)
+            _dir_grp = "advertiser" if "advertiser" in _dir_df.columns else "order_name"
+            _dir_df  = _dir_df.dropna(subset=[_dir_grp])
+            _dir_summ, _direct_n_gaining, _direct_n_losing = _sp_momentum(
+                _dir_df, _dir_grp, _rev_recent_cols, _rev_prior_cols
             )
-            _mom_summary["_delta"] = _mom_summary["_recent_rev"] - _mom_summary["_prior_rev"]
-            _mom_summary["_pct"] = _mom_summary.apply(
-                lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
-                axis=1,
-            )
-            _mom_summary = _mom_summary.sort_values("_delta", ascending=False)
-            _n_gaining = int((_mom_summary["_delta"] > 0).sum())
-            _n_losing  = int((_mom_summary["_delta"] < -0.5).sum())
+            _direct_mom_rows = _sp_rows_for(_dir_summ, _dir_grp)
 
-            def _mom_esc(s):
-                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if _pmp_mom_rows or _direct_mom_rows:
+        _total_gaining = _pmp_n_gaining + _direct_n_gaining
+        _total_losing  = _pmp_n_losing  + _direct_n_losing
+        _sp_css = (
+            '<style>'
+            '.sp-row{display:grid;grid-template-columns:1fr 90px 90px 130px;'
+            'gap:0 12px;padding:5px 4px;'
+            'border-bottom:1px solid rgba(255,255,255,.05);'
+            'font-size:13px;align-items:center}'
+            '.sp-section{font-size:11px;font-weight:700;color:#aaa;'
+            'text-transform:uppercase;letter-spacing:.05em;padding:10px 4px 3px}'
+            '.sp-head{font-size:11px;font-weight:600;color:#666;'
+            'text-transform:uppercase;letter-spacing:.04em}'
+            '.sp-adv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+            '.sp-num{text-align:right;font-variant-numeric:tabular-nums}'
+            '</style>'
+        )
+        _sp_header = (
+            '<div class="sp-row sp-head">'
+            '<div>Deal / Advertiser</div>'
+            '<div class="sp-num">Recent 3d</div>'
+            '<div class="sp-num">Prior 3d</div>'
+            '<div class="sp-num">Δ</div>'
+            '</div>'
+        )
+        _sp_parts = [_sp_css]
+        if _pmp_mom_rows:
+            _sp_parts.append('<div class="sp-section">PD + PA deals</div>')
+            _sp_parts.append(_sp_header)
+            _sp_parts.extend(_pmp_mom_rows)
+        if _direct_mom_rows:
+            _sp_parts.append('<div class="sp-section">Direct campaigns</div>')
+            _sp_parts.append(_sp_header)
+            _sp_parts.extend(_direct_mom_rows)
 
-            def _mom_dollar(v):
-                return f"${v:,.0f}" if pd.notna(v) and abs(v) >= 0.5 else "—"
-
-            _mom_rows = []
-            for _, _mr in _mom_summary.iterrows():
-                _adv  = _mr[_grp_col] or "—"
-                _dlt  = _mr["_delta"]
-                _pct  = _mr["_pct"]
-                _sign = "+" if _dlt > 0 else ""
-                _dlt_s = (
-                    f"{_sign}${abs(_dlt):,.0f}"
-                    if abs(_dlt) >= 0.5 else "—"
-                )
-                _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
-                _clr = "#22c55e" if _dlt > 0 else ("#ef4444" if _dlt < -0.5 else "#6b7280")
-                _mom_rows.append(
-                    f'<div class="sp-row">'
-                    f'<div class="sp-adv">{_mom_esc(_adv)}</div>'
-                    f'<div class="sp-num">{_mom_dollar(_mr["_recent_rev"])}</div>'
-                    f'<div class="sp-num">{_mom_dollar(_mr["_prior_rev"])}</div>'
-                    f'<div class="sp-num" style="color:{_clr}">'
-                    f'{_dlt_s}<span style="opacity:.65">{_pct_s}</span>'
-                    f'</div>'
-                    f'</div>'
-                )
-
-            _mom_label = (
-                f"Spend momentum — {_n_gaining} gaining, {_n_losing} losing"
-                f" (Direct · last 3d vs prior 3d)"
-            )
-            with st.expander(_mom_label, expanded=False):
-                st.markdown(
-                    '<style>'
-                    '.sp-row{display:grid;grid-template-columns:1fr 90px 90px 130px;'
-                    'gap:0 12px;padding:5px 4px;'
-                    'border-bottom:1px solid rgba(255,255,255,.05);'
-                    'font-size:13px;align-items:center}'
-                    '.sp-head{font-size:11px;font-weight:600;color:#888;'
-                    'text-transform:uppercase;letter-spacing:.04em}'
-                    '.sp-adv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-                    '.sp-num{text-align:right;font-variant-numeric:tabular-nums}'
-                    '</style>'
-                    '<div class="sp-row sp-head">'
-                    '<div>Advertiser</div>'
-                    '<div class="sp-num">Recent 3d</div>'
-                    '<div class="sp-num">Prior 3d</div>'
-                    '<div class="sp-num">Δ</div>'
-                    '</div>'
-                    + "".join(_mom_rows),
-                    unsafe_allow_html=True,
-                )
+        with st.expander(
+            f"Spend momentum — {_total_gaining} gaining, {_total_losing} losing"
+            f" (last 3d vs prior 3d)",
+            expanded=False,
+        ):
+            st.markdown("".join(_sp_parts), unsafe_allow_html=True)
 
     # ── Section 2: PMP deals ─────────────────────────────────────────────
     # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
