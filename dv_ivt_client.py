@@ -153,12 +153,9 @@ def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
 
 
 def fetch_attachment(api_key: str, inbox_id: str, message_id: str, attachment_id: str) -> bytes:
-    """Download one attachment as raw bytes using its UUID attachment_id.
-    include_unauthenticated=true mirrors the list call — without it the server
-    scopes the lookup to authenticated messages only and returns 404."""
+    """Download one attachment as raw bytes using its UUID attachment_id."""
     return _api_get(
-        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{attachment_id}"
-        "?include_unauthenticated=true",
+        f"/inboxes/{inbox_id}/messages/{message_id}/attachments/{attachment_id}",
         api_key=api_key, raw=True,
     )
 
