@@ -119,6 +119,9 @@ def list_dv_ivt_messages(api_key: str, inbox_id: str, limit: int = 30) -> list[d
         logger.info(
             "agentmail: %d DV IVT messages in authenticated inbox", len(messages)
         )
+        # Log full first message object so we can see all available ID fields
+        logger.info("  first msg keys: %s", list(messages[0].keys()))
+        logger.info("  first msg: %r", {k: v for k, v in messages[0].items() if k != "body"})
         for m in messages:
             logger.debug("  msg id=%s from=%s atts=%s",
                          m.get("id") or m.get("message_id"),
