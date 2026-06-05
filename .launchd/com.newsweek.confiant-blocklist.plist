@@ -5,14 +5,17 @@
     <key>Label</key>
     <string>com.newsweek.confiant-blocklist</string>
 
-    <!-- Mondays at 09:00 local time. Adjust Hour/Minute/Weekday to taste.
-         Weekday 1 = Monday on macOS launchd. -->
+    <!-- Daily at 04:00 local time. Confiant's reports refresh after midnight
+         UTC; running at 4 AM ET (08:00 UTC) means we have a fresh 24-hour
+         window of data + blocks land before the work-day traffic peak.
+         Originally weekly Mondays; moved to daily 2026-06-04 to shorten
+         time-to-block on Google Cloaked + Phishing creatives.
+         Adjust Hour/Minute/Weekday to taste; add a Weekday key to revert
+         to weekly. -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Weekday</key>
-        <integer>1</integer>
         <key>Hour</key>
-        <integer>9</integer>
+        <integer>4</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
