@@ -223,17 +223,39 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         # Strip RFC822 angle brackets defensively (message_id fallback).
         msg_id = str(msg_id).strip().lstrip("<").rstrip(">")
 
-        # Force-call detail for first message to diagnose identifier + URL structure
+        # Try every candidate identifier against the detail endpoint to find
+        # which one the backend actually resolves.
         if not first_detail_logged:
-            try:
-                detail_diag = get_message_detail(api_key, inbox_id, msg_id)
-                logger.info("DIAG detail keys: %s", list(detail_diag.keys()))
-                logger.info("DIAG detail (no headers): %r",
-                            {k: v for k, v in detail_diag.items() if k != "headers"})
-                for da in (detail_diag.get("attachments") or [])[:3]:
-                    logger.info("DIAG detail att: %r", da)
-            except Exception as e:
-                logger.info("DIAG detail call failed with msg_id=%r: %s", msg_id, e)
+            smtp_id = m.get("smtp_id", "")
+            raw_msg_id = str(m.get("message_id", "")).strip().lstrip("<").rstrip(">")
+            candidates = [
+                ("thread_id", msg_id),
+                ("smtp_id",   smtp_id),
+                ("message_id_clean", raw_msg_id),
+            ]
+            for cname, cval in candidates:
+                if not cval:
+                    continue
+                try:
+                    detail_diag = get_message_detail(api_key, inbox_id, cval)
+                    logger.info("DIAG detail via %s=%r SUCCESS keys=%s",
+                                cname, cval, list(detail_diag.keys()))
+                    for da in (detail_diag.get("attachments") or [])[:2]:
+                        logger.info("DIAG detail att via %s: %r", cname, da)
+                    # Also try attachment download with the first CSV
+                    for da in (detail_diag.get("attachments") or []):
+                        da_fn = da.get("filename") or da.get("name") or ""
+                        da_id = da.get("id") or da.get("attachment_id") or ""
+                        if da_fn.lower().endswith(".csv") and da_id:
+                            try:
+                                test_bytes = fetch_attachment(api_key, inbox_id, cval, da_id)
+                                logger.info("DIAG att download via %s SUCCESS: %d bytes",
+                                            cname, len(test_bytes))
+                            except Exception as ae:
+                                logger.info("DIAG att download via %s FAILED: %s", cname, ae)
+                            break
+                except Exception as e:
+                    logger.info("DIAG detail via %s=%r FAILED: %s", cname, cval, e)
             first_detail_logged = True
 
         attachments = m.get("attachments")
