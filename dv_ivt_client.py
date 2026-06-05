@@ -208,11 +208,13 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         return pd.DataFrame()
 
     frames = []
+    first_msg_logged = False
     for m in matches:
-        # agentmail messages have no `id` field — primary key is `thread_id`
-        # (a UUID). `message_id` is the RFC822 Message-ID in angle brackets;
-        # the attachment download endpoint returns 404 when the RFC822 form is
-        # used. thread_id is the UUID that the download endpoint resolves.
+        if not first_msg_logged:
+            logger.info("DIAG first IVT message keys: %s", list(m.keys()))
+            logger.info("DIAG first IVT message: %r", {k: v for k, v in m.items() if k != "headers"})
+            first_msg_logged = True
+
         msg_id = m.get("thread_id") or m.get("id") or m.get("message_id")
         if not msg_id:
             logger.warning("Skipping message with no id: %r", m)
@@ -240,7 +242,7 @@ def pull_dv_ivt(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame
         for att in attachments:
             fn     = att.get("filename") or att.get("name") or ""
             att_id = att.get("id") or att.get("attachment_id") or ""
-            logger.debug("  att object: %r", att)
+            logger.info("DIAG att object: %r", att)
             if not fn.lower().endswith(".csv") or not att_id:
                 continue
             try:
