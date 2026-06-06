@@ -747,23 +747,7 @@ def refresh_dv_attention() -> int:
 
     table = "dv_attention"
     with _engine().begin() as conn:
-        if table in sa_inspect(conn).get_table_names():
-            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
-            if existing_cols != set(df.columns):
-                logger.info("Schema change detected for %s — dropping and recreating", table)
-                conn.execute(text(f'DROP TABLE "{table}"'))
-            else:
-                # Upsert-by-date: delete any rows for dates the new batch
-                # covers, so the freshest email's view wins. Older dates
-                # stay (historical backfill survives).
-                dates = [d.isoformat() if d is not None else None
-                         for d in df["date"].dropna().unique().tolist()]
-                if dates:
-                    conn.execute(
-                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
-                        {"dates": dates},
-                    )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _safe_replace(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -805,20 +789,7 @@ def refresh_dv_ivt() -> int:
 
     table = "dv_ivt"
     with _engine().begin() as conn:
-        if table in sa_inspect(conn).get_table_names():
-            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
-            if existing_cols != set(df.columns):
-                logger.info("Schema change detected for %s — dropping and recreating", table)
-                conn.execute(text(f'DROP TABLE "{table}"'))
-            else:
-                dates = [d.isoformat() if d is not None else None
-                         for d in df["date"].dropna().unique().tolist()]
-                if dates:
-                    conn.execute(
-                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
-                        {"dates": dates},
-                    )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _safe_replace(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
