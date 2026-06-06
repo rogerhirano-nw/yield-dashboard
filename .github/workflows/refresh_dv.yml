@@ -51,7 +51,7 @@ jobs:
               try:
                   rows = conn.execute(sqlalchemy.text(
                       "SELECT DISTINCT line_item_name FROM gam_campaigns "
-                      "WHERE end_date_time >= NOW() - INTERVAL '30 days' LIMIT 5"
+                      "WHERE end_date >= (NOW() - INTERVAL '30 days')::date LIMIT 5"
                   )).fetchall()
                   print("\ngam_campaigns recent line_item_names (cleaned for DV join):")
                   for row in rows:
