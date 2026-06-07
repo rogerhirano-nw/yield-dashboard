@@ -1392,18 +1392,30 @@ _load_errors: dict[str, str] = {}  # table → error message, populated by load(
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
-            # IO-budget protection (2026-06-06): for large append-only
-            # tables, cap to last 30 days. dv_attention/dv_ivt grew past
-            # 160k rows each after the recent DV refresh refactor, and
-            # full-table SELECT * was burning the Supabase Nano daily
-            # disk-IO budget on every dashboard cold-load (~30 MB/table
-            # read). 30-day window keeps reads under ~5 MB while covering
-            # every dashboard view that uses these tables (none surface
-            # more than 7 days of DV data anyway).
-            if table in ("dv_attention", "dv_ivt"):
+            # IO-budget protection (2026-06-06): for time-series tables
+            # with a `date` column, cap to last N days. Dashboard views
+            # never look back more than ~7 days for these — anything
+            # larger was burning the Supabase Nano-tier disk IO budget
+            # on every dashboard cold-load.
+            #
+            # Add a table here only if (a) it has a `date` column and
+            # (b) the dashboard surfaces only recent rows. Metadata /
+            # lookup tables (gam_pmp_deals, gam_pa_metadata, opensincera_*,
+            # pmp_last_bid_date) stay full-table because they're either
+            # small or the dashboard needs the full set.
+            _DATE_CAPPED = {
+                "dv_attention":         30,   # 160k+ rows, dashboard shows 7d
+                "dv_ivt":               30,   # 160k+ rows, dashboard shows 7d
+                "gam_campaigns":        60,   # delivery, 10-15k rows/week
+                "magnite_deal_daily":   60,   # SSP daily aggregate
+                "magnite_dsp_daily":    60,   # DSP daily aggregate
+                "magnite_site_daily":   60,   # site daily aggregate
+            }
+            if table in _DATE_CAPPED:
+                days = _DATE_CAPPED[table]
                 query = (
                     f'SELECT * FROM "{table}" '
-                    f"WHERE date >= CURRENT_DATE - INTERVAL '30 days'"
+                    f"WHERE date >= CURRENT_DATE - INTERVAL '{days} days'"
                 )
             else:
                 query = f'SELECT * FROM "{table}"'
