@@ -5,119 +5,175 @@
       "enabled": true,
       "table": "gam_pmp_deals",
       "deal_source_default": "Publisher",
-      "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed"],
+      "deal_types": [
+        "Private Auction",
+        "Preferred Deal",
+        "Programmatic Guaranteed"
+      ],
       "columns": {
-        "Deal":             "programmatic_deal_name",
-        "Deal Type":        "[auto]",
-        "DSP":              "dsp",
-        "Format":           "ad_format",
-        "Seller":           "[auto]",
+        "Deal": "programmatic_deal_name",
+        "Deal Type": "[auto]",
+        "DSP": "dsp",
+        "Format": "ad_format",
+        "Seller": "[auto]",
         "Paid Impressions": "ad_server_impressions",
-        "Revenue":          "ad_server_cpm_and_cpc_revenue",
-        "eCPM":             "ad_server_average_ecpm",
-        "Win Rate %":       "",
-        "Total Requests":   "",
-        "Bid Responses":    ""
+        "Revenue": "ad_server_cpm_and_cpc_revenue",
+        "eCPM": "ad_server_average_ecpm",
+        "Win Rate %": "",
+        "Total Requests": "",
+        "Bid Responses": ""
       }
     },
     {
       "name": "Magnite",
       "enabled": true,
       "table": "magnite_deal_daily",
-      "deal_types": ["Private Auction", "Preferred Deal", "Private Marketplace", "Auction Package"],
+      "deal_types": [
+        "Private Auction",
+        "Preferred Deal",
+        "Private Marketplace",
+        "Auction Package"
+      ],
       "columns": {
-        "Deal":             "deal",
-        "Deal Type":        "[auto]",
-        "DSP":              "partner",
-        "Format":           "ad_format",
-        "Seller":           "[auto]",
+        "Deal": "deal",
+        "Deal Type": "[auto]",
+        "DSP": "partner",
+        "Format": "ad_format",
+        "Seller": "[auto]",
         "Paid Impressions": "paid_impression",
-        "Revenue":          "publisher_gross_revenue",
-        "eCPM":             "ecpm",
-        "Win Rate %":       "[computed: impressions / requests]",
-        "Total Requests":   "bid_requests",
-        "Bid Responses":    "bid_responses"
+        "Revenue": "publisher_gross_revenue",
+        "eCPM": "ecpm",
+        "Win Rate %": "[computed: impressions / requests]",
+        "Total Requests": "bid_requests",
+        "Bid Responses": "bid_responses"
       }
     },
     {
       "name": "Pubmatic",
       "enabled": true,
       "table": "pubmatic_deals",
-      "deal_types": ["Private Auction", "Preferred Deal", "Programmatic Guaranteed", "Private Marketplace"],
+      "deal_types": [
+        "Private Auction",
+        "Preferred Deal",
+        "Programmatic Guaranteed",
+        "Private Marketplace"
+      ],
       "columns": {
-        "Deal":             "deal",
-        "Deal Type":        "[auto]",
-        "DSP":              "dsp",
-        "Format":           "ad_format",
-        "Seller":           "[auto]",
+        "Deal": "deal",
+        "Deal Type": "[auto]",
+        "DSP": "dsp",
+        "Format": "ad_format",
+        "Seller": "[auto]",
         "Paid Impressions": "paid_impressions",
-        "Revenue":          "revenue",
-        "eCPM":             "ecpm",
-        "Win Rate %":       "win_rate",
-        "Total Requests":   "total_requests",
-        "Bid Responses":    "non_zero_bid_responses"
+        "Revenue": "revenue",
+        "eCPM": "ecpm",
+        "Win Rate %": "win_rate",
+        "Total Requests": "total_requests",
+        "Bid Responses": "non_zero_bid_responses"
       }
     }
   ],
   "ae_names": {
-    "AShah":     "Amit Shah",
-    "Ashah":     "Amit Shah",
-    "BKaretny":  "Ben Karetny",
-    "Bkaretny":  "Ben Karetny",
+    "AShah": "Amit Shah",
+    "Ashah": "Amit Shah",
+    "BKaretny": "Ben Karetny",
+    "Bkaretny": "Ben Karetny",
     "BRobinson": "Brian Robinson",
     "CMamboury": "Chantal Mamboury",
-    "DDivack":   "Dana Divack",
-    "DVarvaro":  "Danielle Varvaro",
-    "House":     "House",
-    "ILee":      "Ivy Lee",
-    "Ilee":      "Ivy Lee",
-    "Ivy":       "Ivy Lee",
-    "JAmalfi":   "Julie Amalfi",
-    "JGentile":  "Jeremy Gentile",
-    "JMakin":    "Jeremy Makin",
-    "KWebb":     "House",
-    "NAkhtar":   "Nabeel Akhtar",
-    "RHirano":   "Roger Hirano",
-    "RShore":    "Rob Shore",
-    "SCarroll":  "Summer Carroll",
-    "SCaroll":   "Summer Carroll",
-    "THearn":    "Theresa Hern",
-    "THern":     "Theresa Hern",
-    "Thern":     "Theresa Hern"
+    "DDivack": "Dana Divack",
+    "DVarvaro": "Danielle Varvaro",
+    "House": "House",
+    "ILee": "Ivy Lee",
+    "Ilee": "Ivy Lee",
+    "Ivy": "Ivy Lee",
+    "JAmalfi": "Julie Amalfi",
+    "JGentile": "Jeremy Gentile",
+    "JMakin": "Jeremy Makin",
+    "KWebb": "House",
+    "NAkhtar": "Nabeel Akhtar",
+    "RHirano": "Roger Hirano",
+    "RShore": "Rob Shore",
+    "SCarroll": "Summer Carroll",
+    "SCaroll": "Summer Carroll",
+    "THearn": "Theresa Hern",
+    "THern": "Theresa Hern",
+    "Thern": "Theresa Hern"
   },
   "account_managers": {
-    "AShah":     "",
-    "Ashah":     "",
-    "BKaretny":  "",
-    "Bkaretny":  "",
+    "AShah": "",
+    "Ashah": "",
+    "BKaretny": "",
+    "Bkaretny": "",
     "BRobinson": "",
     "CMamboury": "",
-    "DDivack":   "",
-    "DVarvaro":  "",
-    "House":     "",
-    "ILee":      "",
-    "Ilee":      "",
-    "Ivy":       "",
-    "JAmalfi":   "",
-    "JGentile":  "",
-    "JMakin":    "",
-    "KWebb":     "",
-    "NAkhtar":   "",
-    "RHirano":   "",
-    "RShore":    "",
-    "SCarroll":  "",
-    "SCaroll":   "",
-    "THearn":    "",
-    "THern":     "",
-    "Thern":     ""
+    "DDivack": "",
+    "DVarvaro": "",
+    "House": "",
+    "ILee": "",
+    "Ilee": "",
+    "Ivy": "",
+    "JAmalfi": "",
+    "JGentile": "",
+    "JMakin": "",
+    "KWebb": "",
+    "NAkhtar": "",
+    "RHirano": "",
+    "RShore": "",
+    "SCarroll": "",
+    "SCaroll": "",
+    "THearn": "",
+    "THern": "",
+    "Thern": ""
   },
   "benchmarks_by_format": {
-    "Display":            { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null },
-    "Video":              { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 70.0, "vcr_red_below": null },
-    "Video Preroll >30s": { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 50.0, "vcr_red_below": null },
-    "Native":             { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null },
-    "Multi":              { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": 70.0, "vcr_red_below": null },
-    "Interstitial":       { "viewability_pct": 70.0, "viewability_red_below": null, "ctr_pct": 0.30, "ctr_red_below": null, "vcr_pct": null, "vcr_red_below": null }
+    "Display": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": null,
+      "vcr_red_below": null
+    },
+    "Video": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": 70.0,
+      "vcr_red_below": null
+    },
+    "Video Preroll >30s": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": 50.0,
+      "vcr_red_below": null
+    },
+    "Native": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": null,
+      "vcr_red_below": null
+    },
+    "Multi": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": 70.0,
+      "vcr_red_below": null
+    },
+    "Interstitial": {
+      "viewability_pct": 70.0,
+      "viewability_red_below": null,
+      "ctr_pct": 0.3,
+      "ctr_red_below": null,
+      "vcr_pct": null,
+      "vcr_red_below": null
+    }
   },
   "long_preroll_lines": [],
   "gam_network_id": "",
@@ -125,38 +181,62 @@
   "airtable_form_id": "pagN88p2kwQBcjqZf",
   "airtable_field_names": {
     "Request Type": "Request Type",
-    "Line Item":    "Line Item",
-    "GAM ID":       "GAM ID",
-    "Severity":     "Severity",
-    "Seller":       "Seller",
-    "Reporter":     "Reporter",
-    "Notes":        "Notes"
+    "Line Item": "Line Item",
+    "GAM ID": "GAM ID",
+    "Severity": "Severity",
+    "Seller": "Seller",
+    "Reporter": "Reporter",
+    "Notes": "Notes"
   },
   "airtable_request_type_routing": [
-    {"context": "Direct line · delivery problem",       "request_type": "Direct Campaign - Troubleshooting"},
-    {"context": "Direct line · viewability anomaly",    "request_type": "Direct Campaign - Screenshot"},
-    {"context": "Direct line · healthy end-of-flight",  "request_type": "Direct Campaign - IO Review"},
-    {"context": "Direct line · social media component", "request_type": "Direct Campaign - Social Posts"},
-    {"context": "PMP deal · any issue",                 "request_type": "PMP - Adjust"}
+    {
+      "context": "Direct line \u00b7 delivery problem",
+      "request_type": "Direct Campaign - Troubleshooting"
+    },
+    {
+      "context": "Direct line \u00b7 viewability anomaly",
+      "request_type": "Direct Campaign - Screenshot"
+    },
+    {
+      "context": "Direct line \u00b7 healthy end-of-flight",
+      "request_type": "Direct Campaign - IO Review"
+    },
+    {
+      "context": "Direct line \u00b7 social media component",
+      "request_type": "Direct Campaign - Social Posts"
+    },
+    {
+      "context": "PMP deal \u00b7 any issue",
+      "request_type": "PMP - Adjust"
+    }
   ],
   "airtable_reporter": "Roger Hirano",
   "pacing_target_pct": 100.0,
   "pmp_floors_by_deal_type": {
-    "Programmatic Guaranteed": 6.00,
-    "Preferred Deal": 3.00,
-    "Private Auction": 1.00,
-    "Private Marketplace": 1.00
+    "Programmatic Guaranteed": 6.0,
+    "Preferred Deal": 3.0,
+    "Private Auction": 1.0,
+    "Private Marketplace": 1.0
   },
   "status_colors": [
-    { "keyword": "Delivering", "color": "#2E7D32" },
-    { "keyword": "Paused",     "color": "#F9A825" },
-    { "keyword": "Completed",  "color": "#5D4037" }
+    {
+      "keyword": "Delivering",
+      "color": "#2E7D32"
+    },
+    {
+      "keyword": "Paused",
+      "color": "#F9A825"
+    },
+    {
+      "keyword": "Completed",
+      "color": "#5D4037"
+    }
   ],
   "seller_colors": {},
   "deal_type_codes": {
-    "PA":  "Private Auction",
-    "PD":  "Preferred Deal",
-    "PG":  "Programmatic Guaranteed",
+    "PA": "Private Auction",
+    "PD": "Preferred Deal",
+    "PG": "Programmatic Guaranteed",
     "PMP": "Private Marketplace"
   },
   "dsp_aliases": {
@@ -213,7 +293,7 @@
       "match_field": "ad_format",
       "match_substring": "Interscroller",
       "severity": "amber",
-      "title": "Interscroller format — viewability caveat",
+      "title": "Interscroller format \u2014 viewability caveat",
       "body": "Interscroller creatives use a scroll-lock animation; viewability measurements may be artificially low compared to standard display. Compare to your display baseline before escalating."
     },
     {
@@ -231,26 +311,73 @@
       "table": "gam_campaigns",
       "order_name_prefix": "Newsweek_Direct",
       "columns": {
-        "Seller":           "seller_ae",
-        "Advertiser":       "advertiser",
-        "Campaign":         "campaign_name",
-        "Line Item":        "line_item_name",
-        "Format":           "ad_format",
-        "Status":           "status",
-        "Start Date":       "start_date",
-        "End Date":         "end_date",
-        "Goal":             "impressions_goal",
-        "CPM Rate":         "cpm_rate",
-        "Delivered":        "lifetime_impressions_delivered",
-        "Remaining":        "remaining_impressions",
-        "Clicks":           "ad_server_clicks",
-        "Pace":             "pacing_pct",
-        "Δ":                "pacing_delta",
-        "Viewability %":    "ad_server_active_view_viewable_impressions_rate",
-        "CTR %":            "ad_server_ctr",
-        "VCR %":            "vcr",
-        "Revenue":          "ad_server_cpm_and_cpc_revenue"
+        "Seller": "seller_ae",
+        "Advertiser": "advertiser",
+        "Campaign": "campaign_name",
+        "Line Item": "line_item_name",
+        "Format": "ad_format",
+        "Status": "status",
+        "Start Date": "start_date",
+        "End Date": "end_date",
+        "Goal": "impressions_goal",
+        "CPM Rate": "cpm_rate",
+        "Delivered": "lifetime_impressions_delivered",
+        "Remaining": "remaining_impressions",
+        "Clicks": "ad_server_clicks",
+        "Pace": "pacing_pct",
+        "\u0394": "pacing_delta",
+        "Viewability %": "ad_server_active_view_viewable_impressions_rate",
+        "CTR %": "ad_server_ctr",
+        "VCR %": "vcr",
+        "Revenue": "ad_server_cpm_and_cpc_revenue"
       }
     }
-  ]
+  ],
+  "confiant_outreach": {
+    "_comment": "SSP outreach: weekly email to each SSP's policy/AM contact listing creatives Confiant flagged on their demand. Fill in ssp_contacts with real addresses; SSPs not in this map get skipped (logged with count). publisher_name + cc_emails are mandatory.",
+    "publisher_name": "Newsweek",
+    "cc_emails": [
+      "REPLACE_WITH_YOUR_EMAIL@newsweek.com"
+    ],
+    "min_flagged_impressions_for_outreach": 5,
+    "ssp_contacts": {
+      "AdaptMX": "shaun.myers@adaptmx.com",
+      "Amazon": "ldurica@amazon.com",
+      "Amazon TAM": "newsweektam@media.net, matt.w@media.net",
+      "Criteo": "an.roesler@criteo.com",
+      "Equativ": "jmcdonough@equativ.com",
+      "Google": "REPLACE_ME_google_policy@example.com",
+      "Google Video": "REPLACE_ME_google_video_policy@example.com",
+      "GumGum": "liz.lazarow@gumgum.com",
+      "IMDS": "cmika@advertising.com",
+      "InMobi": "megha.modi@inmobi.com",
+      "Index Exchange": "d.mistry@indexexchange.com, ix.square@indexexchange.com, michael.meghory@indexexchange.com",
+      "Insticator": "joe.cohen@cool.co",
+      "Magnite": "newsweekdv@magnite.com",
+      "Media.net": "bhamti.s@media.net",
+      "Minute Media": "ragul@minutemedia.com, matan.raz@minutemedia.com",
+      "Nativo": "mmacvittie@life360.com, r.silva@life360.com",
+      "OMS": "maayanb@onlinemediasolutions.com",
+      "Ogury": "dana.thomas@ogury.co",
+      "OpenWeb": "emilio.gutierrez@openweb.com",
+      "OpenX": "kip.nairin@openx.com, emily.glavin@openx.com, mackenzie.hewitt@openx.com, pawel.meus@openx.com, lee.dolson@openx.com",
+      "Ozone": "marielva@ozoneproject.com, publishersupport@ozoneproject.com",
+      "PubMatic": "newsweek@pubmatic.com",
+      "Seedtag": "ziadrasheed@seedtag.com",
+      "Sharethrough": "pkankaria@equativ.com",
+      "Smile Wanted": "ikrame@smilewanted.com, david@smilewanted.com",
+      "Sovrn": "kmyers@sovrn.com",
+      "Sparteo": "y.alawaye.ext@sparteo.com, l.dussart@sparteo.com, support@meetscale.com, j.strutt@sparteo.com",
+      "Start.io": "adi.degani@start.io, michael.zaslansky@start.io, clientsolutions@start.io, saptarshi.mukherjee@start.io",
+      "Teads": "vivica.michel@teads.com",
+      "The Trade Desk": "Nicole.Fitzsimmons@thetradedesk.com, jacklyn.izzo@thetradedesk.com",
+      "TripleLift": "mhoney@triplelift.com",
+      "Undertone": "madeleineh@perion.com, nhernandez@perion.com, jcarfora@perion.com",
+      "Vidazoo": "madeleineh@perion.com, nhernandez@perion.com, jcarfora@perion.com",
+      "Xandr": "michaeltrinh@microsoft.com",
+      "Yahoo": "robin.wilson@yahooinc.com",
+      "YieldMo": "ameyveci@yieldmo.com",
+      "Zeta Global": "tfabricant@zetaglobal.com"
+    }
+  }
 }
