@@ -738,7 +738,16 @@ def refresh_dv_attention() -> int:
         )
         return 0
 
-    df = pull_dv_attention(api_key, inbox_id)
+    # IO-budget protection (2026-06-07): pull only the 2 most recent CSV
+    # attachments instead of the default 30. Each DV CSV covers a rolling
+    # 7-day window with daily overlap, so 2 emails ≈ 8 days of fresh
+    # coverage — plenty for the dashboard (no view shows >7d of DV data).
+    # The previous default-30 pull produced 12 emails × ~13k rows = 160k
+    # rows per refresh, then DELETE+INSERT-ed the entire rolling window,
+    # consuming the full Supabase Nano-tier daily disk IO budget on its
+    # own. limit=2 drops it to ~25k rows per run (~5× less IO). Historical
+    # rows for dates NOT in the current pull stay untouched.
+    df = pull_dv_attention(api_key, inbox_id, limit=2)
     if df.empty:
         logger.warning("No DV Attention CSV attachments found in inbox")
         return 0
@@ -780,7 +789,8 @@ def refresh_dv_ivt() -> int:
         )
         return 0
 
-    df = pull_dv_ivt(api_key, inbox_id)
+    # Same IO-budget protection as refresh_dv_attention — see comment there.
+    df = pull_dv_ivt(api_key, inbox_id, limit=2)
     if df.empty:
         logger.warning("No DV IVT CSV attachments found in inbox")
         return 0
