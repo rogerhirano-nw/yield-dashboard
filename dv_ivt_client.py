@@ -214,6 +214,13 @@ def parse_dv_ivt_csv(content: bytes) -> pd.DataFrame:
     # checks work reliably (DV uses both "Fraud/SIVT" and "Fraud/GIVT").
     df["traffic_validity"] = df["traffic_validity"].astype(str).str.strip()
 
+    # Strip GAM line-item-ID prefix (#NNNNNNN ) so names match
+    # gam_campaigns.line_item_name after the dashboard's same strip.
+    if "line_item_name" in df.columns:
+        df["line_item_name"] = df["line_item_name"].str.replace(
+            r"^#\d+\s+", "", regex=True
+        )
+
     return df
 
 

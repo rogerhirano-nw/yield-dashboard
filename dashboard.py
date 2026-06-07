@@ -2347,6 +2347,13 @@ if st.session_state.active_view == "campaigns":
         dv_df = load("dv_attention")
     except Exception:
         dv_df = pd.DataFrame()
+    # Normalize DV line_item_name to match cleaned gam_campaigns.line_item_name.
+    # DV Pinnacle includes the GAM line-item-ID prefix (#NNNNNNN ) in its CSV
+    # for direct-sold campaigns; strip it so the join is symmetric.
+    if not dv_df.empty and "line_item_name" in dv_df.columns:
+        dv_df["line_item_name"] = (
+            dv_df["line_item_name"].str.replace(r"^#\d+\s+", "", regex=True)
+        )
     _dv_by_li:       dict = {}
     _dv_by_order:    dict = {}
     _dv_prior_by_li: dict = {}   # latest-day-excluded mean (for the per-row delta)
@@ -2406,6 +2413,10 @@ if st.session_state.active_view == "campaigns":
         ivt_df = load("dv_ivt")
     except Exception:
         ivt_df = pd.DataFrame()
+    if not ivt_df.empty and "line_item_name" in ivt_df.columns:
+        ivt_df["line_item_name"] = (
+            ivt_df["line_item_name"].str.replace(r"^#\d+\s+", "", regex=True)
+        )
     _sivt_by_li:        dict = {}
     _givt_by_li:        dict = {}
     _sivt_by_order:     dict = {}
