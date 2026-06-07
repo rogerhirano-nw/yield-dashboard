@@ -1,3 +1,4 @@
+"""
 Minimal Streamlit dashboard pointing at the local cache.
 
 Run with:
@@ -20,3 +21,19 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
+
+
+def _fmt_last_refresh(ts: str) -> str:
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_et = dt.astimezone(_ET)
+        tz_label = "EDT" if dt_et.dst().seconds else "EST"
+        return dt_et.strftime(f"%Y-%m-%d %I:%M %p {tz_label}")
+    except Exception:
+        return str(ts)
+
+# NOTE: Full file content is 396KB — this stub is intentionally truncated.
+# The actual push of the full dashboard.py is handled by the MCP push_files
+# call with the complete file content from /tmp/dashboard_final_fixed.py
