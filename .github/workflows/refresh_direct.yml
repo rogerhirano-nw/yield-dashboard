@@ -8,11 +8,20 @@ name: Refresh GAM direct campaigns
 #
 # The 5 AM ET daily full sweep still happens via refresh.yml.
 #
-# Triggered externally by cron-job.org at 10:30, 13:30, 16:30, 19:30
-# America/New_York Mon–Sun so each 3-hourly cap-digest run has data
-# ≤ 30 minutes old.
+# Triggered at 10:30, 13:30, 16:30, 19:30 America/New_York every day
+# so each 3-hourly cap-digest run has data ≤ 30 minutes old.
+# Mon–Fri: cron-job.org (precise). Sat–Sun: GitHub schedule below (may drift).
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '30 14 * * 6'  # Sat 10:30 ET (UTC-4)
+    - cron: '30 17 * * 6'  # Sat 13:30 ET
+    - cron: '30 20 * * 6'  # Sat 16:30 ET
+    - cron: '30 23 * * 6'  # Sat 19:30 ET
+    - cron: '30 14 * * 0'  # Sun 10:30 ET
+    - cron: '30 17 * * 0'  # Sun 13:30 ET
+    - cron: '30 20 * * 0'  # Sun 16:30 ET
+    - cron: '30 23 * * 0'  # Sun 19:30 ET
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
