@@ -64,7 +64,7 @@ LI_SUB_ID_2_RE = re.compile(r"^li(\d+)$")
 # ----------------------------------------------------------------------
 
 def _engine() -> sqlalchemy.Engine:
-    return sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+    return sqlalchemy.create_engine(os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_recycle=300)
 
 
 def load_window(days: int = 7) -> dict:

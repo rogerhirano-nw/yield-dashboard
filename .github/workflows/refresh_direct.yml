@@ -9,7 +9,7 @@ name: Refresh GAM direct campaigns
 # The 5 AM ET daily full sweep still happens via refresh.yml.
 #
 # Triggered externally by cron-job.org at 10:30, 13:30, 16:30, 19:30
-# America/New_York Mon–Fri so each 3-hourly cap-digest run has data
+# America/New_York Mon–Sun so each 3-hourly cap-digest run has data
 # ≤ 30 minutes old.
 on:
   workflow_dispatch:

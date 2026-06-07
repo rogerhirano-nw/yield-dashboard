@@ -49,7 +49,7 @@ class PubmaticClient:
 
     @staticmethod
     def _engine() -> sqlalchemy.Engine:
-        return sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+        return sqlalchemy.create_engine(os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_recycle=300)
 
     @staticmethod
     def _ensure_tokens_table(engine: sqlalchemy.Engine) -> None:
