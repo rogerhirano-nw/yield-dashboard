@@ -1403,13 +1403,16 @@ def load(table: str) -> pd.DataFrame:
             # lookup tables (gam_pmp_deals, gam_pa_metadata, opensincera_*,
             # pmp_last_bid_date) stay full-table because they're either
             # small or the dashboard needs the full set.
+            # Verified 2026-06-07 against live schema: only dv_attention and
+            # dv_ivt are large enough (160k + 291k rows) for the date filter
+            # to meaningfully save IO. All other dashboard tables sit at
+            # <10k rows and don't justify the conditional. gam_campaigns
+            # specifically does NOT have a `date` column (its time cols are
+            # `start_date`, `end_date`, `report_start`) — including it here
+            # silently broke gam_campaigns loading in #108.
             _DATE_CAPPED = {
-                "dv_attention":         30,   # 160k+ rows, dashboard shows 7d
-                "dv_ivt":               30,   # 160k+ rows, dashboard shows 7d
-                "gam_campaigns":        60,   # delivery, 10-15k rows/week
-                "magnite_deal_daily":   60,   # SSP daily aggregate
-                "magnite_dsp_daily":    60,   # DSP daily aggregate
-                "magnite_site_daily":   60,   # site daily aggregate
+                "dv_attention": 30,   # 160k rows
+                "dv_ivt":       30,   # 291k rows
             }
             if table in _DATE_CAPPED:
                 days = _DATE_CAPPED[table]
