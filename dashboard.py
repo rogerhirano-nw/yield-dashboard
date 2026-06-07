@@ -1392,7 +1392,22 @@ _load_errors: dict[str, str] = {}  # table → error message, populated by load(
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
-            return pd.read_sql(f'SELECT * FROM "{table}"', conn)
+            # IO-budget protection (2026-06-06): for large append-only
+            # tables, cap to last 30 days. dv_attention/dv_ivt grew past
+            # 160k rows each after the recent DV refresh refactor, and
+            # full-table SELECT * was burning the Supabase Nano daily
+            # disk-IO budget on every dashboard cold-load (~30 MB/table
+            # read). 30-day window keeps reads under ~5 MB while covering
+            # every dashboard view that uses these tables (none surface
+            # more than 7 days of DV data anyway).
+            if table in ("dv_attention", "dv_ivt"):
+                query = (
+                    f'SELECT * FROM "{table}" '
+                    f"WHERE date >= CURRENT_DATE - INTERVAL '30 days'"
+                )
+            else:
+                query = f'SELECT * FROM "{table}"'
+            return pd.read_sql(query, conn)
     except Exception as _e:
         _load_errors[table] = str(_e)
         return pd.DataFrame()
