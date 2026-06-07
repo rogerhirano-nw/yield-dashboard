@@ -29,7 +29,7 @@ jobs:
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
 
-      - name: Check DB (row counts + sample line_item_names)
+      - name: Check DB (row counts + join coverage)
         run: |
           python - <<'PYEOF'
           import os, re, sqlalchemy
@@ -48,6 +48,52 @@ jobs:
                           print(f"  line_item_name: {row[0]!r}")
                   except Exception as e:
                       print(f"\n{tbl}: ERROR — {e}")
+
+              # DV <-> GAM join coverage: how many DV line_item_names
+              # match cleaned gam_campaigns.line_item_name?
+              try:
+                  dv_count = conn.execute(sqlalchemy.text(
+                      "SELECT COUNT(DISTINCT line_item_name) FROM dv_attention"
+                      " WHERE line_item_name IS NOT NULL"
+                  )).scalar()
+                  match_count = conn.execute(sqlalchemy.text(
+                      "SELECT COUNT(DISTINCT d.line_item_name)"
+                      " FROM dv_attention d"
+                      " JOIN gam_campaigns g"
+                      "   ON d.line_item_name = regexp_replace(g.line_item_name, '^#[0-9]+ ', '')"
+                  )).scalar()
+                  print(f"\nDV->GAM join: {match_count} of {dv_count} distinct DV line items match a GAM campaign")
+                  if match_count:
+                      samples = conn.execute(sqlalchemy.text(
+                          "SELECT DISTINCT d.line_item_name, g.order_name"
+                          " FROM dv_attention d"
+                          " JOIN gam_campaigns g"
+                          "   ON d.line_item_name = regexp_replace(g.line_item_name, '^#[0-9]+ ', '')"
+                          " LIMIT 5"
+                      )).fetchall()
+                      for row in samples:
+                          print(f"  MATCH: DV {row[0]!r} <-> GAM order {row[1]!r}")
+                  else:
+                      # Show 5 DV names and 5 cleaned GAM names so we can spot
+                      # the mismatch pattern.
+                      dv_samples = conn.execute(sqlalchemy.text(
+                          "SELECT DISTINCT line_item_name FROM dv_attention"
+                          " WHERE line_item_name IS NOT NULL LIMIT 5"
+                      )).fetchall()
+                      gam_samples = conn.execute(sqlalchemy.text(
+                          "SELECT DISTINCT regexp_replace(line_item_name, '^#[0-9]+ ', '') FROM gam_campaigns"
+                          " WHERE line_item_name IS NOT NULL LIMIT 5"
+                      )).fetchall()
+                      print("  No matches. Sample DV names:")
+                      for r in dv_samples:
+                          print(f"    {r[0]!r}")
+                      print("  Sample cleaned GAM names:")
+                      for r in gam_samples:
+                          print(f"    {r[0]!r}")
+              except Exception as e:
+                  print(f"\nDV->GAM join check: ERROR — {e}")
+
+              # gam_campaigns recent line items for cross-check
               try:
                   rows = conn.execute(sqlalchemy.text(
                       "SELECT DISTINCT line_item_name FROM gam_campaigns "
