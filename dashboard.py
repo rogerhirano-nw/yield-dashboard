@@ -88,7 +88,7 @@ def _engine() -> sqlalchemy.Engine:
         url = os.environ.get("DATABASE_URL", "")
     if not url:
         raise RuntimeError("DATABASE_URL is not set. Add it to .env or Streamlit secrets.")
-    return sqlalchemy.create_engine(url)
+    return sqlalchemy.create_engine(url, pool_size=2, max_overflow=1, pool_recycle=300)
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────
