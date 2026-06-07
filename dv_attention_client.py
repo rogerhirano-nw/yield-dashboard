@@ -209,6 +209,11 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
     # (joinable on Order alone) but flag clearly with NaN→None for the join.
     df["line_item_name"] = df["line_item_name"].replace("", None)
     df["order_name"]     = df["order_name"].replace("", None)
+    # Strip GAM line-item-ID prefix (#NNNNNNN ) so names match
+    # gam_campaigns.line_item_name after the dashboard's same strip.
+    df["line_item_name"] = df["line_item_name"].str.replace(
+        r"^#\d+\s+", "", regex=True
+    )
 
     return df
 
