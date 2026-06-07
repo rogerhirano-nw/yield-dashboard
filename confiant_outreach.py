@@ -187,10 +187,14 @@ def render_email_html(
     """Returns (subject, html_body) for one SSP outreach email."""
     creative_count = len(pf.rows)
     window_label = f"past {window_days} days"
+    # Subject format: `<SSP>//<Publisher> — N flagged creatives on <publisher>.com (past 7 days)`
+    # Leading with SSP name puts the most-relevant identifier for the recipient
+    # first in their inbox preview. publisher_name + ".com" makes it obvious
+    # which property is affected.
     subject = (
-        f"{publisher_name} × Confiant — {creative_count} flagged "
-        f"creative{'s' if creative_count != 1 else ''} on {pf.provider} "
-        f"({window_label})"
+        f"{pf.provider}//{publisher_name} — {creative_count} flagged "
+        f"creative{'s' if creative_count != 1 else ''} on "
+        f"{publisher_name.lower()}.com ({window_label})"
     )
 
     issue_type_summary = ", ".join(
