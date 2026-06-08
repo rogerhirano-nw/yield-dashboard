@@ -122,11 +122,23 @@ def _parse_args() -> argparse.Namespace:
                    help="Diff against state.sqlite and print the plan; "
                         "don't open the browser, don't touch GAM, don't "
                         "write to state.sqlite.")
+    p.add_argument("--batch-size", type=int, default=30,
+                   help="Push at most this many domains per modal cycle. "
+                        "GAM's Edit modal validates the textarea input "
+                        "before enabling the Update button; with >40 entries "
+                        "the validation often exceeds the 10s wait. 30 is a "
+                        "comfortable batch (default).")
     p.add_argument("--headless", action="store_true", default=False,
                    help="Run Playwright headless (default: visible browser).")
     p.add_argument("--debug", action="store_true",
                    help="Playwright debug screenshots in ~/.confiant-blocklist/")
     return p.parse_args()
+
+
+def _chunked(seq, size):
+    """Yield successive size-chunks from seq."""
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
 
 
 def main() -> int:
@@ -167,41 +179,57 @@ def main() -> int:
                 print(f"  {d:40s}  {t}")
             return 0
 
-        # Build a synthetic RunSummary so we can reuse the same email +
-        # records-run plumbing as the daily cron.
-        summary = RunSummary(
-            source=f"file://{args.hrap_file}",
-            categories=("HRAP",),
-            protection_id=args.protection_id,
-            protection_label=args.protection_label,
-            total_google_rows=len(hraps),
-            blockable_domains_in_csv=len(hraps),
-            new_domains=to_push,
-            skipped_already_blocked=len(already),
-            cloaked_for_review=[],
-            dry_run=False,
-            success=False,
-            error=None,
-        )
-
+        # Push in batches so the modal's input-validation step never has
+        # to chew through more than --batch-size entries at once (the 10s
+        # Update-button wait in gam_blocklist_ui starts to time out
+        # somewhere around 40-50 entries in one shot).
+        batches = list(_chunked(to_push, args.batch_size))
         print(f"Pushing {len(to_push)} new HRAP domain(s) to Protection "
-              f"{args.protection_id} ({args.protection_label})...")
-        try:
-            _push_and_record(
-                conn, summary,
-                profile_dir=default_profile_dir(),
-                headless=args.headless,
-                debug=args.debug,
-                network_id=network_id,
+              f"{args.protection_id} ({args.protection_label}) in "
+              f"{len(batches)} batch(es) of up to {args.batch_size}...")
+
+        total_pushed = 0
+        for i, batch in enumerate(batches, start=1):
+            print(f"\n  --- batch {i}/{len(batches)} ({len(batch)} domains) ---")
+            # One RunSummary per batch so each batch records independently.
+            # A failure halfway through doesn't roll back successful prior
+            # batches — they stay in state.sqlite as truthful "already pushed."
+            summary = RunSummary(
+                source=f"file://{args.hrap_file}#batch={i}/{len(batches)}",
+                categories=("HRAP",),
+                protection_id=args.protection_id,
+                protection_label=args.protection_label,
+                total_google_rows=len(hraps),
+                blockable_domains_in_csv=len(hraps),
+                new_domains=batch,
+                skipped_already_blocked=len(already),
+                cloaked_for_review=[],
+                dry_run=False,
+                success=False,
+                error=None,
             )
-            summary.success = True
-            print(f"  ✓ pushed {len(to_push)} domain(s); recorded in state")
-        except Exception as e:
-            summary.error = repr(e)
-            print(f"  ✗ push failed: {e}", file=sys.stderr)
-            raise
-        finally:
+            try:
+                _push_and_record(
+                    conn, summary,
+                    profile_dir=default_profile_dir(),
+                    headless=args.headless,
+                    debug=args.debug,
+                    network_id=network_id,
+                )
+                summary.success = True
+                total_pushed += len(batch)
+                print(f"  ✓ batch {i}: pushed {len(batch)} domain(s)")
+            except Exception as e:
+                summary.error = repr(e)
+                print(f"  ✗ batch {i} failed: {e}", file=sys.stderr)
+                record_run(conn, summary)
+                print(f"\nTotal pushed before failure: {total_pushed}/{len(to_push)}",
+                      file=sys.stderr)
+                print(f"Re-run the script — it will skip what already landed.",
+                      file=sys.stderr)
+                raise
             record_run(conn, summary)
+        print(f"\nAll batches successful. Pushed {total_pushed} HRAP domain(s).")
     finally:
         conn.close()
 

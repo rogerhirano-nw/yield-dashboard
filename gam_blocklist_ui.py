@@ -204,7 +204,11 @@ class GAMBlocklistBrowser:
             # Update is disabled until the Add above succeeds; wait for it to
             # become clickable, then click. Same locator-strategy approach.
             update_btn = self._click_or_dump(page, "Update", "modal Update button")
-            self._wait_until_enabled(update_btn, "modal Update", timeout_s=10)
+            # 30s rather than 10s: with batches >40 entries, GAM's input
+            # validation can take 15-25s before the Update button enables.
+            # Smaller batches finish in <2s so no real cost for the common
+            # case.
+            self._wait_until_enabled(update_btn, "modal Update", timeout_s=30)
             update_btn.click()
             self._sleep("post-update settle (modal closes)", 3.0)
 
