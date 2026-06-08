@@ -89,6 +89,10 @@ def _engine() -> sqlalchemy.Engine:
             pool_recycle=300,
             pool_size=2,
             max_overflow=0,
+            connect_args={
+                "connect_timeout": 10,
+                "options": "-c statement_timeout=120000",
+            },
         )
     return _ENGINE
 
