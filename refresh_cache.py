@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -141,13 +142,30 @@ _INDEXES = [
 ]
 
 
-def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
-    """Warn about DV line item names with no matching gam_campaigns entry.
+# Matches the IO/SO order-reference token in a line item name when the name is
+# split on "_": IO1104-6, IO1104_8, IO1104, SO01104, SO01090, IO1109, etc.
+_ORDER_TOKEN_RE = re.compile(r'^(?:IO|SO)0?\d+(?:[-_]\d+)?$', re.IGNORECASE)
 
-    These rows will produce '—' in Attention/IVT dashboard columns because
-    the join on line_item_name will silently fail. Emits one WARNING per
-    unmatched name so _IssueCollector routes it to the sweep alert email,
-    surfacing the mismatch at ingest time rather than at dashboard review."""
+
+def _strip_order_token(name: str) -> str:
+    """Remove the IO/SO order-reference token from a split-on-underscore name."""
+    return "_".join(p for p in name.split("_") if not _ORDER_TOKEN_RE.match(p))
+
+
+def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
+    """Validate DV line item names against gam_campaigns; auto-correct where possible.
+
+    Two-pass logic:
+    1. Exact match → nothing to do.
+    2. Order-token normalization: if stripping the IO/SO token from a DV name
+       gives the same key as exactly one GAM name, rename the DV row in-place.
+       This handles recurring drift when GAM line items are renamed
+       (e.g. SO01104 → IO1104-6) while DV Pinnacle still sends the old name.
+    3. Non-Direct lines (PD/PG/PMP, e.g. Newsweek_VGW_* or Newsweek_PD_*) are
+       silently skipped — they join via order_name on the PMP tab, not via
+       line_item_name, so a gam_campaigns miss is expected.
+    4. Remaining unmatched Direct lines emit WARNING so _IssueCollector routes
+       them to the sweep alert email."""
     if "line_item_name" not in df.columns:
         return
     try:
@@ -161,12 +179,41 @@ def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
     except Exception:
         logger.warning("[%s] Could not query gam_campaigns for DV join validation", label)
         return
-    unmatched = sorted(set(df["line_item_name"].dropna().unique()) - gam_names)
-    for name in unmatched:
-        logger.warning(
-            "[%s] DV line item has no GAM match — will show '—' in dashboard: %r",
-            label, name,
-        )
+
+    # Build normalized-key → GAM name index. None means ambiguous (two GAM
+    # names share the same normalized key — don't auto-correct in that case).
+    gam_by_norm: dict[str, str | None] = {}
+    for gam_name in gam_names:
+        norm = _strip_order_token(gam_name)
+        if not norm:
+            continue
+        if norm not in gam_by_norm:
+            gam_by_norm[norm] = gam_name
+        elif gam_by_norm[norm] != gam_name:
+            gam_by_norm[norm] = None
+
+    fixes: dict[str, str] = {}
+    for dv_name in sorted(set(df["line_item_name"].dropna().unique()) - gam_names):
+        dv_name = str(dv_name)
+        # PD/PG/PMP lines join on order_name in the PMP tab — mismatch expected.
+        if not dv_name.startswith("Newsweek_Direct_"):
+            continue
+        norm = _strip_order_token(dv_name)
+        candidate = gam_by_norm.get(norm) if norm else None
+        if candidate is not None:
+            fixes[dv_name] = candidate
+            logger.info(
+                "[%s] Auto-correcting DV name (order-token drift): %r → %r",
+                label, dv_name, candidate,
+            )
+        else:
+            logger.warning(
+                "[%s] DV line item has no GAM match — will show '—' in dashboard: %r",
+                label, dv_name,
+            )
+
+    if fixes:
+        df["line_item_name"] = df["line_item_name"].replace(fixes)
 
 
 def _ensure_indexes() -> None:
