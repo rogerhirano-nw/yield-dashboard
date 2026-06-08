@@ -41,23 +41,44 @@ from gam_blocklist_ui import GAMBlocklistBrowser, default_profile_dir
 _HRAP_FILE = Path(__file__).parent / "data" / "confiant_hraps.json"
 
 
+def _normalize_for_gam(domain: str) -> str:
+    """Strip Confiant's `*.` wildcard prefix before sending to GAM.
+
+    GAM Protection's "Advertiser URLs" field rejects entries with a leading
+    asterisk — it expects bare apex/subdomain strings ("a4g.com") and
+    blocks all subdomains automatically. Confiant's HRAP notation
+    ("*.a4g.com") is publisher-facing documentation only.
+
+    We strip at push time (not at JSON load) so the source file stays
+    faithful to Confiant's notation for the SSP-forward email and any
+    future audit.
+    """
+    domain = domain.strip().lower()
+    if domain.startswith("*."):
+        domain = domain[2:]
+    return domain
+
+
 def _load_hraps(path: Path) -> tuple[list[tuple[str, str]], dict]:
     """Returns (domain_with_label, meta).
 
-    Each domain entry becomes a (domain, issue_type) tuple where issue_type is
-    `HRAP — <platform>`. That namespacing is on purpose: it keeps HRAPs from
-    being silently mixed with per-creative pushes in the weekly digest's
-    issue-type grouping.
+    Each domain entry becomes a (domain, issue_type) tuple where:
+      - domain is the GAM-normalized form (no `*.` prefix; lower-cased)
+      - issue_type is `HRAP — <platform>`
+
+    Two HRAP entries that normalize to the same bare domain
+    (e.g. `bizzclick.com` and `*.bizzclick.com`) collapse to one push.
     """
     payload = json.loads(path.read_text())
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
     for entry in payload.get("platforms", []):
-        domain = entry["domain"].strip()
+        raw = entry["domain"].strip()
+        domain = _normalize_for_gam(raw)
         platform = entry.get("name", "Unknown").strip()
-        if domain.lower() in seen:
+        if not domain or domain in seen:
             continue
-        seen.add(domain.lower())
+        seen.add(domain)
         out.append((domain, f"HRAP — {platform}"))
     return out, payload
 
