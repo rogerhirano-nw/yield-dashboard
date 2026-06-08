@@ -6634,8 +6634,12 @@ if st.session_state.active_view == "configure":
             # any captured load error, then shows raw vs aliased distributions
             # when data is available. Also offers an explicit cache-clear button.
             with st.expander("ad_format distribution (debug)", expanded=False):
-                if st.button("Clear cache + re-query gam_campaigns",
-                             key="cfg_dbg_clear_cache"):
+                # st.button is forbidden inside an st.form context, which
+                # is why this raised "Missing Submit Button" / StreamlitAPIException
+                # in the live app. Use st.form_submit_button instead — it
+                # works inside forms and still returns True on click, so
+                # the cache.clear() + rerun() side effects fire as before.
+                if st.form_submit_button("Clear cache + re-query gam_campaigns"):
                     st.cache_data.clear()
                     st.rerun()
                 _g = _gam_for_counts
