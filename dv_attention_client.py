@@ -64,6 +64,7 @@ COLUMN_MAP = {
     "Viewability Measurement Rate":  "viewability_measurement_rate",
     "Order":                         "order_name",
     "Line Item":                     "line_item_name",
+    "Line Item ID":                  "line_item_id",
 }
 
 
@@ -199,8 +200,8 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
     df = df[keep].copy()
 
     # Type coercion. Numeric for indices + rates; date proper; strings kept.
-    numeric_cols = [c for c in df.columns
-                    if c not in ("date", "order_name", "line_item_name")]
+    _str_cols = {"date", "order_name", "line_item_name", "line_item_id"}
+    numeric_cols = [c for c in df.columns if c not in _str_cols]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
@@ -214,6 +215,8 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
     df["line_item_name"] = df["line_item_name"].str.replace(
         r"^#\d+\s+", "", regex=True
     )
+    if "line_item_id" in df.columns:
+        df["line_item_id"] = df["line_item_id"].astype(str).replace({"": None, "nan": None})
 
     return df
 
