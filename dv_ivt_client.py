@@ -66,6 +66,7 @@ COLUMN_MAP = {
     "Advertiser":           "advertiser",
     "Order":                "order_name",
     "Line Item":            "line_item_name",
+    "Line Item ID":         "line_item_id",
     "Fraud/SIVT Rate":      "fraud_sivt_rate",
     "GIVT Rate":            "givt_rate",
     "IVT-Rate":             "ivt_rate",
@@ -220,6 +221,8 @@ def parse_dv_ivt_csv(content: bytes) -> pd.DataFrame:
         df["line_item_name"] = df["line_item_name"].str.replace(
             r"^#\d+\s+", "", regex=True
         )
+    if "line_item_id" in df.columns:
+        df["line_item_id"] = df["line_item_id"].astype(str).replace({"": None, "nan": None})
 
     return df
 

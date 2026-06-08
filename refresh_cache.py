@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -141,32 +142,101 @@ _INDEXES = [
 ]
 
 
-def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
-    """Warn about DV line item names with no matching gam_campaigns entry.
+# Matches the IO/SO order-reference token in a line item name when the name is
+# split on "_": IO1104-6, IO1104_8, IO1104, SO01104, SO01090, IO1109, etc.
+_ORDER_TOKEN_RE = re.compile(r'^(?:IO|SO)0?\d+(?:[-_]\d+)?$', re.IGNORECASE)
 
-    These rows will produce '—' in Attention/IVT dashboard columns because
-    the join on line_item_name will silently fail. Emits one WARNING per
-    unmatched name so _IssueCollector routes it to the sweep alert email,
-    surfacing the mismatch at ingest time rather than at dashboard review."""
-    if "line_item_name" not in df.columns:
-        return
+
+def _strip_order_token(name: str) -> str:
+    """Remove the IO/SO order-reference token from a split-on-underscore name."""
+    return "_".join(p for p in name.split("_") if not _ORDER_TOKEN_RE.match(p))
+
+
+def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
+    """Validate DV line items against gam_campaigns; auto-correct names where needed.
+
+    Preferred path (when DV exports line_item_id):
+      Join by numeric ID — immune to name changes. Warns for any DV ID not found
+      in gam_campaigns. Non-Direct lines (PD/PG/PMP) are silently skipped since
+      they join via order_name on the PMP tab.
+
+    Fallback path (line_item_id absent):
+      Name-based validation with order-token auto-correction.
+      Strips IO/SO order-reference tokens from both sides to handle name drift
+      (e.g. SO01104 → IO1104-6). Modifies df in-place so corrected names are
+      written to DB. Non-Direct lines silently skipped."""
+    has_id = "line_item_id" in df.columns and df["line_item_id"].notna().any()
+
     try:
         with _engine().connect() as conn:
-            gam_names = {
-                str(r[0]) for r in conn.execute(text(
-                    "SELECT DISTINCT line_item_name FROM gam_campaigns "
-                    "WHERE line_item_name IS NOT NULL"
-                ))
-            }
+            if has_id:
+                gam_ids = {
+                    str(r[0]) for r in conn.execute(text(
+                        "SELECT DISTINCT line_item_id FROM gam_campaigns "
+                        "WHERE line_item_id IS NOT NULL"
+                    ))
+                }
+            else:
+                gam_names = {
+                    str(r[0]) for r in conn.execute(text(
+                        "SELECT DISTINCT line_item_name FROM gam_campaigns "
+                        "WHERE line_item_name IS NOT NULL"
+                    ))
+                }
     except Exception:
         logger.warning("[%s] Could not query gam_campaigns for DV join validation", label)
         return
-    unmatched = sorted(set(df["line_item_name"].dropna().unique()) - gam_names)
-    for name in unmatched:
-        logger.warning(
-            "[%s] DV line item has no GAM match — will show '—' in dashboard: %r",
-            label, name,
-        )
+
+    if has_id:
+        # ID-based validation — robust, no name mangling needed
+        dv_ids = set(df["line_item_id"].dropna().astype(str).unique())
+        for dv_id in sorted(dv_ids - gam_ids):
+            # Look up the name for a more useful warning message
+            name = df.loc[df["line_item_id"].astype(str) == dv_id, "line_item_name"].iloc[0] \
+                if "line_item_name" in df.columns else dv_id
+            if not str(name).startswith("Newsweek_Direct_"):
+                continue
+            logger.warning(
+                "[%s] DV line item ID %s (%r) has no GAM match — will show '—' in dashboard",
+                label, dv_id, name,
+            )
+        return
+
+    # ── Fallback: name-based with order-token auto-correction ──────────────
+    if "line_item_name" not in df.columns:
+        return
+
+    gam_by_norm: dict[str, str | None] = {}
+    for gam_name in gam_names:  # type: ignore[possibly-undefined]
+        norm = _strip_order_token(gam_name)
+        if not norm:
+            continue
+        if norm not in gam_by_norm:
+            gam_by_norm[norm] = gam_name
+        elif gam_by_norm[norm] != gam_name:
+            gam_by_norm[norm] = None  # ambiguous — two GAM names share the same key
+
+    fixes: dict[str, str] = {}
+    for dv_name in sorted(set(df["line_item_name"].dropna().unique()) - gam_names):
+        dv_name = str(dv_name)
+        if not dv_name.startswith("Newsweek_Direct_"):
+            continue
+        norm = _strip_order_token(dv_name)
+        candidate = gam_by_norm.get(norm) if norm else None
+        if candidate is not None:
+            fixes[dv_name] = candidate
+            logger.info(
+                "[%s] Auto-correcting DV name (order-token drift): %r → %r",
+                label, dv_name, candidate,
+            )
+        else:
+            logger.warning(
+                "[%s] DV line item has no GAM match — will show '—' in dashboard: %r",
+                label, dv_name,
+            )
+
+    if fixes:
+        df["line_item_name"] = df["line_item_name"].replace(fixes)
 
 
 def _ensure_indexes() -> None:

@@ -2405,8 +2405,10 @@ if st.session_state.active_view == "campaigns":
                     prior[line] = float(vals.iloc[:-1].mean())
             return cur, prior
 
-        if "line_item_name" in dv_df.columns:
-            _dv_by_li, _dv_prior_by_li = _attn_current_and_prior("line_item_name")
+        # Prefer ID-based join (immune to name changes); fall back to name.
+        _dv_li_col = "line_item_id" if "line_item_id" in dv_df.columns and dv_df["line_item_id"].notna().any() else "line_item_name"
+        if _dv_li_col in dv_df.columns:
+            _dv_by_li, _dv_prior_by_li = _attn_current_and_prior(_dv_li_col)
         if "order_name" in dv_df.columns:
             # PMP deals (combined_pmp.Deal) join by order_name — DV emits
             # the deal name in the Order column for PMP rows. Build the
@@ -2488,9 +2490,10 @@ if st.session_state.active_view == "campaigns":
                         prior[line] = float(rows_prior["frd"].sum() / tot_prior * 100)
             return cur, prior
 
-        if "line_item_name" in ivt_df.columns:
-            _sivt_by_li, _sivt_prior_by_li = _imp_share_with_prior("line_item_name", "Fraud/SIVT")
-            _givt_by_li, _givt_prior_by_li = _imp_share_with_prior("line_item_name", "Fraud/GIVT")
+        _ivt_li_col = "line_item_id" if "line_item_id" in ivt_df.columns and ivt_df["line_item_id"].notna().any() else "line_item_name"
+        if _ivt_li_col in ivt_df.columns:
+            _sivt_by_li, _sivt_prior_by_li = _imp_share_with_prior(_ivt_li_col, "Fraud/SIVT")
+            _givt_by_li, _givt_prior_by_li = _imp_share_with_prior(_ivt_li_col, "Fraud/GIVT")
         if "order_name" in ivt_df.columns:
             _sivt_by_order, _sivt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/SIVT")
             _givt_by_order, _givt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/GIVT")
@@ -4617,12 +4620,15 @@ if st.session_state.active_view == "campaigns":
                 # the Δ row below each cell). Lookups built once at view
                 # load from dv_attention / dv_ivt tables. Rows with no DV
                 # coverage get None → em-dash via the respective formatters.
-                _attn       = _dv_by_li.get(_li_clean)         if _dv_by_li       else None
-                _attn_prior = _dv_prior_by_li.get(_li_clean)   if _dv_prior_by_li else None
-                _sivt       = _sivt_by_li.get(_li_clean)       if _sivt_by_li     else None
-                _sivt_prior = _sivt_prior_by_li.get(_li_clean) if _sivt_prior_by_li else None
-                _givt       = _givt_by_li.get(_li_clean)       if _givt_by_li     else None
-                _givt_prior = _givt_prior_by_li.get(_li_clean) if _givt_prior_by_li else None
+                # Key matches how _dv_by_li / _sivt_by_li were indexed above.
+                _dv_key  = str(row.get("line_item_id") or "") if _dv_li_col  == "line_item_id" else _li_clean
+                _ivt_key = str(row.get("line_item_id") or "") if _ivt_li_col == "line_item_id" else _li_clean
+                _attn       = _dv_by_li.get(_dv_key)          if _dv_by_li       else None
+                _attn_prior = _dv_prior_by_li.get(_dv_key)    if _dv_prior_by_li else None
+                _sivt       = _sivt_by_li.get(_ivt_key)       if _sivt_by_li     else None
+                _sivt_prior = _sivt_prior_by_li.get(_ivt_key) if _sivt_prior_by_li else None
+                _givt       = _givt_by_li.get(_ivt_key)       if _givt_by_li     else None
+                _givt_prior = _givt_prior_by_li.get(_ivt_key) if _givt_prior_by_li else None
 
                 # Viewability + CTR + VCR priors — same "lifetime minus 1d"
                 # pattern Pace uses (see _prior_pacing). Computed inline so
