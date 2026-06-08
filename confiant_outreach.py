@@ -109,6 +109,11 @@ class OutreachConfig:
     publisher_name: str = "Newsweek"
     cc_emails: list[str] = field(default_factory=list)
     min_flagged_impressions: int = 1
+    # Per-SSP publisher / account / network IDs to surface in the email body
+    # so the recipient can immediately filter their dashboard to our inventory.
+    # e.g. {"InMobi": "6fe52bf582154348b15330b31f73e373",
+    #       "PubMatic": "<our pub id>", ...}
+    ssp_publisher_ids: dict[str, str] = field(default_factory=dict)
 
 
 def _load_settings(repo_root: Path) -> OutreachConfig:
@@ -125,6 +130,7 @@ def _load_settings(repo_root: Path) -> OutreachConfig:
         publisher_name=outreach.get("publisher_name", "Newsweek"),
         cc_emails=outreach.get("cc_emails", []),
         min_flagged_impressions=int(outreach.get("min_flagged_impressions_for_outreach", 1)),
+        ssp_publisher_ids=outreach.get("ssp_publisher_ids", {}),
     )
 
 
@@ -183,8 +189,15 @@ def render_email_html(
     pf: ProviderFlags,
     publisher_name: str,
     window_days: int,
+    publisher_id: str | None = None,
 ) -> tuple[str, str]:
-    """Returns (subject, html_body) for one SSP outreach email."""
+    """Returns (subject, html_body) for one SSP outreach email.
+
+    publisher_id: optional per-SSP publisher/account/network identifier
+    (e.g. InMobi's pub_id, PubMatic's publisher_id). When provided, gets
+    surfaced in the email body so the recipient can immediately filter
+    their dashboard / logs to our inventory.
+    """
     creative_count = len(pf.rows)
     window_label = f"past {window_days} days"
     # Subject format: `<SSP>//<Publisher> — N flagged creatives on <publisher>.com (past 7 days)`
@@ -227,6 +240,7 @@ def render_email_html(
      from {pf.provider} demand on <strong>{publisher_name}</strong>.com over the {window_label}
      that violated ad-quality policy ({issue_type_summary}). Total flagged
      impressions: <strong>{pf.total_impressions:,}</strong>.</p>
+  {f"<p>For your reference, our {pf.provider} publisher ID is <code>{publisher_id}</code> &mdash; you can use it to filter to our inventory on your end.</p>" if publisher_id else ""}
 
   <p>Since we run Confiant in real-time on our end, we captured the ad traces below
      so your trust &amp; safety / policy team can investigate and block this
@@ -369,7 +383,10 @@ def main() -> int:
                   f"but no contact in settings.json")
             continue
 
-        subject, html = render_email_html(pf, cfg.publisher_name, args.days)
+        subject, html = render_email_html(
+            pf, cfg.publisher_name, args.days,
+            publisher_id=cfg.ssp_publisher_ids.get(provider),
+        )
 
         if args.dry_run:
             print(f"  [dry-run] {provider} -> {recipient} "

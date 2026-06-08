@@ -378,6 +378,9 @@
       "Yahoo": "robin.wilson@yahooinc.com",
       "YieldMo": "ameyveci@yieldmo.com",
       "Zeta Global": "tfabricant@zetaglobal.com"
+    },
+    "ssp_publisher_ids": {
+      "InMobi": "6fe52bf582154348b15330b31f73e373"
     }
   }
 }
