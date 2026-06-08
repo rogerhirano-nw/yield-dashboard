@@ -157,6 +157,27 @@ def _save_token_cache(token_response: dict) -> None:
     }))
 
 
+def _parse_address(s: str) -> dict:
+    """Parse an entry from settings.json contacts. Accepts either a bare
+    email (`foo@bar.com`) or RFC 5322 display form (`Alice Smith
+    <foo@bar.com>`). Returns the Microsoft Graph `emailAddress` shape:
+    `{"address": "..."}` or `{"address": "...", "name": "..."}`.
+
+    Storing the rep's name alongside the address means Outlook shows the
+    human name in the To column when composing, and the recipient sees
+    "Hi Alice," instead of a bare address in their own client.
+    """
+    s = s.strip()
+    if s.endswith(">") and "<" in s:
+        name, _, addr = s.rpartition("<")
+        addr = addr.rstrip(">").strip()
+        name = name.strip().strip('"').strip()
+        if addr and name:
+            return {"address": addr, "name": name}
+        return {"address": addr or s}
+    return {"address": s}
+
+
 def create_graph_draft(
     token: str,
     subject: str,
@@ -164,19 +185,23 @@ def create_graph_draft(
     to_emails: list[str],
     cc_emails: list[str] | None = None,
 ) -> str:
-    """Create a draft via Microsoft Graph. Returns the new message ID."""
+    """Create a draft via Microsoft Graph. Returns the new message ID.
+
+    Each entry in to_emails / cc_emails may be a bare email or RFC 5322
+    display form ("Alice Smith <a@b.com>") — _parse_address handles both.
+    """
     import requests
 
     payload = {
         "subject": subject,
         "body": {"contentType": "HTML", "content": html_body},
         "toRecipients": [
-            {"emailAddress": {"address": e.strip()}} for e in to_emails
+            {"emailAddress": _parse_address(e)} for e in to_emails
         ],
     }
     if cc_emails:
         payload["ccRecipients"] = [
-            {"emailAddress": {"address": e.strip()}} for e in cc_emails
+            {"emailAddress": _parse_address(e)} for e in cc_emails
         ]
 
     r = requests.post(
