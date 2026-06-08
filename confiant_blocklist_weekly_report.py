@@ -112,6 +112,31 @@ def _load_week(state: Path, days: int) -> tuple[list[sqlite3.Row], int, str | No
 
 
 # ── HTML rendering ───────────────────────────────────────────────────────────
+#
+# Email-client-safe rules of the road:
+#   - Inline CSS only; no <style> tags (Gmail web strips them).
+#   - Table-based layout for KPI tiles + horizontal layout (Outlook 2016+
+#     ignores flexbox/grid; tables are the lowest common denominator).
+#   - Web-safe fonts only — Arial / Helvetica / monospace fallback.
+#   - No external assets (no <img>, no <link>) so the email renders the same
+#     in dark mode, in clipped previews, and offline.
+#
+# Brand palette (sampled from dashboard.py + Newsweek's identity):
+#   #d72638 — Newsweek red, used for the brand strip + KPI accent
+#   #1a1a1a — primary text
+#   #6b7280 — secondary text / metadata
+#   #f0f4f8 — KPI tile + table-header backgrounds
+#   #e1e5eb — divider lines
+
+_NW_RED       = "#d72638"
+_NW_DARK      = "#1a1a1a"
+_NW_TEXT      = "#222222"
+_NW_MUTED     = "#6b7280"
+_NW_BG_SOFT   = "#f0f4f8"
+_NW_BG_LIGHT  = "#f9fafb"
+_NW_BORDER    = "#e1e5eb"
+_NW_LINK      = "#1a73e8"
+
 
 def _group_by_issue(rows: list[sqlite3.Row]) -> "OrderedDict[str, list[sqlite3.Row]]":
     """Group by issue_type, ordered by descending count so the worst category
@@ -137,42 +162,187 @@ def _group_by_day(rows: list[sqlite3.Row]) -> "OrderedDict[str, int]":
     return OrderedDict(sorted(by_day.items()))
 
 
-def _per_day_html(by_day: "OrderedDict[str, int]") -> str:
+def _day_label(iso_day: str) -> str:
+    """`2026-06-08` -> `Mon 06-08`. Cheap, no extra deps."""
+    try:
+        d = datetime.strptime(iso_day, "%Y-%m-%d").date()
+        return f"{d.strftime('%a')} {d.strftime('%m-%d')}"
+    except Exception:
+        return iso_day
+
+
+def _kpi_tile(label: str, value: str, accent_color: str = _NW_DARK) -> str:
+    """Single KPI box. Rendered as a <td> so the strip can be a one-row table
+    (Outlook-safe alternative to flexbox)."""
+    return (
+        f"<td valign='top' "
+        f"style='background:{_NW_BG_SOFT};border:1px solid {_NW_BORDER};"
+        f"padding:14px 16px;border-radius:6px;width:25%'>"
+        f"<div style='font-size:11px;color:{_NW_MUTED};text-transform:uppercase;"
+        f"letter-spacing:0.5px;font-weight:600;margin-bottom:6px'>{escape(label)}</div>"
+        f"<div style='font-size:24px;color:{accent_color};font-weight:700;line-height:1.1'>"
+        f"{escape(value)}</div>"
+        f"</td>"
+    )
+
+
+def _kpi_strip(new_count: int, cumulative: int, issue_count: int,
+               top_issue: str | None) -> str:
+    """Header KPI strip: 4 tiles side by side using table layout for
+    cross-client width consistency."""
+    tiles = [
+        _kpi_tile("This week", f"{new_count:,}", _NW_RED if new_count else _NW_DARK),
+        _kpi_tile("Cumulative", f"{cumulative:,}"),
+        _kpi_tile("Issue types", f"{issue_count}"),
+        _kpi_tile("Top issue", top_issue or "—"),
+    ]
+    # 6px gap between tiles via 6px padding between cells; outer table has 0 spacing.
+    spacer = "<td style='width:8px;font-size:0;line-height:0'>&nbsp;</td>"
+    inner = spacer.join(tiles)
+    return (
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:separate;width:100%;margin:18px 0 24px 0'>"
+        f"<tr>{inner}</tr></table>"
+    )
+
+
+def _bar_row(day: str, count: int, max_count: int) -> str:
+    """One row of the inline bar chart. Bar width is a percentage of the row
+    width; rendered with two divs inside a fixed-width <td>."""
+    pct = max(2, int(round(100 * count / max_count))) if max_count else 0
+    return (
+        f"<tr>"
+        # Day label column
+        f"<td style='padding:5px 12px 5px 0;font-size:12px;color:{_NW_MUTED};"
+        f"font-family:Menlo,Consolas,monospace;white-space:nowrap;width:90px'>"
+        f"{escape(_day_label(day))}</td>"
+        # Bar column (background = track, inner div = filled portion)
+        f"<td style='padding:5px 0'>"
+        f"<div style='background:{_NW_BG_SOFT};border-radius:3px;height:14px;width:100%'>"
+        f"<div style='background:{_NW_RED};height:14px;width:{pct}%;"
+        f"border-radius:3px'></div>"
+        f"</div>"
+        f"</td>"
+        # Count column
+        f"<td style='padding:5px 0 5px 12px;font-size:13px;color:{_NW_DARK};"
+        f"font-weight:600;text-align:right;width:50px'>{count}</td>"
+        f"</tr>"
+    )
+
+
+def _per_day_chart(by_day: "OrderedDict[str, int]") -> str:
+    """Horizontal bar chart of the per-day pushes. Inline-CSS only, no SVG,
+    no images — renders identically in Outlook/Gmail/Apple Mail."""
     if not by_day:
         return ""
-    rows = "".join(
-        f"<tr><td style='padding:4px 12px;border-bottom:1px solid #eee'>{escape(d)}</td>"
-        f"<td style='padding:4px 12px;border-bottom:1px solid #eee;text-align:right'><strong>{n}</strong></td></tr>"
-        for d, n in by_day.items()
-    )
+    max_count = max(by_day.values())
+    bars = "".join(_bar_row(d, n, max_count) for d, n in by_day.items())
     return (
-        "<table style='border-collapse:collapse;font-size:13px;margin:10px 0 20px 0'>"
-        "<thead><tr><th style='padding:6px 12px;text-align:left;border-bottom:2px solid #1a1a1a'>Day</th>"
-        "<th style='padding:6px 12px;text-align:right;border-bottom:2px solid #1a1a1a'>New URLs</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:collapse;width:100%;margin:6px 0 20px 0'>"
+        f"<tbody>{bars}</tbody></table>"
     )
 
 
 def _per_issue_section(issue: str, rows: list[sqlite3.Row]) -> str:
-    """One <h3> per issue type plus a tight 2-column table of the domains."""
-    items = "".join(
+    """One issue-type card: badge with count, plus a tight 2-column table
+    of the domains pushed."""
+    domain_rows = "".join(
         f"<tr>"
-        f"<td style='padding:3px 10px;border-bottom:1px solid #f1f1f1;font-family:Menlo,Consolas,monospace;font-size:12px;color:#1a1a1a'>"
-        f"{escape(r['domain'])}</td>"
-        f"<td style='padding:3px 10px;border-bottom:1px solid #f1f1f1;font-size:12px;color:#666'>"
+        f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};"
+        f"font-family:Menlo,Consolas,monospace;font-size:12px;color:{_NW_DARK};"
+        f"word-break:break-all'>{escape(r['domain'])}</td>"
+        f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};"
+        f"font-size:12px;color:{_NW_MUTED};white-space:nowrap;text-align:right'>"
         f"{escape((r['first_pushed_to_gam'] or '')[:10])}</td>"
         f"</tr>"
         for r in rows
     )
     return (
-        f"<h3 style='margin:24px 0 6px 0;color:#1a1a1a;font-size:14px'>"
-        f"{escape(issue)} <span style='color:#888;font-weight:normal'>({len(rows)})</span></h3>"
-        f"<table style='border-collapse:collapse;width:100%;max-width:680px'>"
-        f"<thead><tr>"
-        f"<th style='padding:5px 10px;text-align:left;border-bottom:1px solid #1a1a1a;font-size:12px'>Domain</th>"
-        f"<th style='padding:5px 10px;text-align:left;border-bottom:1px solid #1a1a1a;font-size:12px'>Pushed</th>"
-        f"</tr></thead>"
-        f"<tbody>{items}</tbody></table>"
+        # Outer card with subtle border
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:collapse;width:100%;margin:0 0 18px 0;"
+        f"border:1px solid {_NW_BORDER};border-radius:6px;background:#ffffff;"
+        f"overflow:hidden'>"
+        # Header band — issue name + count badge
+        f"<tr><td style='background:{_NW_BG_LIGHT};padding:10px 14px;"
+        f"border-bottom:1px solid {_NW_BORDER}'>"
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='width:100%'><tr>"
+        f"<td style='font-size:14px;font-weight:600;color:{_NW_DARK}'>"
+        f"{escape(issue)}</td>"
+        f"<td style='text-align:right;font-size:12px;font-weight:700;"
+        f"color:#ffffff;background:{_NW_RED};padding:3px 10px;border-radius:10px;"
+        f"width:1px;white-space:nowrap'>{len(rows)} URLs</td>"
+        f"</tr></table>"
+        f"</td></tr>"
+        # Domain table
+        f"<tr><td style='padding:0'>"
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:collapse;width:100%'>"
+        f"<tbody>{domain_rows}</tbody></table>"
+        f"</td></tr>"
+        f"</table>"
+    )
+
+
+def _hero_header(start: date, today: date, days: int) -> str:
+    """Brand-colored top band + page title + subtitle. Renders as two stacked
+    table rows so the 4px red band stays full-bleed."""
+    return (
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:collapse;width:100%'>"
+        # Brand color band
+        f"<tr><td style='background:{_NW_RED};height:4px;font-size:0;line-height:0'>&nbsp;</td></tr>"
+        # Eyebrow
+        f"<tr><td style='padding:18px 24px 0 24px'>"
+        f"<div style='font-size:11px;font-weight:700;color:{_NW_RED};"
+        f"text-transform:uppercase;letter-spacing:1.2px'>"
+        f"Newsweek &middot; Brand Safety</div>"
+        # Title
+        f"<h1 style='margin:6px 0 4px 0;color:{_NW_DARK};font-size:22px;"
+        f"font-weight:700;line-height:1.2'>GAM Blocklist — Weekly Summary</h1>"
+        # Subtitle
+        f"<div style='color:{_NW_MUTED};font-size:13px'>"
+        f"Week ending {today.strftime('%B %-d, %Y')} "
+        f"&middot; {days}-day window ({start.isoformat()} → {today.isoformat()})"
+        f"</div>"
+        f"</td></tr></table>"
+    )
+
+
+def _footer(protection_label: str | None, protection_id: int | None,
+            gam_network_id: str | None) -> str:
+    """CTA button (link to GAM Protection when network id is known) + generated
+    metadata line."""
+    cta_html = ""
+    if protection_label and protection_id and gam_network_id:
+        url = GAM_PROTECTION_URL_TMPL.format(network=gam_network_id, pid=protection_id)
+        cta_html = (
+            f"<p style='margin:0 0 18px 0'>"
+            f"<a href='{escape(url)}' "
+            f"style='display:inline-block;background:{_NW_DARK};color:#ffffff;"
+            f"padding:10px 18px;border-radius:4px;text-decoration:none;"
+            f"font-size:13px;font-weight:600'>"
+            f"View Protection &ldquo;{escape(protection_label)}&rdquo; in GAM &rarr;"
+            f"</a></p>"
+        )
+    elif protection_label and protection_id:
+        cta_html = (
+            f"<p style='margin:0 0 18px 0;color:{_NW_MUTED};font-size:12px'>"
+            f"GAM Protection: <strong>{escape(protection_label)}</strong> "
+            f"(id <code>{protection_id}</code>)</p>"
+        )
+    return (
+        f"{cta_html}"
+        f"<hr style='border:none;border-top:1px solid {_NW_BORDER};margin:8px 0 14px 0'>"
+        f"<p style='font-size:11px;color:#9aa0a6;margin:0;line-height:1.5'>"
+        f"Generated by <code>confiant_blocklist_weekly_report.py</code> on "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M %Z').strip()}. "
+        f"Source of truth: the daily cron's local state DB "
+        f"(<code>~/.confiant-blocklist/state.sqlite</code>). "
+        f"Each row is recorded the first time its domain is pushed to GAM."
+        f"</p>"
     )
 
 
@@ -187,65 +357,53 @@ def build_html(
     today = date.today()
     start = today - timedelta(days=days)
     new_count = len(rows)
+    by_issue = _group_by_issue(rows)
+    by_day = _group_by_day(rows)
+    top_issue = next(iter(by_issue), None) if by_issue else None
+
+    kpi_strip = _kpi_strip(new_count, cumulative_total, len(by_issue), top_issue)
 
     if new_count == 0:
         body_html = (
-            "<p>No new URLs were added to the GAM Protection blocklist this week. "
-            "Either the daily cron didn't find new Google-flagged Security domains, "
-            "or every flagged domain was already on the blocklist.</p>"
+            f"<div style='background:{_NW_BG_LIGHT};border:1px solid {_NW_BORDER};"
+            f"border-left:4px solid #22c55e;padding:14px 18px;border-radius:4px;"
+            f"margin:0 0 18px 0;color:{_NW_DARK};font-size:13px'>"
+            f"<strong>No new URLs blocked this week.</strong> "
+            f"Either the daily cron didn't find new Google-flagged Security "
+            f"domains, or everything flagged was already on the blocklist."
+            f"</div>"
         )
     else:
-        by_issue = _group_by_issue(rows)
-        by_day = _group_by_day(rows)
-        sections = "".join(_per_issue_section(it, rs) for it, rs in by_issue.items())
-        per_day = _per_day_html(by_day)
+        per_day_chart = _per_day_chart(by_day)
+        issue_cards = "".join(
+            _per_issue_section(it, rs) for it, rs in by_issue.items()
+        )
         body_html = (
-            f"<p>The daily Confiant&nbsp;&rarr;&nbsp;GAM cron pushed "
-            f"<strong>{new_count} new URL{'s' if new_count != 1 else ''}</strong> "
-            f"to the GAM Protection blocklist this week "
-            f"(<strong>{start.isoformat()}</strong> through "
-            f"<strong>{today.isoformat()}</strong>).</p>"
-            f"<h2 style='margin:24px 0 6px 0;font-size:15px;color:#1a1a1a'>Per-day activity</h2>"
-            f"{per_day}"
-            f"<h2 style='margin:24px 0 0 0;font-size:15px;color:#1a1a1a'>URLs by issue type</h2>"
-            f"{sections}"
+            f"<h2 style='margin:18px 0 4px 0;color:{_NW_DARK};font-size:15px;"
+            f"font-weight:700'>Activity by day</h2>"
+            f"<p style='margin:0 0 6px 0;color:{_NW_MUTED};font-size:12px'>"
+            f"New URLs pushed to GAM each day in the window.</p>"
+            f"{per_day_chart}"
+            f"<h2 style='margin:26px 0 4px 0;color:{_NW_DARK};font-size:15px;"
+            f"font-weight:700'>URLs by issue type</h2>"
+            f"<p style='margin:0 0 14px 0;color:{_NW_MUTED};font-size:12px'>"
+            f"Confiant Security category; ordered by count.</p>"
+            f"{issue_cards}"
         )
 
-    protection_html = ""
-    if protection_label and protection_id:
-        if gam_network_id:
-            url = GAM_PROTECTION_URL_TMPL.format(network=gam_network_id, pid=protection_id)
-            protection_html = (
-                f"GAM Protection: <a href='{escape(url)}' style='color:#1a73e8'>"
-                f"<strong>{escape(protection_label)}</strong> "
-                f"(id <code>{protection_id}</code>)</a>"
-            )
-        else:
-            protection_html = (
-                f"GAM Protection: <strong>{escape(protection_label)}</strong> "
-                f"(id <code>{protection_id}</code>)"
-            )
-
     return f"""\
-<html><body style='font-family:Arial,sans-serif;color:#222;max-width:780px;margin:auto;padding:20px;font-size:14px;line-height:1.55'>
-  <h1 style='margin:0 0 8px 0;color:#1a1a1a;font-size:18px'>
-    GAM blocklist — weekly summary
-  </h1>
-  <p style='margin:0 0 16px 0;color:#666;font-size:12px'>
-    {escape(start.isoformat())} &rarr; {escape(today.isoformat())} &middot;
-    {protection_html or "GAM Protection: (unknown)"} &middot;
-    cumulative blocklist size: <strong>{cumulative_total:,}</strong>
-  </p>
-
-  {body_html}
-
-  <hr style='margin-top:30px;border:none;border-top:1px solid #e1e1e1'>
-  <p style='font-size:11px;color:#999;margin-top:14px'>
-    Generated by <code>confiant_blocklist_weekly_report.py</code> on
-    {datetime.now().strftime('%Y-%m-%d %H:%M %Z')}.
-    Source of truth: local <code>state.sqlite</code> (the cron writes one row
-    per domain on its first push to GAM).
-  </p>
+<html><body style='margin:0;padding:0;background:#f5f6f8;color:{_NW_TEXT};font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55'>
+<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='background:#f5f6f8;width:100%;padding:20px 0'>
+<tr><td align='center'>
+<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='background:#ffffff;width:100%;max-width:760px;border:1px solid {_NW_BORDER};border-radius:8px;overflow:hidden'>
+  <tr><td>{_hero_header(start, today, days)}</td></tr>
+  <tr><td style='padding:0 24px'>{kpi_strip}</td></tr>
+  <tr><td style='padding:0 24px 8px 24px'>{body_html}</td></tr>
+  <tr><td style='padding:18px 24px 24px 24px;background:{_NW_BG_LIGHT};border-top:1px solid {_NW_BORDER}'>
+    {_footer(protection_label, protection_id, gam_network_id)}
+  </td></tr>
+</table>
+</td></tr></table>
 </body></html>"""
 
 
