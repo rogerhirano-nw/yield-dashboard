@@ -109,7 +109,7 @@ weekly notifications read "Confiant -> GAM blocklist (Everything)" instead of
    tail -f ~/.confiant-blocklist/launchd.err.log
    ```
 
-## What gets emailed weekly
+## What gets emailed daily (per-run summary)
 
 A run summary that includes:
 - Counts: total Google rows, blockable domains, already-in-state, new
@@ -121,6 +121,48 @@ A run summary that includes:
 Failed runs are flagged in the subject line and include the exception in the
 body. Dry-run summaries say "(DRY RUN)" in the subject and show what *would*
 have been pushed.
+
+## Weekly RevOps summary
+
+`confiant_blocklist_weekly_report.py` rolls up the last 7 days of pushes
+into a single digest emailed to RevOps every Monday at 09:00 ET. It reads
+only from `state.sqlite` — no Confiant or GAM API calls — so it's cheap
+and always agrees with what actually landed in the GAM Protection.
+
+Contents:
+- Per-day count of URLs added (so it's obvious whether activity is flat,
+  spiking, or falling off).
+- All new URLs grouped by issue type, ordered by descending count.
+- Cumulative blocklist size + a deep link into the GAM Protection (when
+  `GAM_NETWORK_ID` is set).
+
+Default recipient: `revops@newsweek.com`. Override with `--to`, env var
+`CONFIANT_BLOCKLIST_WEEKLY_TO`, or add CCs via `CONFIANT_BLOCKLIST_WEEKLY_CC`.
+
+One-off run for a different window or recipient:
+
+```bash
+# preview without sending
+python confiant_blocklist_weekly_report.py --days 14 --dry-run
+
+# emit the HTML to stdout (useful for piping to a file or pbcopy)
+python confiant_blocklist_weekly_report.py --print-html
+
+# send to a different recipient
+python confiant_blocklist_weekly_report.py --to someone@newsweek.com
+```
+
+Install the cron the same way as the daily one:
+
+```bash
+cp ~/code/yield-dashboard/.launchd/com.newsweek.confiant-blocklist-weekly.plist \
+   ~/Library/LaunchAgents/
+# fill in REPLACE_ME for AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID, GAM_NETWORK_ID
+launchctl load -w ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.plist
+# one-off trigger to verify
+launchctl start com.newsweek.confiant-blocklist-weekly
+tail ~/.confiant-blocklist/launchd.weekly.err.log
+```
 
 ## State
 

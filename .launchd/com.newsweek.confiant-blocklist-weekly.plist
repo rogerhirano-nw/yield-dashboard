@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.newsweek.confiant-blocklist-weekly</string>
+
+    <!-- Mondays at 09:00 local. The daily blocklist cron runs at 04:00, so
+         by 09:00 the most recent push for the week is in state.sqlite.
+         Weekday=2 in launchd is Monday (Sun=1). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>2</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Run on wake if the Mac was asleep at the trigger time. -->
+    <key>StartCalendarIntervalRunAtLoad</key>
+    <false/>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/roger/code/yield-dashboard</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>/Users/roger/code/yield-dashboard/confiant_blocklist_weekly_report.py</string>
+        <string>--to</string>
+        <string>revops@newsweek.com</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd does not source ~/.zshrc. -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Same agentmail credentials as the daily blocklist cron (this
+             script only sends, doesn't read inbox). -->
+        <key>AGENTMAIL_API_KEY</key>
+        <string>REPLACE_ME</string>
+        <key>AGENTMAIL_INBOX_ID</key>
+        <string>REPLACE_ME</string>
+        <!-- Read by the script to render the GAM Protection deep-link. -->
+        <key>GAM_NETWORK_ID</key>
+        <string>REPLACE_ME</string>
+        <!-- Same state.sqlite the daily cron writes to. -->
+        <key>CONFIANT_BLOCKLIST_STATE</key>
+        <string>/Users/roger/.confiant-blocklist/state.sqlite</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/roger/.confiant-blocklist/launchd.weekly.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/roger/.confiant-blocklist/launchd.weekly.err.log</string>
+
+    <key>AbandonProcessGroup</key>
+    <true/>
+</dict>
+</plist>
