@@ -39,15 +39,11 @@
         <!-- launchd does not source ~/.zshrc. -->
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-        <!-- Same agentmail credentials as the daily blocklist cron (this
-             script only sends, doesn't read inbox). -->
-        <key>AGENTMAIL_API_KEY</key>
-        <string>REPLACE_ME</string>
-        <key>AGENTMAIL_INBOX_ID</key>
-        <string>REPLACE_ME</string>
-        <!-- Read by the script to render the GAM Protection deep-link. -->
-        <key>GAM_NETWORK_ID</key>
-        <string>REPLACE_ME</string>
+        <!-- AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID, and GAM_NETWORK_ID are
+             read from ~/code/yield-dashboard/.env by the script itself
+             (_load_dotenv). Don't define them here as empty strings —
+             setdefault won't override empty values and the send will
+             silently skip. -->
         <!-- Same state.sqlite the daily cron writes to. -->
         <key>CONFIANT_BLOCKLIST_STATE</key>
         <string>/Users/roger/.confiant-blocklist/state.sqlite</string>
