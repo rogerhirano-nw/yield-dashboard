@@ -469,37 +469,100 @@ def refresh_gam_preferred_deals() -> int:
     return len(df)
 
 
-def refresh_gam_creatives() -> int:
-    """Fetch creative metadata (display name + video duration) and write
-    to gam_creatives. Used by the dashboard to detect lines whose creative
-    duration crosses the 30-second threshold (→ "Video Preroll >30s")."""
-    logger.info("Refreshing gam_creatives")
+def refresh_gam_lica() -> int:
+    """Incremental: append LICAs only for video line items not yet in gam_lica.
+
+    Scoped to inventory_format_name = 'In-stream video' — the only format
+    where creative duration matters (Video Preroll >30s recategorization).
+    Never truncates; only new line item IDs trigger a GAM SOAP call."""
+    logger.info("Refreshing gam_lica (incremental, video only)")
+    with _engine().connect() as conn:
+        try:
+            video_li_ids = {
+                str(r[0]) for r in conn.execute(text(
+                    "SELECT DISTINCT line_item_id FROM gam_campaigns "
+                    "WHERE inventory_format_name = 'In-stream video'"
+                ))
+            }
+        except Exception:
+            logger.warning("Could not query gam_campaigns for video LIs — skipping")
+            return 0
+        if not video_li_ids:
+            logger.info("No in-stream video line items in gam_campaigns")
+            return 0
+        try:
+            known_li_ids = {
+                str(r[0]) for r in conn.execute(text(
+                    "SELECT DISTINCT line_item_id FROM gam_lica"
+                ))
+            }
+        except Exception:
+            known_li_ids = set()
+
+    new_li_ids = video_li_ids - known_li_ids
+    if not new_li_ids:
+        logger.info("gam_lica up to date — all %d video LIs already present", len(video_li_ids))
+        return 0
+
+    logger.info("Fetching LICAs for %d new video LIs (%d already known)",
+                len(new_li_ids), len(known_li_ids & video_li_ids))
     gam = GAMClient()
-    df = gam.list_creatives_with_duration()
+    df = gam.list_line_item_creative_associations(line_item_ids=list(new_li_ids))
     if df.empty:
-        logger.warning("No creatives returned from GAM — skipping write")
+        logger.warning("No LICAs returned for new video LIs")
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        _safe_replace(df, "gam_creatives", conn)
-    logger.info("Wrote %d rows to gam_creatives", len(df))
+        df.to_sql("gam_lica", conn, if_exists="append", index=False)
+    logger.info("Appended %d LICAs to gam_lica", len(df))
     return len(df)
 
 
-def refresh_gam_lica() -> int:
-    """Fetch line-item ↔ creative associations and write to gam_lica.
-    Joined with gam_creatives to give each line item its set of
-    creative durations."""
-    logger.info("Refreshing gam_lica (LineItemCreativeAssociation)")
+def refresh_gam_creatives() -> int:
+    """Incremental: append creative metadata only for creative IDs in gam_lica
+    not yet in gam_creatives. Only video-associated creatives are ever in
+    gam_lica (refresh_gam_lica is scoped to In-stream video LIs)."""
+    logger.info("Refreshing gam_creatives (incremental)")
+    with _engine().connect() as conn:
+        try:
+            lica_creative_ids = {
+                str(r[0]) for r in conn.execute(text(
+                    "SELECT DISTINCT creative_id FROM gam_lica "
+                    "WHERE creative_id IS NOT NULL"
+                ))
+            }
+        except Exception:
+            logger.warning("Could not query gam_lica for creative IDs — skipping")
+            return 0
+        if not lica_creative_ids:
+            logger.info("No creative IDs in gam_lica yet")
+            return 0
+        try:
+            known_creative_ids = {
+                str(r[0]) for r in conn.execute(text(
+                    "SELECT DISTINCT creative_id FROM gam_creatives"
+                ))
+            }
+        except Exception:
+            known_creative_ids = set()
+
+    new_creative_ids = lica_creative_ids - known_creative_ids
+    if not new_creative_ids:
+        logger.info("gam_creatives up to date — all %d creatives already present",
+                    len(lica_creative_ids))
+        return 0
+
+    logger.info("Fetching %d new creatives (%d already known)",
+                len(new_creative_ids), len(known_creative_ids & lica_creative_ids))
     gam = GAMClient()
-    df = gam.list_line_item_creative_associations()
+    df = gam.list_creatives_with_duration(creative_ids=list(new_creative_ids))
     if df.empty:
-        logger.warning("No LICAs returned from GAM — skipping write")
+        logger.warning("No creative metadata returned for new creative IDs")
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        _safe_replace(df, "gam_lica", conn)
-    logger.info("Wrote %d rows to gam_lica", len(df))
+        df.to_sql("gam_creatives", conn, if_exists="append", index=False)
+    logger.info("Appended %d rows to gam_creatives", len(df))
     return len(df)
 
 

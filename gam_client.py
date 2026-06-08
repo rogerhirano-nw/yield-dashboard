@@ -823,41 +823,60 @@ class GAMClient:
             logger.exception("archive_proposal_line_item(%s) failed", pli_id)
             return False
 
-    def list_creatives_with_duration(self) -> pd.DataFrame:
-        """Fetch all creatives via the SOAP CreativeService. Returns
+    def list_creatives_with_duration(
+        self, creative_ids: list[str] | None = None
+    ) -> pd.DataFrame:
+        """Fetch creatives via the SOAP CreativeService. Returns
         creative_id, display_name, creative_type, duration_seconds.
         Only the ~5% of creatives where GAM cached duration locally
         (uploaded VideoCreatives and some VastRedirectCreatives) get a
         non-null value. For the rest (3rd-party tags via Innovid / DCM
         / etc), duration lives in the executed JS — the manual long-
-        preroll override in Configure handles those."""
+        preroll override in Configure handles those.
+
+        creative_ids: if given, only fetch these IDs (batched into groups
+        of 500 to stay within PQL statement limits)."""
         _cols = ["creative_id", "display_name", "creative_type",
                  "duration_seconds"]
         try:
             client = self._get_soap_client()
             from googleads import ad_manager  # type: ignore
             svc = client.GetService("CreativeService", version=self._SOAP_API_VERSION)
-            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
-            sb.Limit(500)
+
+            id_batches: list[list[str] | None]
+            if creative_ids:
+                id_batches = [
+                    creative_ids[i:i + 500]
+                    for i in range(0, len(creative_ids), 500)
+                ]
+            else:
+                id_batches = [None]
+
             rows = []
-            while True:
-                resp = svc.getCreativesByStatement(sb.ToStatement())
-                if not hasattr(resp, "results") or not resp.results:
-                    break
-                for c in resp.results:
-                    cid = getattr(c, "id", None)
-                    dn = getattr(c, "name", "") or ""
-                    ct = type(c).__name__
-                    duration_ms = getattr(c, "duration", None)
-                    rows.append({
-                        "creative_id":      str(cid) if cid is not None else None,
-                        "display_name":     dn,
-                        "creative_type":    ct,
-                        "duration_seconds": self._ms_to_seconds(duration_ms),
-                    })
-                sb.offset += sb.limit
-                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
-                    break
+            for batch in id_batches:
+                sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+                if batch is not None:
+                    ids_str = ", ".join(str(int(i)) for i in batch)
+                    sb.Where(f"id IN ({ids_str})")
+                sb.Limit(500)
+                while True:
+                    resp = svc.getCreativesByStatement(sb.ToStatement())
+                    if not hasattr(resp, "results") or not resp.results:
+                        break
+                    for c in resp.results:
+                        cid = getattr(c, "id", None)
+                        dn = getattr(c, "name", "") or ""
+                        ct = type(c).__name__
+                        duration_ms = getattr(c, "duration", None)
+                        rows.append({
+                            "creative_id":      str(cid) if cid is not None else None,
+                            "display_name":     dn,
+                            "creative_type":    ct,
+                            "duration_seconds": self._ms_to_seconds(duration_ms),
+                        })
+                    sb.offset += sb.limit
+                    if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                        break
             logger.info(
                 "GAM creatives (SOAP): %d total, %d with duration",
                 len(rows),
@@ -868,10 +887,15 @@ class GAMClient:
             logger.exception("list_creatives_with_duration (SOAP) failed")
             return pd.DataFrame(columns=_cols)
 
-    def list_line_item_creative_associations(self) -> pd.DataFrame:
-        """Fetch all LineItem-Creative associations via the SOAP API.
-        Returns (line_item_id, creative_id) — joined to creatives + line
-        items in the dashboard to apply per-creative duration thresholds."""
+    def list_line_item_creative_associations(
+        self, line_item_ids: list[str] | None = None
+    ) -> pd.DataFrame:
+        """Fetch LineItem-Creative associations via the SOAP API.
+        Returns (line_item_id, creative_id).
+
+        line_item_ids: if given, only fetch associations for these LIs
+        (batched into groups of 500 to stay within PQL statement limits).
+        Pass None to fetch all (legacy full-pull mode)."""
         _cols = ["line_item_id", "creative_id"]
         try:
             client = self._get_soap_client()
@@ -879,23 +903,37 @@ class GAMClient:
             svc = client.GetService(
                 "LineItemCreativeAssociationService", version=self._SOAP_API_VERSION
             )
-            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
-            sb.Limit(500)
+
+            id_batches: list[list[str] | None]
+            if line_item_ids:
+                id_batches = [
+                    line_item_ids[i:i + 500]
+                    for i in range(0, len(line_item_ids), 500)
+                ]
+            else:
+                id_batches = [None]
+
             rows = []
-            while True:
-                resp = svc.getLineItemCreativeAssociationsByStatement(sb.ToStatement())
-                if not hasattr(resp, "results") or not resp.results:
-                    break
-                for lica in resp.results:
-                    li = getattr(lica, "lineItemId", None)
-                    cr = getattr(lica, "creativeId", None)
-                    rows.append({
-                        "line_item_id": str(li) if li is not None else None,
-                        "creative_id":  str(cr) if cr is not None else None,
-                    })
-                sb.offset += sb.limit
-                if sb.offset >= getattr(resp, "totalResultSetSize", 0):
-                    break
+            for batch in id_batches:
+                sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+                if batch is not None:
+                    ids_str = ", ".join(str(int(i)) for i in batch)
+                    sb.Where(f"lineItemId IN ({ids_str})")
+                sb.Limit(500)
+                while True:
+                    resp = svc.getLineItemCreativeAssociationsByStatement(sb.ToStatement())
+                    if not hasattr(resp, "results") or not resp.results:
+                        break
+                    for lica in resp.results:
+                        li = getattr(lica, "lineItemId", None)
+                        cr = getattr(lica, "creativeId", None)
+                        rows.append({
+                            "line_item_id": str(li) if li is not None else None,
+                            "creative_id":  str(cr) if cr is not None else None,
+                        })
+                    sb.offset += sb.limit
+                    if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                        break
             logger.info("GAM LICA (SOAP): %d associations", len(rows))
             return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
