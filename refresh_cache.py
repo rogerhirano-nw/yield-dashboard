@@ -141,6 +141,34 @@ _INDEXES = [
 ]
 
 
+def _warn_dv_gam_mismatches(df: pd.DataFrame, label: str) -> None:
+    """Warn about DV line item names with no matching gam_campaigns entry.
+
+    These rows will produce '—' in Attention/IVT dashboard columns because
+    the join on line_item_name will silently fail. Emits one WARNING per
+    unmatched name so _IssueCollector routes it to the sweep alert email,
+    surfacing the mismatch at ingest time rather than at dashboard review."""
+    if "line_item_name" not in df.columns:
+        return
+    try:
+        with _engine().connect() as conn:
+            gam_names = {
+                str(r[0]) for r in conn.execute(text(
+                    "SELECT DISTINCT line_item_name FROM gam_campaigns "
+                    "WHERE line_item_name IS NOT NULL"
+                ))
+            }
+    except Exception:
+        logger.warning("[%s] Could not query gam_campaigns for DV join validation", label)
+        return
+    unmatched = sorted(set(df["line_item_name"].dropna().unique()) - gam_names)
+    for name in unmatched:
+        logger.warning(
+            "[%s] DV line item has no GAM match — will show '—' in dashboard: %r",
+            label, name,
+        )
+
+
 def _ensure_indexes() -> None:
     """Create missing BTree indexes on date/filter columns. Idempotent — skips
     tables that don't exist yet and is a no-op when indexes are already present."""
@@ -830,6 +858,7 @@ def refresh_dv_attention() -> int:
         return 0
 
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    _warn_dv_gam_mismatches(df, "dv_attention")
 
     table = "dv_attention"
     with _engine().begin() as conn:
@@ -873,6 +902,7 @@ def refresh_dv_ivt() -> int:
         return 0
 
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+    _warn_dv_gam_mismatches(df, "dv_ivt")
 
     table = "dv_ivt"
     with _engine().begin() as conn:
