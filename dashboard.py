@@ -1445,12 +1445,10 @@ def _load_li_max_duration() -> pd.DataFrame:
             return pd.read_sql(
                 sqlalchemy.text(
                     """
-                    SELECT CAST(l.line_item_id AS TEXT) AS line_item_id,
-                           MAX(CAST(c.duration_seconds AS DOUBLE PRECISION))
-                               AS _creative_max_dur
+                    SELECT l.line_item_id,
+                           MAX(c.duration_seconds) AS _creative_max_dur
                     FROM gam_lica l
-                    JOIN gam_creatives c
-                      ON CAST(l.creative_id AS TEXT) = CAST(c.creative_id AS TEXT)
+                    JOIN gam_creatives c ON l.creative_id = c.creative_id
                     WHERE c.duration_seconds IS NOT NULL
                     GROUP BY l.line_item_id
                     """

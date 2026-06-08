@@ -119,6 +119,7 @@ _INDEXES = [
     ("magnite_dsp_daily",     "idx_magnite_dsp_daily_date",       '"date"'),
     ("magnite_deal_daily",    "idx_magnite_deal_daily_date",      '"date"'),
     ("gam_campaigns",         "idx_gam_campaigns_report_start",   "report_start"),
+    ("gam_campaigns",         "idx_gam_campaigns_pulled_at",      "_pulled_at"),
     ("gam_campaigns_hourly",  "idx_gam_campaigns_hourly_date_li", '"date", line_item_id'),
     ("gam_campaigns_weekly",  "idx_gam_campaigns_weekly_ws_li",   'week_start, line_item_id'),
     ("pubmatic_deals",        "idx_pubmatic_deals_date",          '"date"'),
