@@ -140,14 +140,13 @@ def _join_age(conn, df: pd.DataFrame, table: str, key_col: str, date_col: str) -
     df["age_anchor_date"] = pd.NaT
     try:
         meta = pd.read_sql(
-            f"SELECT {key_col} AS deal, {date_col}::date AS age_anchor_date FROM {table}",
+            f"SELECT {key_col} AS deal, MIN({date_col})::date AS age_anchor_date FROM {table} GROUP BY {key_col}",
             conn,
         )
     except Exception:
         log.warning("metadata table missing", table=table)
         return df
     meta["age_anchor_date"] = pd.to_datetime(meta["age_anchor_date"], errors="coerce")
-    meta = meta.sort_values("age_anchor_date").drop_duplicates(subset=["deal"], keep="first")
     return df.drop(columns=["age_anchor_date"]).merge(meta, on="deal", how="left")
 
 

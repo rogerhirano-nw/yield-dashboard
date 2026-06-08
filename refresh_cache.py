@@ -118,12 +118,21 @@ _INDEXES = [
     ("gam_campaigns_hourly",  "idx_gam_campaigns_hourly_date_li", '"date", line_item_id'),
     ("gam_campaigns_weekly",  "idx_gam_campaigns_weekly_ws_li",   'week_start, line_item_id'),
     ("pubmatic_deals",        "idx_pubmatic_deals_date",          '"date"'),
+    ("pubmatic_deals",        "idx_pubmatic_deals_deal_meta_id",  "deal_meta_id"),
+    ("pubmatic_deals",        "idx_pubmatic_deals_deal",          "deal"),
     ("dv_attention",          "idx_dv_attention_date",            '"date"'),
     ("dv_ivt",                "idx_dv_ivt_date",                  '"date"'),
     ("betting_conversions",   "idx_betting_conversions_date",     '"date"'),
     ("opensincera_ecosystem", "idx_opensincera_ecosystem_date",   '"date"'),
     ("gam_deal_bid_daily",    "idx_gam_deal_bid_daily_date",      '"date"'),
     ("gam_pmp_deals",         "idx_gam_pmp_deals_date",           '"date"'),
+    # Join/filter columns on metadata tables and LICA/creatives
+    ("gam_lica",              "idx_gam_lica_creative_id",         "creative_id"),
+    ("gam_lica",              "idx_gam_lica_line_item_id",        "line_item_id"),
+    ("gam_creatives",         "idx_gam_creatives_creative_id",    "creative_id"),
+    ("pubmatic_deal_metadata","idx_pubmatic_deal_metadata_deal",  "deal"),
+    ("gam_pa_metadata",       "idx_gam_pa_metadata_auction_name", "auction_name"),
+    ("gam_pd_metadata",       "idx_gam_pd_metadata_deal_name",    "deal_name"),
 ]
 
 
