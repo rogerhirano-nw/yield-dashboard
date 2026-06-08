@@ -1383,12 +1383,12 @@ except Exception:
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
 
-# Cache TTL set to 1 hour — the refresh_cache cron runs daily, so 5-min
-# TTL just thrashed the DB on session-cold starts without delivering
-# fresher data. Refreshes write new rows; clearing the cache after a
-# refresh would require explicit cache-busting (not done here yet — the
-# next refresh-after-deploy + the hourly TTL together cover normal use).
-@st.cache_data(ttl=3600)
+# Cache TTL set to 6 hours — data only changes once daily (5 AM ET sweep)
+# plus intraday GAM refreshes. At 1h TTL the dashboard fetched full tables
+# 24×/day per unique cache key, driving Supabase egress past the plan limit.
+# 6h cuts that to 4×/day (~1.5 GB/month vs ~9 GB/month). The debug
+# "Clear cache + re-query" button handles on-demand refresh.
+@st.cache_data(ttl=21600)
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
@@ -1428,7 +1428,7 @@ def load(table: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=21600)
 def _load_li_max_duration() -> pd.DataFrame:
     """Pre-aggregated max creative duration per line item.
 
@@ -1474,10 +1474,10 @@ with _hdr_left:
 
 _header_right_slot = _hdr_right.empty()
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=21600)
 def _last_data_refresh_iso() -> str | None:
     """Latest _pulled_at across gam_campaigns — the canonical 'when did the
-    data last update' signal for the header timestamp. Cached 1 hour to
+    data last update' signal for the header timestamp. Cached 6 hours to
     match the rest of the cache profile (daily refresh cadence)."""
     try:
         with _engine().connect() as _conn:
