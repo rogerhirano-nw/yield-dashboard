@@ -7,6 +7,12 @@ on:
         description: "Path to taxonomy CSV in the repo (relative to root)"
         required: false
         default: "data/bombora_penguin_20260608.csv"
+      fix_display_names:
+        description: "Fix display names on already-existing values (Theme - Category - Topic Name)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
       dry_run:
         description: "Dry-run only (no writes)"
         required: false
@@ -38,6 +44,9 @@ jobs:
         run: |
           set -o pipefail
           ARGS="--csv ${{ github.event.inputs.csv_path }}"
+          if [ "${{ github.event.inputs.fix_display_names }}" = "true" ]; then
+            ARGS="$ARGS --fix-display-names"
+          fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
