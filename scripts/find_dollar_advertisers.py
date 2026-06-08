@@ -68,8 +68,8 @@ def main() -> int:
             """
             SELECT line_item_id,
                    COUNT(*)              AS row_count,
-                   MIN(report_date)      AS first_seen,
-                   MAX(report_date)      AS last_seen,
+                   MIN(report_start)     AS first_seen,
+                   MAX(report_start)     AS last_seen,
                    MAX(_pulled_at)       AS last_pulled
             FROM gam_campaigns
             WHERE split_part(line_item_name, '_', 8) = '$6'
