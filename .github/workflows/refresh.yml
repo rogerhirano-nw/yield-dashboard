@@ -4,8 +4,8 @@ name: Refresh cache
 # Six source jobs run in parallel; post-sweep runs after the three jobs whose
 # tables feed pmp_last_bid_date (magnite, gam, pubmatic).
 #
-# Wall-clock time: ~20 min (limited by gam-lica).
-# Everything except gam-lica finishes in ~3-5 min.
+# Wall-clock time: ~3-5 min. gam-lica is now incremental (video-only,
+# append-only) and completes in seconds on most days.
 on:
   workflow_dispatch:
 
@@ -54,7 +54,7 @@ jobs:
 
   gam-lica:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
