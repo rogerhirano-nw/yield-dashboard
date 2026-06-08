@@ -1,0 +1,1501 @@
+topic_id,topic_name,theme,category
+1526520,Command Companies,Company,Business Services
+1529360,Subledger Accounting,Finance,Accounting
+1529355,Capital Work in Progress,Finance,Accounting
+1529359,Right-of-Use Asset,Finance,Accounting
+1529230,Real-Time Invoice Reporting,Finance,Accounting
+1529356,Chart of Accounts,Finance,Accounting
+1529525,Regulatory Change Management,Business,Compliance & Governance
+1529203,Digital Product Passport,Business,Compliance & Governance
+1529320,Corporate Compliance,Business,Compliance & Governance
+1529154,Extended Producer Responsibility Readiness,Business,Compliance & Governance
+1529448,Risk-Based Regulation,Business,Compliance & Governance
+1529242,Investment Partnership,Finance,Trading & Investing
+1521732,Transfer Agent,Finance,Trading & Investing
+1510408,Investment Advising,Finance,Trading & Investing
+1506349,Investment Management,Finance,Trading & Investing
+1529236,T+1 Settlement,Finance,Trading & Investing
+1529278,Synergy Saving,Business,Operations
+1529227,Information Silo,Business,Operations
+1529468,Independent Agency,Business,Operations
+1529226,Risk Mitigation,Business,Operations
+1529340,Onshoring,Business,Operations
+1528971,Knitting Pattern Publishing,Business,Operations
+1529184,Local Sourcing,Business,Operations
+1528989,Soccer Club Operations,Business,Operations
+1529465,Agency Partner,Business,Operations
+1529328,Submission Triage,Business,Operations
+1528942,Recall Management,Business,Operations
+1529529,Approval Workflow,Business,Operations
+1529198,Postal Optimization,Business,Operations
+1510298,Privacy Impact Assessment (PIA),Business,Other
+1508686,Real Estate Software,Business,Other
+1529351,Innovation Speaker,Business,"Budgeting, Planning & Strategy"
+1529393,Institutional Effectiveness,Business,"Budgeting, Planning & Strategy"
+1529239,Global Transfer Agency,Finance,Transactions & Payments
+1529229,Peppol,Finance,Transactions & Payments
+1529374,Mobile Device Battery,Consumer Technology,Mobile
+1529435,Social Media Addiction,Consumer Technology,Social
+1528960,Horse Fencing,Energy/Construction/Manufacturing,Construction
+1529219,Wall Printing,Energy/Construction/Manufacturing,Construction
+1529454,Flood Mitigation System,Energy/Construction/Manufacturing,Construction
+1529306,Wildfires,Energy/Construction/Manufacturing,Construction
+1529362,Subsea Technology,Energy/Construction/Manufacturing,Energy
+1529375,Solar Battery Storage,Energy/Construction/Manufacturing,Energy
+1529323,Electrical Commissioning,Energy/Construction/Manufacturing,Energy
+1529370,Electric Vehicle Battery Recycling,Energy/Construction/Manufacturing,Energy
+1529372,Marine Battery,Energy/Construction/Manufacturing,Energy
+1529365,Battery Maintenance Services,Energy/Construction/Manufacturing,Energy
+1529368,Deep Cycle Battery,Energy/Construction/Manufacturing,Energy
+1529369,Enhanced Flooded Battery,Energy/Construction/Manufacturing,Energy
+1529322,Electrical Maintenance Program,Energy/Construction/Manufacturing,Energy
+1529363,Agricultural Equipment Battery,Energy/Construction/Manufacturing,Energy
+1529367,Commercial Battery,Energy/Construction/Manufacturing,Energy
+1529364,Automotive Battery,Energy/Construction/Manufacturing,Energy
+1529334,Lamination,Energy/Construction/Manufacturing,Manufacturing
+1529331,Glass Printing,Energy/Construction/Manufacturing,Manufacturing
+1529163,Folding Carton Printing,Energy/Construction/Manufacturing,Manufacturing
+1529172,High-Mix Low-Volume Manufacturing,Energy/Construction/Manufacturing,Manufacturing
+1529182,Late-Stage Customization,Energy/Construction/Manufacturing,Manufacturing
+1529209,Short-Run Packaging,Energy/Construction/Manufacturing,Manufacturing
+1529336,Book Binding,Energy/Construction/Manufacturing,Manufacturing
+1529213,Substrate Selection,Energy/Construction/Manufacturing,Manufacturing
+1529217,UV LED Curing,Energy/Construction/Manufacturing,Manufacturing
+1529279,Cleanroom,Energy/Construction/Manufacturing,Manufacturing
+1529194,Pad Printing,Energy/Construction/Manufacturing,Manufacturing
+1529150,Decorative Printing,Energy/Construction/Manufacturing,Manufacturing
+1529151,Dimensional Signage,Energy/Construction/Manufacturing,Manufacturing
+1529339,Fabric Printing,Energy/Construction/Manufacturing,Manufacturing
+1529192,Old Corrugated Containers,Energy/Construction/Manufacturing,Manufacturing
+1528987,Die-Cutting,Energy/Construction/Manufacturing,Manufacturing
+1529178,Ink Selection,Energy/Construction/Manufacturing,Manufacturing
+1529377,Cleanroom Technology,Energy/Construction/Manufacturing,Manufacturing
+1529382,Brake Motor,Energy/Construction/Manufacturing,Manufacturing
+1529161,Foil Lamination,Energy/Construction/Manufacturing,Manufacturing
+1529539,Carton Converting,Energy/Construction/Manufacturing,Manufacturing
+1529222,Wire-O Binding,Energy/Construction/Manufacturing,Manufacturing
+1529540,Case Binding,Energy/Construction/Manufacturing,Manufacturing
+1529157,Print Finishing,Energy/Construction/Manufacturing,Manufacturing
+1529378,Cleanroom Maintenance,Energy/Construction/Manufacturing,Manufacturing
+1529166,Game Manufacturing,Energy/Construction/Manufacturing,Manufacturing
+1529175,In-Mold Technology,Energy/Construction/Manufacturing,Manufacturing
+1529211,Packaging Coatings,Energy/Construction/Manufacturing,Manufacturing
+1529162,Presentation Folder Printing,Energy/Construction/Manufacturing,Manufacturing
+1529159,Flexible Packaging,Energy/Construction/Manufacturing,Manufacturing
+1529158,Finishing Automation,Energy/Construction/Manufacturing,Manufacturing
+1529535,Book Printing,Energy/Construction/Manufacturing,Manufacturing
+1529169,Graphene,Energy/Construction/Manufacturing,Manufacturing
+1529490,Military Aircraft,Energy/Construction/Manufacturing,Manufacturing
+1529220,Wallpaper Printing,Energy/Construction/Manufacturing,Manufacturing
+1528943,Product Traceability,Energy/Construction/Manufacturing,Supply Chain
+1529148,Protective Packaging,Energy/Construction/Manufacturing,Supply Chain
+1529188,Materials Recovery,Energy/Construction/Manufacturing,Supply Chain
+1529488,Logistics And Sustainment,Energy/Construction/Manufacturing,Supply Chain
+1529528,Anti-Counterfeit Packaging,Energy/Construction/Manufacturing,Supply Chain
+1526245,Huntington Ingalls Industries,Company,Aerospace
+1528997,GE Aerospace,Company,Aerospace
+1523954,Bizum,Company,Financial
+1526324,Strategic Value Partners,Company,Financial
+1526067,Beacon Bank & Trust,Company,Financial
+1526268,Bregal Sagemount,Company,Financial
+1526269,BV Investment Partners,Company,Financial
+1526330,Trive Capital,Company,Financial
+1526337,WestCap,Company,Financial
+1526316,Rhone Group,Company,Financial
+1525536,ECGI Holdings,Company,Financial
+1526303,Oak Hill Capital,Company,Financial
+1526326,TJC L.P.,Company,Financial
+1527096,Lunate,Company,Financial
+1529024,Harvest Partners,Company,Financial
+1526103,ClearBank,Company,Financial
+1526331,TSG Consumer Partners,Company,Financial
+1529116,"Cencora, Inc.",Company,Financial
+1526323,Stone Point Capital,Company,Financial
+1525339,Tecum Capital Partners,Company,Financial
+1526270,Centerbridge Partners,Company,Financial
+1526272,Clearlake Capital Group,Company,Financial
+1524294,Exactera LLC,Company,Financial
+1525089,Bit Capital,Company,Financial
+1526267,Berkshire Partners,Company,Financial
+1529100,SIG Group,Company,Financial
+1526258,Ara Partners,Company,Financial
+1526266,BDT & MSD Partners,Company,Financial
+1527192,C2FO,Company,Financial
+1526308,Patient Square Capital,Company,Financial
+1529027,Wynnchurch Capital,Company,Financial
+1526294,Lexington Partners,Company,Financial
+1527167,Berkshire Bank,Company,Financial
+1527172,Valley Bank,Company,Financial
+1526295,"Liberty Strategic Capital, L.P.",Company,Financial
+1527168,Dynasty Financial Partners,Company,Financial
+1526253,Adams Street Partners,Company,Financial
+1526333,Valor Equity Partners,Company,Financial
+1525345,Incline Equity Partners,Company,Financial
+1526313,Quantum Capital Group,Company,Financial
+1525341,Renovus Capital Partners,Company,Financial
+1526292,L Catterton,Company,Financial
+1526300,Motive Partners,Company,Financial
+1526314,RedBird Capital Partners,Company,Financial
+1526318,Roark Capital Group,Company,Financial
+1524583,Alliantgroup,Company,Financial
+1526254,AEA Investors,Company,Financial
+1526317,Ridgemont Equity Partners,Company,Financial
+1526329,Trilantic North America,Company,Financial
+1527070,Edelman Financial Engines,Company,Financial
+1526306,One Rock Capital Partners,Company,Financial
+1526296,Lightyear Capital,Company,Financial
+1526302,Nautic Partners,Company,Financial
+1526346,UOB,Company,Financial
+1526263,Atlas Holdings LLC.,Company,Financial
+1519497,"Escalon Services, Inc.",Company,Financial
+1526252,Accel-KKR,Company,Financial
+1526277,Frazier Healthcare Partners,Company,Financial
+1526299,Lone Star Funds,Company,Financial
+1525351,Revelar Capital,Company,Financial
+1526143,Swan,Company,Financial
+1526338,Wind Point Partners,Company,Financial
+1527230,National Credit Union Administration,Company,Financial
+1520746,BLIK,Company,Financial
+1526315,Reverence Capital Partners,Company,Financial
+1527075,Octus,Company,Financial
+1526262,Arsenal Capital Partners,Company,Financial
+1526291,KPS Capital Partners,Company,Financial
+1526265,BDT Capital Partners,Company,Financial
+1524096,Fora Financial,Company,Financial
+1525319,SR One Capital Management,Company,Financial
+1526259,Arcline Investment Management,Company,Financial
+1526274,Court Square Capital Partners,Company,Financial
+1529025,SK Capital Partners,Company,Financial
+1529026,The Sterling Group,Company,Financial
+1526388,Bridgepoint Group,Company,Financial
+1529543,Payouts.com,Company,Financial
+1524872,Alter Domus,Company,Financial
+1526280,Gridiron Capital LLC,Company,Financial
+1526283,HPS Investment Partners,Company,Financial
+1526298,Lindsay Goldberg LLC,Company,Financial
+1525593,Novak Biddle Venture Partners,Company,Financial
+1526278,"Grain Management, LLC",Company,Financial
+1529591,First Bank,Company,Financial
+1526320,Sixth Street Partners,Company,Financial
+1529022,Affinity Partners,Company,Financial
+1524889,Segal Marco Advisors,Company,Financial
+1526286,Integrum,Company,Financial
+1526305,Olympus Partners,Company,Financial
+1526319,Sentinel Capital Partners,Company,Financial
+1524585,McGuire Sponsel,Company,Financial
+1526261,Arlington Capital Partners,Company,Financial
+1526275,"DigitalBridge Group, Inc.",Company,Financial
+1526336,"Welsh, Carson, Anderson & Stowe",Company,Financial
+1526271,Charlesbank Capital Partners,Company,Financial
+1526290,Kinderhook Industries,Company,Financial
+1525082,Oceansound Partners,Company,Financial
+1526273,Coatue Management,Company,Financial
+1526276,EnCap Investments,Company,Financial
+1526281,Gryphon Investors,Company,Financial
+1526293,Leonard Green & Partners,Company,Financial
+1526307,Parthenon Capital Partners,Company,Financial
+1526334,The Vistria Group,Company,Financial
+1525436,Rocket Close,Company,Financial
+1526309,Peak Rock Capital,Company,Financial
+1526250,3G Capital,Company,Financial
+1526371,Strategic Investment Group,Company,Financial
+1526260,Arctos Partners,Company,Financial
+1526289,Kelso & Company,Company,Financial
+1524880,Gen II Fund Services,Company,Financial
+1526256,Altaris Capital Partners,Company,Financial
+1526257,American Industrial Partners,Company,Financial
+1524009,Multibanco,Company,Financial
+1526304,Odyssey Investment Partners LLC.,Company,Financial
+1527542,Monzo,Company,Financial
+1526362,K Health Inc.,Company,Health
+1524218,Mantra Health,Company,Health
+1525358,"Landauer, Inc.",Company,Health
+1527073,HIMSS,Company,Health
+1525441,"Audicus, Inc.",Company,Health
+1529597,European Society Of Radiology,Company,Health
+1520549,Andor Health,Company,Health
+1525155,HealthBegins,Company,Health
+1527051,Cegedim,Company,Health
+1524922,Azurity Pharmaceuticals,Company,Health
+1529598,GenesisCare,Company,Health
+1520439,LIVunLtd,Company,Health
+1520348,"Cognivue, Inc.",Company,Health
+1524040,1upHealth,Company,Health
+1524973,B.Well Connected Health,Company,Health
+1527181,Radiopharm Theranostics,Company,Health
+1528936,National Committee for Quality Assurance (NCQA),Company,Health
+1525731,Radiometer,Company,Health
+1524987,Los Alamitos Medical Center,Company,Health
+1529589,Psyche Systems,Company,Health
+1524954,East Ohio Regional Hospital,Company,Health
+1525139,FlavCity,Company,Health
+1527214,SensEye,Company,Health
+1524709,"Evidently, Inc.",Company,Health
+1525440,MDHearingAid,Company,Health
+1524041,Moxe Health,Company,Health
+1524530,Synaptive Medical,Company,Health
+1529590,XiFin,Company,Health
+1524265,Barti,Company,Health
+1525442,Elehear Inc.,Company,Health
+1524531,Time Medical,Company,Health
+1525439,Audien Hearing,Company,Health
+1529117,IDEXX Laboratories,Company,Health
+1525027,Portsmouth Regional Hospital,Company,Health
+1526367,Truveta,Company,Health
+1520547,Eagle Telemedicine,Company,Health
+1527180,Merative,Company,Health
+1524912,Alaska Regional Hospital,Company,Health
+1527076,Majesco,Company,Insurance
+1524907,Nationwide Pet,Company,Insurance
+1521800,Pilot Catastrophe Services,Company,Insurance
+1527226,Gainsco,Company,Insurance
+1526115,Hotwire Global,Company,Media & Advertising
+1526420,AlphaGraphics,Company,Media & Advertising
+1516867,The Taboo Group,Company,Media & Advertising
+1525096,Superside,Company,Media & Advertising
+1525006,New Atlas,Company,Media & Advertising
+1519856,Level Agency,Company,Media & Advertising
+1519864,Splash!,Company,Media & Advertising
+1526121,Ketchum Inc.,Company,Media & Advertising
+1526145,TBWA Worldwide,Company,Media & Advertising
+1529002,Saatchi & Saatchi,Company,Media & Advertising
+1525091,Disney Campaign Manager,Company,Media & Advertising
+1526554,Digital Engineering 24/7,Company,Media & Advertising
+1524044,Propensity,Company,Media & Advertising
+1526111,Golin,Company,Media & Advertising
+1526139,Razorfish,Company,Media & Advertising
+1526105,Critical Mass,Company,Media & Advertising
+1520604,Allison Worldwide,Company,Media & Advertising
+1526109,FleishmanHillard,Company,Media & Advertising
+1526127,Mediabrands,Company,Media & Advertising
+1526132,Ogilvy,Company,Media & Advertising
+1526598,Engineering Com,Company,Media & Advertising
+1526929,Signarama,Company,Media & Advertising
+1525390,EverConnect,Company,Media & Advertising
+1517656,The Interline,Company,Media & Advertising
+1524095,Dotdash Meredith,Company,Media & Advertising
+1526124,Leo Burnett,Company,Media & Advertising
+1526135,Porter Novelli,Company,Media & Advertising
+1528738,PropertyCasualty360,Company,Media & Advertising
+1524069,Best Version Media,Company,Media & Advertising
+1526993,TC Transcontinental,Company,Media & Advertising
+1526113,Grey Global Group,Company,Media & Advertising
+1526133,Omnicom Media Group,Company,Media & Advertising
+1526116,IAC Inc.,Company,Media & Advertising
+1516892,Container Solutions B.V.,Company,Media & Advertising
+1526869,PostcardMania,Company,Media & Advertising
+1528735,Washington Post,Company,Media & Advertising
+1526114,Hill & Knowlton,Company,Media & Advertising
+1524080,Firecrown,Company,Media & Advertising
+1526982,The TCT Group,Company,Media & Advertising
+1514027,Revlocal LLC,Company,Media & Advertising
+1519452,MiQ Digital Limited,Company,Media & Advertising
+1526641,Forum Communications Company,Company,Media & Advertising
+1526950,SpeedPro,Company,Media & Advertising
+1529005,Starcom,Company,Media & Advertising
+1526566,Drummond,Company,Media & Advertising
+1526102,Burson,Company,Media & Advertising
+1526119,Initiative,Company,Media & Advertising
+1529073,The Imagine Group,Company,Media & Advertising
+1526151,160over90,Company,Media & Advertising
+1526779,Marketing.com,Company,Media & Advertising
+1526894,"Quad/Graphics, Inc.",Company,Media & Advertising
+1519386,WSI World,Company,Media & Advertising
+1522098,JC Toland Painting,Company,Other
+1526590,Ellen MacArthur Foundation,Company,Other
+1525595,Beltone,Company,Other
+1508716,AskNicely,Company,Other
+1525468,2nd Call,Company,Other
+1527544,DealHub,Company,Other
+1520771,Newland Chase,Company,Other
+1506866,Talentia Software,Company,Other
+1529118,Catapult,Company,Other
+1521096,Quantis,Company,Other
+1529069,Horizon Inc.,Company,Other
+1529088,Olympus Group,Company,Other
+1529547,Sunbelt Rentals,Company,Other
+1529020,Lineage,Company,Other
+1521086,Carbon Solutions Group,Company,Other
+1526231,Adani,Company,Other
+1519962,Getaroom.com,Company,Other
+1517666,Canusa Corporation,Company,Other
+1525148,The Good Law Project,Company,Other
+1529546,Herc Rentals,Company,Other
+1510858,LiveSource,Company,Other
+1515659,Joseph C. Sansone Co.,Company,Other
+1529050,CMD Corporation,Company,Other
+1521001,Mecklenburg Paint Company,Company,Other
+1529545,EquipmentShare,Company,Other
+1520110,"911 Restoration, Inc.",Company,Other
+1525578,Contractor Connection,Company,Other
+1526083,Sensitech,Company,Other
+1527203,"Heroku, Inc.",Company,Technology
+1528994,Canon Inc.,Company,Technology
+1517697,initions,Company,Technology
+1527564,John Galt,Company,Technology
+1527072,FusionAuth,Company,Technology
+1517753,"INTENTSIFY, LLC",Company,Technology
+1526219,Gravitee,Company,Technology
+1526220,Kong Inc.,Company,Technology
+1527130,Cherre,Company,Technology
+1528795,PostgreSQL,Company,Technology
+1528804,Argyll CMS,Company,Technology
+1526610,EU.COM,Company,Technology
+1529570,UDP,Company,Technology
+1526123,Kingston Technology Company,Company,Technology
+1526125,LoRa Alliance,Company,Technology
+1526635,FLUX Inc.,Company,Technology
+1516755,GleSYS,Company,Technology
+1522836,Anblicks,Company,Technology
+1526845,OnPrintShop,Company,Technology
+1527049,BigPanda,Company,Technology
+1526085,VNTG Inc.,Company,Technology
+1526183,ReadyMode,Company,Technology
+1526687,"Horiba, Ltd.",Company,Technology
+1526189,MACOM Technology Solutions Inc.,Company,Technology
+1527218,"TigerGraph, Inc.",Company,Technology
+1526130,Naspers Limited,Company,Technology
+1526173,CallTrackingMetrics,Company,Technology
+1527164,Starlims Corporation,Company,Technology
+1524082,Unifyr,Company,Technology
+1525193,Via Transportation,Company,Technology
+1525614,S3NS,Company,Technology
+1527555,Serviceaide,Company,Technology
+1526188,Fibocom,Company,Technology
+1526235,Aurora Solar Inc.,Company,Technology
+1526847,Optimus,Company,Technology
+1527186,Amber Road,Company,Technology
+1529124,1C Company,Company,Technology
+1522328,KCOM Group Limited,Company,Technology
+1527057,"RevenueCat, Inc.",Company,Technology
+1527197,Exostar,Company,Technology
+1529059,EngView Systems,Company,Technology
+1529079,The Khronos Group,Company,Technology
+1518474,Go4hosting,Company,Technology
+1521020,AI Workspace,Company,Technology
+1523441,Hi Platform,Company,Technology
+1527052,Device42,Company,Technology
+1529018,Node4 Limited,Company,Technology
+1522289,reev GmbH,Company,Technology
+1526322,STG Partners,Company,Technology
+1526647,"FormFactor, Inc.",Company,Technology
+1527136,REBA,Company,Technology
+1527556,Eptura,Company,Technology
+1518288,VerifyPass,Company,Technology
+1527055,InvGate,Company,Technology
+1529635,Forsta,Company,Technology
+1521888,AppSoc,Company,Technology
+1526137,Prosus,Company,Technology
+1526212,Akita,Company,Technology
+1526350,Cumulocity Gmbh,Company,Technology
+1525570,NextSilicon,Company,Technology
+1526765,LMI Technologies,Company,Technology
+1526832,Newport,Company,Technology
+1529569,Reonomy,Company,Technology
+1514035,Dispel,Company,Technology
+1519463,Neighbourly,Company,Technology
+1527067,Wizeline,Company,Technology
+1526200,FieldRoutes,Company,Technology
+1526218,Xperience Group,Company,Technology
+1527217,Syniti,Company,Technology
+1529112,Wacom,Company,Technology
+1529636,QuestionPro,Company,Technology
+1524029,Lighthouse 360,Company,Technology
+1526387,UserWay,Company,Technology
+1524305,"KODE Labs, Inc.",Company,Technology
+1526619,"Fiery, LLC",Company,Technology
+1528690,Alida,Company,Technology
+1526038,Labcenter Electronics,Company,Technology
+1526239,Wellspring,Company,Technology
+1526942,SpectraCal,Company,Technology
+1527059,Scalr,Company,Technology
+1522454,Dumpster Rental Systems,Company,Technology
+1526581,Ecma International,Company,Technology
+1527084,EQS Group,Company,Technology
+1526238,Sopheon,Company,Technology
+1527198,Fairmarkit Inc.,Company,Technology
+1525223,TP-Link USA,Company,Technology
+1526885,PrintVis,Company,Technology
+1527024,Vpress Limited.,Company,Technology
+1528707,AI Center of Excellence,Company,Technology
+1529012,"MaxLinear, Inc.",Company,Technology
+1516374,New Tech Solutions,Company,Technology
+1523670,Thread Security,Company,Technology
+1526191,Morse Micro,Company,Technology
+1525244,Otterly,Company,Technology
+1525414,Property Meld,Company,Technology
+1525421,ServiceMonster,Company,Technology
+1527188,Apptricity Corporation,Company,Technology
+1527200,GetFeedback,Company,Technology
+1529074,Imec,Company,Technology
+1529637,Alchemer,Company,Technology
+1517183,Qsic,Company,Technology
+1528992,Bluetooth Special Interest Group,Company,Technology
+1528941,Acoustic,Company,Technology
+1517362,Together Software Incorporated,Company,Technology
+1518668,BCN Group Ltd,Company,Technology
+1526734,JAI,Company,Technology
+1527015,Viso Systems,Company,Technology
+1527185,AlertEnterprise,Company,Technology
+1527221,Userlane GmbH,Company,Technology
+1527562,FarEye,Company,Technology
+1528894,Tungsten Automation,Company,Technology
+1525246,"Scrunch AI (EXCELSA LABS, INC.)",Company,Technology
+1526194,Power Integrations,Company,Technology
+1528940,Minerva,Company,Technology
+1529587,LabVantage Solutions,Company,Technology
+1526165,Adaptavist,Company,Technology
+1526177,Kixie,Company,Technology
+1527563,Generix Group,Company,Technology
+1523510,TechFinitive,Company,Technology
+1525616,Schwarz Digits,Company,Technology
+1526197,Espressif Systems,Company,Technology
+1526237,Cora Systems,Company,Technology
+1526797,Micro-Epsilon,Company,Technology
+1527034,Weidm√ºller,Company,Technology
+1527553,EZO,Company,Technology
+1527568,Khronos Group,Company,Technology
+1529549,IRIS Software Group,Company,Technology
+1524508,Cortavo,Company,Technology
+1526150,Connectivity Standards Alliance,Company,Technology
+1527182,"Visage Imaging, Inc.",Company,Technology
+1524980,Kaiser Lachance Communications Inc.,Company,Technology
+1525613,Minsait,Company,Technology
+1526543,Datacolor,Company,Technology
+1526545,DCC Group,Company,Technology
+1526798,MikroElektronika,Company,Technology
+1527566,Jaspersoft,Company,Technology
+1526034,Logic Design Inc,Company,Technology
+1526596,Enfocus,Company,Technology
+1526664,GoEngineer LLC,Company,Technology
+1523048,S-Docs,Company,Technology
+1526131,NFC Forum,Company,Technology
+1526190,Monolithic Power Systems,Company,Technology
+1528725,Crucial,Company,Technology
+1526181,PhoneBurner,Company,Technology
+1526184,Scorebuddy,Company,Technology
+1526211,Advantage,Company,Technology
+1526244,"PlanetScale, Inc.",Company,Technology
+1526838,NPower Technologies,Company,Technology
+1527071,Expero,Company,Technology
+1527157,LigoLab,Company,Technology
+1528836,Cloud Foundry,Company,Technology
+1524102,Encompaas,Company,Technology
+1524730,Outerbounds,Company,Technology
+1529007,Wi-Fi Alliance,Company,Technology
+1525847,Serviceware,Company,Technology
+1527054,Gremlin Inc.,Company,Technology
+1527174,1010Data,Company,Technology
+1527187,Appcues,Company,Technology
+1529550,OneAdvanced,Company,Technology
+1529000,MessageBird,Company,Telecommunications
+1525055,TelcoDR,Company,Telecommunications
+1529029,Avant Communications,Company,Telecommunications
+1526187,Eseye,Company,Telecommunications
+1529011,1NCE,Company,Telecommunications
+1526193,Peplink,Company,Telecommunications
+1529477,Government Digital Identity,Government,Agency/Dept
+1529495,NATO Defense Cooperation,Government,Agency/Dept
+1529494,Multi-Domain Operations,Government,Agency/Dept
+1529486,Hypersonic Weapon,Government,Agency/Dept
+1529489,Defense Contractor,Government,Agency/Dept
+1529312,National Defense and Security,Government,Agency/Dept
+1529463,Sovereign Infrastructure,Government,Agency/Dept
+1529444,National Space Policy,Government,Agency/Dept
+1529321,Defense Budget & Appropriations,Government,Agency/Dept
+1529484,Defense Industrial Base,Government,Agency/Dept
+1529234,Government Relations,Government,Agency/Dept
+1529447,Regulatory Reform,Government,Agency/Dept
+1529445,Permitting Reform,Government,Agency/Dept
+1529310,Breast Imaging & Screening Operations,Healthcare,Administration
+1529471,Medical Legal Regulatory Review,Healthcare,Government Regulations
+1529467,FDA Approval,Healthcare,Government Regulations
+1529472,Payer Strategy,Healthcare,Health Insurance
+1529258,Small Business Health Insurance,Healthcare,Health Insurance
+1528950,Electronic Clinical Data Systems,Healthcare,Health Tech
+1529383,Clinical Trial Technology,Healthcare,Health Tech
+1529373,Medical Batteries,Healthcare,Health Tech
+1528935,Digital HEDIS,Healthcare,Health Tech
+1529384,Electronic Clinical Outcome Assessment,Healthcare,Health Tech
+1529437,Medical Device Usability,Healthcare,Health Tech
+1529385,Interactive Response Technology,Healthcare,Medical Research
+1529350,Plasma Proteins,Healthcare,Medical Research
+1529386,Randomization And Trial Supply Management,Healthcare,Medical Research
+1529252,Mental Health Services,Healthcare,Medical Specialty
+1529318,Battlefield Medicine,Healthcare,Medical Specialty
+1528951,Patient Segmentation,Healthcare,Patient Management
+1529241,Healthcare Risk Stratification,Healthcare,Patient Management
+1529224,HR Service Delivery,Human Resources,Employee Services
+1529455,Personnel Tracking,Human Resources,HR Tech
+1529480,Joiner Mover Leaver Automation,Human Resources,HR Tech
+1529259,HRIS Integration,Human Resources,HR Tech
+1529452,Worker Classification,Human Resources,Legal & Regulatory
+1529246,Workplace Retaliation,Human Resources,Legal & Regulatory
+1528723,Worker Adjustment and Retraining Notification Act,Human Resources,Legal & Regulatory
+1528952,Pay Transparency,Human Resources,Payroll & Comp
+1529247,Pay Equity Audit,Human Resources,Payroll & Comp
+1529391,Campus Climate,Human Resources,Policy & Culture
+1529499,People And Culture,Human Resources,Policy & Culture
+1528988,Resume Writing Service,Human Resources,"Recruitment, Hiring & Onboarding"
+1528977,Interview Preparation,Human Resources,"Recruitment, Hiring & Onboarding"
+1529248,Recruitment Training,Human Resources,"Recruitment, Hiring & Onboarding"
+1529478,Hire To Retire Process,Human Resources,Staff Administration
+1529352,Motivational Speaker,Human Resources,Training & Development
+1529255,Teacher Professional Development,Human Resources,Training & Development
+1529284,Full Service Advertising,Marketing,Agencies
+1529256,Marketing Consulting,Marketing,Agencies
+1529534,Banner Printing,Marketing,Branding
+1528963,Celebrity Endorsement,Marketing,Branding
+1529396,Brand Activation,Marketing,Branding
+1529216,Unboxing Experience,Marketing,Branding
+1529185,Magnet Printing,Marketing,Branding
+1529533,Bag Printing,Marketing,Branding
+1529276,Multi-Media Campaign,Marketing,Campaigns
+1529275,360 Campaign,Marketing,Campaigns
+1529195,Personalized Mail,Marketing,Channels & Types
+1529218,Variable Data Printing,Marketing,Channels & Types
+1529261,Event Marketing,Marketing,Channels & Types
+1529199,Postcard Printing,Marketing,Channels & Types
+1529153,Door Hanger Printing,Marketing,Channels & Types
+1529502,Content Discoverability,Marketing,Content
+1529530,Creative Asset Adaptation,Marketing,Content
+1529536,Booklet Printing,Marketing,Content
+1529250,Lead Intelligence,Marketing,Demand Generation
+1529397,Enrollment Marketing,Marketing,Demand Generation
+1529399,Online Student Recruitment,Marketing,Demand Generation
+1529189,Menu Printing,Marketing,Other
+1529191,Custom Office Accessories,Business,Sales
+1529632,Business Listings Management,Marketing,Search Marketing
+1529282,Education Marketing,Marketing,Strategy & Analysis
+1529633,Pulse Survey,Marketing,Strategy & Analysis
+1529469,Media Strategy,Marketing,Strategy & Analysis
+1529630,Multi-Location Marketing,Marketing,Strategy & Analysis
+1529358,Preconfigured Analytics,Technology,Analytics & Reporting
+1529417,Generative AI API,Technology,APIs & Services
+1529286,AI API Services,Technology,APIs & Services
+1529325,Underwriting Software,Technology,Business Solutions
+1529271,Webinar Software,Technology,Business Solutions
+1529179,Intelligent Mail Barcode,Technology,Business Solutions
+1529343,Hospitality Distribution Software,Technology,Business Solutions
+1529345,Webinar Platform,Technology,Business Solutions
+1529329,Proofing Workflow,Technology,Business Solutions
+1529504,Microsoft Partner,Technology,Business Solutions
+1529401,Slate Optimization,Technology,Business Solutions
+1529460,Platform Modernization,Technology,Cloud
+1529503,Managed Cloud,Technology,Cloud
+1529506,Reserved Instance,Technology,Cloud
+1529294,Bring Your Own License (BYOL),Technology,Cloud
+1529507,Cloud Rightsizing,Technology,Cloud
+1529462,Replatforming,Technology,Cloud
+1529295,BYOL Cloud,Technology,Cloud
+1529304,Unified View,Technology,Data Management
+1529424,Open Table Format,Technology,Data Management
+1529431,Zero Downtime Migration,Technology,Data Management
+1529428,Session Caching,Technology,Data Management
+1529410,Database Replatforming,Technology,Database
+1529414,Eventual Consistency,Technology,Database
+1529409,Database Patching,Technology,Database
+1529300,Database Modernization,Technology,Database
+1529427,Property Graph,Technology,Database
+1505520,Multi-Model Database,Technology,Database
+1529408,Database Licensing,Technology,Database
+1529407,Database Cost Optimization,Technology,Database
+1529302,Maximum Availability Architecture,Technology,Database
+1529293,Autonomous Database,Technology,Database
+1529298,Database Performance,Technology,Database
+1529403,Active-Active Replication,Technology,Database
+1529223,High Performance Database,Technology,Database
+1529426,Pluggable Database,Technology,Database
+1529411,Document Database,Technology,Database
+1529406,Container Database,Technology,Database
+1529514,PDF Tagging,Technology,Document Management
+1529511,Document Accessibility,Technology,Document Management
+1529366,Battery Diagnostics,Technology,Emerging Tech
+1529164,Food Printing,Technology,Emerging Tech
+1529190,Nanomaterials,Technology,Emerging Tech
+1529210,Smart Packaging,Technology,Emerging Tech
+1529493,Military Training Simulation,Technology,Emerging Tech
+1528953,Weather Forecast,Technology,Emerging Tech
+1528970,Casual Games,Technology,Gaming
+1528986,Video Game Journalism,Technology,Gaming
+1528969,Video Game Modding,Technology,Gaming
+1529487,Land Combat Systems,Technology,Hardware
+1529314,Asset Tracking,Technology,IT Management
+1506159,Automatic Failover,Technology,IT Management
+1529301,Managed Services,Technology,IT Management
+1529415,Fleet Patching,Technology,IT Management
+1529453,Equipment Tracking,Technology,IT Management
+1529344,Rich Business Messaging,Technology,Messaging
+1529456,Temperature Monitoring,Technology,Monitoring
+1529225,Mean Time To Acknowledge,Technology,Monitoring
+1529319,Battlefield Networking,Technology,Networking
+1529418,Global Traffic Management,Technology,Networking
+1529425,Partition Tolerance,Technology,Networking
+1529143,Color Matching,Technology,Other
+1529412,Double Extortion Ransomware,Technology,Security
+1529479,Identity Lifecycle Management,Technology,Security
+1529481,Non-Human Identity Management,Technology,Security
+1529315,Identity Compliance Management,Technology,Security
+1510153,Infrastructure Hosting,Technology,Servers
+1528711,Raft Consensus Algorithm,Technology,Software Engineering
+1529197,Physically Based Rendering,Technology,Software Engineering
+1529459,Platform Engineering,Technology,Software Engineering
+1529405,Consensus Protocol,Technology,Software Engineering
+1529168,GL Transmission Format,Technology,Software Engineering
+1529508,Fail-Safe,Technology,Software Engineering
+1529416,Full-Stack Development,Technology,Software Engineering
+1529492,Military Satellite,Technology,Telecommunications
+1529482,C4ISR Systems,Technology,Telecommunications
+1529491,Tactical Radio,Technology,Telecommunications
+1529457,Webinar Hosting,Technology,Web
+1528714,LoRaWAN Indoor Gateway,Technology,Wireless
+1528715,Outdoor LoRaWAN Gateway,Technology,Wireless
+1529237,Fund Administration,Finance,Professional Services
+1529181,Lanyard Printing,Energy/Construction/Manufacturing,Personal Protective Equipment (PPE)
+1528945,Printing Regulatory Compliance,Energy/Construction/Manufacturing,Standards & Regulatory
+1529207,Packaging Compliance,Energy/Construction/Manufacturing,Standards & Regulatory
+1526092,Safety Data Sheet (SDS),Energy/Construction/Manufacturing,Standards & Regulatory
+1529509,IEEE 519 Standard For Harmonic Control In Electric Power Systems,Energy/Construction/Manufacturing,Standards & Regulatory
+1529206,Recycling Labeling Clarity,Energy/Construction/Manufacturing,Standards & Regulatory
+1529510,Safety Validation,Energy/Construction/Manufacturing,Standards & Regulatory
+1529361,Slip Ring,Energy/Construction/Manufacturing,Tools & Electronics
+1509488,Financial Modeling,Finance,Business Finance
+1529244,Private Debt Administration,Finance,Business Finance
+1529283,Financial Aid Modeling,Finance,Business Finance
+1529519,Indicative Pricing,Finance,Business Finance
+1529243,Private Credit Secondaries,Finance,Corporate Finance
+1529240,Real Assets Fund Administration,Finance,Corporate Finance
+1529238,General Partner,Finance,Corporate Finance
+1529440,Financial Policy,Finance,Corporate Finance
+1529245,Uncleared Margin Rules,Finance,Controls & Standards
+1529228,Continuous Transaction Controls,Finance,Controls & Standards
+1529527,Fiduciary Governance,Finance,Controls & Standards
+1528949,E-Invoicing Mandate,Finance,Controls & Standards
+1509522,Loan Application Automation,Finance,Finance IT
+1529277,Financial Simulation,Finance,Finance IT
+1529515,Underwriting Automation,Finance,Finance IT
+1529523,Insurance Rating Engine,Finance,Finance IT
+1529280,Financial Aid,Finance,Personal Finance
+1529470,Medical Communications,Healthcare,Medical Education
+1529379,Image-Guided Therapy,Healthcare,Medical Treatment
+1529380,Thrombectomy,Healthcare,Medical Treatment
+1529232,Specialty Pharmacy,Healthcare,Medical Treatment
+1529305,Disease-modifying Drugs,Healthcare,Medical Treatment
+1529221,Web-to-Print,Technology,eCommerce
+1529251,Corporate Events,Events & Conferences,Events & Conferences
+1529353,Keynote Speaker,Events & Conferences,Events & Conferences
+1521276,ISN Software Corporation,Company,Business Services
+1526140,Rocket Internet SE,Company,Business Services
+1521337,Net2Source Inc.,Company,Business Services
+1522144,Trilliad,Company,Business Services
+1525451,Payit,Company,Business Services
+1525387,Contractor Appointments,Company,Business Services
+1526855,PCI Group,Company,Business Services
+1526441,University Of Denver,Company,Business Services
+1526542,Data Communications Management Corp.,Company,Business Services
+1526882,PrintingCenterUSA,Company,Business Services
+1515148,Analysis Group,Company,Business Services
+1527082,Case IQ,Company,Business Services
+1521447,NeoSystems LLC,Company,Business Services
+1526168,Isos Technology,Company,Business Services
+1523674,TruNorth Dynamics,Company,Business Services
+1515915,84.51,Company,Business Services
+1526643,International Franchise Association,Company,Business Services
+1527065,"Toptal, LLC.",Company,Business Services
+1527085,Ethena,Company,Business Services
+1528990,Addleshaw Goddard,Company,Business Services
+1524493,Infosys BPM,Company,Business Services
+1526380,Gilbert LLP,Company,Business Services
+1526426,American Forest & Paper Association,Company,Business Services
+1524201,"Spendflo, Inc.",Company,Business Services
+1526375,"Bergeson & Campbell, P.C.",Company,Business Services
+1521794,Anglepoint,Company,Business Services
+1525145,Gesmer Updegrove,Company,Business Services
+1524510,Shift Paradigm,Company,Business Services
+1519893,Propeller Industries,Company,Business Services
+1526425,American Apparel & Footwear Association,Company,Business Services
+1527078,OMP,Company,Business Services
+1529009,Bark.com,Company,Business Services
+1529078,Kern AG,Company,Business Services
+1519431,Middleground Technologies,Company,Business Services
+1526241,AFRY,Company,Business Services
+1526382,Pierce Atwood LLP,Company,Business Services
+1526934,SME,Company,Business Services
+1513739,Growth Advisory Services,Company,Business Services
+1518275,Macquarie Cloud,Company,Business Services
+1526110,Freeths LLP,Company,Business Services
+1526816,Moss Inc.,Company,Business Services
+1527213,Rydoo,Company,Business Services
+1525755,1Global,Company,Business Services
+1527098,Ministry Of Commerce And Industry,Company,Business Services
+1520657,Deep Sync,Company,Business Services
+1525253,Doxim,Company,Business Services
+1515787,Omnea,Company,Business Services
+1525404,Joblogic Limited,Company,Business Services
+1525398,HomeGuide,Company,Business Services
+1520659,Ekimetrics,Company,Business Services
+1527554,SAI360,Company,Business Services
+1529028,Aviso Group,Company,Business Services
+1526631,Flexible Packaging Association,Company,Business Services
+1527048,AssetWorks,Company,Business Services
+1526881,PRINTING United Alliance,Company,Business Services
+1526310,Pritzker Private Capital,Company,Business Services
+1520873,"Harbor Global, LLC",Company,Business Services
+1529119,Strategy Inc.,Company,Business Services
+1529127,AirSlate SignNow,Company,Business Services
+1525385,"BuildZoom, Inc.",Company,Business Services
+1526960,Sustainable Packaging Coalition,Company,Business Services
+1529108,The Marek Group,Company,Business Services
+1529072,ICS Corporation,Company,Business Services
+1515037,Softtek,Company,Business Services
+1527219,Tonkean,Company,Business Services
+1529357,Finance Lease,Finance,Accounting
+1526866,PMMI,Company,Business Services
+1520903,Acronym Limited,Company,Business Services
+1526805,"Minuteman Press International, Inc.",Company,Business Services
+1527069,CaptivateIQ,Company,Business Services
+1525408,MyBuilder,Company,Business Services
+1526379,"Epstein Becker & Green, P.C.",Company,Business Services
+1516630,AYR,Company,Business Services
+1524890,F2 Strategy,Company,Business Services
+1525359,Auxis,Company,Business Services
+1529001,Pinsent Masons,Company,Business Services
+1517709,In516ht,Company,Business Services
+1525400,HomeStars,Company,Business Services
+1521490,Trullion Inc.,Company,Business Services
+1525395,Fixr,Company,Business Services
+1528996,Eversheds Sutherland,Company,Business Services
+1527194,Critical Manufacturing,Company,Manufacturing
+1526126,LyondellBasell Industries N.V.,Company,Manufacturing
+1526807,"Mitsubishi Heavy Industries, Ltd.",Company,Manufacturing
+1526209,Optima Batteries,Company,Manufacturing
+1529091,Renishaw Plc,Company,Manufacturing
+1519819,Interplex,Company,Manufacturing
+1526468,Bostik,Company,Manufacturing
+1526780,Massivit,Company,Manufacturing
+1526908,Roland DG Corporation.,Company,Manufacturing
+1528999,Knauf Group,Company,Manufacturing
+1529094,Ryobi Limited,Company,Manufacturing
+1526141,Sika AG,Company,Manufacturing
+1526921,Sekonic Corporation.,Company,Manufacturing
+1524915,Armstrong World Industries,Company,Manufacturing
+1526828,The Navigator Company,Company,Manufacturing
+1524898,Elgi,Company,Manufacturing
+1527011,Verso Corporation,Company,Manufacturing
+1526403,A4,Company,Manufacturing
+1526915,Sappi Limited,Company,Manufacturing
+1529004,Soprema Group,Company,Manufacturing
+1526108,Etex Group,Company,Manufacturing
+1526479,BWB Technologies,Company,Manufacturing
+1527557,Revalize,Company,Manufacturing
+1526782,Materialise NV,Company,Manufacturing
+1526540,Dada Corporation,Company,Manufacturing
+1526701,"Image Technology, Inc.",Company,Manufacturing
+1527041,WH Group,Company,Manufacturing
+1526918,Sealed Air Corporation,Company,Manufacturing
+1527022,Voxeljet AG,Company,Manufacturing
+1522415,Castohn LLC,Company,Manufacturing
+1525831,Deckorators,Company,Manufacturing
+1526061,Motion Automation Intelligence,Company,Manufacturing
+1528730,Mitsubishi Chemical Group,Company,Manufacturing
+1528993,Braskem S.A.,Company,Manufacturing
+1526118,INEOS,Company,Manufacturing
+1528727,AMS OSRAM,Company,Manufacturing
+1525832,Omnidian,Company,Manufacturing
+1526203,Duracell Inc.,Company,Manufacturing
+1526210,Trojan Battery Company,Company,Manufacturing
+1526736,"Fruit Of The Loom, Inc.",Company,Manufacturing
+1526785,MC Machinery Systems Inc.,Company,Manufacturing
+1529077,JEOL Ltd.,Company,Manufacturing
+1526705,IMS Technologies,Company,Manufacturing
+1526205,Exide Technologies,Company,Manufacturing
+1520686,"Leer, Inc",Company,Manufacturing
+1526122,Kingspan,Company,Manufacturing
+1526204,EnerSys,Company,Manufacturing
+1526530,Coveris GmbH,Company,Manufacturing
+1526393,3D Systems Corporation,Company,Manufacturing
+1526935,Smurfit Westrock Plc,Company,Manufacturing
+1526997,Tricor Systems,Company,Manufacturing
+1517152,"Action Integrated Resources, Inc.",Company,Manufacturing
+1526851,Oxford Instruments,Company,Manufacturing
+1529057,Elcometer Limited,Company,Manufacturing
+1526933,Slate Group,Company,Manufacturing
+1527003,UPM,Company,Manufacturing
+1529033,Anton Paar,Company,Manufacturing
+1529060,Eppendorf SE,Company,Manufacturing
+1527190,Axonify Inc.,Company,Education
+1525376,Thrively,Company,Education
+1525378,"The Zones Of Regulation, Inc.",Company,Education
+1521952,"NextGrad, LLC",Company,Education
+1529578,Houghton Mifflin Harcourt,Company,Education
+1525363,7 Mindsets,Company,Education
+1527103,OnCourse Learning,Company,Education
+1519373,Squiz Group,Company,Education
+1527228,Typing.Com,Company,Education
+1529122,Qatar University,Company,Education
+1529585,Teaching Channel,Company,Education
+1527150,TNTP,Company,Education
+1529560,Sylvan Learning,Company,Education
+1525368,Wayfinder,Company,Education
+1525141,Forest Therapy Hub,Company,Education
+1527144,Edthena,Company,Education
+1529558,"Stride, Inc.",Company,Education
+1529575,Association For Supervision And Curriculum Development,Company,Education
+1529583,Savvas Learning Company,Company,Education
+1528720,Drupa,Company,Retail
+1526248,Arkk Solutions,Company,Retail
+1528998,John Lewis Partnership,Company,Retail
+1528771,DieHard,Company,Retail
+1525205,Southern Exchange,Company,Retail
+1525501,Framebridge,Company,Retail
+1528995,Currys Plc.,Company,Retail
+1526100,Argos Limited,Company,Retail
+1529121,Chalhoub Group,Company,Retail
+1524017,Monrovia Nursery Company,Company,Retail
+1528991,"Best Buy Co., Inc.",Company,Retail
+1526207,O\'Reilly Auto Parts,Company,Retail
+1526202,Batteries Plus,Company,Retail
+1526742,Kama Corporation,Company,Social
+1529450,Tax Policy,Legal,Taxation
+1529451,Tort Reform,Legal,Civil
+1529438,Civil Justice Reform,Legal,Civil
+1529513,Legge Stanca,Legal,Civil
+1529434,PFAS Litigation,Legal,Civil
+1529443,Merger Policy,Legal,Business Structure
+1529442,Legal Reform,Legal,Legal Services
+1519808,International Labor Law Compliance,Legal,Labor
+1529541,Claims Substantiation,Legal,Consumer
+1529433,Hair Relaxers,Legal,Consumer
+1529526,State Telemarketing Laws,Legal,Consumer
+1529483,Contract Analytics,Legal,Contracts
+1529402,Strategic Partner,Business,Expansion
+1528967,Franchise Development,Business,Expansion
+1528968,Multi-Unit Franchising,Business,Expansion
+1528944,Print Color Calibration,Technology,Printing
+1529532,Badge Printing,Technology,Printing
+1529200,Print Embellishment,Technology,Printing
+1529149,Decal Printing,Technology,Printing
+1529202,Interactive Print,Technology,Printing
+1529214,Sustainable Printing,Technology,Printing
+1529212,Stochastic Screening,Technology,Printing
+1529180,Ganging Optimization,Technology,Printing
+1529156,Fine Art Printing,Technology,Printing
+1529174,Hybrid Printing,Technology,Printing
+1529335,Party Supplies Printing,Technology,Printing
+1529332,Color Proofing,Technology,Printing
+1529337,Leisure Product Printing,Technology,Printing
+1529196,Photofinishing,Technology,Printing
+1529155,Expanded Gamut Printing,Technology,Printing
+1529441,Forced Labor Import Ban,Legal,Trade
+1529512,European Accessibility Act,Legal,Trade
+1529449,Sanctions Compliance,Legal,Trade
+1528947,Packaging Regulatory Compliance,Legal,Trade
+1529497,Patent Analytics,Legal,Intellectual Property
+1529326,Quote to Bind,Legal,Insurance
+1509199,Insurance Analytics & Data,Legal,Insurance
+1529524,Insurance Compliance,Legal,Insurance
+1529324,Admitted Insurance,Legal,Insurance
+1509200,Insurance Technology Solutions,Legal,Insurance
+1509204,Insurance Risk Management,Legal,Insurance
+1529634,In-App Survey,Marketing,Mobile
+1529021,CSX Corporation,Company,Logistics
+1526226,NewCold,Company,Logistics
+1526199,Qatar Airways Cargo,Company,Logistics
+1520220,Isaac Instruments,Company,Logistics
+1522042,Data2Logistics,Company,Logistics
+1526198,Cargolux,Company,Logistics
+1528765,Cathay Cargo,Company,Logistics
+1513312,Whip Around,Company,Logistics
+1527215,Softeon,Company,Logistics
+1527222,Witron,Company,Logistics
+1529015,Lufthansa Cargo,Company,Logistics
+1527565,OroCommerce,Company,eCommerce
+1526099,AO World Plc.,Company,eCommerce
+1527550,Gelato,Company,eCommerce
+1526107,Delivery Hero SE,Company,eCommerce
+1524010,Swap Commerce,Company,eCommerce
+1526499,Cimpress Plc.,Company,eCommerce
+1527191,Baozun Inc.,Company,eCommerce
+1529347,High Field MRI,Healthcare,Medical Testing
+1529346,Clinical Chemistry,Healthcare,Medical Testing
+1529272,MRI-PET,Healthcare,Medical Testing
+1529273,Multi-nuclear MRI / imaging,Healthcare,Medical Testing
+1529348,Hybrid Imaging,Healthcare,Medical Testing
+1529436,Activated Partial Thromboplastin Time,Healthcare,Medical Testing
+1529308,Coagulation Testing & Diagnostics,Healthcare,Medical Testing
+1529496,Naval Systems,Energy/Construction/Manufacturing,Engineering
+1529381,Schematic Design,Energy/Construction/Manufacturing,Engineering
+1529316,AI Litigation Review,Legal,LawTech
+1509806,Legal Form Automation,Legal,LawTech
+1529439,Digital Platform Regulation,Legal,LawTech
+1529144,Compostability Assessment,BioTech,AgriTech
+1529349,Immunochemistry,BioTech,Clinical & Diagnostics
+1529307,Coagulation Biology & Mechanisms,BioTech,Clinical & Diagnostics
+1529432,Acetylcholinesterase,BioTech,Life Science
+1529376,Biosafety Level Laboratory,BioTech,Life Science
+1527089,Traliant,Company,HR
+1527087,HR Acuity,Company,HR
+1513185,The Orientation Company (TOC),Company,HR
+1527111,Zellis,Company,HR
+1527211,Quinyx AB,Company,HR
+1527109,HiBob,Company,HR
+1524272,Caterer.com,Company,HR
+1521330,"eTeam, Inc.",Company,HR
+1527108,Elementsuite Limited,Company,HR
+1526176,EvaluAgent,Company,HR
+1515215,Buck,Company,HR
+1525587,Leader In Me,Company,HR
+1527209,PeopleStrong,Company,HR
+1527105,BrightHR,Company,HR
+1507132,Privacy Management Platform,Technology,Privacy
+1528976,Commercial Fishing,Media,Agriculture
+1528966,Agricultural Association,Media,Agriculture
+1529183,Letterpress Printing,Media,Manufacturing & Supply Chain
+1529342,B2B Media,Media,Other
+1526381,Marcus Evans Group,Company,Event Management
+1526163,"Brandlive, Inc.",Company,Event Management
+1528815,Formnext,Company,Event Management
+1529461,Point Of Sale Modernization,Retail,Retail Technology
+1528948,Subscription Box,Retail,Retail Management
+1529208,Retail Readiness,Retail,Retail Management
+1529170,Hang Tag,Retail,Retail Management
+1529173,Luxury Packaging,Retail,Retail Management
+1528985,Cloud Kitchen,Retail,Retail Management
+1507938,Retail Operations,Retail,General
+1528978,Swimwear,Retail,General
+1528578,Coupa Expense,Products,Financial
+1528606,Infor CloudSuite Financials,Products,Financial
+1527419,Blackstone Private Wealth,Products,Financial
+1528636,LeaseAccelerator,Products,Financial
+1527464,Fiserv Signature,Products,Financial
+1527456,DATEV Accounting,Products,Financial
+1527502,Oracle Hyperion Financial Management,Products,Financial
+1528832,CA Asset Portfolio Management,Products,Financial
+1521781,J.P. Morgan Guide to the Markets,Products,Financial
+1527235,Stripe Treasury,Products,Financial
+1528603,IFS Financials,Products,Financial
+1528642,Microsoft Dynamics 365 Finance,Products,Financial
+1527396,Coupa Treasury,Products,Financial
+1528572,BILL Accounts Receivable,Products,Financial
+1528623,JAGGAER Accounts Payable,Products,Financial
+1527435,Basware Financial Services,Products,Financial
+1528676,QuickBooks Desktop,Products,Financial
+1527463,Fiserv Premier,Products,Financial
+1528571,BILL Accounts Payable,Products,Financial
+1528927,Intapp DealCloud,Products,Financial
+1527238,Buildertrend Payments,Products,Financial
+1528769,SAP Central Finance,Products,Financial
+1527409,Emburse Nexonia,Products,Financial
+1529131,Monzo Business,Products,Financial
+1528619,Ivalua Invoicing,Products,Financial
+1527309,SEI Sphere,Products,Financial
+1529603,Aducanumab,Products,Health
+1527242,Siemens Healthineers Biograph mCT,Products,Health
+1521043,Salesforce Life Sciences Cloud,Products,Health
+1527379,Walgreens Specialty Pharmacy,Products,Health
+1527303,Ozempic,Products,Health
+1527302,Donanemab,Products,Health
+1524676,Siemens Artis,Products,Health
+1527458,Duck Creek OnDemand,Products,Insurance
+1528699,SkiftX Studio,Products,Media & Advertising
+1527523,Marketing Cloud Personalization,Products,Media & Advertising
+1527234,Snapchat for Business,Products,Media & Advertising
+1527467,Google Campaign Manager 360,Products,Media & Advertising
+1527237,YouTube Ads,Products,Media & Advertising
+1528595,HubSpot Marketing Hub,Products,Media & Advertising
+1525574,Angi Ads,Products,Media & Advertising
+1527380,Adobe Premiere Pro,Products,Media & Advertising
+1527236,X Ads,Products,Media & Advertising
+1507320,Oracle Database 18c,Products,Other
+1514743,Workday Financial Management,Products,Other
+1506935,Adobe Audience Manager,Products,Other
+1512240,SAP Service Cloud,Products,Other
+1510844,IBM Cloud Pak for Data,Products,Other
+1506953,Salesforce Sales Cloud,Products,Other
+1528820,Print Reach Midnight,Products,Other
+1508103,Salesforce Inbox,Products,Other
+1520240,Thomson Reuters Practical Law,Products,Other
+1514744,Workday Human Capital Management,Products,Other
+1506956,SAS Viya,Products,Other
+1527433,AWS GovCloud (US),Products,Technology
+1529624,Tableau Online,Products,Technology
+1527278,IBM Db2 On-Premises,Products,Technology
+1527300,Vitess,Products,Technology
+1528573,Boomi API Management,Products,Technology
+1528789,NVIDIA H100 Tensor Core GPU,Products,Technology
+1528852,InvGate Asset Management,Products,Technology
+1526009,ForgeRock Identity Platform,Products,Technology
+1527334,Cisco UCS Manager,Products,Technology
+1527373,Symantec ServiceDesk,Products,Technology
+1527418,Oracle AddThis,Products,Technology
+1524839,Snowflake Open Catalog,Products,Technology
+1527343,HashiCorp Vagrant,Products,Technology
+1527403,Nintex K2 Cloud,Products,Technology
+1527500,"Oracle Configure, Price, Quote (CPQ)",Products,Technology
+1528601,IFS Cloud Enterprise Asset Management (EAM),Products,Technology
+1526093,AWS European Sovereign Cloud,Products,Technology
+1527311,HP 3D Printing,Products,Technology
+1528764,Zoom Workplace,Products,Technology
+1528864,Okta Access Gateway,Products,Technology
+1528892,Symantec SiteMinder,Products,Technology
+1528900,Databricks on AWS,Products,Technology
+1528925,Imply Lumi,Products,Technology
+1529601,Google Cloud SQL,Products,Technology
+1521406,HP EliteDesk,Products,Technology
+1526029,Autodesk Eagle,Products,Technology
+1527345,IBM UrbanCode Deploy,Products,Technology
+1527347,Ivanti Neurons For Discovery,Products,Technology
+1528649,Microsoft Power Apps,Products,Technology
+1528796,Oracle SQL Developer Web,Products,Technology
+1526014,Google Memorystore,Products,Technology
+1527264,Azure API Management,Products,Technology
+1527308,Microsoft 365 Copilot,Products,Technology
+1528637,Logi Analytics Platform,Products,Technology
+1528673,Pendo Digital Adoption Platform,Products,Technology
+1528842,Flexera One,Products,Technology
+1528851,IBM QRadar SOAR,Products,Technology
+1527275,Amazon Route 53,Products,Technology
+1527349,Linkerd,Products,Technology
+1528644,Microsoft Dynamics 365 Customer Insights ‚Äì Journeys,Products,Technology
+1529130,IBM Cloud,Products,Technology
+1529613,Golang,Products,Technology
+1527344,IBM Tivoli,Products,Technology
+1527351,ManageEngine OpManager,Products,Technology
+1527363,Oracle Primavera Unifier,Products,Technology
+1527374,Symantec VIP,Products,Technology
+1528562,AVEVA Historian,Products,Technology
+1528850,HCL Notes,Products,Technology
+1528854,Ivanti Service Desk,Products,Technology
+1528910,IBM Cognos Analytics,Products,Technology
+1527269,Amazon Data Firehose,Products,Technology
+1527291,Oracle Key Vault,Products,Technology
+1527315,AWS CodeBuild,Products,Technology
+1527319,BMC Helix Discovery,Products,Technology
+1528803,Microsoft 365 E5,Products,Technology
+1528871,Okta Universal Directory,Products,Technology
+1525750,Korn Ferry Architect,Products,Technology
+1527297,Simple Oracle Document Access (SODA),Products,Technology
+1527316,AWS CodeDeploy,Products,Technology
+1528564,AVEVA PDMS,Products,Technology
+1528565,AVEVA PI System,Products,Technology
+1527292,Oracle Recovery Manager (RMAN),Products,Technology
+1527488,MEGA Hopex,Products,Technology
+1526050,PromoteIQ,Products,Technology
+1527340,Grafana Cloud,Products,Technology
+1527438,Bonita Platform,Products,Technology
+1528787,Google Cloud Platform,Products,Technology
+1528847,Google Cloud Identity-Aware Proxy,Products,Technology
+1528853,Istio,Products,Technology
+1528919,GE Proficy,Products,Technology
+1527350,ManageEngine AD360,Products,Technology
+1527389,AWS Multi-Factor Authentication,Products,Technology
+1528596,HxGN EAM,Products,Technology
+1528683,Siemens SIMATIC SCADA,Products,Technology
+1528793,Oracle Database 21c,Products,Technology
+1525752,Korn Ferry Listen,Products,Technology
+1527440,CADWorx,Products,Technology
+1527520,Ramco ERP,Products,Technology
+1527538,Workday Prism Analytics,Products,Technology
+1528684,Siemens SIMATIC WinCC,Products,Technology
+1528745,Creovai Real-Time Agent Assist,Products,Technology
+1528878,Oracle Service,Products,Technology
+1529611,OpenText Operations Bridge,Products,Technology
+1527272,Oracle Automatic Workload Repository (AWR),Products,Technology
+1527280,NVIDIA A100 Tensor Core GPU,Products,Technology
+1527372,Symantec Endpoint Management,Products,Technology
+1527420,Lenovo Yoga,Products,Technology
+1528605,IFS Ultimo EAM,Products,Technology
+1528859,OpenText Application Lifecycle Management,Products,Technology
+1528931,Okta Adaptive Multi-Factor Authentication,Products,Technology
+1529607,Intergraph,Products,Technology
+1529618,Microsoft Dynamics 365,Products,Technology
+1527337,Flexera Cloud Management Platform,Products,Technology
+1527432,Avolution ABACUS,Products,Technology
+1527289,Oracle Digital Assistant,Products,Technology
+1527465,GE Vernova CIMPLICITY,Products,Technology
+1528658,Oracle Data Cloud,Products,Technology
+1528829,BMC Atrium CMDB,Products,Technology
+1528831,SAI360 GRC Platform,Products,Technology
+1529135,Google RCS,Products,Technology
+1522386,IBM Video Streaming,Products,Technology
+1524780,Google Unified Security (GUS),Products,Technology
+1527314,AWS App Mesh,Products,Technology
+1527387,Appian RPA,Products,Technology
+1527392,Beeline Report Builder,Products,Technology
+1527503,Oracle Sales Force Automation,Products,Technology
+1528556,Acquia CDP,Products,Technology
+1528840,Flexera FlexNet Manager,Products,Technology
+1528845,Google Cloud Identity And Access Management (IAM),Products,Technology
+1528873,OpenText ALM Octane,Products,Technology
+1527359,Oracle Communications Billing And Revenue Management,Products,Technology
+1528679,SailPoint IdentityIQ,Products,Technology
+1528802,Expel Managed Detection and Response,Products,Technology
+1527273,Oracle Autonomous Data Warehouse,Products,Technology
+1528885,Pega Infinity,Products,Technology
+1528934,Okta Workflows,Products,Technology
+1527348,Keycloak,Products,Technology
+1527444,Cloudera Data Platform (CDP),Products,Technology
+1528920,Google Analytics 4,Products,Technology
+1527279,FoundationDB,Products,Technology
+1527367,Planview Portfolios,Products,Technology
+1527486,KNIME Analytics Platform,Products,Technology
+1527530,Precisely Syncsort,Products,Technology
+1528594,Hexagon PolyWorks,Products,Technology
+1528645,Microsoft Dynamics 365 Sales,Products,Technology
+1529542,Microsoft Dynamics,Products,Technology
+1527274,AWS CloudFormation,Products,Technology
+1527322,BMC Remedy Action Request System,Products,Technology
+1527341,Grafana Loki,Products,Technology
+1527368,Progress Chef,Products,Technology
+1527404,AWS Kiro,Products,Technology
+1527408,Hitachi Virtual Storage Platform One,Products,Technology
+1527472,Huawei Cloud,Products,Technology
+1528782,SAP Cloud ERP,Products,Technology
+1529610,Okta Identity Cloud,Products,Technology
+1508476,Pega Platform,Products,Technology
+1524834,Fabric OneLake,Products,Technology
+1527324,Oracle Hyperion Interactive Reporting,Products,Technology
+1527369,Planview ProjectPlace,Products,Technology
+1527388,AWS Cloud Development Kit,Products,Technology
+1528830,BMC FootPrints,Products,Technology
+1528887,SAP ERP Central Component,Products,Technology
+1527270,Apache Flink,Products,Technology
+1527320,BMC Helix ITSM,Products,Technology
+1528608,Infor EAM,Products,Technology
+1528643,Microsoft Dynamics 365 Customer Service,Products,Technology
+1528828,BeyondCorp Enterprise,Products,Technology
+1528862,OpenText Quality Center Enterprise,Products,Technology
+1528879,Oracle Service Center,Products,Technology
+1519129,PL/pgSQL,Products,Technology
+1527243,Cisco Unified Communications Manager,Products,Technology
+1527358,OpenText ZENworks Service Desk,Products,Technology
+1527528,Snowflake Data Lake,Products,Technology
+1528691,Whatfix Digital Adoption Platform,Products,Technology
+1528844,Google Cloud Identity,Products,Technology
+1528893,Tungsten RPA,Products,Technology
+1528926,Imply Polaris,Products,Technology
+1526032,Octopart,Products,Technology
+1527263,Amazon API Gateway,Products,Technology
+1527336,F5 NGINX,Products,Technology
+1527355,OpenText Operations Orchestration,Products,Technology
+1528909,Cisco Identity Services Engine,Products,Technology
+1525754,Korn Ferry Sell,Products,Technology
+1528663,Oracle Java,Products,Technology
+1528882,Pega CRM,Products,Technology
+1527313,Archer Integrated Risk Management,Products,Technology
+1528598,IBM Sterling,Products,Technology
+1527524,Salesforce Visualforce,Products,Technology
+1528774,Kong Gateway,Products,Technology
+1528848,HCL BigFix,Products,Technology
+1528929,Magnitude Kalido MDM,Products,Technology
+1529132,Oracle Cloud,Products,Technology
+1528685,SnapLogic Intelligent Integration Platform,Products,Technology
+1528688,TIBCO Jaspersoft,Products,Technology
+1528692,Precisely Automate,Products,Technology
+1528752,Nuance Nina,Products,Technology
+1528855,Ivanti Service Manager,Products,Technology
+1528890,Broadcom Altiris,Products,Technology
+1527323,BMC Remedy Service Desk,Products,Technology
+1527490,MuleSoft Mule Runtime Engine 3.5,Products,Technology
+1528566,AVEVA System Platform,Products,Technology
+1528833,Serviceaide ChangeGear,Products,Technology
+1528889,Saviynt Identity Governance and Administration,Products,Technology
+1527252,Talkdesk Workspace,Products,Technology
+1527307,Azure Virtual Desktop,Products,Technology
+1527342,HashiCorp Packer,Products,Technology
+1527439,Broadcom Automic Automation,Products,Technology
+1528657,OneTrust GRC,Products,Technology
+1528775,Broadcom Layer7 API Management,Products,Technology
+1528839,Espressive Barista,Products,Technology
+1528849,HCL Domino,Products,Technology
+1527511,OrbusInfinity,Products,Technology
+1528824,Broadcom Altiris Inventory Solution,Products,Technology
+1525751,Korn Ferry Assess,Products,Technology
+1525841,Lenovo XClarity,Products,Technology
+1527265,SAP Business Data Cloud,Products,Technology
+1527434,Azure Pipelines,Products,Technology
+1528719,Microsoft Modern Workplace,Products,Technology
+1527283,Oracle Advanced Security,Products,Technology
+1527329,Broadcom Mainframe Operational Intelligence,Products,Technology
+1527429,Akamai Identity Cloud,Products,Technology
+1528708,Apache Cassandra On-Premises,Products,Technology
+1528835,Broadcom Clarity PPM,Products,Technology
+1529620,AWS IAM Identity Center,Products,Technology
+1528647,Microsoft Dynamics 365 Intelligent Order Management,Products,Technology
+1528650,Microsoft Power Platform,Products,Technology
+1528874,Oracle Access Management,Products,Technology
+1529619,Oracle Autonomous Transaction Processing,Products,Technology
+1526025,Cadence Sigrity,Products,Technology
+1528826,EZO AssetSonar,Products,Technology
+1528863,NICE Robotic Process Automation,Products,Technology
+1528875,Oracle Identity Governance,Products,Technology
+1528914,CRMNEXT,Products,Technology
+1525753,Korn Ferry Pay,Products,Technology
+1527518,Qlik Cloud,Products,Technology
+1527531,Tableau Desktop,Products,Technology
+1528712,Redis On-Premises,Products,Technology
+1528716,Microsoft 365 Security,Products,Technology
+1527346,Ivanti Asset Manager,Products,Technology
+1527354,OpenText Asset Management X,Products,Technology
+1527400,Google Cloud Dataplex,Products,Technology
+1527417,OpenText Fortify,Products,Technology
+1527421,Ab Initio Data Platform,Products,Technology
+1528870,Okta Single Sign-On,Products,Technology
+1528932,Okta Customer Identity,Products,Technology
+1527259,Oracle Fusion AI Data Platform,Products,Technology
+1528597,IBM Db2 Warehouse,Products,Technology
+1528640,Microsoft Dynamics 365 Customer Insights,Products,Technology
+1528651,Mule Runtime Engine 4.3,Products,Technology
+1528881,Cortex XSOAR,Products,Technology
+1526049,Mirakl Ads,Products,Technology
+1527473,IBM SPSS Statistics,Products,Technology
+1527485,Kendo UI,Products,Technology
+1527267,SAP Joule For Consultants,Products,Technology
+1527376,Wavefront By VMware,Products,Technology
+1527416,OpenText ArcSight,Products,Technology
+1528921,Informatica Intelligent Cloud Services,Products,Technology
+1528922,Informatica Intelligent Data Management Cloud,Products,Technology
+1529608,Micro Focus Operations Manager,Products,Technology
+1527333,Broadcom TPX Session Management for z/OS,Products,Technology
+1527461,Epicor ERP,Products,Technology
+1528609,Infor LN,Products,Technology
+1528841,Flexera One IT Asset Management,Products,Technology
+1527407,FortiGuard AI-Powered Security Services,Products,Technology
+1528648,Microsoft Dynamics 365 Supply Chain Management,Products,Technology
+1528901,Azure DevOps,Products,Technology
+1529615,AWS Single Sign-On,Products,Technology
+1525843,Lenovo ThinkShield,Products,Technology
+1527328,Broadcom DX Unified Infrastructure Management,Products,Technology
+1528689,Precisely Trillium DQ,Products,Technology
+1528742,8x8 Work,Products,Telecommunications
+1528757,RingCentral RingCX,Products,Telecommunications
+1528759,RingCentral RingEX,Products,Telecommunications
+1528743,Avaya Aura,Products,Telecommunications
+1529140,8x8 Engage,Products,Telecommunications
+1528748,Dialpad Workforce Engagement,Products,Telecommunications
+1527253,Vonage Business Communications,Products,Telecommunications
+1528754,RingCentral Contact Center,Products,Telecommunications
+1528762,Zoom Contact Center,Products,Telecommunications
+1529139,8x8 Contact Center,Products,Telecommunications
+1528747,Dialpad Connect,Products,Telecommunications
+1528749,Dialpad Workforce Management,Products,Telecommunications
+1528755,RingCentral Workforce Engagement Management,Products,Telecommunications
+1528760,Talkdesk Contact Center,Products,Telecommunications
+1528744,Creovai for 8x8 Contact Center,Products,Telecommunications
+1528751,Mitel MiVoice Business,Products,Telecommunications
+1524455,Atlassian Guard,Products,Business Services
+1527484,Ivalua Expense Management,Products,Business Services
+1528624,JAGGAER Advantage,Products,Business Services
+1528653,NetSuite OneWorld,Products,Business Services
+1525575,Angi Leads,Products,Business Services
+1527442,Cegid XRP,Products,Business Services
+1528641,Microsoft Dynamics 365 Field Service,Products,Business Services
+1528834,Planview ChangePoint,Products,Business Services
+1528626,JAGGAER eProcurement,Products,Business Services
+1528785,SAP Spend Management And Business Network,Products,Business Services
+1527443,Chargebee Billing,Products,Business Services
+1527537,Workday Inventory,Products,Business Services
+1528629,JAGGAER Research Material Management,Products,Business Services
+1528906,Beeline VMS,Products,Business Services
+1528781,SAP Business Suite,Products,Business Services
+1528937,EthicsPoint,Products,Business Services
+1527366,Pega Case Management,Products,Business Services
+1527423,Accruent Meridian,Products,Business Services
+1524258,ServiceNow Workflow Data Fabric,Products,Business Services
+1527451,Coupa Procurement,Products,Business Services
+1528582,Coupa Supplier Management,Products,Business Services
+1528923,JAGGAER One,Products,Business Services
+1528577,Conga Contracts,Products,Business Services
+1527453,Coupa Storefront,Products,Business Services
+1529129,Accenture Strategy,Products,Business Services
+1525602,Yelp For Business,Products,Business Services
+1528590,Exact Online,Products,Business Services
+1527513,Proactis Contract Management,Products,Business Services
+1528778,OnePlan Strategic Portfolio Management,Products,Business Services
+1528886,Planview PPM Pro,Products,Business Services
+1527339,FMS:Workplace,Products,Business Services
+1527390,Basware Analytics,Products,Business Services
+1528837,Eptura Engage,Products,Business Services
+1528917,EMaint CMMS,Products,Business Services
+1527475,Ivalua Auctions,Products,Business Services
+1528928,Magnit Platform,Products,Business Services
+1527391,Basware AP Automation,Products,Business Services
+1527504,Oracle Sales Performance Management Cloud,Products,Business Services
+1527493,NetSuite Inventory Management,Products,Business Services
+1528773,DealHub CPQ,Products,Business Services
+1527459,Duro Product Lifecycle Management,Products,Manufacturing
+1527462,ESPRIT CAM,Products,Manufacturing
+1527527,Siemens TIA Portal,Products,Manufacturing
+1520993,Scuff-X,Products,Manufacturing
+1527469,Ansys Granta,Products,Manufacturing
+1527422,ABB Distributed Control Systems,Products,Manufacturing
+1520313,Nordac Link,Products,Manufacturing
+1527466,GE Vernova iFIX,Products,Manufacturing
+1527470,Hexagon PC-DMIS,Products,Manufacturing
+1528563,AVEVA Manufacturing Execution System,Products,Manufacturing
+1528664,Oracle Learning,Products,Education
+1528611,Infor Learning Management System,Products,Education
+1529134,Udemy Business,Products,Education
+1526066,Second Step,Products,Education
+1527232,Coursera For Business,Products,Education
+1525701,FranklinCovey All Access Pass,Products,Education
+1527410,Manhattan Active Omni,Products,Retail
+1528807,ComfortWash By Hanes,Products,Retail
+1529133,Pinterest Business,Products,Social
+1527233,Meta Business Suite,Products,Social
+1528604,IFS Supply Chain Management,Products,Logistics
+1528575,C.H. Robinson Supply Chain,Products,Logistics
+1528612,Infor Supply Chain Management,Products,Logistics
+1518140,FedEx Delivery Manager,Products,Logistics
+1527413,Manhattan SCALE,Products,Logistics
+1528908,Blue Yonder Warehouse Management System,Products,Logistics
+1527411,Manhattan Active Supply Chain,Products,Logistics
+1529617,Manhattan Associates WM,Products,Logistics
+1528907,Blue Yonder Supply Chain Planning,Products,Logistics
+1529616,Manhattan Active Warehouse Management,Products,Logistics
+1528591,FarEye Delivery Management Platform,Products,Logistics
+1527384,Anaplan Supply Chain,Products,Logistics
+1527496,NetSuite Warehouse Management System,Products,Logistics
+1527255,UPS Airlines,Products,Logistics
+1528558,Agility PIM,Products,eCommerce
+1528898,Adobe Commerce,Products,eCommerce
+1527377,Amazon Leo,Products,eCommerce
+1528599,IBM Sterling Order Management,Products,eCommerce
+1528801,Hire2Retire,Products,HR
+1528617,IQN Compass VMS,Products,HR
+1527495,NetSuite SuitePeople,Products,HR
+1528614,Infor Talent Science,Products,HR
+1528915,Dayforce,Products,HR
+1528899,ADP Time & Attendance,Products,HR
+1527426,Adrenalin MAX HRMS,Products,HR
+1527501,Oracle Human Resources,Products,HR
+1527533,Workday Benefits,Products,HR
+1527385,Anaplan Workforce Planning,Products,HR
+1528763,Zoom Workforce Engagement Management,Products,HR
+1528610,Infor Global Human Resources,Products,HR
+1527522,Sage HR,Products,HR
+1528635,UKG Ready,Products,HR
+1528670,Oracle Talent Acquisition Cloud,Products,HR
+1528696,Workday Payroll,Products,HR
+1528607,Infor CloudSuite HCM,Products,HR
+1528678,Cornerstone Saba,Products,HR
+1521287,Halsted,Products,HR
+1527441,Cegid Talentsoft,Products,HR
+1528659,Oracle Fusion Cloud HCM,Products,HR
+1527521,Sage Payroll,Products,HR
+1527251,Talkdesk Workforce Management,Products,HR
+1528697,Workday Recruiting,Products,HR
+1528694,Workday HCM Reporting and Analytics,Products,HR
+1527489,MHR iTrent,Products,HR
+1528634,UKG Workforce Management,Products,HR
+1528695,Workday Learning,Products,HR
+1529625,UKG Dimensions,Products,HR
+1527536,Workday Extend,Products,HR
+1528615,Infor Workforce Management,Products,HR
+1527381,ADP Celergo,Products,HR
+1528613,Infor Talent Management,Products,HR
+1529268,Hospitality Distribution Channels,Travel,Hotels & Accommodations
+1529265,Digital Hotel Management,Travel,Hotels & Accommodations
+1529270,Hotel Inventory Management,Travel,Hotels & Accommodations
+1529266,Hotel Revenue Management,Travel,Hotels & Accommodations
+1529269,Hotel Rate Management,Travel,Hotels & Accommodations
+1528961,Horse Transportation,Travel,Transportation
+1522024,Triptease,Company,Travel
+1527224,New Orleans & Company,Company,Travel
+1529019,Xpedition Limited,Company,Travel
+1529128,Accor S.A.,Company,Travel
+1528700,SkiftX,Products,Travel
+1528584,Databricks Data Intelligence Platform,Products,Machine Learning & Artificial Intelligence
+1528746,Creovai Conversation Intelligence,Products,Machine Learning & Artificial Intelligence
+1522071,XO Platform,Products,Machine Learning & Artificial Intelligence
+1527299,Tensor Processing Unit,Products,Machine Learning & Artificial Intelligence
+1524765,Google BigLake,Products,Machine Learning & Artificial Intelligence
+1527266,SAP Joule,Products,Machine Learning & Artificial Intelligence
+1528600,IBM Watson Analytics,Products,Machine Learning & Artificial Intelligence
+1527306,Adobe LLM Optimizer,Products,Machine Learning & Artificial Intelligence
+1527271,Oracle APEX AI Assistant,Products,Machine Learning & Artificial Intelligence
+1527386,Appian Artificial Intelligence,Products,Machine Learning & Artificial Intelligence
+1527406,Claude Cowork,Products,Machine Learning & Artificial Intelligence
+1528790,OCI Generative AI,Products,Machine Learning & Artificial Intelligence
+1527541,Cohere Transcribe,Products,Machine Learning & Artificial Intelligence
+1528780,SAP Business AI,Products,Machine Learning & Artificial Intelligence
+1515987,AlloyDB,Products,Machine Learning & Artificial Intelligence
+1527405,Claude Code,Products,Machine Learning & Artificial Intelligence
+1527526,SAS Enterprise Miner,Products,Machine Learning & Artificial Intelligence
+1527250,NICE Enlighten Copilot,Products,Machine Learning & Artificial Intelligence
+1527540,Cohere Rerank,Products,Machine Learning & Artificial Intelligence
+1524710,Galileo Technologies Inc.,Company,Machine Learning & Artificial Intelligence
+1524903,Gramener,Company,Machine Learning & Artificial Intelligence
+1526180,Observe.AI,Company,Machine Learning & Artificial Intelligence
+1526363,OpenEvidence,Company,Machine Learning & Artificial Intelligence
+1527162,Scispot,Company,Machine Learning & Artificial Intelligence
+1527056,Moogsoft Inc.,Company,Machine Learning & Artificial Intelligence
+1527161,Sapio Sciences,Company,Machine Learning & Artificial Intelligence
+1528560,Arria,Company,Machine Learning & Artificial Intelligence
+1527176,Anodot,Company,Machine Learning & Artificial Intelligence
+1527128,Brava Systems,Company,Machine Learning & Artificial Intelligence
+1524711,Helicone,Company,Machine Learning & Artificial Intelligence
+1526178,Level AI,Company,Machine Learning & Artificial Intelligence
+1527177,AnswerRocket,Company,Machine Learning & Artificial Intelligence
+1529520,Intelligent Triage,Technology,Machine Learning & Artificial Intelligence
+1529627,LLM Referral Traffic,Technology,Machine Learning & Artificial Intelligence
+1529285,AI Acceleration,Technology,Machine Learning & Artificial Intelligence
+1529287,AI Forecasting,Technology,Machine Learning & Artificial Intelligence
+1529233,AI Consulting,Technology,Machine Learning & Artificial Intelligence
+1529264,AI Voice Assistant,Technology,Machine Learning & Artificial Intelligence
+1529288,AI Inference,Technology,Machine Learning & Artificial Intelligence
+1529262,Hotel Voice Agent,Technology,Machine Learning & Artificial Intelligence
+1529292,Approximate Nearest Neighbor (ANN),Technology,Machine Learning & Artificial Intelligence
+1529419,Hierarchical Navigable Small World,Technology,Machine Learning & Artificial Intelligence
+1529263,AI Booking Agent,Technology,Machine Learning & Artificial Intelligence
+1529430,Vector Embeddings,Technology,Machine Learning & Artificial Intelligence
+1529249,Artificial Intelligence Fraud,Technology,Machine Learning & Artificial Intelligence
+1529422,Image Generation,Technology,Machine Learning & Artificial Intelligence
+1529291,AI Workload Acceleration,Technology,Machine Learning & Artificial Intelligence
+1529390,Artificial Intelligence in Education,Technology,Machine Learning & Artificial Intelligence
+1529421,Hybrid Search,Technology,Machine Learning & Artificial Intelligence
+1529235,Agentic Work Unit,Technology,Machine Learning & Artificial Intelligence
+1529466,Claim Extraction,Technology,Machine Learning & Artificial Intelligence
+1529289,AI Model Hosting,Technology,Machine Learning & Artificial Intelligence
+1529299,Embedding Models,Technology,Machine Learning & Artificial Intelligence
+1529501,Misinformation Detection,Technology,Machine Learning & Artificial Intelligence
+1529296,Cloud GenAI Platforms,Technology,Machine Learning & Artificial Intelligence
+1529317,Artificial Intelligence for Defense,Technology,Machine Learning & Artificial Intelligence
+1529413,Edge AI,Technology,Machine Learning & Artificial Intelligence
+1529429,Sovereign AI,Technology,Machine Learning & Artificial Intelligence
+1529404,FinOps For AI,Technology,Machine Learning & Artificial Intelligence
+1529303,Similarity Search,Technology,Machine Learning & Artificial Intelligence
+1529423,In-Database Machine Learning,Technology,Machine Learning & Artificial Intelligence
+1529290,Model Optimization,Technology,Machine Learning & Artificial Intelligence
+1529628,LLM Visibility,Technology,Machine Learning & Artificial Intelligence
+1529626,LLM Optimization,Technology,Machine Learning & Artificial Intelligence
+1529309,Hemostasis & Coagulation Disorders,Healthcare,Health Conditions
+1529475,Rare Disease,Healthcare,Health Conditions
+1528979,Professional Wrestling,Arts & Entertainment,General
+1529145,Costume Fabrication,Arts & Entertainment,General
+1528975,Airsoft,Hobbies & Leisure,General
+1528973,Paper Craft,Hobbies & Leisure,General
+1528972,Sewing,Hobbies & Leisure,General
+1528954,Vacuum Cleaner,Home & Garden,General
+1529387,Academic Advising,Education,General
+1529389,Academic Program Planning,Education,General
+1529253,K-12 Educational Leadership,Education,General
+1529257,STEAM Education,Education,General
+1529395,Student Support Services,Education,General
+1529400,Enrollment Predictive Modeling,Education,General
+1529388,Academic Program Review,Education,General
+1529281,Higher Education,Education,General
+1529392,Enrollment Funnel,Education,General
+1529254,Special Education Compliance,Education,General
+1528955,Pet Care Services,Pets & Animals,General
+1528958,Pet First Aid,Pets & Animals,General
+1528957,Pet Adoption,Pets & Animals,General
+1528956,Pet Behavior And Training,Pets & Animals,General
+1528959,Pet Bereavement Support,Pets & Animals,General
+1528962,Zoology,Science,General
+1528974,Trail Running,Sports,General
+1528983,Sporting Event,Sports,General
+1528984,Road Running,Sports,General
+1528980,Horse Racing,Sports,General
+1528981,Golf Entertainment Venue,Sports,General
+1528982,College Athletics,Sports,General

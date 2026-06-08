@@ -1,0 +1,66 @@
+name: Update GAM 'bmb' KVPs (Bombora taxonomy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: "Path to taxonomy CSV in the repo (relative to root)"
+        required: false
+        default: "data/bombora_penguin_20260608.csv"
+      dry_run:
+        description: "Dry-run only (no writes)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install googleads openpyxl
+
+      - name: Run update
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          ARGS="--csv ${{ github.event.inputs.csv_path }}"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python scripts/update_bmb_kvps.py $ARGS 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }} — skipping comment"; exit 0
+          fi
+          {
+            echo "### GAM 'bmb' KVP update — Bombora Penguin taxonomy"
+            echo ""
+            echo "CSV: \`${{ github.event.inputs.csv_path }}\`  |  dry-run: \`${{ github.event.inputs.dry_run }}\`"
+            echo ""
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md

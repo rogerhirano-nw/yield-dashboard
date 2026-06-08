@@ -3,6 +3,8 @@
 *.csv
 # deal_health publishes the date-stamped weekly CSV; allow that one path.
 !reports/*.csv
+# Bombora taxonomy seed files committed to data/.
+!data/bombora_*.csv
 # Locally-generated email previews — never committed.
 reports/*.html
 __pycache__/
