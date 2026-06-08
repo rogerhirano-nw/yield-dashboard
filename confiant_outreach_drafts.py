@@ -280,6 +280,7 @@ def main() -> int:
 
         subject, html = confiant_outreach.render_email_html(
             pf, cfg.publisher_name, args.days,
+            publisher_id=cfg.ssp_publisher_ids.get(provider),
         )
         to_emails = confiant_outreach._split_recipients(recipient_raw)
 
