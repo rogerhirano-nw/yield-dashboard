@@ -26,6 +26,23 @@ from html import escape
 from pathlib import Path
 
 
+def _load_dotenv() -> None:
+    """Read ~/code/yield-dashboard/.env so AGENTMAIL_API_KEY +
+    AGENTMAIL_INBOX_ID don't have to be hardcoded in the launchd plist.
+    Mirrors confiant_blocklist._load_dotenv so .env is the single source
+    of truth for blocklist credentials. Uses setdefault so env vars
+    passed explicitly (e.g. by a wrapper) take precedence."""
+    env_file = Path(__file__).parent / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
 # ── paths / config ───────────────────────────────────────────────────────────
 
 def _state_path() -> Path:
@@ -279,6 +296,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    _load_dotenv()
     args = _parse_args()
     if args.print_html:
         args.dry_run = True

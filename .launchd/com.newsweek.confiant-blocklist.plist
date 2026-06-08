@@ -47,22 +47,16 @@
 
     <key>EnvironmentVariables</key>
     <dict>
-        <!-- launchd does not source ~/.zshrc; spell out everything the
-             script needs. Fill these in from your existing .env. -->
+        <!-- launchd does not source ~/.zshrc. Credentials below come from
+             ~/code/yield-dashboard/.env via _load_dotenv() in the script:
+                 AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID, GAM_NETWORK_ID,
+                 CONFIANT_API_KEY, CONFIANT_REPORT_TO_EMAIL
+             Do NOT redeclare them here as empty strings — setdefault won't
+             override empty values and the post-run summary email will
+             silently skip (which is how the daily summary went un-sent
+             from launch until 2026-06-08). -->
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-        <key>GAM_NETWORK_ID</key>
-        <string>REPLACE_ME</string>
-        <key>CONFIANT_API_KEY</key>
-        <string>REPLACE_ME</string>
-        <!-- Agentmail vars are for the outbound summary email only.
-             Inbound CSV ingestion was replaced by the Confiant API. -->
-        <key>AGENTMAIL_API_KEY</key>
-        <string>REPLACE_ME</string>
-        <key>AGENTMAIL_INBOX_ID</key>
-        <string>REPLACE_ME</string>
-        <key>CONFIANT_REPORT_TO_EMAIL</key>
-        <string>REPLACE_ME</string>
         <key>CONFIANT_BLOCKLIST_PROFILE_DIR</key>
         <string>/Users/roger/.confiant-blocklist/playwright-profile</string>
         <key>CONFIANT_BLOCKLIST_STATE</key>

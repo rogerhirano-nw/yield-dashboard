@@ -37,9 +37,17 @@ cd ~/code/yield-dashboard
 pip install -r requirements.txt
 python -m playwright install chromium
 
-# Required env vars (add to .env or export):
-export GAM_NETWORK_ID=<your network id>
-export CONFIANT_API_KEY=<from app.confiant.com Settings>
+# Required env vars — add to .env (the scripts auto-load it):
+#   GAM_NETWORK_ID                  your GAM network id
+#   CONFIANT_API_KEY                from app.confiant.com Settings
+#   AGENTMAIL_API_KEY               for outbound summary emails (daily + weekly)
+#   AGENTMAIL_INBOX_ID              e.g. newsweek@agentmail.to
+#   CONFIANT_REPORT_TO_EMAIL        recipient of the daily post-run summary
+#
+# Don't add these as empty strings to the launchd plist EnvironmentVariables
+# dict — empty values defeat the script's _load_dotenv() (setdefault won't
+# overwrite an empty value already in os.environ). Plists should only carry
+# scheduling + paths.
 
 # 1. Open a browser, log into GAM manually, complete 2FA.
 #    This populates ~/.confiant-blocklist/playwright-profile/ with cookies.
