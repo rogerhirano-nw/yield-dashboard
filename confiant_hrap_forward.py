@@ -128,19 +128,57 @@ def render_html(ssp_name: str, publisher_name: str, payload: dict) -> tuple[str,
   <tr><td style='padding:18px 24px 0 24px'>
     <p style='margin:0 0 12px 0'>Hi {escape(ssp_name)} team,</p>
 
-    <p>{escape(publisher_name)} received a notice from Confiant flagging
-    <strong>{len(platforms)} ad platforms</strong> as
-    <strong>High Risk</strong> (HRAP) &mdash; bidding or serving
-    intermediaries with persistent abnormal volumes of malicious campaigns.
-    Confiant's recommendation is to block these at every layer, including
-    upstream at our SSP partners.</p>
+    <h2 style='margin:14px 0 6px 0;font-size:15px;font-weight:700;color:{_NW_DARK}'>
+      What this list is
+    </h2>
+    <p>Confiant &mdash; the brand-safety vendor monitoring
+    {escape(publisher_name)}'s ad inventory in real time &mdash; maintains a
+    list of <strong>High Risk Ad Platforms (HRAPs)</strong>. These are
+    bidding or serving intermediaries that Confiant's Security Team has
+    consistently and persistently detected serving abnormal volumes of
+    malicious campaigns &mdash; cloaked redirects, phishing,
+    investment-scam landing pages, forced-redirect creatives, and similar
+    policy violations.</p>
 
-    <p>We're blocking them on the publisher side via our GAM
-    Protection. We're forwarding this list so your trust &amp;
-    safety / supply quality team can decide whether to apply equivalent
-    blocks on your demand side &mdash; preventing these impressions from
-    reaching us (or any other publisher in your inventory) in the first
-    place.</p>
+    <p>Confiant publishes the list periodically (typically every 4&ndash;6
+    weeks) and recommends blocking these platforms at <strong>every layer
+    of the supply chain</strong>. We've already applied them on the
+    publisher side via our GAM Protection. We're forwarding to you
+    because the upstream block on your side is the part that prevents
+    these creatives from ever reaching us (or any other publisher in
+    your inventory) in the first place.</p>
+
+    <div style='background:#fff5f5;border:1px solid #f3c2c5;border-left:4px solid {_NW_RED};padding:14px 18px;border-radius:4px;margin:18px 0'>
+      <h2 style='margin:0 0 10px 0;font-size:15px;font-weight:700;color:{_NW_DARK}'>
+        What we're asking your team to do
+      </h2>
+      <ol style='margin:0;padding-left:22px;color:{_NW_DARK}'>
+        <li style='margin-bottom:8px'>
+          <strong>Block all {len(platforms)} HRAP domains in your bidding /
+          serving system</strong> at the platform level so creatives from
+          these intermediaries can't bid into {escape(publisher_name)} (or
+          any other publisher you serve) via {escape(ssp_name)} demand.
+          The full list is in the table below.
+        </li>
+        <li style='margin-bottom:8px'>
+          <strong>Cascade to upstream demand partners</strong> (DSPs, other
+          exchanges) where applicable, so blocks aren't undone by demand
+          coming in through a different door.
+        </li>
+        <li>
+          <strong>Reply to confirm when implemented.</strong> A short
+          "implemented on &lt;date&gt;" is all we need. If any of the
+          {len(platforms)} domains are ones your team can't block or
+          disagrees with, please call those out so we can take it up with
+          Confiant.
+        </li>
+      </ol>
+      <p style='margin:12px 0 0 0;color:{_NW_MUTED};font-size:13px'>
+        <strong>Timeline:</strong> within ~2 weeks would be ideal &mdash;
+        we'd like to confirm coverage before Confiant ships the next HRAP
+        update.
+      </p>
+    </div>
 
     {additions_html}
 
