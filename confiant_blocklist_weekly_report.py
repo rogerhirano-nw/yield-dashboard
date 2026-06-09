@@ -53,7 +53,7 @@ def _state_path() -> Path:
     return Path.home() / ".confiant-blocklist" / "state.sqlite"
 
 
-DEFAULT_TO = "revops@newsweek.com"
+DEFAULT_TO = "confiant-alerts@newsweek.com"
 GAM_PROTECTION_URL_TMPL = (
     "https://admanager.google.com/{network}#delivery/protections/detail/protection_id={pid}"
 )
