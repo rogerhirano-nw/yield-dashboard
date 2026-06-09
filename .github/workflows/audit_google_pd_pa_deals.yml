@@ -54,7 +54,7 @@ jobs:
                       ROUND(SUM(ad_server_cpm_and_cpc_revenue)::numeric, 2) AS rev_7d,
                       ROUND(AVG(ad_server_average_ecpm)::numeric, 2)        AS avg_ecpm
                   FROM gam_pmp_deals
-                  WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+                  WHERE date::date >= CURRENT_DATE - INTERVAL '7 days'
                   GROUP BY 1, 2, 3, 4
                   ORDER BY rev_7d DESC
               """), conn)
