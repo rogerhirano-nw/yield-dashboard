@@ -31,7 +31,7 @@
         <string>python3</string>
         <string>/Users/roger/code/yield-dashboard/confiant_blocklist_weekly_report.py</string>
         <string>--to</string>
-        <string>revops@newsweek.com</string>
+        <string>confiant-alerts@newsweek.com</string>
     </array>
 
     <key>EnvironmentVariables</key>
