@@ -27,7 +27,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install sqlalchemy psycopg2-binary pandas tabulate
+        run: pip install -r requirements.txt
 
       - name: Run audit
         env:
@@ -287,6 +287,42 @@ jobs:
               print(f"      Rev 7d: ${r['rev']:,.2f}  Imps: {r['imps']:,.0f}")
 
           print(f"\n{'='*70}")
+          PYEOF
+
+      - name: Pull buyer-facing Adx Deal IDs (SOAP marketplaceInfo)
+        env:
+          GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -o pipefail
+          python - <<'PYEOF' 2>&1 | tee -a /tmp/output.txt
+
+          from gam_client import GAMClient
+          from googleads import ad_manager
+
+          # The two Google PD proposal line items from the audit above.
+          LI_IDS = (199077298, 199088804)
+
+          gam = GAMClient()
+          client = gam._get_soap_client()
+          ver = GAMClient._SOAP_API_VERSION
+          svc = client.GetService("ProposalLineItemService", version=ver)
+          sb = ad_manager.StatementBuilder(version=ver)
+          sb.Where(f"id IN ({', '.join(str(i) for i in LI_IDS)})")
+
+          print()
+          print("=" * 70)
+          print("  BUYER-FACING ADX DEAL IDs (ProposalLineItem.marketplaceInfo)")
+          print("=" * 70)
+          resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+          for li in (getattr(resp, "results", None) or []):
+              mi = getattr(li, "marketplaceInfo", None)
+              deal_id = getattr(mi, "dealId", None) if mi else None
+              print(f"  LI {li.id}  {li.name}")
+              if deal_id:
+                  print(f"    Adx Deal ID (what the buyer sees in DV360): {deal_id}")
+              else:
+                  print(f"    marketplaceInfo: {mi!r}")
           PYEOF
 
       - name: Post as PR comment
