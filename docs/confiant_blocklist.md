@@ -172,16 +172,116 @@ launchctl start com.newsweek.confiant-blocklist-weekly
 tail ~/.confiant-blocklist/launchd.weekly.err.log
 ```
 
+## High Risk Ad Platforms (HRAPs) — seed + SSP forward
+
+Confiant publishes a periodic notice of **High Risk Ad Platforms** — bidding
+or serving intermediaries with persistent abnormal volumes of malicious
+campaigns. Their standing recommendation is to block at every layer:
+publisher Protection AND upstream at SSP partners.
+
+We persist the canonical list at `data/confiant_hraps.json` and run two
+manual scripts against it whenever Confiant ships an update.
+
+### `confiant_blocklist_seed_hraps.py` — push HRAPs into the GAM Protection
+
+```bash
+# Preview the diff against current state (no browser, no GAM, no state writes)
+python confiant_blocklist_seed_hraps.py --dry-run
+
+# Push new HRAPs to the prod Protection. Browser opens.
+python confiant_blocklist_seed_hraps.py \
+    --protection-id 28044902 --protection-label Everything
+```
+
+- Reads `data/confiant_hraps.json`, diffs against `state.sqlite`, pushes
+  only the delta (idempotent — re-run after editing the JSON).
+- **Strips Confiant's `*.` wildcard prefix before push.** GAM's Advertiser
+  URLs field rejects entries with a leading asterisk; the bare-domain form
+  blocks all subdomains automatically. JSON stays faithful to Confiant's
+  notation so the SSP-forward email reads the way SSPs index HRAPs. The
+  normalization is push-time only (`_normalize_for_gam` in the seeder).
+- **Pushes in batches of `--batch-size` (default 30).** GAM's modal-input
+  validation step is ~linear in the number of entries pasted; somewhere
+  around 40-50 it starts to exceed the modal-Update-button enable wait
+  (raised to 30s in `gam_blocklist_ui.py` as a separate safety bump).
+  Each batch records its own `runs` row in `state.sqlite` so partial
+  successes don't roll back.
+- Records each push with `issue_type = "HRAP — <platform>"` so the weekly
+  RevOps digest can distinguish platform-blocks from per-creative blocks
+  at a glance.
+
+### `confiant_hrap_forward.py` — Outlook drafts to every SSP partner
+
+```bash
+# Preview without creating drafts
+python confiant_hrap_forward.py --dry-run
+
+# Create one draft per SSP in settings.json -> ssp_contacts
+python confiant_hrap_forward.py
+
+# Only one SSP (testing)
+python confiant_hrap_forward.py --provider 'Index Exchange'
+```
+
+- Reuses `confiant_outreach_drafts.get_token` (same Microsoft Graph token
+  cache at `~/.confiant-outreach/msal_cache.json`).
+- Reuses `confiant_outreach._load_settings` (same SSP contact distro and
+  the `cc_emails` field — drafts CC `revops@newsweek.com` automatically).
+- Reuses `confiant_outreach_drafts.create_graph_draft` (handles RFC 5322
+  display names — `"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
+- Subject: `<SSP>//Newsweek — Confiant HRAP notice: N high-risk ad
+  platforms to block`. Body: branded layout matching the weekly RevOps
+  digest, full HRAP table grouped by platform, "additions this update"
+  highlighted at top.
+
+### Updating the list
+
+When Confiant ships their next notice email:
+
+1. Edit `data/confiant_hraps.json` — add new entries to `platforms`,
+   list them in `additions_this_update`, bump `updated_at`.
+2. `python confiant_blocklist_seed_hraps.py` — idempotent re-push, only
+   new ones go through.
+3. `python confiant_hrap_forward.py` — fresh drafts to all 35 SSPs.
+
 ## State
 
 - `~/.confiant-blocklist/state.sqlite` — `blocked_domains` (one row per domain
   ever pushed, tracks protection_id + protection_label + first_seen date) +
   `runs` (one row per invocation, tracks source/categories/counts/status).
+  HRAP pushes use `source = "file://<path>#batch=N/M"` and `issue_type =
+  "HRAP — <platform>"`.
 - `~/.confiant-blocklist/playwright-profile/` — Chromium profile with the
   logged-in Google session.
-- `~/.confiant-blocklist/launchd.{out,err}.log` — launchd stdio.
+- `~/.confiant-blocklist/launchd.{out,err}.log` — daily cron stdio.
+- `~/.confiant-blocklist/launchd.weekly.{out,err}.log` — weekly digest stdio.
 
-None of these are committed; the script auto-creates them.
+None of these are committed; the scripts auto-create them.
+
+## Credentials live in `.env`, not in the launchd plist
+
+All four scripts (`confiant_blocklist.py`, `confiant_blocklist_weekly_report.py`,
+`confiant_blocklist_seed_hraps.py`, `confiant_hrap_forward.py`) call the same
+`_load_dotenv()` helper at startup, which reads `~/code/yield-dashboard/.env`
+via `os.environ.setdefault`. Required keys:
+
+```
+GAM_NETWORK_ID
+CONFIANT_API_KEY
+AGENTMAIL_API_KEY
+AGENTMAIL_INBOX_ID         # newsweek@agentmail.to
+CONFIANT_REPORT_TO_EMAIL   # daily summary recipient (e.g. revops@newsweek.com)
+```
+
+**Do NOT redeclare any of these in the launchd plist `EnvironmentVariables`
+dict** — not even as empty `<string></string>` placeholders. `setdefault`
+treats them as "already set" (Python doesn't distinguish "empty" from
+"unset" once a key is present in `os.environ`) and the script silently
+skips its outbound email. The daily blocklist post-run summary lost ~10
+days of emails to exactly this bug between 2026-05-26 and 2026-06-08 — see
+PR #133 for the fix. The plist should carry only `PATH`, paths
+(`CONFIANT_BLOCKLIST_PROFILE_DIR`, `CONFIANT_BLOCKLIST_STATE`), and
+process-control keys (`AbandonProcessGroup`, etc.).
 
 ## When Google changes the Protections UI
 
