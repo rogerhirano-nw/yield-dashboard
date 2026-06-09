@@ -299,9 +299,21 @@ jobs:
 
           from gam_client import GAMClient
           from googleads import ad_manager
+          from zeep.helpers import serialize_object
 
           # The two Google PD proposal line items from the audit above.
           LI_IDS = (199077298, 199088804)
+
+          def deal_fields(obj, prefix=""):
+              """Recursively yield (path, value) for any field whose name
+              contains 'deal' (case-insensitive), skipping None values."""
+              d = serialize_object(obj) or {}
+              for k, v in d.items():
+                  path = f"{prefix}{k}"
+                  if isinstance(v, dict):
+                      yield from deal_fields(v, prefix=f"{path}.")
+                  elif v is not None and "deal" in k.lower():
+                      yield path, v
 
           gam = GAMClient()
           client = gam._get_soap_client()
@@ -312,17 +324,39 @@ jobs:
 
           print()
           print("=" * 70)
-          print("  BUYER-FACING ADX DEAL IDs (ProposalLineItem.marketplaceInfo)")
+          print("  BUYER-FACING ADX DEAL IDs — field hunt")
           print("=" * 70)
           resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+          proposal_ids = set()
           for li in (getattr(resp, "results", None) or []):
-              mi = getattr(li, "marketplaceInfo", None)
-              deal_id = getattr(mi, "dealId", None) if mi else None
-              print(f"  LI {li.id}  {li.name}")
-              if deal_id:
-                  print(f"    Adx Deal ID (what the buyer sees in DV360): {deal_id}")
+              print(f"\n  LI {li.id}  {li.name}")
+              pid = getattr(li, "proposalId", None)
+              if pid:
+                  proposal_ids.add(pid)
+                  print(f"    proposalId: {pid}")
+              hits = list(deal_fields(li))
+              if hits:
+                  for path, v in hits:
+                      print(f"    {path}: {v}")
               else:
-                  print(f"    marketplaceInfo: {mi!r}")
+                  print("    (no non-null *deal* fields on the line item)")
+
+          if proposal_ids:
+              psvc = client.GetService("ProposalService", version=ver)
+              psb = ad_manager.StatementBuilder(version=ver)
+              psb.Where(f"id IN ({', '.join(str(i) for i in sorted(proposal_ids))})")
+              presp = psvc.getProposalsByStatement(psb.ToStatement())
+              for p in (getattr(presp, "results", None) or []):
+                  print(f"\n  Proposal {p.id}  {getattr(p, 'name', '')}")
+                  hits = list(deal_fields(p))
+                  if hits:
+                      for path, v in hits:
+                          print(f"    {path}: {v}")
+                  else:
+                      print("    (no non-null *deal* fields on the proposal)")
+                  mi = getattr(p, "marketplaceInfo", None)
+                  if mi is not None:
+                      print(f"    proposal.marketplaceInfo: {serialize_object(mi)}")
           PYEOF
 
       - name: Post as PR comment
