@@ -45,10 +45,35 @@ CPA target defaults to $150/FTP. Override with `BETTING_CPA_TARGET` repo variabl
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
 ## Subsystems with their own docs
-- `docs/confiant_blocklist.md` — weekly Confiant -> GAM Protection sync. Not a
-  standard SSP client; runs locally via launchd (GAM Protections has no API,
-  so Playwright drives the UI). See doc for the Google-UI-changed-and-broke-it
-  recovery flow.
+- `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
+  pipeline. Three jobs that all read/write the same `state.sqlite`:
+    1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
+       pulls Confiant API, pushes per-creative Security-flagged Google
+       domains to GAM Protection 28044902 ("Everything") via Playwright.
+       Post-run summary email goes to `revops@newsweek.com` via agentmail.
+    2. **Weekly RevOps digest** (`confiant_blocklist_weekly_report.py`,
+       launchd Mon 09:00 ET) — rolls up the past 7 days of pushes,
+       branded layout (KPI tiles, per-day bar chart, issue-type cards),
+       emails RevOps. Layout matches the publisher brand-safety style.
+    3. **HRAP seed + SSP forward**
+       (`confiant_blocklist_seed_hraps.py` + `confiant_hrap_forward.py`,
+       run manually when Confiant ships a periodic notice). HRAP list
+       persisted at `data/confiant_hraps.json`; seeder pushes new entries
+       to the same Protection in batches of 30; forwarder creates one
+       Outlook draft per SSP partner via Microsoft Graph.
+  All four scripts auto-load `~/code/yield-dashboard/.env` via the same
+  `_load_dotenv()` helper. **Plist EnvironmentVariables dict must NOT
+  redeclare keys as empty `<string></string>`** — `os.environ.setdefault`
+  treats them as "already set" and the script silently skips. The first
+  ~10 daily blocklist runs lost their summary email to exactly that bug;
+  see `docs/confiant_blocklist.md` for the full debrief.
+- `docs/confiant_outreach.md` (lives next to it) — weekly per-SSP
+  Confiant outreach emails. Microsoft Graph drafts via
+  `confiant_outreach_drafts.py`. Subject `<SSP>//<Publisher> — N flagged
+  creatives on <publisher>.com (past 7 days)`. CC always
+  `revops@newsweek.com` (settings.json). Per-SSP enhancements:
+  `ssp_publisher_ids` (surfaces our pub-id in the body); contacts accept
+  RFC 5322 display names (`"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
