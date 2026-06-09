@@ -1,0 +1,382 @@
+name: Audit Google PD/PA deals (one-off)
+
+# Answers Ivy's question: which Google PD/PA deals are spending vs inactive,
+# and which deal is driving the $9,744 / 7-day figure she sees in Adopt Chat.
+# Also surfaces Multi-cultural / Tech / Sports deals at $5 CPM (display) and
+# $14 CPM (video) across Google, Magnite, and DV360.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/gracious-newton-EMem5]
+    paths:
+      - '.github/workflows/audit_google_pd_pa_deals.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run audit
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          python - <<'PYEOF' 2>&1 | tee /tmp/output.txt
+
+          import os, textwrap
+          import pandas as pd
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+
+          # ── 1. Last-7-day deal spend from gam_pmp_deals ─────────────────────────────
+          with engine.connect() as conn:
+              df = pd.read_sql(text("""
+                  SELECT
+                      programmatic_deal_name  AS deal,
+                      dsp,
+                      programmatic_channel_name AS channel,
+                      ad_format,
+                      SUM(ad_server_impressions)           AS imps_7d,
+                      ROUND(SUM(ad_server_cpm_and_cpc_revenue)::numeric, 2) AS rev_7d,
+                      ROUND(AVG(ad_server_average_ecpm)::numeric, 2)        AS avg_ecpm
+                  FROM gam_pmp_deals
+                  WHERE date::date >= CURRENT_DATE - INTERVAL '7 days'
+                  GROUP BY 1, 2, 3, 4
+                  ORDER BY rev_7d DESC
+              """), conn)
+
+          # ── 2. PD metadata (active/expired) ──────────────────────────────────────────
+          with engine.connect() as conn:
+              pd_meta = pd.read_sql(text("""
+                  SELECT deal_name, line_item_type, start_date, end_date, last_modified
+                  FROM gam_pd_metadata
+              """), conn)
+
+          # ── 3. PA metadata ─────────────────────────────────────────────────────────
+          with engine.connect() as conn:
+              try:
+                  pa_meta = pd.read_sql(text("""
+                      SELECT auction_name, deal_status, floor_price_usd, end_time
+                      FROM gam_pa_metadata
+                  """), conn)
+              except Exception:
+                  pa_meta = pd.DataFrame()
+
+          # ── Classify PA vs PD channel ─────────────────────────────────────────────
+          df["type"] = df["channel"].apply(lambda c: (
+              "PA" if "private" in str(c).lower() or "audience" in str(c).lower()
+              else "PD" if "preferred" in str(c).lower()
+              else "PG" if "guaranteed" in str(c).lower()
+              else str(c)[:12]
+          ))
+
+          # ── Spending flag ─────────────────────────────────────────────────────────
+          df["spending"] = df["imps_7d"] > 0
+
+          # ── Total 7-day revenue across all PA/PD ─────────────────────────────────
+          total_rev = df["rev_7d"].sum()
+          print(f"\n{'='*70}")
+          print(f"  GAM PD + PA DEAL AUDIT  (last 7 days through yesterday)")
+          print(f"{'='*70}")
+          print(f"  Total revenue across all PA/PD/PG deals: ${total_rev:,.2f}")
+
+          # ── Google / DV360 PD deals ───────────────────────────────────────────────
+          google_mask = (
+              df["dsp"].str.contains("Google|DV360|Display & Video", case=False, na=False) |
+              df["deal"].str.contains("DV360|Google", case=False, na=False)
+          )
+          df_google = df[google_mask & (df["type"] == "PD")].copy()
+
+          google_rev = df_google["rev_7d"].sum()
+          print(f"\n{'─'*70}")
+          print(f"  GOOGLE / DV360 PD DEALS  (7-day total: ${google_rev:,.2f})")
+          print(f"{'─'*70}")
+          if df_google.empty:
+              print("  No Google/DV360 PD deals found with recent activity.")
+          else:
+              for _, r in df_google.iterrows():
+                  status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                  pct = (r["rev_7d"] / google_rev * 100) if google_rev else 0
+                  print(f"  {status}  {r['deal'][:65]}")
+                  print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}")
+                  print(f"    Imps: {r['imps_7d']:>10,.0f}  Rev: ${r['rev_7d']:>9,.2f}  "
+                        f"eCPM: ${r['avg_ecpm']:>6.2f}  ({pct:.1f}% of Google total)")
+                  print()
+
+          # ── All PA deals ──────────────────────────────────────────────────────────
+          df_pa = df[df["type"] == "PA"].copy()
+          pa_rev = df_pa["rev_7d"].sum()
+          print(f"\n{'─'*70}")
+          print(f"  ALL PRIVATE AUCTION (PA) DEALS  (7-day total: ${pa_rev:,.2f})")
+          print(f"{'─'*70}")
+          if df_pa.empty:
+              print("  No PA deals with recent activity.")
+          else:
+              for _, r in df_pa.iterrows():
+                  status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                  print(f"  {status}  {r['deal'][:65]}")
+                  print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}  |  "
+                        f"Imps: {r['imps_7d']:,.0f}  Rev: ${r['rev_7d']:,.2f}  eCPM: ${r['avg_ecpm']:.2f}")
+
+          # ── Multi-cultural / Tech / Sports deals (all SSPs) ──────────────────────
+          cats = {"Multi-cultural": ["multicult", "multi-cult", "multicultural"],
+                  "Tech":           ["tech", "technolog"],
+                  "Sports":         ["sport"]}
+
+          for cat_label, keywords in cats.items():
+              pat = "|".join(keywords)
+              df_cat = df[df["deal"].str.contains(pat, case=False, na=False)].copy()
+              cat_rev = df_cat["rev_7d"].sum()
+              print(f"\n{'─'*70}")
+              print(f"  {cat_label.upper()} DEALS (all SSPs)  — 7-day rev: ${cat_rev:,.2f}")
+              print(f"{'─'*70}")
+              if df_cat.empty:
+                  print(f"  No {cat_label} deals found with recent activity.")
+              else:
+                  for _, r in df_cat.iterrows():
+                      status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                      print(f"  {status}  [{r['type']}]  {r['deal'][:60]}")
+                      print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}  |  "
+                            f"eCPM: ${r['avg_ecpm']:.2f}  Rev: ${r['rev_7d']:,.2f}")
+
+          # ── PD metadata: any expired deals still in spend data? ───────────────────
+          if not pd_meta.empty and "end_date" in pd_meta.columns:
+              from datetime import date
+              pd_meta["end_date"] = pd.to_datetime(pd_meta["end_date"], errors="coerce").dt.date
+              expired = pd_meta[
+                  pd_meta["end_date"].notna() & (pd_meta["end_date"] < date.today())
+              ]
+              if not expired.empty:
+                  still = expired[expired["deal_name"].isin(df[df["spending"]]["deal"])]
+                  print(f"\n{'─'*70}")
+                  print(f"  PD METADATA: {len(expired)} deals with past end_date "
+                        f"({len(still)} still in spend data)")
+                  print(f"{'─'*70}")
+                  for _, r in still.iterrows():
+                      print(f"  ⚠️  STILL IN SPEND DATA  {r['deal_name'][:60]}  (ended {r['end_date']})")
+
+          # ══════════════════════════════════════════════════════════════════════════
+          #  MAGNITE DV+ SIDE
+          # ══════════════════════════════════════════════════════════════════════════
+          with engine.connect() as conn:
+              mag = pd.read_sql(text("""
+                  SELECT
+                      deal,
+                      CAST(deal_id AS TEXT)            AS deal_id,
+                      SUM(bid_responses)               AS bids_7d,
+                      SUM(paid_impression)             AS imps_7d,
+                      ROUND(SUM(publisher_gross_revenue)::numeric, 2) AS rev_7d
+                  FROM magnite_deal_daily
+                  GROUP BY 1, 2
+                  ORDER BY rev_7d DESC
+              """), conn)
+          import numpy as np
+          mag["ecpm"] = (pd.to_numeric(mag["rev_7d"], errors="coerce")
+                         / pd.to_numeric(mag["imps_7d"], errors="coerce").replace(0, np.nan)
+                         * 1000).round(2)
+
+          with engine.connect() as conn:
+              mag_meta = pd.read_sql(text("""
+                  SELECT m.deal, CAST(m.deal_id AS TEXT) AS deal_id,
+                         m.last_seen, p.last_bid_date
+                  FROM magnite_deal_metadata m
+                  LEFT JOIN pmp_last_bid_date p
+                    ON p.ssp = 'magnite' AND p.deal_key = CAST(m.deal_id AS TEXT)
+              """), conn)
+
+          mag_rev = mag["rev_7d"].sum()
+          print(f"\n{'='*70}")
+          print(f"  MAGNITE DV+ DEALS  (last 7 days — total: ${mag_rev:,.2f})")
+          print(f"{'='*70}")
+
+          spending = mag[mag["imps_7d"] > 0].sort_values("rev_7d", ascending=False)
+          print(f"\n  ✅ SPENDING ({len(spending)} deals):")
+          for _, r in spending.iterrows():
+              print(f"    {r['deal'][:62]}")
+              print(f"      Imps: {r['imps_7d']:>10,.0f}  Rev: ${r['rev_7d']:>9,.2f}  "
+                    f"eCPM: ${r['ecpm'] if pd.notna(r['ecpm']) else 0:>6.2f}  Bids: {r['bids_7d']:,.0f}")
+
+          bids_only = mag[(mag["imps_7d"] == 0) & (mag["bids_7d"] > 0)]
+          if not bids_only.empty:
+              print(f"\n  🟡 GETTING BIDS BUT NOT WINNING ({len(bids_only)} deals):")
+              for _, r in bids_only.iterrows():
+                  print(f"    {r['deal'][:62]}  ({r['bids_7d']:,.0f} bids, 0 imps)")
+
+          # Dark = in 180-day metadata but no row in the 7-day delivery report.
+          active_ids = set(mag["deal_id"].dropna())
+          dark = mag_meta[~mag_meta["deal_id"].isin(active_ids)].copy()
+          if not dark.empty:
+              dark = dark.sort_values("last_bid_date", ascending=False, na_position="last")
+              print(f"\n  ⛔ DARK — no activity in last 7 days ({len(dark)} deals, by last bid date):")
+              for _, r in dark.iterrows():
+                  lbd = r["last_bid_date"] if pd.notna(r["last_bid_date"]) else f"req {r['last_seen']}"
+                  print(f"    {str(r['deal'])[:58]}  (last bid: {lbd})")
+
+          # Category filter on the Magnite side
+          for cat_label, keywords in cats.items():
+              pat = "|".join(keywords)
+              m_cat = mag[mag["deal"].astype(str).str.contains(pat, case=False, na=False)]
+              d_cat = dark[dark["deal"].astype(str).str.contains(pat, case=False, na=False)]
+              print(f"\n  {cat_label.upper()} on Magnite: "
+                    f"{len(m_cat[m_cat['imps_7d']>0])} spending / "
+                    f"{len(m_cat[m_cat['imps_7d']==0]) + len(d_cat)} dark")
+              for _, r in m_cat.iterrows():
+                  st = "✅" if r["imps_7d"] > 0 else "🟡"
+                  print(f"    {st} {r['deal'][:60]}  Rev: ${r['rev_7d']:,.2f}  "
+                        f"eCPM: ${r['ecpm'] if pd.notna(r['ecpm']) else 0:.2f}")
+              for _, r in d_cat.iterrows():
+                  lbd = r["last_bid_date"] if pd.notna(r["last_bid_date"]) else "unknown"
+                  print(f"    ⛔ {str(r['deal'])[:60]}  (last bid: {lbd})")
+
+          # ══════════════════════════════════════════════════════════════════════════
+          #  GOOGLE PMP DETAIL — full deal names + IDs (for the AE reply)
+          # ══════════════════════════════════════════════════════════════════════════
+          print(f"\n{'='*70}")
+          print(f"  GOOGLE PMP DETAIL — full names + IDs (last 7 days)")
+          print(f"{'='*70}")
+
+          with engine.connect() as conn:
+              g_mag = pd.read_sql(text("""
+                  SELECT deal, CAST(deal_id AS TEXT) AS deal_id,
+                         SUM(paid_impression) AS imps,
+                         ROUND(SUM(publisher_gross_revenue)::numeric, 2) AS rev
+                  FROM magnite_deal_daily
+                  WHERE deal ILIKE '%%google%%'
+                  GROUP BY 1, 2
+                  ORDER BY rev DESC
+              """), conn)
+          print("\n  Magnite (deal ID = Magnite deal ID buyers reference):")
+          for _, r in g_mag.iterrows():
+              print(f"    Deal ID {r['deal_id']}")
+              print(f"      {r['deal']}")
+              print(f"      Rev 7d: ${r['rev']:,.2f}  Imps: {r['imps']:,.0f}")
+
+          with engine.connect() as conn:
+              g_gam = pd.read_sql(text("""
+                  SELECT p.programmatic_deal_name AS deal,
+                         MAX(CAST(m.line_item_id AS TEXT)) AS li_id,
+                         SUM(p.ad_server_impressions) AS imps,
+                         ROUND(SUM(p.ad_server_cpm_and_cpc_revenue)::numeric, 2) AS rev,
+                         MAX(p.ad_format) AS fmt
+                  FROM gam_pmp_deals p
+                  LEFT JOIN gam_pd_metadata m ON m.deal_name = p.programmatic_deal_name
+                  WHERE p.programmatic_deal_name ILIKE '%%google%%'
+                    AND p.date::date >= CURRENT_DATE - INTERVAL '7 days'
+                  GROUP BY 1
+                  ORDER BY rev DESC
+              """), conn)
+          print("\n  GAM/Adx (ID = GAM proposal line item ID; buyer-facing Adx Deal ID")
+          print("  lives in the GAM UI deal record, not in this cache):")
+          for _, r in g_gam.iterrows():
+              print(f"    LI {r['li_id'] or '—'}  [{r['fmt']}]")
+              print(f"      {r['deal']}")
+              print(f"      Rev 7d: ${r['rev']:,.2f}  Imps: {r['imps']:,.0f}")
+
+          print(f"\n{'='*70}")
+          PYEOF
+
+      - name: Pull buyer-facing Adx Deal IDs (SOAP marketplaceInfo)
+        env:
+          GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -o pipefail
+          python - <<'PYEOF' 2>&1 | tee -a /tmp/output.txt
+
+          from gam_client import GAMClient
+          from googleads import ad_manager
+          from zeep.helpers import serialize_object
+
+          # The two Google PD proposal line items from the audit above.
+          LI_IDS = (199077298, 199088804)
+
+          def deal_fields(obj, prefix=""):
+              """Recursively yield (path, value) for any field whose name
+              contains 'deal' (case-insensitive), skipping None values."""
+              d = serialize_object(obj) or {}
+              for k, v in d.items():
+                  path = f"{prefix}{k}"
+                  if isinstance(v, dict):
+                      yield from deal_fields(v, prefix=f"{path}.")
+                  elif v is not None and "deal" in k.lower():
+                      yield path, v
+
+          gam = GAMClient()
+          client = gam._get_soap_client()
+          ver = GAMClient._SOAP_API_VERSION
+          svc = client.GetService("ProposalLineItemService", version=ver)
+          sb = ad_manager.StatementBuilder(version=ver)
+          sb.Where(f"id IN ({', '.join(str(i) for i in LI_IDS)})")
+
+          print()
+          print("=" * 70)
+          print("  BUYER-FACING ADX DEAL IDs — field hunt")
+          print("=" * 70)
+          resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+          proposal_ids = set()
+          for li in (getattr(resp, "results", None) or []):
+              print(f"\n  LI {li.id}  {li.name}")
+              pid = getattr(li, "proposalId", None)
+              if pid:
+                  proposal_ids.add(pid)
+                  print(f"    proposalId: {pid}")
+              hits = list(deal_fields(li))
+              if hits:
+                  for path, v in hits:
+                      print(f"    {path}: {v}")
+              else:
+                  print("    (no non-null *deal* fields on the line item)")
+
+          if proposal_ids:
+              psvc = client.GetService("ProposalService", version=ver)
+              psb = ad_manager.StatementBuilder(version=ver)
+              psb.Where(f"id IN ({', '.join(str(i) for i in sorted(proposal_ids))})")
+              presp = psvc.getProposalsByStatement(psb.ToStatement())
+              for p in (getattr(presp, "results", None) or []):
+                  print(f"\n  Proposal {p.id}  {getattr(p, 'name', '')}")
+                  hits = list(deal_fields(p))
+                  if hits:
+                      for path, v in hits:
+                          print(f"    {path}: {v}")
+                  else:
+                      print("    (no non-null *deal* fields on the proposal)")
+                  mi = getattr(p, "marketplaceInfo", None)
+                  if mi is not None:
+                      print(f"    proposal.marketplaceInfo: {serialize_object(mi)}")
+          PYEOF
+
+      - name: Post as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }}; skipping comment."
+            cat /tmp/output.txt
+            exit 0
+          fi
+          {
+            echo "### Google PD/PA Deal Audit"
+            echo ""
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md

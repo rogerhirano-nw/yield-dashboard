@@ -216,7 +216,10 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
         r"^#\d+\s+", "", regex=True
     )
     if "line_item_id" in df.columns:
-        df["line_item_id"] = df["line_item_id"].astype(str).replace({"": None, "nan": None})
+        df["line_item_id"] = (
+            pd.to_numeric(df["line_item_id"], errors="coerce")
+            .apply(lambda x: str(int(x)) if pd.notna(x) else None)
+        )
 
     return df
 
