@@ -161,13 +161,83 @@ jobs:
                   pd_meta["end_date"].notna() & (pd_meta["end_date"] < date.today())
               ]
               if not expired.empty:
+                  still = expired[expired["deal_name"].isin(df[df["spending"]]["deal"])]
                   print(f"\n{'─'*70}")
-                  print(f"  PD METADATA: {len(expired)} deals with past end_date")
+                  print(f"  PD METADATA: {len(expired)} deals with past end_date "
+                        f"({len(still)} still in spend data)")
                   print(f"{'─'*70}")
-                  for _, r in expired.iterrows():
-                      still_spending = r["deal_name"] in df[df["spending"]]["deal"].values
-                      flag = "⚠️  STILL IN SPEND DATA" if still_spending else "   expired/dark"
-                      print(f"  {flag}  {r['deal_name'][:60]}  (ended {r['end_date']})")
+                  for _, r in still.iterrows():
+                      print(f"  ⚠️  STILL IN SPEND DATA  {r['deal_name'][:60]}  (ended {r['end_date']})")
+
+          # ══════════════════════════════════════════════════════════════════════════
+          #  MAGNITE DV+ SIDE
+          # ══════════════════════════════════════════════════════════════════════════
+          with engine.connect() as conn:
+              mag = pd.read_sql(text("""
+                  SELECT
+                      deal,
+                      CAST(deal_id AS TEXT)            AS deal_id,
+                      SUM(bid_responses)               AS bids_7d,
+                      SUM(paid_impression)             AS imps_7d,
+                      ROUND(SUM(publisher_gross_revenue)::numeric, 2) AS rev_7d
+                  FROM magnite_deal_daily
+                  GROUP BY 1, 2
+                  ORDER BY rev_7d DESC
+              """), conn)
+          mag["ecpm"] = (mag["rev_7d"] / mag["imps_7d"].replace(0, pd.NA) * 1000).astype(float).round(2)
+
+          with engine.connect() as conn:
+              mag_meta = pd.read_sql(text("""
+                  SELECT m.deal, CAST(m.deal_id AS TEXT) AS deal_id,
+                         m.last_seen, p.last_bid_date
+                  FROM magnite_deal_metadata m
+                  LEFT JOIN pmp_last_bid_date p
+                    ON p.ssp = 'magnite' AND p.deal_key = CAST(m.deal_id AS TEXT)
+              """), conn)
+
+          mag_rev = mag["rev_7d"].sum()
+          print(f"\n{'='*70}")
+          print(f"  MAGNITE DV+ DEALS  (last 7 days — total: ${mag_rev:,.2f})")
+          print(f"{'='*70}")
+
+          spending = mag[mag["imps_7d"] > 0].sort_values("rev_7d", ascending=False)
+          print(f"\n  ✅ SPENDING ({len(spending)} deals):")
+          for _, r in spending.iterrows():
+              print(f"    {r['deal'][:62]}")
+              print(f"      Imps: {r['imps_7d']:>10,.0f}  Rev: ${r['rev_7d']:>9,.2f}  "
+                    f"eCPM: ${r['ecpm'] if pd.notna(r['ecpm']) else 0:>6.2f}  Bids: {r['bids_7d']:,.0f}")
+
+          bids_only = mag[(mag["imps_7d"] == 0) & (mag["bids_7d"] > 0)]
+          if not bids_only.empty:
+              print(f"\n  🟡 GETTING BIDS BUT NOT WINNING ({len(bids_only)} deals):")
+              for _, r in bids_only.iterrows():
+                  print(f"    {r['deal'][:62]}  ({r['bids_7d']:,.0f} bids, 0 imps)")
+
+          # Dark = in 180-day metadata but no row in the 7-day delivery report.
+          active_ids = set(mag["deal_id"].dropna())
+          dark = mag_meta[~mag_meta["deal_id"].isin(active_ids)].copy()
+          if not dark.empty:
+              dark = dark.sort_values("last_bid_date", ascending=False, na_position="last")
+              print(f"\n  ⛔ DARK — no activity in last 7 days ({len(dark)} deals, by last bid date):")
+              for _, r in dark.iterrows():
+                  lbd = r["last_bid_date"] if pd.notna(r["last_bid_date"]) else f"req {r['last_seen']}"
+                  print(f"    {str(r['deal'])[:58]}  (last bid: {lbd})")
+
+          # Category filter on the Magnite side
+          for cat_label, keywords in cats.items():
+              pat = "|".join(keywords)
+              m_cat = mag[mag["deal"].astype(str).str.contains(pat, case=False, na=False)]
+              d_cat = dark[dark["deal"].astype(str).str.contains(pat, case=False, na=False)]
+              print(f"\n  {cat_label.upper()} on Magnite: "
+                    f"{len(m_cat[m_cat['imps_7d']>0])} spending / "
+                    f"{len(m_cat[m_cat['imps_7d']==0]) + len(d_cat)} dark")
+              for _, r in m_cat.iterrows():
+                  st = "✅" if r["imps_7d"] > 0 else "🟡"
+                  print(f"    {st} {r['deal'][:60]}  Rev: ${r['rev_7d']:,.2f}  "
+                        f"eCPM: ${r['ecpm'] if pd.notna(r['ecpm']) else 0:.2f}")
+              for _, r in d_cat.iterrows():
+                  lbd = r["last_bid_date"] if pd.notna(r["last_bid_date"]) else "unknown"
+                  print(f"    ⛔ {str(r['deal'])[:60]}  (last bid: {lbd})")
 
           print(f"\n{'='*70}")
           PYEOF
