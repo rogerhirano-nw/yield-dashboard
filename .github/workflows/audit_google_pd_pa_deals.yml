@@ -242,6 +242,50 @@ jobs:
                   lbd = r["last_bid_date"] if pd.notna(r["last_bid_date"]) else "unknown"
                   print(f"    ⛔ {str(r['deal'])[:60]}  (last bid: {lbd})")
 
+          # ══════════════════════════════════════════════════════════════════════════
+          #  GOOGLE PMP DETAIL — full deal names + IDs (for the AE reply)
+          # ══════════════════════════════════════════════════════════════════════════
+          print(f"\n{'='*70}")
+          print(f"  GOOGLE PMP DETAIL — full names + IDs (last 7 days)")
+          print(f"{'='*70}")
+
+          with engine.connect() as conn:
+              g_mag = pd.read_sql(text("""
+                  SELECT deal, CAST(deal_id AS TEXT) AS deal_id,
+                         SUM(paid_impression) AS imps,
+                         ROUND(SUM(publisher_gross_revenue)::numeric, 2) AS rev
+                  FROM magnite_deal_daily
+                  WHERE deal ILIKE '%%google%%'
+                  GROUP BY 1, 2
+                  ORDER BY rev DESC
+              """), conn)
+          print("\n  Magnite (deal ID = Magnite deal ID buyers reference):")
+          for _, r in g_mag.iterrows():
+              print(f"    Deal ID {r['deal_id']}")
+              print(f"      {r['deal']}")
+              print(f"      Rev 7d: ${r['rev']:,.2f}  Imps: {r['imps']:,.0f}")
+
+          with engine.connect() as conn:
+              g_gam = pd.read_sql(text("""
+                  SELECT p.programmatic_deal_name AS deal,
+                         MAX(CAST(m.line_item_id AS TEXT)) AS li_id,
+                         SUM(p.ad_server_impressions) AS imps,
+                         ROUND(SUM(p.ad_server_cpm_and_cpc_revenue)::numeric, 2) AS rev,
+                         MAX(p.ad_format) AS fmt
+                  FROM gam_pmp_deals p
+                  LEFT JOIN gam_pd_metadata m ON m.deal_name = p.programmatic_deal_name
+                  WHERE p.programmatic_deal_name ILIKE '%%google%%'
+                    AND p.date::date >= CURRENT_DATE - INTERVAL '7 days'
+                  GROUP BY 1
+                  ORDER BY rev DESC
+              """), conn)
+          print("\n  GAM/Adx (ID = GAM proposal line item ID; buyer-facing Adx Deal ID")
+          print("  lives in the GAM UI deal record, not in this cache):")
+          for _, r in g_gam.iterrows():
+              print(f"    LI {r['li_id'] or '—'}  [{r['fmt']}]")
+              print(f"      {r['deal']}")
+              print(f"      Rev 7d: ${r['rev']:,.2f}  Imps: {r['imps']:,.0f}")
+
           print(f"\n{'='*70}")
           PYEOF
 
