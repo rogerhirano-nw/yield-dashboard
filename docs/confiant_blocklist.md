@@ -244,6 +244,76 @@ When Confiant ships their next notice email:
    new ones go through.
 3. `python confiant_hrap_forward.py` — fresh drafts to all 35 SSPs.
 
+## Confiant issue types — which layer enforces what
+
+Confiant flags fall into two broad categories that need different
+enforcement layers. Picking the wrong layer is the most common SSP-
+outreach mistake; the per-creative ask is right for some flags and
+deeply wrong for others.
+
+### Security-category — destination-based, GAM Protection works
+
+`Cloaked`, `Phishing`, `Forced Redirect`, `Investment Scam`,
+`Pixel Stuffing`, `Unsafe/malware landing page`, `Misleading Claims (Health)`.
+
+These are tied to specific malicious destinations. The daily blocklist
+cron pushes the destination domains into GAM Protection 28044902. The
+per-creative outreach to SSPs is also the right ask — "block this
+specific advertiser/seat at source so it doesn't bid anywhere."
+
+### Format-compliance — behavior-based, needs SSP format enforcement
+
+`Video (Click)`, `Video (Mouse hover)`, `Video (Automatic)`,
+`Expandable (Automatic)`, `Expandable (Click)`, `Pop-up (Automatic)`,
+`Heaviness`, `Skin detection`.
+
+These describe **behaviors** of the creative, not malicious destinations.
+Examples:
+
+- **Video (Click)** — on click, the creative triggers a redirect chain
+  through undeclared domains, opens a new tab without proper user-intent
+  semantics, or triggers sound on a unit configured silent.
+- **Video (Mouse hover)** — same behaviors but pre-click, on hover.
+- **Video (Automatic)** — same behaviors fired without any user
+  interaction (auto-play with sound, auto-redirect, auto-expand).
+
+The flagged creative's destination is almost always a legitimate ad-
+serving CDN: `cache-ssl.celtra.com`, `chunk-oci-us-…edgemv.mux.com`,
+`html5.adsrvr.org`, `swf.mixpo.com`. **Blocking those URLs in GAM
+Protection would block every legitimate video creative on those
+platforms.** The pipeline we built is the wrong tool for this class.
+
+The correct enforcement layers, in priority order:
+
+1. **SSP format-enforcement settings** — VAST/VPAID/MRAID click-through
+   validation, sound-on-hover prevention, redirect-chain audits at the
+   seat/exchange level. Reject the creative before it bids. The SSP owns
+   this and it's standard infrastructure for them.
+2. **Confiant Real-Time Blocking** — behavior-based blocks at render
+   time on Newsweek's pages. Separate from the `issue_type_by_domain`
+   API our daily cron reads — Active Blocking is a different Confiant
+   product config, tuned at app.confiant.com.
+3. **GAM Protection URL list** — destination-based, last-resort, only
+   makes sense for Security-category.
+
+### Reply pattern when an SSP follows up
+
+When an SSP rep (Yahoo, Amazon TAM, etc.) asks for more context on a
+weekly outreach, **lead with the platform-level ask** before the per-
+creative details:
+
+> "Can your team check whether \<SSP\> has format-enforcement settings
+> that catch \<issue type\>? If so, why aren't these creatives being
+> caught? If not, can they be turned on? If your enforcement catches
+> it, you protect every publisher in your network, not just us."
+
+Then provide the Confiant taxonomy reference, the IAB/MRC + Newsweek
+policy mapping, and the per-creative specifics as supporting evidence.
+The per-creative trace is the fallback path if they decline the
+platform-level option, not the lead. This applies only to format-
+compliance flags; for Security-category flags the per-creative ask
+remains the right lead.
+
 ## State
 
 - `~/.confiant-blocklist/state.sqlite` — `blocked_domains` (one row per domain
