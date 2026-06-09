@@ -337,7 +337,7 @@
     "_comment": "SSP outreach: weekly email to each SSP's policy/AM contact listing creatives Confiant flagged on their demand. Fill in ssp_contacts with real addresses; SSPs not in this map get skipped (logged with count). publisher_name + cc_emails are mandatory.",
     "publisher_name": "Newsweek",
     "cc_emails": [
-      "revops@newsweek.com"
+      "confiant-alerts@newsweek.com"
     ],
     "min_flagged_impressions_for_outreach": 5,
     "ssp_contacts": {
