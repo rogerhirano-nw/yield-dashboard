@@ -184,7 +184,10 @@ jobs:
                   GROUP BY 1, 2
                   ORDER BY rev_7d DESC
               """), conn)
-          mag["ecpm"] = (mag["rev_7d"] / mag["imps_7d"].replace(0, pd.NA) * 1000).astype(float).round(2)
+          import numpy as np
+          mag["ecpm"] = (pd.to_numeric(mag["rev_7d"], errors="coerce")
+                         / pd.to_numeric(mag["imps_7d"], errors="coerce").replace(0, np.nan)
+                         * 1000).round(2)
 
           with engine.connect() as conn:
               mag_meta = pd.read_sql(text("""
