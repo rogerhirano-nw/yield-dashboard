@@ -112,6 +112,9 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
     df.to_sql(table, conn, if_exists="append", index=False)
+    pk_cols = _TABLE_PKS.get(table)
+    if pk_cols:
+        _ensure_pk(conn, table, pk_cols)
 
 
 # (table, index_name, column_expression)
@@ -140,6 +143,57 @@ _INDEXES = [
     ("gam_pa_metadata",       "idx_gam_pa_metadata_auction_name", "auction_name"),
     ("gam_pd_metadata",       "idx_gam_pd_metadata_deal_name",    "deal_name"),
 ]
+
+# Natural primary keys for tables with predictable composite keys.
+# _ensure_pk() is idempotent — called after every write; no-ops if the
+# constraint already exists.  Prevents duplicate rows and satisfies
+# Supabase's Performance Advisor "No Primary Key" advisory.
+_TABLE_PKS: dict[str, list[str]] = {
+    "magnite_site_daily":      ["date", "site"],
+    "magnite_dsp_daily":       ["date", "partner", "site"],
+    "magnite_deal_daily":      ["date", "deal_id"],
+    "magnite_deal_demand":     ["deal_id", "demand_type_ad_resp", "revenue_source"],
+    "magnite_deal_metadata":   ["deal_id"],
+    "pubmatic_deals":          ["date", "deal_meta_id"],
+    "pubmatic_deal_metadata":  ["deal_meta_id"],
+    # GAM tables
+    "gam_campaigns":           ["report_start", "line_item_id"],
+    "gam_pmp_deals":           ["date", "programmatic_deal_name"],
+    "gam_deal_bid_daily":      ["date", "programmatic_deal_name"],
+    "gam_pd_metadata":         ["line_item_id"],
+    "gam_creatives":           ["creative_id"],
+    "gam_lica":                ["line_item_id", "creative_id"],
+    "gam_campaigns_hourly":    ["date", "hour", "line_item_id"],
+    "gam_campaigns_weekly":    ["week_start", "line_item_id"],
+    # OpenSincera tables
+    "opensincera_ecosystem":   ["date"],
+    "opensincera_publishers":  ["queried_domain"],
+    # DV tables (line_item_id may be absent in older CSVs — savepoint handles gracefully)
+    "dv_attention":            ["date", "line_item_id"],
+    "dv_ivt":                  ["date", "line_item_id", "traffic_validity"],
+}
+
+
+def _ensure_pk(conn, table: str, pk_cols: list[str]) -> None:
+    """Add PRIMARY KEY to table if it doesn't already have one.
+
+    Uses a savepoint so a failure (NULL in a PK column, duplicate rows) only
+    rolls back the ALTER — the surrounding data-write transaction stays intact."""
+    pk_info = sa_inspect(conn).get_pk_constraint(table)
+    if pk_info and pk_info.get("constrained_columns"):
+        return
+    pk_sql = ", ".join(f'"{c}"' for c in pk_cols)
+    conn.execute(text("SAVEPOINT _ensure_pk"))
+    try:
+        conn.execute(text(
+            f'ALTER TABLE "{table}" ADD CONSTRAINT "{table}_pkey" '
+            f'PRIMARY KEY ({pk_sql})'
+        ))
+        conn.execute(text("RELEASE SAVEPOINT _ensure_pk"))
+        logger.info("Added primary key %s to %s", pk_cols, table)
+    except Exception as e:
+        conn.execute(text("ROLLBACK TO SAVEPOINT _ensure_pk"))
+        logger.warning("Could not add primary key to %s (%s): %s", table, pk_cols, e)
 
 
 # Matches the IO/SO order-reference token in a line item name when the name is
@@ -339,6 +393,9 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 # DELETE for a full-table clear (single WAL record, no dead tuples).
                 conn.execute(text(f'TRUNCATE TABLE "{table}"'))
         df.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
@@ -377,6 +434,9 @@ def refresh_gam() -> int:
                     {"cutoff": cutoff},
                 )
         df.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
 
     logger.info("Wrote %d rows to %s", len(df), table)
 
@@ -431,6 +491,9 @@ def refresh_gam_hourly() -> int:
                 {"d": today.isoformat(), "ids": li_ids},
             )
         df.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
     logger.info("Wrote %d hourly rows to %s", len(df), table)
     return len(df)
 
@@ -483,6 +546,9 @@ def refresh_gam_weekly() -> int:
                 {"ids": li_ids, "ws": (start - _td(days=start.weekday())).isoformat()},
             )
         agg.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
     logger.info("Wrote %d weekly rows to %s", len(agg), table)
     return len(agg)
 
@@ -612,6 +678,9 @@ def refresh_gam_lica() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
         df.to_sql("gam_lica", conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get("gam_lica")
+        if pk_cols:
+            _ensure_pk(conn, "gam_lica", pk_cols)
     logger.info("Appended %d LICAs to gam_lica", len(df))
     return len(df)
 
@@ -660,6 +729,9 @@ def refresh_gam_creatives() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
         df.to_sql("gam_creatives", conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get("gam_creatives")
+        if pk_cols:
+            _ensure_pk(conn, "gam_creatives", pk_cols)
     logger.info("Appended %d rows to gam_creatives", len(df))
     return len(df)
 
@@ -885,6 +957,9 @@ def refresh_pubmatic() -> int:
                     {"cutoff": cutoff},
                 )
         df.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -1104,6 +1179,9 @@ def refresh_opensincera_ecosystem() -> int:
                     {"d": df["date"].iloc[0]},
                 )
         df.to_sql(table, conn, if_exists="append", index=False)
+        pk_cols = _TABLE_PKS.get(table)
+        if pk_cols:
+            _ensure_pk(conn, table, pk_cols)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
