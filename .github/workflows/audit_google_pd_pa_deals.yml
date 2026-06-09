@@ -1,0 +1,195 @@
+name: Audit Google PD/PA deals (one-off)
+
+# Answers Ivy's question: which Google PD/PA deals are spending vs inactive,
+# and which deal is driving the $9,744 / 7-day figure she sees in Adopt Chat.
+# Also surfaces Multi-cultural / Tech / Sports deals at $5 CPM (display) and
+# $14 CPM (video) across Google, Magnite, and DV360.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/gracious-newton-EMem5]
+    paths:
+      - '.github/workflows/audit_google_pd_pa_deals.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install sqlalchemy psycopg2-binary pandas tabulate
+
+      - name: Run audit
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          python - <<'PYEOF' 2>&1 | tee /tmp/output.txt
+
+          import os, textwrap
+          import pandas as pd
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+
+          # ── 1. Last-7-day deal spend from gam_pmp_deals ─────────────────────────────
+          with engine.connect() as conn:
+              df = pd.read_sql(text("""
+                  SELECT
+                      programmatic_deal_name  AS deal,
+                      dsp,
+                      programmatic_channel_name AS channel,
+                      ad_format,
+                      SUM(ad_server_impressions)           AS imps_7d,
+                      ROUND(SUM(ad_server_cpm_and_cpc_revenue)::numeric, 2) AS rev_7d,
+                      ROUND(AVG(ad_server_average_ecpm)::numeric, 2)        AS avg_ecpm
+                  FROM gam_pmp_deals
+                  WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+                  GROUP BY 1, 2, 3, 4
+                  ORDER BY rev_7d DESC
+              """), conn)
+
+          # ── 2. PD metadata (active/expired) ──────────────────────────────────────────
+          with engine.connect() as conn:
+              pd_meta = pd.read_sql(text("""
+                  SELECT deal_name, line_item_type, start_date, end_date, last_modified
+                  FROM gam_pd_metadata
+              """), conn)
+
+          # ── 3. PA metadata ─────────────────────────────────────────────────────────
+          with engine.connect() as conn:
+              try:
+                  pa_meta = pd.read_sql(text("""
+                      SELECT auction_name, deal_status, floor_price_usd, end_time
+                      FROM gam_pa_metadata
+                  """), conn)
+              except Exception:
+                  pa_meta = pd.DataFrame()
+
+          # ── Classify PA vs PD channel ─────────────────────────────────────────────
+          df["type"] = df["channel"].apply(lambda c: (
+              "PA" if "private" in str(c).lower() or "audience" in str(c).lower()
+              else "PD" if "preferred" in str(c).lower()
+              else "PG" if "guaranteed" in str(c).lower()
+              else str(c)[:12]
+          ))
+
+          # ── Spending flag ─────────────────────────────────────────────────────────
+          df["spending"] = df["imps_7d"] > 0
+
+          # ── Total 7-day revenue across all PA/PD ─────────────────────────────────
+          total_rev = df["rev_7d"].sum()
+          print(f"\n{'='*70}")
+          print(f"  GAM PD + PA DEAL AUDIT  (last 7 days through yesterday)")
+          print(f"{'='*70}")
+          print(f"  Total revenue across all PA/PD/PG deals: ${total_rev:,.2f}")
+
+          # ── Google / DV360 PD deals ───────────────────────────────────────────────
+          google_mask = (
+              df["dsp"].str.contains("Google|DV360|Display & Video", case=False, na=False) |
+              df["deal"].str.contains("DV360|Google", case=False, na=False)
+          )
+          df_google = df[google_mask & (df["type"] == "PD")].copy()
+
+          google_rev = df_google["rev_7d"].sum()
+          print(f"\n{'─'*70}")
+          print(f"  GOOGLE / DV360 PD DEALS  (7-day total: ${google_rev:,.2f})")
+          print(f"{'─'*70}")
+          if df_google.empty:
+              print("  No Google/DV360 PD deals found with recent activity.")
+          else:
+              for _, r in df_google.iterrows():
+                  status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                  pct = (r["rev_7d"] / google_rev * 100) if google_rev else 0
+                  print(f"  {status}  {r['deal'][:65]}")
+                  print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}")
+                  print(f"    Imps: {r['imps_7d']:>10,.0f}  Rev: ${r['rev_7d']:>9,.2f}  "
+                        f"eCPM: ${r['avg_ecpm']:>6.2f}  ({pct:.1f}% of Google total)")
+                  print()
+
+          # ── All PA deals ──────────────────────────────────────────────────────────
+          df_pa = df[df["type"] == "PA"].copy()
+          pa_rev = df_pa["rev_7d"].sum()
+          print(f"\n{'─'*70}")
+          print(f"  ALL PRIVATE AUCTION (PA) DEALS  (7-day total: ${pa_rev:,.2f})")
+          print(f"{'─'*70}")
+          if df_pa.empty:
+              print("  No PA deals with recent activity.")
+          else:
+              for _, r in df_pa.iterrows():
+                  status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                  print(f"  {status}  {r['deal'][:65]}")
+                  print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}  |  "
+                        f"Imps: {r['imps_7d']:,.0f}  Rev: ${r['rev_7d']:,.2f}  eCPM: ${r['avg_ecpm']:.2f}")
+
+          # ── Multi-cultural / Tech / Sports deals (all SSPs) ──────────────────────
+          cats = {"Multi-cultural": ["multicult", "multi-cult", "multicultural"],
+                  "Tech":           ["tech", "technolog"],
+                  "Sports":         ["sport"]}
+
+          for cat_label, keywords in cats.items():
+              pat = "|".join(keywords)
+              df_cat = df[df["deal"].str.contains(pat, case=False, na=False)].copy()
+              cat_rev = df_cat["rev_7d"].sum()
+              print(f"\n{'─'*70}")
+              print(f"  {cat_label.upper()} DEALS (all SSPs)  — 7-day rev: ${cat_rev:,.2f}")
+              print(f"{'─'*70}")
+              if df_cat.empty:
+                  print(f"  No {cat_label} deals found with recent activity.")
+              else:
+                  for _, r in df_cat.iterrows():
+                      status = "✅ SPENDING" if r["spending"] else "⛔ DARK"
+                      print(f"  {status}  [{r['type']}]  {r['deal'][:60]}")
+                      print(f"    DSP: {r['dsp']}  |  Format: {r['ad_format']}  |  "
+                            f"eCPM: ${r['avg_ecpm']:.2f}  Rev: ${r['rev_7d']:,.2f}")
+
+          # ── PD metadata: any expired deals still in spend data? ───────────────────
+          if not pd_meta.empty and "end_date" in pd_meta.columns:
+              from datetime import date
+              pd_meta["end_date"] = pd.to_datetime(pd_meta["end_date"], errors="coerce").dt.date
+              expired = pd_meta[
+                  pd_meta["end_date"].notna() & (pd_meta["end_date"] < date.today())
+              ]
+              if not expired.empty:
+                  print(f"\n{'─'*70}")
+                  print(f"  PD METADATA: {len(expired)} deals with past end_date")
+                  print(f"{'─'*70}")
+                  for _, r in expired.iterrows():
+                      still_spending = r["deal_name"] in df[df["spending"]]["deal"].values
+                      flag = "⚠️  STILL IN SPEND DATA" if still_spending else "   expired/dark"
+                      print(f"  {flag}  {r['deal_name'][:60]}  (ended {r['end_date']})")
+
+          print(f"\n{'='*70}")
+          PYEOF
+
+      - name: Post as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR for branch ${{ github.ref_name }}; skipping comment."
+            cat /tmp/output.txt
+            exit 0
+          fi
+          {
+            echo "### Google PD/PA Deal Audit"
+            echo ""
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
