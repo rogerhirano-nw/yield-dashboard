@@ -99,6 +99,13 @@ FRESHNESS_CHECKS = [
 PULLED_AT_CHECKS = [
     ("gam_campaigns pulled",      "gam_campaigns",     "_pulled_at", SWEEP_MAX_AGE_HOURS),
     ("pmp_last_bid_date updated", "pmp_last_bid_date", "updated_at", SWEEP_MAX_AGE_HOURS),
+    # OpenSincera: all four tables rewrite on every sweep (--mode=opensincera
+    # job), so staleness means that job failed. The ecosystem snapshot date
+    # lags a day by design — _pulled_at is the invariant, not max(date).
+    ("opensincera_ecosystem pulled",  "opensincera_ecosystem",  "_pulled_at", SWEEP_MAX_AGE_HOURS),
+    ("opensincera_publishers pulled", "opensincera_publishers", "_pulled_at", SWEEP_MAX_AGE_HOURS),
+    ("opensincera_adsystems pulled",  "opensincera_adsystems",  "_pulled_at", SWEEP_MAX_AGE_HOURS),
+    ("opensincera_modules pulled",    "opensincera_modules",    "_pulled_at", SWEEP_MAX_AGE_HOURS),
 ]
 
 

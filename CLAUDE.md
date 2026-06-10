@@ -39,8 +39,8 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
 rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
-Pubmatic +1 day, DV may lag 3), and that the latest `refresh.yml` run
-succeeded within 26h. **Auto-remediation:** when a *remediable* check fails
+Pubmatic +1 day, DV may lag 3; OpenSincera's four tables by `_pulled_at`
+within 26h), and that the latest `refresh.yml` run succeeded within 26h. **Auto-remediation:** when a *remediable* check fails
 (stale table / failed sweep), the script re-dispatches `refresh.yml` itself,
 waits for it, re-checks everything, and reports the final state — transient
 upstream failures heal hands-free. Code-level failures (id format, join
