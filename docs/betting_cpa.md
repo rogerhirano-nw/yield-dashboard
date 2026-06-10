@@ -1,7 +1,11 @@
 # Spinfinite betting CPA optimization — runbook
 
 **Owner:** Roger Hirano. **Order:** `4068491190` (GAM). **IO:** `IO1109`.
-**Status:** Live · flight 2026-05-12 → 2026-06-13 · $15K · 1.875M imp goal.
+**Status:** RETIRED — campaign paused mid-flight (confirmed 2026-06-10),
+no longer running; `betting_conversions` dropped from prod and the daily
+digest trigger removed. Original flight: 2026-05-12 → 2026-06-13 · $15K ·
+1.875M imp goal. This doc is kept as the reference pattern for the next
+CPA-sold flight (sub_id contract, macro learnings, segment test design).
 
 Optimization loop for a Direct-sold betting/gambling campaign where the
 advertiser (Spinfinite, tracker `trk.spnfnt.com`) pays Newsweek on a CPA
