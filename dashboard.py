@@ -2503,17 +2503,17 @@ if st.session_state.active_view == "campaigns":
     else:
         gam_df = gam_df.copy()
 
-        # Recategorize ad_format → "Video Preroll >30s" when the line item's
-        # longest video creative exceeds 30 seconds.
+        # Source the per-LI max video creative duration (consumed further
+        # down, after ad_format exists, to recategorize long preroll).
         #
         # Source priority:
         #   1. video_ad_duration column from gam_campaigns (canonical, comes
         #      straight from GAM's VIDEO_AD_DURATION report dimension).
         #   2. SOAP creative+LICA join (fallback for rows pulled before the
         #      report-API dimension landed; also a backup if VIDEO_AD_DURATION
-        #      isn't populated for a given LI).
-        # The Reports dimension is much cleaner — one column on gam_campaigns,
-        # no cross-table join, no SOAP dependency.
+        #      isn't populated for a given LI). In practice this is the live
+        #      path: Newsweek's video is 3rd-party-served, so the report
+        #      dimension comes back null across the board.
         if "video_ad_duration" in gam_df.columns:
             gam_df["_creative_max_dur"] = pd.to_numeric(
                 gam_df["video_ad_duration"], errors="coerce"
@@ -2534,47 +2534,6 @@ if st.session_state.active_view == "campaigns":
                         gam_df["_creative_max_dur_soap"]
                     )
                     gam_df = gam_df.drop(columns=["_creative_max_dur_soap"])
-
-        if "_creative_max_dur" in gam_df.columns:
-            def _bump_video_format(row):
-                fmt = row.get("ad_format")
-                dur = row.get("_creative_max_dur")
-                if (isinstance(fmt, str) and "video" in fmt.lower()
-                    and pd.notna(dur) and float(dur) > 30):
-                    return "Video Preroll >30s"
-                return fmt
-            gam_df["ad_format"] = gam_df.apply(_bump_video_format, axis=1)
-
-        # Manual long-preroll override — applied AFTER the duration-based
-        # auto-detection so user-curated rules win. Useful for Newsweek's
-        # 3rd-party tag setups (Innovid / DCM JS loaders) where neither
-        # the GAM Creative API nor the VAST URL exposes duration.
-        _lp_rules = _cfg.get("long_preroll_lines") or []
-        if _lp_rules:
-            def _matches_long_preroll(row):
-                for rule in _lp_rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    field = (rule.get("match_field") or "").strip()
-                    val   = (rule.get("match_value") or "").strip()
-                    if not field or not val:
-                        continue
-                    if field == "line_item_id":
-                        if str(row.get("line_item_id") or "") == val:
-                            return True
-                    elif field == "order_name":
-                        cell = str(row.get("order_name") or "").lower()
-                        needle = val.lower().rstrip("*").rstrip("%")
-                        if needle and needle in cell:
-                            return True
-                    elif field == "line_item_name":
-                        cell = str(row.get("line_item_name") or "").lower()
-                        if val.lower() in cell:
-                            return True
-                return False
-            _lp_mask = gam_df.apply(_matches_long_preroll, axis=1)
-            if _lp_mask.any():
-                gam_df.loc[_lp_mask, "ad_format"] = "Video Preroll >30s"
 
         _incl_patterns = _cfg.get("included_order_patterns", ["Newsweek_Direct%"])
         _prefixes = [p.rstrip("%") for p in _incl_patterns if p]
@@ -2655,6 +2614,53 @@ if st.session_state.active_view == "campaigns":
         for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae", "team"):
             if _col in gam_df.columns:
                 gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
+
+        # Recategorize ad_format → "Video Preroll >30s" when the line item's
+        # longest video creative exceeds 30 seconds (duration sourced into
+        # _creative_max_dur above). MUST run after ad_format is derived from
+        # inventory_format_name — the column doesn't exist before that, so
+        # running earlier silently no-ops and every long-form line renders
+        # under the plain "Video" benchmarks.
+        if "_creative_max_dur" in gam_df.columns:
+            def _bump_video_format(row):
+                fmt = row.get("ad_format")
+                dur = row.get("_creative_max_dur")
+                if (isinstance(fmt, str) and "video" in fmt.lower()
+                    and pd.notna(dur) and float(dur) > 30):
+                    return "Video Preroll >30s"
+                return fmt
+            gam_df["ad_format"] = gam_df.apply(_bump_video_format, axis=1)
+
+        # Manual long-preroll override — applied AFTER the duration-based
+        # auto-detection so user-curated rules win. Useful for Newsweek's
+        # 3rd-party tag setups (Innovid / DCM JS loaders) where neither
+        # the GAM Creative API nor the VAST URL exposes duration.
+        _lp_rules = _cfg.get("long_preroll_lines") or []
+        if _lp_rules:
+            def _matches_long_preroll(row):
+                for rule in _lp_rules:
+                    if not isinstance(rule, dict):
+                        continue
+                    field = (rule.get("match_field") or "").strip()
+                    val   = (rule.get("match_value") or "").strip()
+                    if not field or not val:
+                        continue
+                    if field == "line_item_id":
+                        if str(row.get("line_item_id") or "") == val:
+                            return True
+                    elif field == "order_name":
+                        cell = str(row.get("order_name") or "").lower()
+                        needle = val.lower().rstrip("*").rstrip("%")
+                        if needle and needle in cell:
+                            return True
+                    elif field == "line_item_name":
+                        cell = str(row.get("line_item_name") or "").lower()
+                        if val.lower() in cell:
+                            return True
+                return False
+            _lp_mask = gam_df.apply(_matches_long_preroll, axis=1)
+            if _lp_mask.any():
+                gam_df.loc[_lp_mask, "ad_format"] = "Video Preroll >30s"
 
         # Load Pubmatic sellers so they appear in the shared filter
         try:
