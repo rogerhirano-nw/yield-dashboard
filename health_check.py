@@ -22,12 +22,22 @@ that check failing, never as a crash of the whole run):
                           (refresh.yml) succeeded within the last 26h.
                           Requires GITHUB_TOKEN; skipped when absent (local).
 
+Auto-remediation: when a *remediable* check fails (freshness / sweep
+liveness — i.e. things a re-pull can fix), the script re-dispatches
+refresh.yml via the GitHub API, waits for it to complete, re-runs every
+check, and reports the final state — so a transient upstream failure heals
+itself without anyone touching Actions. Code-level failures (DV id format,
+join rate) are NOT remediable by re-running and are reported as such. One
+remediation attempt per run, never loops. Requires `actions: write` on the
+workflow's GITHUB_TOKEN; GITHUB_TOKEN-created workflow_dispatch events are
+exempt from GitHub's recursive-trigger guard, so the dispatch works.
+
 Sends via agentmail.to, same outbound pattern as betting_daily_update.py.
-Exits non-zero when any check fails so the Actions run goes red too.
+Exits non-zero when any check still fails so the Actions run goes red too.
 
 Manual ad-hoc:
-    python health_check.py --dry-run    # run checks + print, no send
-    python health_check.py              # run checks + send
+    python health_check.py --dry-run    # run checks + print; no send, no remediation
+    python health_check.py              # run checks + remediate + send
 
 Env required:
     DATABASE_URL          Postgres (Supabase) — same as refresh_cache.py
@@ -37,8 +47,10 @@ Optional:
     HEALTH_DIGEST_TO             Default: roger.hirano@newsweek.com
     HEALTH_DIGEST_ONLY_FAILURES  "1"/"true" → send email only when a check
                                  fails (default: send the ✅ daily too)
-    GITHUB_TOKEN / GITHUB_REPOSITORY  for the sweep-liveness check; both are
-                                 present automatically in GitHub Actions
+    HEALTH_AUTO_REMEDIATE        default "1"; "0" disables the sweep re-run
+    GITHUB_TOKEN / GITHUB_REPOSITORY  for the sweep-liveness check and the
+                                 remediation dispatch; both are present
+                                 automatically in GitHub Actions
 """
 from __future__ import annotations
 
@@ -46,6 +58,7 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -90,6 +103,10 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+    # True when a refresh re-run can plausibly fix a failure (stale data,
+    # failed sweep). False for code/contract problems (id format, join
+    # rate) where re-pulling would just rewrite the same bad rows.
+    remediable: bool = False
 
 
 # ----------------------------------------------------------------------
@@ -135,11 +152,13 @@ def _eval_freshness(name: str, observed: date | None, max_age_days: int,
     """Pure comparison — split from the query so it's unit-testable."""
     required = today - timedelta(days=max_age_days)
     if observed is None:
-        return CheckResult(name, False, "table is empty (max date is NULL)")
+        return CheckResult(name, False, "table is empty (max date is NULL)",
+                           remediable=True)
     return CheckResult(
         name, observed >= required,
         f"max(date) {observed.isoformat()}"
         + ("" if observed >= required else f" < required {required.isoformat()}"),
+        remediable=True,
     )
 
 
@@ -158,13 +177,15 @@ def _check_pulled_at(conn, name: str, table: str, col: str,
         f"SELECT max({col}::timestamptz) FROM {table}"
     )).scalar()
     if observed is None:
-        return CheckResult(name, False, "table is empty (max timestamp is NULL)")
+        return CheckResult(name, False, "table is empty (max timestamp is NULL)",
+                           remediable=True)
     if observed.tzinfo is None:
         observed = observed.replace(tzinfo=timezone.utc)
     age_h = (datetime.now(timezone.utc) - observed).total_seconds() / 3600
     return CheckResult(
         name, age_h <= max_age_hours,
         f"last write {age_h:.1f}h ago (max {max_age_hours}h)",
+        remediable=True,
     )
 
 
@@ -185,7 +206,8 @@ def _check_sweep_workflow() -> CheckResult:
     with urllib.request.urlopen(req, timeout=30) as r:
         runs = json.loads(r.read()).get("workflow_runs") or []
     if not runs:
-        return CheckResult(name, False, "no completed refresh.yml runs found")
+        return CheckResult(name, False, "no completed refresh.yml runs found",
+                           remediable=True)
     run = runs[0]
     created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
     age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
@@ -193,7 +215,80 @@ def _check_sweep_workflow() -> CheckResult:
     return CheckResult(
         name, ok,
         f"latest run {run['conclusion']} {age_h:.1f}h ago ({run['html_url']})",
+        remediable=True,
     )
+
+
+# ----------------------------------------------------------------------
+# Auto-remediation
+# ----------------------------------------------------------------------
+
+REMEDIATION_POLL_SECONDS = 30
+REMEDIATION_TIMEOUT_MINUTES = 25
+
+
+def _gh_api(path: str, *, token: str, method: str = "GET",
+            payload: dict | None = None) -> dict:
+    api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+    req = urllib.request.Request(
+        f"{api}{path}",
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Authorization": f"Bearer {token}",
+                 "Accept": "application/vnd.github+json"},
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        body = r.read()
+        return json.loads(body) if body else {}
+
+
+def remediate_with_sweep() -> tuple[bool, str]:
+    """Re-run the refresh sweep and wait for it.
+
+    If a refresh.yml run is already queued/in progress (e.g. the morning
+    sweep overlaps this check), wait on that instead of dispatching a
+    duplicate. Returns (sweep_succeeded, human-readable description).
+    GITHUB_TOKEN-created workflow_dispatch events are exempt from GitHub's
+    recursive-trigger guard, so the dispatch fires normally.
+    """
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repo:
+        return False, "cannot remediate — no GITHUB_TOKEN (local run)"
+    wf = f"/repos/{repo}/actions/workflows/refresh.yml"
+
+    run = None
+    for status in ("in_progress", "queued"):
+        runs = _gh_api(f"{wf}/runs?status={status}&per_page=1",
+                       token=token).get("workflow_runs") or []
+        if runs:
+            run = runs[0]
+            logger.info("refresh.yml already %s — waiting on %s",
+                        status, run["html_url"])
+            break
+    if run is None:
+        ref = os.environ.get("GITHUB_REF_NAME") or "main"
+        _gh_api(f"{wf}/dispatches", token=token, method="POST",
+                payload={"ref": ref})
+        logger.info("Dispatched refresh.yml on %s — waiting for the run to appear", ref)
+        for _ in range(10):
+            time.sleep(10)
+            runs = _gh_api(f"{wf}/runs?event=workflow_dispatch&per_page=1",
+                           token=token).get("workflow_runs") or []
+            if runs and runs[0]["status"] != "completed":
+                run = runs[0]
+                break
+        if run is None:
+            return False, "dispatched refresh.yml but no run appeared within 100s"
+
+    deadline = time.monotonic() + REMEDIATION_TIMEOUT_MINUTES * 60
+    while time.monotonic() < deadline:
+        cur = _gh_api(f"/repos/{repo}/actions/runs/{run['id']}", token=token)
+        if cur.get("status") == "completed":
+            ok = cur.get("conclusion") == "success"
+            return ok, f"re-ran refresh sweep → {cur.get('conclusion')} ({cur['html_url']})"
+        time.sleep(REMEDIATION_POLL_SECONDS)
+    return False, f"refresh sweep still running after {REMEDIATION_TIMEOUT_MINUTES}min ({run['html_url']})"
 
 
 def run_checks() -> list[CheckResult]:
@@ -227,16 +322,19 @@ def run_checks() -> list[CheckResult]:
 # Report
 # ----------------------------------------------------------------------
 
-def build_report(results: list[CheckResult],
-                 today: date) -> tuple[str, str, bool]:
-    """Returns (subject, body, all_ok)."""
+def build_report(results: list[CheckResult], today: date,
+                 remediation: str | None = None) -> tuple[str, str, bool]:
+    """Returns (subject, body, all_ok). `remediation` is a one-line account
+    of an auto-remediation attempt; results should then be the re-check."""
     n_fail = sum(1 for r in results if not r.ok)
     all_ok = n_fail == 0
-    subject = (
-        f"Yield health — ✅ {len(results)}/{len(results)} pass ({today.isoformat()})"
-        if all_ok else
-        f"Yield health — ❌ {n_fail} of {len(results)} FAILING ({today.isoformat()})"
-    )
+    if all_ok:
+        subject = f"Yield health — ✅ {len(results)}/{len(results)} pass"
+        if remediation:
+            subject += " (auto-remediated)"
+    else:
+        subject = f"Yield health — ❌ {n_fail} of {len(results)} FAILING"
+    subject += f" ({today.isoformat()})"
     width = max(len(r.name) for r in results)
     lines = [f"Yield-dashboard data health — {today.isoformat()} (UTC)", ""]
     for r in results:
@@ -244,9 +342,14 @@ def build_report(results: list[CheckResult],
         lines.append(f"{mark}  {r.name.ljust(width)}  {r.detail}")
     lines.append("")
     lines.append(f"{len(results) - n_fail}/{len(results)} checks pass.")
+    if remediation:
+        lines.append(f"Auto-remediation: {remediation}")
     if not all_ok:
-        lines.append("Re-run the sweep: gh workflow run refresh.yml — "
-                     "details in CLAUDE.md / docs.")
+        lines.append(
+            "Still failing after remediation — needs a human."
+            if remediation else
+            "Re-run the sweep: gh workflow run refresh.yml — details in CLAUDE.md / docs."
+        )
     lines.append("")
     lines.append(f"Generated by yield-dashboard.health_check at "
                  f"{datetime.now(timezone.utc).isoformat()}.")
@@ -283,8 +386,25 @@ def main(argv: list[str]) -> int:
     dry_run = "--dry-run" in argv
 
     results = run_checks()
+
+    # Auto-remediate: a failing *remediable* check (stale table / failed
+    # sweep) triggers one sweep re-run, then a full re-check. Code-level
+    # failures (id format, join rate) skip straight to the report — a
+    # re-pull can't fix those.
+    remediation = None
+    remediate_enabled = (os.environ.get("HEALTH_AUTO_REMEDIATE") or "1").lower() \
+        not in ("0", "false", "no")
+    if (not dry_run and remediate_enabled
+            and any(not r.ok and r.remediable for r in results)):
+        failing_before = {r.name for r in results if not r.ok}
+        _, remediation = remediate_with_sweep()
+        results = run_checks()
+        recovered = failing_before - {r.name for r in results if not r.ok}
+        if recovered:
+            remediation += f"; recovered: {', '.join(sorted(recovered))}"
+
     subject, body, all_ok = build_report(
-        results, datetime.now(timezone.utc).date())
+        results, datetime.now(timezone.utc).date(), remediation=remediation)
 
     print(subject)
     print(body)

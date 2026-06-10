@@ -39,8 +39,14 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
 rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
-DV may lag 3 days), and that the latest `refresh.yml` run succeeded within
-26h. The subject carries the verdict, so a ✅ day needs no opening; set repo
+Pubmatic +1 day, DV may lag 3), and that the latest `refresh.yml` run
+succeeded within 26h. **Auto-remediation:** when a *remediable* check fails
+(stale table / failed sweep), the script re-dispatches `refresh.yml` itself,
+waits for it, re-checks everything, and reports the final state — transient
+upstream failures heal hands-free. Code-level failures (id format, join
+rate) are reported as needing a human; a re-pull can't fix those. Disable
+with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input. The
+subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence green days entirely. It ships
 with a GitHub-native `schedule:` (13:45 UTC) as a fallback — swap to a
 cron-job.org `workflow_dispatch` trigger at 09:45 ET for punctuality and
