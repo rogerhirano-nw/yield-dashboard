@@ -216,7 +216,14 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
         r"^#\d+\s+", "", regex=True
     )
     if "line_item_id" in df.columns:
-        df["line_item_id"] = df["line_item_id"].astype(str).replace({"": None, "nan": None})
+        # Blank IDs on the open-exchange rows make pandas parse this column
+        # as float64, so astype(str) yields "7306352098.0" — which never
+        # matches gam_campaigns' integer-string IDs. Strip the ".0".
+        df["line_item_id"] = (
+            df["line_item_id"].astype(str)
+            .str.replace(r"\.0$", "", regex=True)
+            .replace({"": None, "nan": None})
+        )
 
     return df
 

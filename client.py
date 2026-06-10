@@ -63,6 +63,9 @@ class MagniteClient:
     # Auto-retry on 429 (queue full, max 5 parallel reports).
     retry_429_seconds: int = 60
     retry_429_attempts: int = 10
+    # Short budget for transient 5xx responses / dropped connections.
+    retry_5xx_seconds: int = 20
+    retry_5xx_attempts: int = 3
     session: requests.Session = field(default_factory=requests.Session)
 
     def __post_init__(self) -> None:
@@ -153,7 +156,7 @@ class MagniteClient:
         url = f"{self.base_url}/analytics/v2/{dataset}"
         params = {"account": f"publisher/{self.account_id}"}
 
-        resp = self._request_with_429_retry("POST", url, params=params, json=body)
+        resp = self._request_with_retry("POST", url, params=params, json=body)
         payload = resp.json()
         report_id = payload.get("offline_report_id")
         if report_id is None:
@@ -167,7 +170,7 @@ class MagniteClient:
     def get_report_status(self, report_id: int, dataset: Dataset = "default") -> dict[str, Any]:
         url = f"{self.base_url}/analytics/v2/{dataset}/{report_id}"
         params = {"account": f"publisher/{self.account_id}"}
-        resp = self._request_with_429_retry("GET", url, params=params)
+        resp = self._request_with_retry("GET", url, params=params)
         return resp.json()
 
     def wait_for_report(self, report_id: int, dataset: Dataset = "default") -> dict[str, Any]:
@@ -212,7 +215,7 @@ class MagniteClient:
             "page": page,
             "size": size,
         }
-        resp = self._request_with_429_retry("GET", url, params=params)
+        resp = self._request_with_retry("GET", url, params=params)
         if fmt == "csv":
             return {"_raw_csv": resp.text}
         return resp.json()
@@ -265,26 +268,49 @@ class MagniteClient:
             "account": f"publisher/{self.account_id}",
             "date_range": date_range,
         }
-        resp = self._request_with_429_retry("GET", url, params=params)
+        resp = self._request_with_retry("GET", url, params=params)
         return resp.json().get("content", [])
 
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
 
-    def _request_with_429_retry(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+    def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """
         429 = the per-account "5 reports in parallel" cap, per the doc.
         Doc warns this error can also be misleading — could be a system-wide issue.
         We back off, retry, and surface a clear exception if it persists.
+
+        5xx responses and dropped connections get a much shorter retry budget:
+        enough to ride out a transient blip, while a real outage still fails
+        the refresh (which logs it and moves on to the next source).
         """
-        last_exc: Exception | None = None
-        for attempt in range(1, self.retry_429_attempts + 1):
-            resp = self.session.request(method, url, timeout=60, **kwargs)
+        attempts_429 = 0
+        attempts_5xx = 0
+        while True:
+            try:
+                resp = self.session.request(method, url, timeout=60, **kwargs)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                attempts_5xx += 1
+                if attempts_5xx >= self.retry_5xx_attempts:
+                    raise MagniteAPIError(
+                        f"{method} {url} failed after {attempts_5xx} attempts: {exc}"
+                    ) from exc
+                logger.warning(
+                    "Connection error from Magnite (attempt %d/%d): %s. Sleeping %ds before retry.",
+                    attempts_5xx, self.retry_5xx_attempts, exc, self.retry_5xx_seconds,
+                )
+                time.sleep(self.retry_5xx_seconds)
+                continue
             if resp.status_code == 429:
+                attempts_429 += 1
+                if attempts_429 >= self.retry_429_attempts:
+                    raise MagniteAPIError(
+                        f"Exhausted {self.retry_429_attempts} 429-retry attempts on {method} {url}"
+                    )
                 logger.warning(
                     "429 from Magnite (attempt %d/%d). Sleeping %ds before retry.",
-                    attempt, self.retry_429_attempts, self.retry_429_seconds,
+                    attempts_429, self.retry_429_attempts, self.retry_429_seconds,
                 )
                 time.sleep(self.retry_429_seconds)
                 continue
@@ -292,17 +318,27 @@ class MagniteClient:
                 # "report not ready" — only meaningful if someone hits the data
                 # endpoint before polling success. Raise so the caller can react.
                 raise MagniteReportNotReady(f"409 from {url}: {resp.text}")
+            if resp.status_code >= 500:
+                attempts_5xx += 1
+                if attempts_5xx >= self.retry_5xx_attempts:
+                    raise MagniteAPIError(
+                        f"{method} {url} returned {resp.status_code} after "
+                        f"{attempts_5xx} attempts: {resp.text}"
+                    )
+                logger.warning(
+                    "%d from Magnite (attempt %d/%d). Sleeping %ds before retry.",
+                    resp.status_code, attempts_5xx, self.retry_5xx_attempts,
+                    self.retry_5xx_seconds,
+                )
+                time.sleep(self.retry_5xx_seconds)
+                continue
             try:
                 resp.raise_for_status()
             except requests.HTTPError as exc:
-                last_exc = exc
                 raise MagniteAPIError(
                     f"{method} {url} returned {resp.status_code}: {resp.text}"
                 ) from exc
             return resp
-        raise MagniteAPIError(
-            f"Exhausted {self.retry_429_attempts} 429-retry attempts on {method} {url}"
-        ) from last_exc
 
 
 # ---------------------------------------------------------------------- #
