@@ -196,96 +196,261 @@ def record_run(conn: sqlite3.Connection, summary: RunSummary) -> None:
 
 # ── summary email ─────────────────────────────────────────────────────────────
 
+# Brand palette — mirrors confiant_blocklist_weekly_report.py so the daily
+# and weekly emails share one visual identity.
+_NW_RED      = "#d72638"
+_NW_GREEN    = "#22c55e"
+_NW_AMBER    = "#f59e0b"
+_NW_DARK     = "#1a1a1a"
+_NW_MUTED    = "#6b7280"
+_NW_BG_SOFT  = "#f0f4f8"
+_NW_BG_LIGHT = "#f9fafb"
+_NW_BORDER   = "#e1e5eb"
+
+
+def _state_total() -> int:
+    """Best-effort count of cumulative blocked domains for the KPI tile.
+    Returns 0 if the state DB doesn't exist or is unreadable (don't fail
+    the email send over a number)."""
+    try:
+        with sqlite3.connect(_state_path()) as c:
+            return c.execute("SELECT COUNT(*) FROM blocked_domains").fetchone()[0]
+    except Exception:
+        return 0
+
+
 def _build_email_html(summary: RunSummary) -> str:
-    title = "Confiant -> GAM blocklist (DRY RUN)" if summary.dry_run \
-        else ("Confiant -> GAM blocklist" if summary.success
-              else "Confiant -> GAM blocklist (FAILED)")
-    color = "#888" if summary.dry_run else ("#27ae60" if summary.success else "#c0392b")
+    from datetime import date
 
-    def _domain_table(rows: list[tuple[str, str]]) -> str:
-        if not rows:
-            return "<p><em>None — nothing new this week.</em></p>"
-        body = "".join(
-            f"<tr>"
-            f"<td style='padding:4px 12px;border-bottom:1px solid #eee'>{d}</td>"
-            f"<td style='padding:4px 12px;border-bottom:1px solid #eee;color:#666'>{t}</td>"
-            f"</tr>"
-            for d, t in sorted(rows)
-        )
+    new_count = len(summary.new_domains)
+    cloaked_count = len(summary.cloaked_for_review)
+    cumulative = _state_total()
+    today_str = date.today().strftime("%B %-d, %Y")
+
+    # Status drives header colour + eyebrow text.
+    if summary.dry_run:
+        status_label = "Dry run"
+        status_color = _NW_AMBER
+    elif summary.success:
+        status_label = "Success"
+        status_color = _NW_GREEN
+    else:
+        status_label = "Failed"
+        status_color = _NW_RED
+
+    # ── KPI tile strip (4 cards, table-laid-out for Outlook safety) ──────
+    def _kpi(label: str, value: str, accent: str = _NW_DARK) -> str:
         return (
-            "<table style='border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;width:100%'>"
-            "<thead><tr>"
-            "<th style='padding:6px 12px;text-align:left;background:#f0f4f8;border-bottom:2px solid #ccc'>Domain</th>"
-            "<th style='padding:6px 12px;text-align:left;background:#f0f4f8;border-bottom:2px solid #ccc'>Issue Type</th>"
-            "</tr></thead>"
-            f"<tbody>{body}</tbody></table>"
+            f"<td valign='top' style='background:{_NW_BG_SOFT};border:1px solid {_NW_BORDER};"
+            f"padding:14px 16px;border-radius:6px;width:25%'>"
+            f"<div style='font-size:11px;color:{_NW_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.5px;font-weight:600;margin-bottom:6px'>{label}</div>"
+            f"<div style='font-size:24px;color:{accent};font-weight:700;line-height:1.1'>"
+            f"{value}</div></td>"
         )
 
-    def _cloaked_table(rows: list[confiant_client.FlaggedRow]) -> str:
-        if not rows:
-            return "<p><em>No cloaked rows this week.</em></p>"
-        by_type: dict[str, list[confiant_client.FlaggedRow]] = {}
-        for r in rows:
-            by_type.setdefault(r.issue_type, []).append(r)
-        chunks = []
-        for issue_type, items in sorted(by_type.items()):
-            links = "".join(
-                f"<li><a href='{r.adtrace_url}'>{r.detail}</a> "
-                f"<span style='color:#888'>({r.flagged_impressions:,} imps, last seen {r.last_seen})</span></li>"
-                for r in items
-            )
-            chunks.append(
-                f"<h4 style='margin-bottom:4px'>{issue_type} ({len(items)})</h4>"
-                f"<ul style='margin-top:0'>{links}</ul>"
-            )
-        return "".join(chunks)
+    new_tile_color = _NW_RED if (new_count and not summary.success) else (
+        _NW_GREEN if new_count else _NW_DARK
+    )
+    spacer = "<td style='width:8px;font-size:0;line-height:0'>&nbsp;</td>"
+    kpi_strip = (
+        f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+        f"style='border-collapse:separate;width:100%;margin:18px 0 6px 0'>"
+        f"<tr>"
+        f"{_kpi('Blocked today', f'{new_count:,}', new_tile_color)}"
+        f"{spacer}"
+        f"{_kpi('Already blocked', f'{summary.skipped_already_blocked:,}')}"
+        f"{spacer}"
+        f"{_kpi('Cloaked (review)', f'{cloaked_count:,}', _NW_AMBER if cloaked_count else _NW_DARK)}"
+        f"{spacer}"
+        f"{_kpi('Total blocklist', f'{cumulative:,}')}"
+        f"</tr></table>"
+    )
 
+    # ── Error callout (only when summary.error is set) ──────────────────
     error_block = ""
     if summary.error:
         error_block = (
-            f"<div style='background:#fee;border:1px solid #c00;padding:12px;"
-            f"margin:12px 0;font-family:monospace;font-size:12px'>"
-            f"<strong>Error:</strong><br>{summary.error}</div>"
+            f"<div style='background:#fff5f5;border:1px solid #f3c2c5;border-left:4px solid {_NW_RED};"
+            f"padding:14px 18px;border-radius:4px;margin:14px 0;color:{_NW_DARK}'>"
+            f"<div style='font-size:13px;font-weight:700;margin-bottom:4px'>Run failed</div>"
+            f"<div style='font-family:Menlo,Consolas,monospace;font-size:12px;color:{_NW_DARK};"
+            f"white-space:pre-wrap;word-break:break-word'>{summary.error}</div>"
+            f"<p style='margin:10px 0 0 0;font-size:12px;color:{_NW_MUTED}'>"
+            f"State.sqlite was not updated for the rows above — they'll be retried on the next run."
+            f"</p></div>"
         )
 
-    return f"""
-<html><body style='font-family:Arial,sans-serif;color:#333;max-width:900px;margin:auto;padding:20px'>
-  <h2 style='color:{color}'>{title}</h2>
-  <p style='color:#666'>Source: <code>{summary.source}</code>
-     &middot; Categories: <strong>{', '.join(summary.categories)}</strong>
-     &middot; Protection: <strong>{summary.protection_label}</strong>
-     <span style='color:#999'>(ID {summary.protection_id})</span></p>
+    # ── New domains card (group by issue type, ordered by count) ─────────
+    def _new_domains_card() -> str:
+        if not summary.new_domains:
+            empty_msg = "No new URLs to block" + (
+                " — every Confiant-flagged Google Security domain in this run was already on the GAM Protection."
+                if not summary.error else " in this run."
+            )
+            return (
+                f"<div style='background:{_NW_BG_LIGHT};border:1px solid {_NW_BORDER};"
+                f"border-left:4px solid {_NW_GREEN};padding:14px 18px;border-radius:4px;"
+                f"margin:0 0 14px 0;color:{_NW_DARK};font-size:13px'>{empty_msg}</div>"
+            )
+        by_type: dict[str, list[tuple[str, str]]] = {}
+        for d, t in summary.new_domains:
+            by_type.setdefault(t, []).append((d, t))
+        sections = ""
+        for it in sorted(by_type, key=lambda k: -len(by_type[k])):
+            rows_html = "".join(
+                f"<tr><td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};"
+                f"font-family:Menlo,Consolas,monospace;font-size:12px;color:{_NW_DARK};"
+                f"word-break:break-all'>{d}</td></tr>"
+                for d, _ in sorted(by_type[it])
+            )
+            sections += (
+                f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+                f"style='border-collapse:collapse;width:100%;margin:0 0 12px 0;"
+                f"border:1px solid {_NW_BORDER};border-radius:6px;overflow:hidden'>"
+                f"<tr><td style='background:{_NW_BG_LIGHT};padding:9px 14px;"
+                f"border-bottom:1px solid {_NW_BORDER}'>"
+                f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+                f"style='width:100%'><tr>"
+                f"<td style='font-size:13px;font-weight:600;color:{_NW_DARK}'>{it}</td>"
+                f"<td style='text-align:right;font-size:11px;font-weight:700;color:#ffffff;"
+                f"background:{_NW_RED};padding:3px 10px;border-radius:10px;width:1px;"
+                f"white-space:nowrap'>{len(by_type[it])} URLs</td></tr></table></td></tr>"
+                f"<tr><td style='padding:0'>"
+                f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+                f"style='border-collapse:collapse;width:100%'>"
+                f"<tbody>{rows_html}</tbody></table></td></tr></table>"
+            )
+        return sections
 
-  {error_block}
+    # ── Cloaked review card — top N by impressions ──────────────────────
+    def _cloaked_card() -> str:
+        if not summary.cloaked_for_review:
+            return (
+                f"<div style='background:{_NW_BG_LIGHT};border:1px solid {_NW_BORDER};"
+                f"border-left:4px solid {_NW_GREEN};padding:14px 18px;border-radius:4px;"
+                f"margin:0 0 14px 0;color:{_NW_DARK};font-size:13px'>"
+                f"No cloaked Google creatives in this run.</div>"
+            )
+        # Sort by impressions desc, cap at 20 to keep the email scannable.
+        # Confiant trace URL is the source of truth — link out for full detail.
+        rows_sorted = sorted(
+            summary.cloaked_for_review,
+            key=lambda r: -r.flagged_impressions,
+        )
+        head = rows_sorted[:20]
+        more = len(rows_sorted) - len(head)
 
-  <table style='border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;margin-bottom:20px'>
-    <tr><td style='padding:4px 12px'>Google flagged rows in CSV</td>
-        <td style='padding:4px 12px;text-align:right'><strong>{summary.total_google_rows}</strong></td></tr>
-    <tr><td style='padding:4px 12px'>Resolved to blockable domain</td>
-        <td style='padding:4px 12px;text-align:right'><strong>{summary.blockable_domains_in_csv}</strong></td></tr>
-    <tr><td style='padding:4px 12px'>Already in GAM Protection (skipped)</td>
-        <td style='padding:4px 12px;text-align:right'><strong>{summary.skipped_already_blocked}</strong></td></tr>
-    <tr><td style='padding:4px 12px'><strong>New domains {"WOULD BE " if summary.dry_run else ""}pushed to GAM</strong></td>
-        <td style='padding:4px 12px;text-align:right'><strong style='color:{color}'>{len(summary.new_domains)}</strong></td></tr>
-    <tr><td style='padding:4px 12px'>Cloaked rows for manual review</td>
-        <td style='padding:4px 12px;text-align:right'><strong>{len(summary.cloaked_for_review)}</strong></td></tr>
-  </table>
+        items_html = "".join(
+            f"<tr>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};font-size:12px;color:{_NW_DARK};"
+            f"font-family:Menlo,Consolas,monospace;white-space:nowrap'>{r.detail}</td>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};font-size:12px;color:{_NW_DARK};"
+            f"text-align:right;font-weight:600;white-space:nowrap'>{r.flagged_impressions:,}</td>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};font-size:12px;color:{_NW_MUTED};"
+            f"white-space:nowrap'>{r.last_seen}</td>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {_NW_BORDER};font-size:12px;color:#1a73e8;"
+            f"text-align:right;white-space:nowrap'><a href='{r.adtrace_url}' style='color:#1a73e8'>open &rarr;</a></td>"
+            f"</tr>"
+            for r in head
+        )
+        more_html = (
+            f"<p style='margin:6px 0 0 0;color:{_NW_MUTED};font-size:12px'>"
+            f"&hellip; and {more} more, ordered by impressions. Full list ships in the weekly RevOps digest "
+            f"and is queryable via the Confiant Alert Log.</p>"
+            if more > 0 else ""
+        )
+        return (
+            f"<p style='margin:0 0 10px 0;font-size:13px;color:{_NW_MUTED}'>"
+            f"These Google creatives are cloaked &mdash; Confiant detected the violation but the "
+            f"destination is hidden from its scanner. Can't be auto-blocked via URL list. "
+            f"Top {len(head)} by impressions, with adtrace links for manual review:"
+            f"</p>"
+            f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+            f"style='border-collapse:collapse;width:100%;border:1px solid {_NW_BORDER};border-radius:6px;"
+            f"overflow:hidden;margin:0 0 6px 0'>"
+            f"<thead><tr>"
+            f"<th style='background:{_NW_BG_SOFT};padding:8px 12px;text-align:left;font-size:11px;"
+            f"text-transform:uppercase;letter-spacing:0.5px;color:{_NW_DARK};border-bottom:1px solid {_NW_BORDER}'>Confiant ID</th>"
+            f"<th style='background:{_NW_BG_SOFT};padding:8px 12px;text-align:right;font-size:11px;"
+            f"text-transform:uppercase;letter-spacing:0.5px;color:{_NW_DARK};border-bottom:1px solid {_NW_BORDER};"
+            f"white-space:nowrap'>Imps (7d)</th>"
+            f"<th style='background:{_NW_BG_SOFT};padding:8px 12px;text-align:left;font-size:11px;"
+            f"text-transform:uppercase;letter-spacing:0.5px;color:{_NW_DARK};border-bottom:1px solid {_NW_BORDER};"
+            f"white-space:nowrap'>Last seen</th>"
+            f"<th style='background:{_NW_BG_SOFT};padding:8px 12px;text-align:right;font-size:11px;"
+            f"text-transform:uppercase;letter-spacing:0.5px;color:{_NW_DARK};border-bottom:1px solid {_NW_BORDER}'>Trace</th>"
+            f"</tr></thead><tbody>{items_html}</tbody></table>"
+            f"{more_html}"
+        )
 
-  <h3>New domains {"that would be added" if summary.dry_run else "added to GAM Protection"}</h3>
-  {_domain_table(summary.new_domains)}
+    # ── GAM Protection CTA button (only if we have a network id to link to) ─
+    network_id = os.environ.get("GAM_NETWORK_ID", "").strip()
+    cta_html = ""
+    if network_id and summary.protection_id:
+        gam_url = (
+            f"https://admanager.google.com/{network_id}#delivery/protections/"
+            f"detail/protection_id={summary.protection_id}"
+        )
+        cta_html = (
+            f"<p style='margin:14px 0'>"
+            f"<a href='{gam_url}' style='display:inline-block;background:{_NW_DARK};color:#ffffff;"
+            f"padding:10px 18px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:600'>"
+            f"View Protection &ldquo;{summary.protection_label}&rdquo; in GAM &rarr;</a></p>"
+        )
 
-  <h3>Cloaked rows — manual review needed</h3>
-  <p style='color:#666'>These Google-served creatives are cloaked, so Confiant can't
-     see the destination domain. They can't be auto-blocked via the URL list.
-     Open each adtrace to decide on a per-creative block in GAM, or include
-     them in your Confiant outreach to Google.</p>
-  {_cloaked_table(summary.cloaked_for_review)}
+    return f"""\
+<html><body style='margin:0;padding:0;background:#f5f6f8;color:#222;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55'>
+<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='background:#f5f6f8;width:100%;padding:20px 0'>
+<tr><td align='center'>
+<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='background:#ffffff;width:100%;max-width:760px;border:1px solid {_NW_BORDER};border-radius:8px;overflow:hidden'>
+  <tr><td style='background:{_NW_RED};height:4px;font-size:0;line-height:0'>&nbsp;</td></tr>
+  <tr><td style='padding:20px 24px 0 24px'>
+    <div style='font-size:11px;font-weight:700;color:{_NW_RED};text-transform:uppercase;letter-spacing:1.2px'>
+      Newsweek &middot; Brand Safety
+    </div>
+    <h1 style='margin:6px 0 4px 0;color:{_NW_DARK};font-size:22px;font-weight:700;line-height:1.2'>
+      GAM Blocklist &mdash; Daily Push
+    </h1>
+    <div style='color:{_NW_MUTED};font-size:13px'>
+      {today_str} &middot; Status:
+      <span style='color:{status_color};font-weight:700'>{status_label}</span>
+      &middot; Protection: <strong>{summary.protection_label}</strong>
+      <span style='color:#9aa0a6'>(ID {summary.protection_id})</span>
+      &middot; Categories: <strong>{', '.join(summary.categories) or 'Security'}</strong>
+    </div>
+  </td></tr>
 
-  <hr style='margin-top:30px'>
-  <p style='font-size:11px;color:#999'>
-    Generated by confiant_blocklist.py &middot;
-    State: <code>{_state_path()}</code>
-  </p>
+  <tr><td style='padding:0 24px'>{kpi_strip}</td></tr>
+
+  {f"<tr><td style='padding:0 24px'>{error_block}</td></tr>" if error_block else ""}
+
+  <tr><td style='padding:18px 24px 0 24px'>
+    <h2 style='margin:0 0 6px 0;color:{_NW_DARK};font-size:15px;font-weight:700'>
+      {("URLs that would be added" if summary.dry_run else "URLs added to GAM Protection")} ({new_count})
+    </h2>
+    {_new_domains_card()}
+  </td></tr>
+
+  <tr><td style='padding:8px 24px 0 24px'>
+    <h2 style='margin:14px 0 6px 0;color:{_NW_DARK};font-size:15px;font-weight:700'>
+      Cloaked &mdash; manual review needed ({cloaked_count})
+    </h2>
+    {_cloaked_card()}
+  </td></tr>
+
+  {f"<tr><td style='padding:0 24px 8px 24px'>{cta_html}</td></tr>" if cta_html else ""}
+
+  <tr><td style='padding:18px 24px 22px 24px;background:{_NW_BG_LIGHT};border-top:1px solid {_NW_BORDER}'>
+    <p style='margin:0;font-size:11px;color:#9aa0a6;line-height:1.5'>
+      Generated by <code>confiant_blocklist.py</code> on
+      {datetime.now().strftime('%Y-%m-%d %H:%M %Z').strip()}.
+      Source: <code>{summary.source}</code>.
+      State DB: <code>~/.confiant-blocklist/state.sqlite</code>.
+    </p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body></html>"""
 
 
@@ -301,13 +466,22 @@ def _send_email(summary: RunSummary) -> None:
               "CONFIANT_REPORT_TO_EMAIL not all set", file=sys.stderr)
         return
 
-    subject_tag = " (DRY RUN)" if summary.dry_run else (
-        "" if summary.success else " (FAILED)"
-    )
+    n = len(summary.new_domains)
+    date_str = date.today().strftime("%b %-d")
+    # Subject leads with the action + count so the inbox preview is useful
+    # without opening: "GAM blocklist · 8 new URLs blocked — Jun 10".
+    if summary.dry_run:
+        subject = f"GAM blocklist · DRY RUN — would block {n} URL{'s' if n != 1 else ''} — {date_str}"
+    elif not summary.success:
+        subject = f"GAM blocklist · FAILED — {date_str} (will retry)"
+    elif n == 0:
+        subject = f"GAM blocklist · no new URLs — {date_str}"
+    else:
+        subject = f"GAM blocklist · {n} new URL{'s' if n != 1 else ''} blocked — {date_str}"
     AgentMail(api_key=api_key).inboxes.messages.send(
         inbox_id,
         to=recipient,
-        subject=f"Confiant -> GAM blocklist{subject_tag} — {date.today().strftime('%b %d, %Y')}",
+        subject=subject,
         html=_build_email_html(summary),
     )
     print(f"Summary email sent to {recipient}")
