@@ -113,6 +113,13 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `revops@newsweek.com` (settings.json). Per-SSP enhancements:
   `ssp_publisher_ids` (surfaces our pub-id in the body); contacts accept
   RFC 5322 display names (`"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
+- `docs/article_sponsor_logo.md` — "Presented by <logo>" strip at the right
+  of the article breadcrumb row, served from GAM through the existing
+  out-of-page unit `oop2` (no newsweek.com release needed). Out-of-page
+  CustomCreative (SafeFrame OFF — required for the parent-DOM injection)
+  self-scopes to article pages by bailing when the breadcrumb container
+  isn't found. Setup script: `scripts/setup_article_sponsor_logo.py`
+  (dry-run by default, lookup-first, `--apply` to create).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -137,6 +144,12 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   Mediation you have to inspect yield-group definitions via the SOAP
   `YieldGroupService` (not REST). In `v202605` the entity fields are
   `yieldGroupId` / `yieldGroupName` — not `id` / `name`.
+- The service account **cannot create ad units** (`PERMISSION_DENIED` on
+  `InventoryService.createAdUnits`) but can create native styles, line
+  items, creatives, and LICAs. Out-of-page units forecast ~no inventory,
+  so LIs targeting them need both `skipInventoryCheck` AND `allowOverbook`
+  at create. Native-style macros are `[%Var%]` — bare `[Var]` is not
+  substituted.
 - One-off Actions-driven GAM pulls: `.github/workflows/pull_index_ob_requests.yml`
   is a template — it uses `secrets.GAM_SERVICE_ACCOUNT_JSON` /
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
