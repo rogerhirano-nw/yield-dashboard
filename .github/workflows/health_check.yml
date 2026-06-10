@@ -22,17 +22,23 @@ on:
         required: false
         type: boolean
         default: false
+      remediate:
+        description: "Auto re-run the refresh sweep when a remediable check fails"
+        required: false
+        type: boolean
+        default: true
   schedule:
     - cron: "45 13 * * *"   # 13:45 UTC ≈ 09:45 ET (EDT; 08:45 EST in winter)
 
 permissions:
   contents: read
-  actions: read   # health_check.py reads refresh.yml run history
+  actions: write   # read refresh.yml run history + dispatch it for remediation
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Generous: a remediation re-runs the full sweep (~3-5 min) and waits.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v6
@@ -52,8 +58,9 @@ jobs:
             python health_check.py
           fi
         env:
-          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
-          HEALTH_DIGEST_TO:   ${{ vars.HEALTH_DIGEST_TO }}
-          GITHUB_TOKEN:       ${{ github.token }}
+          DATABASE_URL:          ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:     ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:    ${{ secrets.AGENTMAIL_INBOX_ID }}
+          HEALTH_DIGEST_TO:      ${{ vars.HEALTH_DIGEST_TO }}
+          HEALTH_AUTO_REMEDIATE: ${{ inputs.remediate == false && '0' || '1' }}
+          GITHUB_TOKEN:          ${{ github.token }}

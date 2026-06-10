@@ -42,3 +42,29 @@ def test_report_failure_verdict_and_detail():
     assert not all_ok
     assert "❌ 1 of 2 FAILING" in subject
     assert "❌ FAIL" in body and "2026-06-08" in body
+
+
+def test_freshness_failures_are_remediable():
+    assert _eval_freshness("x", date(2026, 6, 1), 1, TODAY).remediable
+    assert _eval_freshness("x", None, 1, TODAY).remediable
+
+
+def test_id_format_style_failures_are_not_remediable_by_default():
+    assert not CheckResult("dv id format", False, "boom").remediable
+
+
+def test_report_notes_remediation():
+    subject, body, all_ok = build_report(
+        [CheckResult("a", True, "fine")], TODAY,
+        remediation="re-ran refresh sweep → success (url); recovered: a")
+    assert all_ok
+    assert "auto-remediated" in subject
+    assert "Auto-remediation: re-ran refresh sweep" in body
+
+
+def test_report_still_failing_after_remediation_flags_human():
+    subject, body, all_ok = build_report(
+        [CheckResult("a", False, "still stale")], TODAY,
+        remediation="re-ran refresh sweep → success (url)")
+    assert not all_ok
+    assert "needs a human" in body
