@@ -10,6 +10,8 @@ and the ingest validator (62 false "no GAM match" warnings per sweep).
 
 from __future__ import annotations
 
+import pandas as pd
+
 from dv_attention_client import parse_dv_csv
 from dv_ivt_client import parse_dv_ivt_csv
 
@@ -26,11 +28,19 @@ Fraud/SIVT,2026-06-09,Adv,Open Exchange,,,1,0,1,5
 """
 
 
+def _assert_normalized(ids: list) -> None:
+    assert ids[0] == "7306352098"
+    # The blank cell must be null-ish — None on older pandas, NaN on ≥2.2
+    # (replace() downcasts None to NaN on object columns). Both fall out of
+    # dropna() and write as SQL NULL, so either is correct here.
+    assert pd.isna(ids[1])
+
+
 def test_attention_line_item_id_has_no_float_suffix():
     df = parse_dv_csv(ATTENTION_CSV)
-    assert df["line_item_id"].tolist() == ["7306352098", None]
+    _assert_normalized(df["line_item_id"].tolist())
 
 
 def test_ivt_line_item_id_has_no_float_suffix():
     df = parse_dv_ivt_csv(IVT_CSV)
-    assert df["line_item_id"].tolist() == ["7306352098", None]
+    _assert_normalized(df["line_item_id"].tolist())
