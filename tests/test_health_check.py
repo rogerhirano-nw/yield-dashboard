@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from health_check import CheckResult, _eval_freshness, build_report
+from health_check import CheckResult, _eval_freshness, build_report, should_send
 
 TODAY = date(2026, 6, 11)
 
@@ -68,3 +68,10 @@ def test_report_still_failing_after_remediation_flags_human():
         remediation="re-ran refresh sweep → success (url)")
     assert not all_ok
     assert "needs a human" in body
+
+
+def test_should_send_matrix():
+    assert should_send(False, True, None)          # failures always send
+    assert should_send(True, True, "remediated")   # auto-fix outcome sends
+    assert should_send(True, False, None)          # green morning verdict sends
+    assert not should_send(True, True, None)       # quiet green follow-up

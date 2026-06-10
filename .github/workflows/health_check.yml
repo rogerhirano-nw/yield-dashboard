@@ -28,7 +28,11 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: "45 13 * * *"   # 13:45 UTC ≈ 09:45 ET (EDT; 08:45 EST in winter)
+    - cron: "45 13 * * *"   # morning verdict: 13:45 UTC ≈ 09:45 ET
+    # Follow-up ~4h later: if the morning remediation didn't stick (provider
+    # outage still ongoing), this retries the sweep once more. Quiet when
+    # green-with-nothing-to-do — see the "Quiet green follow-up" step.
+    - cron: "45 17 * * *"
 
 permissions:
   contents: read
@@ -49,6 +53,18 @@ jobs:
           cache: pip
 
       - run: pip install -r requirements.txt
+
+      - name: Quiet green follow-up runs
+        # Runs at/after 15:00 UTC email only failures and remediation
+        # outcomes — a clean afternoon re-check shouldn't send a second ✅.
+        # Setting repo var HEALTH_DIGEST_ONLY_FAILURES=1 quiets every green
+        # email regardless of hour. (10# strips the zero-padding from %H so
+        # bash doesn't read 08/09 as bad octal.)
+        run: |
+          h=$((10#$(date -u +%H)))
+          if [[ "${{ vars.HEALTH_DIGEST_ONLY_FAILURES }}" == "1" || $h -ge 15 ]]; then
+            echo "HEALTH_DIGEST_ONLY_FAILURES=1" >> "$GITHUB_ENV"
+          fi
 
       - name: Run health checks
         run: |
