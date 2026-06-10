@@ -1,0 +1,67 @@
+name: Fix newsletter native style macros (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write the fixes to GAM (unchecked = dry-run)"
+        type: boolean
+        default: false
+  push:
+    branches: [claude/admiring-cray-l38ayo]
+    paths:
+      - 'scripts/fix_newsletter_native_style_macros.py'
+      - '.github/workflows/fix_newsletter_native_styles.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Run fix (dry-run unless apply=true)
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ "${{ inputs.apply }}" = "true" ]; then ARGS="--apply"; fi
+          python scripts/fix_newsletter_native_style_macros.py $ARGS 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          MODE="dry-run"
+          if [ "${{ inputs.apply }}" = "true" ]; then MODE="APPLY"; fi
+          {
+            echo "### Newsletter native style macro fix — ${MODE}"
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            head -c 60000 /tmp/output.txt
+            if [ "$(wc -c < /tmp/output.txt)" -gt 60000 ]; then
+              echo ''
+              echo '… (truncated — full output in the workflow run log)'
+            fi
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
