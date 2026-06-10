@@ -34,6 +34,19 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 | Digest | Script | Workflow | Recipients (var) | Subject |
 |---|---|---|---|---|
 | Betting CPA (Spinfinite, IO1109) | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
+| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
+
+The health check runs after the sweep and verifies prod data invariants: DV
+`line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
+rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
+DV may lag 3 days), and that the latest `refresh.yml` run succeeded within
+26h. The subject carries the verdict, so a ✅ day needs no opening; set repo
+var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence green days entirely. It ships
+with a GitHub-native `schedule:` (13:45 UTC) as a fallback — swap to a
+cron-job.org `workflow_dispatch` trigger at 09:45 ET for punctuality and
+delete the `schedule:` block when you do. The script exits non-zero on any
+failing check, so the Actions run goes red and GitHub's failure email fires
+as a second signal.
 
 Same outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern as `apple-news/daily_report.py`. Triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late). Suggested cadence: 09:30 America/New_York daily — half an hour after the 09:00 refresh sweep so the freshest Improvado report is already in `betting_conversions`.
 

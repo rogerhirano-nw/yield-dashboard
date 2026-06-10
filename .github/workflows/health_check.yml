@@ -1,0 +1,59 @@
+name: Daily data health check
+
+# Verifies post-sweep data invariants in prod (DV id hygiene + DV↔GAM join
+# rate + per-table freshness + sweep liveness) and emails a one-line verdict
+# via agentmail.to. The subject says ✅/❌ so nobody has to open dashboards
+# to know whether the morning sweep landed cleanly. See health_check.py.
+#
+# Must run AFTER the daily refresh sweep (09:00 ET). Preferred trigger is
+# cron-job.org via workflow_dispatch at 09:45 America/New_York, same pattern
+# as refresh.yml / betting_daily_digest.yml. The `schedule:` below is a
+# fallback so the check runs even before that external trigger is set up —
+# GitHub-native cron drifts (often hours late), which only delays the email.
+# Once the cron-job.org trigger exists, delete the `schedule:` block.
+#
+# Manual ad-hoc:  gh workflow run health_check.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "If true, run the checks and print but don't send"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "45 13 * * *"   # 13:45 UTC ≈ 09:45 ET (EDT; 08:45 EST in winter)
+
+permissions:
+  contents: read
+  actions: read   # health_check.py reads refresh.yml run history
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run health checks
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            python health_check.py --dry-run
+          else
+            python health_check.py
+          fi
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          HEALTH_DIGEST_TO:   ${{ vars.HEALTH_DIGEST_TO }}
+          GITHUB_TOKEN:       ${{ github.token }}
