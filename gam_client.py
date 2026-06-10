@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -38,6 +39,28 @@ def _snake(name: str) -> str:
     s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
     s = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", s)
     return s.lower()
+
+
+def _soap_retry(call, what: str, attempts: int = 3, base_sleep: int = 15):
+    """Retry a SOAP request through GAM's transient server faults.
+
+    The SOAP services intermittently time out on Google's side after ~60s
+    with faultMessage '[ServerError.SERVER_ERROR @ ]'; a retry almost always
+    clears it. Anything that doesn't look like that fault re-raises
+    immediately so real errors (auth, bad PQL) still fail fast.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return call()
+        except Exception as exc:
+            if attempt == attempts or "SERVER_ERROR" not in str(exc):
+                raise
+            sleep_s = base_sleep * attempt
+            logger.warning(
+                "%s hit transient GAM ServerError (attempt %d/%d) — retrying in %ds",
+                what, attempt, attempts, sleep_s,
+            )
+            time.sleep(sleep_s)
 
 
 def _rv(rv) -> object:
@@ -775,7 +798,10 @@ class GAMClient:
             sb.Limit(500)
             rows = []
             while True:
-                resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
+                resp = _soap_retry(
+                    lambda: svc.getProposalLineItemsByStatement(sb.ToStatement()),
+                    "getProposalLineItemsByStatement",
+                )
                 results = getattr(resp, "results", None) or []
                 if not results:
                     break
@@ -921,7 +947,10 @@ class GAMClient:
                     sb.Where(f"lineItemId IN ({ids_str})")
                 sb.Limit(500)
                 while True:
-                    resp = svc.getLineItemCreativeAssociationsByStatement(sb.ToStatement())
+                    resp = _soap_retry(
+                        lambda: svc.getLineItemCreativeAssociationsByStatement(sb.ToStatement()),
+                        "getLineItemCreativeAssociationsByStatement",
+                    )
                     if not hasattr(resp, "results") or not resp.results:
                         break
                     for lica in resp.results:
