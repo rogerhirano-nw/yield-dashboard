@@ -45,8 +45,12 @@ Env required:
     AGENTMAIL_INBOX_ID    "newsweek@agentmail.to"   (not needed --dry-run)
 Optional:
     HEALTH_DIGEST_TO             Default: roger.hirano@newsweek.com
-    HEALTH_DIGEST_ONLY_FAILURES  "1"/"true" → send email only when a check
-                                 fails (default: send the ✅ daily too)
+    HEALTH_DIGEST_ONLY_FAILURES  "1"/"true" → send only failures and
+                                 remediation outcomes; quiet green runs send
+                                 nothing (default: send the ✅ daily too).
+                                 The 17:45 UTC follow-up schedule sets this
+                                 automatically so a clean afternoon re-check
+                                 doesn't email a second ✅.
     HEALTH_AUTO_REMEDIATE        default "1"; "0" disables the sweep re-run
     GITHUB_TOKEN / GITHUB_REPOSITORY  for the sweep-liveness check and the
                                  remediation dispatch; both are present
@@ -356,6 +360,16 @@ def build_report(results: list[CheckResult], today: date,
     return subject, "\n".join(lines), all_ok
 
 
+def should_send(all_ok: bool, only_failures: bool,
+                remediation: str | None) -> bool:
+    """Failures always send. Remediation outcomes always send — you want to
+    know the system healed itself even on a quiet day. A green run with
+    nothing to report sends unless HEALTH_DIGEST_ONLY_FAILURES suppresses
+    it (the follow-up schedule sets that so a clean afternoon re-check
+    doesn't email a second ✅)."""
+    return (not all_ok) or remediation is not None or not only_failures
+
+
 def send_via_agentmail(api_key: str, inbox_id: str, to: list[str],
                        subject: str, body: str) -> dict:
     """Same outbound pattern as betting_daily_update.send_via_agentmail."""
@@ -413,8 +427,8 @@ def main(argv: list[str]) -> int:
         in ("1", "true", "yes")
     if dry_run:
         logger.info("--dry-run: not sending")
-    elif all_ok and only_failures:
-        logger.info("All checks pass and HEALTH_DIGEST_ONLY_FAILURES set — not sending")
+    elif not should_send(all_ok, only_failures, remediation):
+        logger.info("Quiet green run (HEALTH_DIGEST_ONLY_FAILURES) — not sending")
     else:
         to = [a.strip() for a in
               (os.environ.get("HEALTH_DIGEST_TO") or DEFAULT_RECIPIENT).split(",")

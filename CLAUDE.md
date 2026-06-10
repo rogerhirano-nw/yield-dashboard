@@ -45,14 +45,20 @@ succeeded within 26h. **Auto-remediation:** when a *remediable* check fails
 waits for it, re-checks everything, and reports the final state — transient
 upstream failures heal hands-free. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
-with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input. The
+with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
+**Retry ladder:** seconds-scale blips are retried inside the clients
+(Magnite 429 ×10 / 5xx ×3, GAM SOAP ×3); the 13:45 UTC check re-runs the
+sweep once, immediately; the 17:45 UTC follow-up check retries once more
+~4h later and is quiet when green-with-nothing-to-do (remediation outcomes
+always email). Max two sweep re-runs/day — anything still failing after
+that needs a human, and the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
-var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence green days entirely. It ships
-with a GitHub-native `schedule:` (13:45 UTC) as a fallback — swap to a
-cron-job.org `workflow_dispatch` trigger at 09:45 ET for punctuality and
-delete the `schedule:` block when you do. The script exits non-zero on any
-failing check, so the Actions run goes red and GitHub's failure email fires
-as a second signal.
+var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It ships
+with GitHub-native `schedule:` triggers as a fallback — swap to
+cron-job.org `workflow_dispatch` triggers for punctuality and delete the
+`schedule:` block when you do. The script exits non-zero on any failing
+check, so the Actions run goes red and GitHub's failure email fires as a
+second signal.
 
 Same outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern as `apple-news/daily_report.py`. Triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late). Suggested cadence: 09:30 America/New_York daily — half an hour after the 09:00 refresh sweep so the freshest Improvado report is already in `betting_conversions`.
 
