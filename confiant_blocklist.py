@@ -455,15 +455,48 @@ def _build_email_html(summary: RunSummary) -> str:
 
 
 def _send_email(summary: RunSummary) -> None:
+    """Route the post-run email based on outcome.
+
+    Two recipient env vars, deliberately separated so success/failure can
+    go to different inboxes (or one can be paused without affecting the
+    other):
+
+    - `CONFIANT_REPORT_TO_EMAIL` — successful + dry-run summaries. Send a
+      daily "here's what we blocked" digest to a brand-safety alias or
+      a person who wants the steady drumbeat. Comment out / unset to
+      silence success summaries entirely.
+    - `CONFIANT_ALERT_TO_EMAIL` — failure-only alerts. Send these to the
+      on-call human who'd fix the pipeline (refresh the Google session,
+      repoint a selector, etc.).
+
+    Quiet-on-success / loud-on-failure mode (introduced 2026-06-10): set
+    `CONFIANT_ALERT_TO_EMAIL` and leave `CONFIANT_REPORT_TO_EMAIL` unset.
+    """
     from agentmail import AgentMail
     from datetime import date
 
     api_key = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    recipient = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
-    if not (api_key and inbox_id and recipient):
-        print("Skipping email — AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID / "
-              "CONFIANT_REPORT_TO_EMAIL not all set", file=sys.stderr)
+    summary_to = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
+    alert_to   = os.environ.get("CONFIANT_ALERT_TO_EMAIL")
+
+    if not (api_key and inbox_id):
+        print("Skipping email — AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set",
+              file=sys.stderr)
+        return
+
+    # Pick recipient by outcome. Failures prefer CONFIANT_ALERT_TO_EMAIL but
+    # fall back to the summary recipient if no dedicated alert address is
+    # configured (so historic setups don't lose their failure email).
+    is_failure = (not summary.dry_run) and (not summary.success)
+    recipient = (alert_to or summary_to) if is_failure else summary_to
+
+    if not recipient:
+        # Common steady-state path: success email is paused on purpose.
+        # Stay quiet there; only complain when a real failure has nowhere to go.
+        if is_failure:
+            print("Skipping FAILURE email — neither CONFIANT_ALERT_TO_EMAIL "
+                  "nor CONFIANT_REPORT_TO_EMAIL is set", file=sys.stderr)
         return
 
     n = len(summary.new_domains)
@@ -472,7 +505,7 @@ def _send_email(summary: RunSummary) -> None:
     # without opening: "GAM blocklist · 8 new URLs blocked — Jun 10".
     if summary.dry_run:
         subject = f"GAM blocklist · DRY RUN — would block {n} URL{'s' if n != 1 else ''} — {date_str}"
-    elif not summary.success:
+    elif is_failure:
         subject = f"GAM blocklist · FAILED — {date_str} (will retry)"
     elif n == 0:
         subject = f"GAM blocklist · no new URLs — {date_str}"
@@ -484,7 +517,7 @@ def _send_email(summary: RunSummary) -> None:
         subject=subject,
         html=_build_email_html(summary),
     )
-    print(f"Summary email sent to {recipient}")
+    print(f"{'Failure alert' if is_failure else 'Summary'} email sent to {recipient}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
