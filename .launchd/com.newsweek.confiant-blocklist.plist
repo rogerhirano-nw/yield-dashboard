@@ -20,9 +20,16 @@
         <integer>0</integer>
     </dict>
 
-    <!-- If the Mac was asleep at the trigger time, run when it wakes. -->
-    <key>StartCalendarIntervalRunAtLoad</key>
-    <false/>
+    <!-- Catch up on missed schedules. macOS does this automatically when the
+         Mac was just SLEEPING through the trigger time, but when the Mac was
+         fully OFF (booted up after 04:00 with no launchd to wake) the
+         schedule is just skipped — that's what happened on 2026-06-10 when
+         the laptop was powered off overnight. RunAtLoad=true fires the job
+         whenever launchd loads this agent, which catches the boot-after-
+         missed-fire case. Side effect: editing this plist + reloading also
+         fires the job — fine here, the push is idempotent vs state.sqlite. -->
+    <key>RunAtLoad</key>
+    <true/>
 
     <!-- IMPORTANT: edit these paths and env vars before `launchctl load`ing.
          The plist intentionally uses absolute paths so launchd doesn't depend
