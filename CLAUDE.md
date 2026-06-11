@@ -160,6 +160,15 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Availability forecasts work with our service account.** `ForecastService`
+  is SOAP-only (no v1 REST equivalent); calls ride the same lazy
+  `GAMClient._get_soap_client()` used for creatives/LICA — no extra auth or
+  permissions needed. Verified live 2026-06-10: RON 300x250 over 30 days →
+  147M matched / 134M available. One-off probe:
+  `python scripts/gam_avails_probe.py` (read-only; `--width/--height/--days/
+  --goal/--ad-unit/--contending`). Also available for future use:
+  `getAvailabilityForecastById` (existing LI avails) and
+  `getDeliveryForecast(ByIds)` (will-it-pace-to-goal for live LIs).
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
