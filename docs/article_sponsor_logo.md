@@ -4,48 +4,53 @@ A "Presented by <logo>" strip at the **right of the article breadcrumb row**
 (`Autos | Volvo | Safety ............ Presented by [logo]`), sold as a
 sponsorship and served entirely through GAM.
 
-**Hard product constraints (Roger, 2026-06-11): the solution is isolated to
-the out-of-page unit `oop2`** (`/22541732127/newsweek/oop2`, ad unit
-23207098418) — no page-side changes of any kind, and no other ad unit may
-be involved in any role. (A bootstrap creative riding inarticle1 to bind
-oop2's missing div was built, verified, and then **rolled back** on this
-instruction — PR #166, reverted. The bootstrap creative 138562352639 is
-deactivated/unassociated; safe to archive.)
+**The goal (Roger, 2026-06-11): the logo runs always and only through
+`oop2`** (`/22541732127/newsweek/oop2`, ad unit 23207098418) — no page-side
+additions, no other ad unit in any role. Two alternative carriers were
+built, verified working on articles, and rolled back on that instruction:
+a bootstrap creative riding inarticle1 (PR #166, reverted) and an
+interstitial-unit carrier (creative 138563124568). Both LICAs are
+deactivated; the creatives are safe to archive.
 
 The creative is an out-of-page CustomCreative whose JS injects the strip
 into the page DOM.
 
-## Final architecture (2026-06-11): two OOP-family carriers, one LI
+## What "always through oop2" requires (the one missing piece)
 
-The line item targets **oop2 (23207098418) + interstitial (23295929518)**;
-creative sizes route each request. Coverage, all verified live:
+GAM's half already works on every article load and is verified end to end:
+the LI wins, the creative is delivered in ~120–150 ms, and the moment a
+`dfp-ad-oop2` div exists, the logo renders and self-heals (proven live,
+GPT console flips to "Displayed / FriendlyIframe"). The only failure is
+page-side: **article templates ship the `dfp-ad-oop2` div in their server
+HTML but the client-rendered React tree omits that branch, so hydration
+deletes the div before the wrapper's eager `display('dfp-ad-oop2')` runs**
+— GPT logs `could not find div` on every article view and renders nothing
+(oop1/oop3 aren't even defined on articles; the lazy-wrapper slots like
+`interstitial`/`inarticle*` survive because their branch IS
+client-rendered).
 
-| Template | Carrier | Logo appears |
-|---|---|---|
-| Next.js articles (both generations) | `interstitial` (2x1 creative) | on the reader's **first scroll**, then persists (incl. back at top) |
-| Sections that bind oop2 (e.g. `/ai`) | `oop2` (out-of-page creative) | at load, centered inside the oop2 div (`sl-indiv` mode, incumbent-style) |
+So the single enabling change is a repair to the page's existing oop2
+integration — not a new element, not sponsor code:
 
-Why two carriers — the structural difference on article pages:
-- The eager **oop divs** (`fetchpriority=high`, bare, wrapperless) exist
-  only in the server HTML; the client tree doesn't render that branch, so
-  hydration deletes them and the wrapper's eager `display('dfp-ad-oop2')`
-  always fails. oop1/oop3 aren't even defined on article templates.
-- The **interstitial div** uses the lazy two-div wrapper pattern
-  (`dfp-ad-lazy dfp-ad-count`, like `inarticle*`), which IS client-rendered
-  → survives hydration on every article template. Their wrapper displays it
-  via IntersectionObserver as the reader scrolls toward the article's end —
-  hence first-scroll, not first-paint.
+> On article templates, keep the already-server-rendered `dfp-ad-oop2`
+> container in the client tree (render the eager oop AdSlots branch
+> client-side too), **or** in the ad wrapper, re-create the div before
+> calling `display()` on an out-of-page slot — OOP divs are
+> position-independent.
 
-**First-paint on articles is not reachable from GAM** under the
-no-page-changes constraint: the only first-paint mechanisms are the page
-client-rendering its eager oop branch (their hydration bug) or a bootstrap
-creative on an eagerly-rendered slot (built, verified, rolled back — see
-below). First-scroll-then-permanent is the ceiling, and the sponsor logo
-stays for the entire remainder of the read.
+That one-liner is sponsor-agnostic infrastructure: it also un-breaks the
+incumbent `Logo 120x60 AI` campaign (delivering ~38 imps/day against 100%
+SOV today) and every future oop campaign. Evidence pack for the platform
+team: GPT Publisher Console screenshots (`&dfpdeb`), the server-vs-client
+markup diff above, and the console repro
+(`document.body.appendChild(Object.assign(document.createElement('div'),{id:'dfp-ad-oop2'}));
+googletag.cmd.push(()=>googletag.display('dfp-ad-oop2'))` → logo appears
+within ~1 s).
 
-Coordination note: the `interstitial` unit currently has **zero demand**,
-but if a real interstitial campaign ever launches, the same SOV-collision
-rules apply as with the oop2 incumbent.
+Until that lands, oop2 delivery on articles equals the page's own binding
+rate (effectively zero); on templates that do bind oop2 (e.g. the `/ai`
+section) the creative already renders — at load, centered inside the oop2
+div (`sl-indiv` mode, incumbent-style).
 
 `scripts/setup_article_sponsor_logo.py` creates the GAM objects. Dry-run by
 default, `--apply` to create, safe to re-run (lookup-first by name).
@@ -54,10 +59,10 @@ default, `--apply` to create, safe to re-run (lookup-first by name).
 
 | Object | Id | Name | Notes |
 |---|---|---|---|
-| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily / priority 3, on Newsweek_Test-2 (4082002976), targets oop2 + interstitial + KV `nwdemocr=infiniti-logo`, placeholders 1x1-OOP + 2x1 |
-| Creative (oop2) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), dual-mode watcher (`sl-bc` breadcrumbs / `sl-indiv` in-div) |
-| Creative (interstitial) | 138563124568 | `[TEST] … interstitial (2x1)` | **The article carrier.** Same watcher snippet, breadcrumb mode, logo via stable GAM CDN URL |
-| Creative (bootstrap, retired) | 138562352639 | `[TEST] … oop2 bootstrap (300x250)` | inarticle1 div-binder — worked, rolled back per the no-other-banner-slots constraint. LICA deactivated; safe to archive |
+| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily / priority 3, on Newsweek_Test-2 (4082002976), targets **oop2 only** + KV `nwdemocr=infiniti-logo`, 1x1-OOP placeholder |
+| Creative (live) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), dual-mode watcher (`sl-bc` breadcrumbs / `sl-indiv` in-div) |
+| Creative (retired) | 138563124568 | `[TEST] … interstitial (2x1)` | Tested article carrier via the interstitial unit (worked, first-scroll trigger) — rolled back per oop2-only goal. LICA deactivated; safe to archive |
+| Creative (retired) | 138562352639 | `[TEST] … oop2 bootstrap (300x250)` | inarticle1 div-binder (worked, first-paint) — rolled back per oop2-only goal. LICA deactivated; safe to archive |
 | Creative (defunct) | 138563009050 | `[TEST] Article Sponsor Logo - oop2` | First attempt — API-created as plain 1x1, which GAM won't serve into an OOP slot. Unassociated; safe to archive |
 
 **Out-of-page creatives must be "Out of page" size, not 1x1.** The API

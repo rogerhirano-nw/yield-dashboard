@@ -57,14 +57,12 @@ client = ad_manager.AdManagerClient(
 V = "v202605"
 
 # ── config ────────────────────────────────────────────────────────────────────
-OOP2_AD_UNIT_ID         = 23207098418  # /22541732127/newsweek/oop2 (out-of-page)
-INTERSTITIAL_AD_UNIT_ID = 23295929518  # /22541732127/newsweek/interstitial (2x1)
+OOP2_AD_UNIT_ID = 23207098418        # /22541732127/newsweek/oop2 (out-of-page)
 
 ORDER_ID      = 4082002976           # Newsweek_Test-2 (same as newsletter tests)
 ADVERTISER_ID = 5131205161
 LI_NAME       = "[TEST] Article Sponsor Logo - oop2"
 CR_NAME       = "[TEST] Article Sponsor Logo - oop2"
-INT_CR_NAME   = "[TEST] Article Sponsor Logo - interstitial (2x1)"
 CLICK_URL     = "https://www.newsweek.com"
 
 SPONSOR_LABEL = "Presented by"       # disclosure label rendered next to the logo
@@ -200,18 +198,15 @@ def existing_creative(name):
 
 li = existing_li()
 cr = existing_creative(CR_NAME)
-int_cr = existing_creative(INT_CR_NAME)
 
 print("=" * 70)
 print(f"ARTICLE SPONSOR LOGO SETUP — oop2  ({'DRY RUN' if DRY_RUN else 'APPLY'})")
 print("=" * 70)
-print(f"Ad units:  oop2 ({OOP2_AD_UNIT_ID}) + interstitial ({INTERSTITIAL_AD_UNIT_ID}) — no inventory changes")
+print(f"Ad unit:   oop2 (existing, id={OOP2_AD_UNIT_ID}) — no inventory changes")
 print(f"Line item: {LI_NAME!r} on order {ORDER_ID}"
       + (f"  [exists: id={li['id']}]" if li else "  [will create]"))
 print(f"Creative:  {CR_NAME!r} (out-of-page injection, SafeFrame off)"
       + (f"  [exists: id={cr['id']}]" if cr else "  [will create]"))
-print(f"Creative:  {INT_CR_NAME!r} (article carrier — interstitial renders on first scroll)"
-      + (f"  [exists: id={int_cr['id']}]" if int_cr else "  [will create]"))
 print()
 
 if DRY_RUN:
@@ -241,16 +236,14 @@ if li is None:
         "primaryGoal": {"goalType": "DAILY", "unitType": "IMPRESSIONS", "units": 100},
         # INTERSTITIAL = GAM's "Out of page" creative size. A plain 1x1
         # placeholder will NOT accept/serve an out-of-page creative.
-        "creativePlaceholders": [
-            {"size": {"width": 1, "height": 1, "isAspectRatio": False},
-             "creativeSizeType": "INTERSTITIAL"},
-            {"size": {"width": 2, "height": 1, "isAspectRatio": False}},
-        ],
+        "creativePlaceholders": [{
+            "size": {"width": 1, "height": 1, "isAspectRatio": False},
+            "creativeSizeType": "INTERSTITIAL",
+        }],
         "targeting": {
             "inventoryTargeting": {
                 "targetedAdUnits": [
-                    {"adUnitId": OOP2_AD_UNIT_ID, "includeDescendants": True},
-                    {"adUnitId": INTERSTITIAL_AD_UNIT_ID, "includeDescendants": True},
+                    {"adUnitId": OOP2_AD_UNIT_ID, "includeDescendants": True}
                 ]
             }
         },
@@ -277,27 +270,8 @@ if cr is None:
 print(f"  creative_id={cr['id']}  {cr['name']}")
 log.append({"type": "creative", "id": cr["id"], "name": cr["name"]})
 
-if int_cr is None:
-    # Article carrier: the interstitial slot's div survives hydration (the
-    # lazy dfp-ad-lazy wrapper pattern IS client-rendered, unlike the eager
-    # oop divs) and their wrapper displays it via IntersectionObserver as
-    # the reader scrolls toward the article's end — so on article pages the
-    # logo appears on first scroll and persists. Same watcher snippet.
-    print("Creating interstitial (article carrier) creative...")
-    int_cr = cr_svc.createCreatives([{
-        "xsi_type": "CustomCreative",
-        "name": INT_CR_NAME,
-        "advertiserId": ADVERTISER_ID,
-        "size": {"width": 2, "height": 1, "isAspectRatio": False},
-        "destinationUrl": CLICK_URL,
-        "htmlSnippet": SNIPPET,
-        "isSafeFrameCompatible": False,
-    }])[0]
-print(f"  creative_id={int_cr['id']}  {int_cr['name']}")
-log.append({"type": "creative", "id": int_cr["id"], "name": int_cr["name"]})
-
-print("Creating LICAs...")
-for c in (cr, int_cr):
+print("Creating LICA...")
+for c in (cr,):
     try:
         lica = lica_svc.createLineItemCreativeAssociations([
             {"lineItemId": li["id"], "creativeId": c["id"]}
