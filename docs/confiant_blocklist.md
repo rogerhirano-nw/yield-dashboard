@@ -389,6 +389,61 @@ launchctl unload ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.p
 
 The plist file stays on disk (just dormant). Resume with `launchctl load -w`.
 
+## Data sharing & Claude — what's connected
+
+This section exists to answer the legal-team question "what's connected to
+Claude and what data flows through it?" without re-deriving it from the
+codebase each time. Keep current when the pipeline changes.
+
+### What flows where
+
+**Production cron jobs do NOT call Claude / Anthropic.** Both
+`confiant_blocklist.py` (daily push to GAM) and `confiant_outreach_drafts.py`
+(weekly Outlook drafts to SSP partners) run as local Python on the laptop
+via launchd. They pull from Confiant's API and write to either:
+
+- **Outlook** via Microsoft Graph — drafts land in Roger's mailbox; nothing
+  auto-sends.
+- **GAM Protection 28044902 ("Everything")** via Playwright UI automation
+  (GAM Protections has no API). This is a publisher-side blocklist; the
+  data stays inside our Google Ad Manager network.
+
+No Anthropic API call happens during these runs.
+
+### Claude's three roles
+
+| When | What Claude sees | Where output goes |
+|---|---|---|
+| **Production runtime** | Nothing — no LLM call | n/a |
+| **Development** | Code, error messages, design discussions | The committed Python source (no LLM dep at runtime) |
+| **Interactive drafting** (Claude Code chat) | What Roger pastes — SSP rep replies, Confiant fields, vendor xlsx contents | Outlook draft HTML, repo edits, terminal commands — all reviewed by Roger before any external action |
+
+### Per-SSP data-sharing rule
+
+In every per-SSP outreach email the pipeline generates, the only data we
+share with a given SSP is **that SSP's own demand data** — creative IDs
+they served and that Confiant flagged on Newsweek's inventory. We never
+include another SSP's data in a third SSP's outreach. This fits within
+the "aggregated/anonymized end-user interaction data" allowances we've
+seen in the OpenX, TTD, DV, Pubmatic, GAM 360, IX, and Magnite supply
+agreements; legal has the contracts.
+
+### Vendors worth listing on a data-sharing audit chart
+
+| Vendor | Role | What we send/receive |
+|---|---|---|
+| Confiant | Data source | Pull only — our property's flagged creatives (IDs, destinations, imps, timestamps) |
+| Microsoft Graph (Outlook) | Draft creation | Email draft bodies stored in Roger's mailbox; standard M365 terms apply |
+| agentmail.to | Outbound MTA | Internal status emails only (daily/weekly summaries) — no advertiser data flows through |
+| Anthropic (Claude Code) | Code-gen + interactive drafting | Per Anthropic's enterprise terms for the Claude account |
+
+### Reference
+
+Legal-audit email drafted 2026-06-11 covers the above in plain English plus
+a 34-SSP partner list and the policy framing for legal counsel. Preview at
+`/tmp/legal_audit_reply_preview.html`; Outlook draft is in Roger's mailbox
+addressed to himself as a placeholder until the legal contact is filled in.
+
 ## When Google changes the Protections UI
 
 The script aborts with a `RuntimeError` and a hint about which selector
