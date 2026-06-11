@@ -2,14 +2,30 @@
 
 A "Presented by <logo>" strip at the **right of the article breadcrumb row**
 (`Autos | Volvo | Safety ............ Presented by [logo]`), sold as a
-sponsorship and served entirely through GAM — flights, impression counting,
-click tracking, and creative swaps all happen in ad ops with **no
-newsweek.com template change**.
+sponsorship and served entirely through GAM.
 
-It rides the existing out-of-page unit **`oop2`**
-(`/22541732127/newsweek/oop2`, ad unit id 23207098418), which is already on
-every article page, eager-loaded (`lazy:false`). The creative is an
-out-of-page CustomCreative whose JS injects the strip into the page DOM.
+**Hard product constraints (Roger, 2026-06-11): the solution is isolated to
+the out-of-page unit `oop2`** (`/22541732127/newsweek/oop2`, ad unit
+23207098418) — no page-side changes of any kind, and no other ad unit may
+be involved in any role. (A bootstrap creative riding inarticle1 to bind
+oop2's missing div was built, verified, and then **rolled back** on this
+instruction — PR #166, reverted. The bootstrap creative 138562352639 is
+deactivated/unassociated; safe to archive.)
+
+The creative is an out-of-page CustomCreative whose JS injects the strip
+into the page DOM.
+
+**Where it delivers, under isolation** (verified 2026-06-11):
+- **Templates that bind oop2** — e.g. the `/ai` section template — the
+  creative executes and works fully. (This is where the incumbent
+  `Logo 120x60 AI` earns its ~38 imps/day.) On non-article templates the
+  watcher finds no breadcrumb row and intentionally renders nothing.
+- **Next.js article templates** — the page defines and fetches oop2 but
+  never binds its div (see the page-side-bug section), so GPT never
+  renders any creative there and no creative code can execute. Delivery on
+  articles is therefore whatever the page's own binding rate is —
+  effectively zero today. This is a property of the article template, not
+  of the GAM setup, and is unreachable from GAM by GPT's render contract.
 
 `scripts/setup_article_sponsor_logo.py` creates the GAM objects. Dry-run by
 default, `--apply` to create, safe to re-run (lookup-first by name).
