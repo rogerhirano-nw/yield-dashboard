@@ -340,7 +340,8 @@ GAM_NETWORK_ID
 CONFIANT_API_KEY
 AGENTMAIL_API_KEY
 AGENTMAIL_INBOX_ID         # newsweek@agentmail.to
-CONFIANT_REPORT_TO_EMAIL   # daily summary recipient (e.g. revops@newsweek.com)
+CONFIANT_REPORT_TO_EMAIL   # daily summary recipient — comment out to pause
+CONFIANT_ALERT_TO_EMAIL    # failure-only alert recipient (see "Email routing")
 ```
 
 **Do NOT redeclare any of these in the launchd plist `EnvironmentVariables`
@@ -352,6 +353,41 @@ days of emails to exactly this bug between 2026-05-26 and 2026-06-08 — see
 PR #133 for the fix. The plist should carry only `PATH`, paths
 (`CONFIANT_BLOCKLIST_PROFILE_DIR`, `CONFIANT_BLOCKLIST_STATE`), and
 process-control keys (`AbandonProcessGroup`, etc.).
+
+## Email routing — success vs failure recipients
+
+The daily script splits the post-run email by outcome. Two env vars:
+
+| Var | Sends on | What it's for |
+|---|---|---|
+| `CONFIANT_REPORT_TO_EMAIL` | Success + dry-run | "Here's what we blocked today" daily drumbeat. Goes to a brand-safety alias or whoever wants the steady cadence. Comment out / unset to pause. |
+| `CONFIANT_ALERT_TO_EMAIL` | Failure only | One-line "the cron broke, here's the error" to whoever's on-call for fixing it (refreshing the Google session, repointing a selector). |
+
+Resolution order on each run:
+
+| Outcome | Recipient picked |
+|---|---|
+| Success / dry-run | `CONFIANT_REPORT_TO_EMAIL` (if set; otherwise silent) |
+| Failure | `CONFIANT_ALERT_TO_EMAIL` if set, else falls back to `CONFIANT_REPORT_TO_EMAIL` for back-compat, else silent with a `Skipping FAILURE email…` warning to stderr |
+
+The four useful combinations:
+
+| `REPORT` | `ALERT` | Behaviour |
+|---|---|---|
+| set | set | Daily summaries + loud failures — different recipients possible |
+| set | unset | Daily summaries; failures inherit the summary recipient (original behaviour) |
+| **unset** | **set** | **Quiet-on-success, loud-on-failure** ("monitoring mode" — what the laptop has been on since 2026-06-10) |
+| unset | unset | Silent. Failure prints a warning to launchd.err.log so the gap is visible |
+
+The weekly RevOps digest (`confiant_blocklist_weekly_report.py`) is its
+own script with its own `--to` arg — it doesn't read these env vars.
+Pause it by unloading the plist:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.plist
+```
+
+The plist file stays on disk (just dormant). Resume with `launchctl load -w`.
 
 ## When Google changes the Protections UI
 
