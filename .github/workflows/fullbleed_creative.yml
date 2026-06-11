@@ -14,6 +14,10 @@ on:
         description: "GAM creative id"
         required: true
         default: "138557893457"
+      line_item_id:
+        description: "GAM line item id (needed for the ImageCreative swap path)"
+        required: false
+        default: "7309466805"
       apply:
         description: "Write to GAM (false = dry-run)"
         required: false
@@ -45,6 +49,7 @@ jobs:
         run: |
           set -o pipefail
           ARGS="--creative-id ${{ github.event.inputs.creative_id || '138557893457' }}"
+          ARGS="$ARGS --line-item-id ${{ github.event.inputs.line_item_id || '7309466805' }}"
           if [ "${{ github.event.inputs.apply }}" = "true" ]; then
             ARGS="$ARGS --apply"
           fi
