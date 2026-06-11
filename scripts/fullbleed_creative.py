@@ -104,6 +104,14 @@ def get_client():
     ), ad_manager
 
 
+def _g(obj, key, default=None):
+    """Field access tolerant of zeep types that lack the field entirely."""
+    try:
+        return obj[key]
+    except Exception:
+        return default
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--creative-id", type=int, required=True)
@@ -128,9 +136,10 @@ def main():
     print(f"FULLBLEED CREATIVE  ({'APPLY' if args.apply else 'DRY RUN'})")
     print("=" * 72)
     print(f"Creative {cr['id']}: {cr['name']}")
-    w, h = cr['size']['width'], cr['size']['height']
+    size = _g(cr, 'size')
+    w, h = (size['width'], size['height']) if size else (0, 0)
     print(f"  type={ctype}  size={w}x{h}  "
-          f"isSafeFrameCompatible={cr['isSafeFrameCompatible']}")
+          f"isSafeFrameCompatible={_g(cr, 'isSafeFrameCompatible')}")
     if field is None:
         print(f"\nUnsupported creative type {ctype!r} — only ThirdPartyCreative /")
         print("CustomCreative snippets can be wrapped. Full object for reference:")
