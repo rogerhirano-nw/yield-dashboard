@@ -160,15 +160,27 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
-- **Active View reads ~0–1% viewable on Mobkoi interscroller/uniscroller
-  LIs** (and any third-party tag that breaks out of the friendly iframe to
-  render in the parent DOM). AV measures the GPT slot iframe, which the
-  Mobkoi tag hides — impressions score 100% measurable / ~0% viewable, and
-  DV (instrumenting the same GAM-served element) agrees, so `dv_attention`
-  numbers for these LIs are equally meaningless. The tell it's an artifact:
-  healthy CTR, even more clicks than "viewable" impressions. Use Mobkoi's
-  own measurement for IO reporting and never set vCPM goals on these
-  formats; full debrief in `docs/mobkoi_viewability.md`.
+- **Active View reads ~0% viewable on any creative that renders in the
+  parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
+  uniscroller, the `addImageToHomepage`-style takeover customs, the Kia
+  Homepage-Insight template. AV measures the iframe the tag hides (100%
+  measurable / ~0% viewable) and DV instruments the same element, so
+  `dv_attention` agrees and is equally meaningless there. The tell it's an
+  artifact: healthy CTR, even more clicks than "viewable" impressions.
+  In-frame renders measure organically on the same slots (ClipCentric
+  Center Stage takeovers 58–67%, fluid native template 61.6%, site display
+  baseline 75.4%). Fixes: vendor in-frame render mode, or **declared
+  views** — append a watcher implementing MRC criteria that pings
+  `%%VIEW_URL_UNESC%%`. The watcher MUST live in the parent document
+  (breakouts destroy the iframe realm, killing its observers/timers — why
+  the 970x250_FullBleed test read 0%) and use AV's 30% threshold for
+  elements >242,500 px². Ready-to-paste creative:
+  `docs/snippets/mobkoi_declared_view_creative.html`; debrief + test plan:
+  `docs/mobkoi_viewability.md`. Per-LI AV pulls: dispatch
+  `diagnose_mobkoi_viewability.yml` (any `line_item_ids`; also runs daily
+  by cron while the watcher test on creative 138562143597 / LI 7310815861
+  is being monitored — delete the schedule block when done). Never set
+  vCPM goals on breakout formats.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).

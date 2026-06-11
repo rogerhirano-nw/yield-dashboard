@@ -52,7 +52,10 @@ LINE_ITEM_IDS = [
         os.environ.get("MOBKOI_LI_IDS") or "7310815861,7313011338,7316916920"
     ).split(",") if s.strip()
 ]
-KNOWN_CREATIVE_IDS = ["138557481462", "138558555303"]  # from the GAM UI links
+KNOWN_CREATIVE_IDS = [
+    "138557481462", "138558555303",  # original Mobkoi tags (from the GAM UI links)
+    "138562143597",  # Invesco interscroller + declared-view watcher (2026-06-11)
+]
 SNIPPET_CHARS = 2500    # per-creative tag excerpt cap (PR comment budget)
 LOOKBACK_MAX_DAYS = int(os.environ.get("LOOKBACK_MAX_DAYS") or "45")
 
@@ -97,7 +100,8 @@ def main() -> int:
         print(f"\n--- LI {d.get('id')}  {d.get('name')}")
         for k in ("orderId", "orderName", "lineItemType", "priority", "status",
                   "costType", "environmentType", "roadblockingType",
-                  "deliveryRateType", "skipInventoryCheck", "webPropertyCode"):
+                  "creativeRotationType", "deliveryRateType",
+                  "skipInventoryCheck", "webPropertyCode"):
             if d.get(k) is not None:
                 print(f"  {k}: {d[k]}")
         print(f"  flight: {(d.get('startDateTime') or {}).get('date')} -> "

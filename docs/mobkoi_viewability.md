@@ -89,6 +89,13 @@ plants a parent-document watcher observing the slot div (the unit's scroll
 window) and fires the ping. Mobkoi's bootstrap, consent macros, and click
 tracking stay byte-identical.
 
+**Live test (2026-06-11): creative 138562143597 on the Invesco LI
+7310815861 carries this watcher.** The diagnose workflow runs daily by
+cron (once merged to main) and posts the per-creative AV table to the open
+PR — watch whether the new creative's viewable% separates from the
+original tag's ~0.5%. First meaningful read: 6/13 reporting on 6/12.
+Ready-to-paste full creative: `docs/snippets/mobkoi_declared_view_creative.html`.
+
 Watcher template (append after Mobkoi's `<!-- END TAG -->`):
 
 ```html

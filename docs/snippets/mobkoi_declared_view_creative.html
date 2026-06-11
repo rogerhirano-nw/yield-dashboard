@@ -1,0 +1,81 @@
+<!--
+Mobkoi creative with NW declared-view watcher — ready to paste into the
+GAM creative (Delivery > Creatives > edit the ThirdPartyCreative snippet).
+
+Vendor tag below is the live Invesco interscroller (creative 138557481462).
+For the Cartier creatives (138558786242 interscroller, 138558555303
+uniscroller) keep THEIR existing <!- - START TAG - -> block — the only
+difference is the boot/<uuid> — and append the watcher block unchanged.
+
+Why: Mobkoi renders the unit in the parent DOM and hides the GAM iframe,
+so Active View books ~0% viewable on ads users see and click. The watcher
+implements the MRC criteria on the slot the unit scrolls through and books
+the viewable impression in GAM via %%VIEW_URL_UNESC%%.
+
+Test on a [TEST] LI first, then dispatch
+.github/workflows/diagnose_mobkoi_viewability.yml with that LI id.
+Full debrief + caveats (macro substitution in third-party creatives,
+slot-div geometry): docs/mobkoi_viewability.md
+-->
+
+<!-- START TAG -->
+  <script>
+    (function (cs) {
+      /* Publisher options */
+      var options = {
+        clickUrl: '%%CLICK_URL_UNESC%%',
+        gdpr: '${GDPR}',
+        gdpr_consent: '${GDPR_CONSENT_898}',
+        coppa: '%%TFCD%%',
+      };
+      /* DO NOT TOUCH ANYTHING BELOW */
+      cs.parentNode.insertBefore(Object.assign(document.createElement('script'), {
+        type: 'application/javascript', async: 1,
+        src: 'https://tagservice.maximus.mobkoi.com/boot/696c9280-2913-465f-a735-7972d2da441c/?po=' + encodeURIComponent(JSON.stringify(options)) + '&cb=' + Math.random() + '&st=' + Date.now()
+      }), cs);
+    })(document.currentScript);
+  </script>
+<!-- END TAG -->
+
+<!-- NW declared-view watcher: vendor tag above is untouched. -->
+<script>
+(function () {
+  try {
+    var PING = '%%VIEW_URL_UNESC%%';
+    var slot = window.frameElement &&
+               window.frameElement.closest('[id^="dfp-ad-inarticle"]');
+    if (!slot || PING.indexOf('%%') === 0) return; /* macro didn't substitute: self-disarm */
+
+    /* All logic lives in the PARENT document. Mobkoi hides/kills this
+       iframe when it builds the unit, and observers or timers created in
+       a destroyed iframe realm silently die (the 970x250_FullBleed bug). */
+    var D = window.parent.document;
+    var boot = D.createElement('script');
+    boot.textContent = '(' + function (sel, ping) {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      var fired = false, timer = null;
+      var io = new IntersectionObserver(function (es) {
+        var e = es[es.length - 1];
+        /* Active View's large-creative rule: >242,500 px² needs 30% in
+           view, not 50% — a full-viewport unit can never reach 50% of its
+           own area on small screens. */
+        var r = e.boundingClientRect;
+        var need = (r.width * r.height > 242500) ? 0.3 : 0.5;
+        if (!fired && e.isIntersecting && e.intersectionRatio >= need) {
+          if (!timer) timer = setTimeout(function () {
+            fired = true;
+            io.disconnect();
+            new Image().src = ping;   /* GAM books the viewable impression */
+          }, 1000);                   /* continuous 1s, reset on exit below */
+        } else {
+          clearTimeout(timer);
+          timer = null;
+        }
+      }, { threshold: [0.3, 0.5] });
+      io.observe(el);
+    } + ')(' + JSON.stringify('#' + slot.id) + ',' + JSON.stringify(PING) + ');';
+    (D.head || D.documentElement).appendChild(boot);
+  } catch (e) { /* safeframed or cross-origin: do nothing */ }
+})();
+</script>
