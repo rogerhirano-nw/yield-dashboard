@@ -1,6 +1,14 @@
 name: Restrict GAM creative to one article
 
 on:
+  # push trigger registers the workflow with GitHub so workflow_dispatch by
+  # filename works on this branch (same trick as pull_index_ob_requests.yml);
+  # push runs are always dry-run with the defaults below
+  push:
+    branches: [claude/fervent-euler-8j1821]
+    paths:
+      - 'scripts/restrict_creative_to_article.py'
+      - '.github/workflows/restrict_creative_to_article.yml'
   workflow_dispatch:
     inputs:
       line_item_id:
@@ -45,9 +53,9 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
         run: |
           set -o pipefail
-          ARGS="--line-item-id ${{ github.event.inputs.line_item_id }}"
-          ARGS="$ARGS --creative-id ${{ github.event.inputs.creative_id }}"
-          ARGS="$ARGS --article-id ${{ github.event.inputs.article_id }}"
+          ARGS="--line-item-id ${{ github.event.inputs.line_item_id || '7309466805' }}"
+          ARGS="$ARGS --creative-id ${{ github.event.inputs.creative_id || '138557893457' }}"
+          ARGS="$ARGS --article-id ${{ github.event.inputs.article_id || '12010430' }}"
           if [ "${{ github.event.inputs.apply }}" = "true" ]; then
             ARGS="$ARGS --apply"
           fi
