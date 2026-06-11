@@ -170,6 +170,16 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `creativeTargetings` that no creative placeholder references — stamp the
   name on the matching-size placeholder's `targetingName` in the same
   update, or the LICA update fails `INVALID_CREATIVE_TARGETING_NAME`.
+- Fullbleed treatment for a display creative: `scripts/fullbleed_creative.py`
+  (dry-run default; Actions wrapper `fullbleed_creative.yml`). Wraps the
+  snippet in a non-SafeFrame breakout shim (100vw slot + proportional
+  scale, the sponsor-logo parent-DOM technique). ImageCreatives have no
+  snippet — the script swaps in a CustomCreative reproducing the image,
+  the click-through (`%%CLICK_URL_UNESC%%%%DEST_URL%%`), and the 3P
+  impression pixels, re-associates under the original LICA's
+  `targetingName`, and deactivates the original (kept for rollback).
+  First used for Infiniti QX65 970x250 → fullbleed on the JT Batson
+  Newsmakers article (creative 138557893457 → 138562400069).
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
