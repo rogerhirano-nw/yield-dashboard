@@ -99,6 +99,8 @@ _INJECT_CSS = (
     "@media(max-width:767px){#nw-sponsor-logo.sl-bc{position:static;transform:none;"
     "width:100%;justify-content:flex-end;margin-top:8px}}"
     "#nw-sponsor-logo.sl-indiv{justify-content:center;width:100%;padding:3px 0}"
+    "#nw-sponsor-logo.sl-wrap{position:static;transform:none;width:100%;"
+    "justify-content:flex-end;margin-top:6px}"
     "#nw-sponsor-logo .sl-label{font-family:system-ui,-apple-system,sans-serif;"
     "font-size:11px;font-weight:500;letter-spacing:.08em;color:#68645a;"
     "text-transform:uppercase;white-space:nowrap}"
@@ -148,6 +150,13 @@ _SNIPPET = """\
           a.querySelector('.sl-logo').src = cfg.logo;
           if (bc && getComputedStyle(bc).position === 'static') bc.style.position = 'relative';
           host.appendChild(a);
+          /* keyword-heavy breadcrumb rows: drop to an own right-aligned line */
+          if (bc && getComputedStyle(a).position === 'absolute') {
+            var kw = bc.querySelector('[class*="keywords"]');
+            var kr = kw && kw.getBoundingClientRect();
+            var sr = a.getBoundingClientRect();
+            if (kr && kr.right > sr.left - 12) { a.className = 'sl-bc sl-wrap'; }
+          }
         } catch (e) {}
       }
       ensure();
