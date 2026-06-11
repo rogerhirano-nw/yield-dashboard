@@ -32,6 +32,27 @@ GPT page-level key-value (watch for `[NWDEMOCR]` console logs), and the LI
 targets `nwdemocr=infiniti-logo`, so it serves only on URLs carrying the
 param. A real flight drops the KV.
 
+**There is an incumbent sponsorship on oop2**: `Logo 120x60 AI`
+(LI 6986067522, order 3648897741, DELIVERING — also a SPONSORSHIP at the
+default priority 4, also a SafeFrame-off CustomCreative; it writes a
+"presented by <logo>" strip *into* the `#dfp-ad-oop2` div itself). Two
+consequences:
+
+- It was splitting oop2 ~50/50 with the demo — one of the three causes of
+  "the logo sometimes doesn't appear". The demo LI now runs **priority 3**,
+  so it outranks the incumbent on `nwdemocr` URLs while real traffic is
+  untouched (the demo is KV-gated). Real flights must coordinate with the
+  incumbent instead: pause it, split by section/KV, or stack priorities
+  deliberately.
+- The incumbent renders inside the oop2 div, so hydration deleting that div
+  (next section) wipes its strip mid-session; the watcher-based creative
+  documented here survives that. The same hardening would benefit the
+  incumbent if it renews.
+
+GAM-side note: `updateLineItems` re-runs the forecast — flip
+`skipInventoryCheck`/`allowOverbook` to `True` on the fetched object before
+any update to an oop-targeted LI, or it throws `NOT_ENOUGH_INVENTORY`.
+
 ## How the creative works
 
 - GPT renders oop2 via `defineOutOfPageSlot`; with
@@ -57,6 +78,14 @@ param. A real flight drops the KV.
   sales needs "Sponsored by" / "In partnership with".
 
 ## Known page-side bug: hydration removes the oop divs (2026-06-11)
+
+> **Product constraint (Roger, 2026-06-11): everything is done through GAM —
+> no page-side changes, and no other ad slots may carry the logo.** This
+> section is kept as context, not as a plan: the bug caps the delivery rate
+> of every oop campaign (including the incumbent `Logo 120x60 AI`), and the
+> watcher creative recovers every render the page allows, but loads where
+> the div never exists at display time are unreachable from GAM by
+> construction — a creative only executes if GPT renders it somewhere.
 
 **Symptom:** the logo appears only sometimes, varying by article and load.
 
