@@ -15,17 +15,37 @@ deactivated/unassociated; safe to archive.)
 The creative is an out-of-page CustomCreative whose JS injects the strip
 into the page DOM.
 
-**Where it delivers, under isolation** (verified 2026-06-11):
-- **Templates that bind oop2** — e.g. the `/ai` section template — the
-  creative executes and works fully. (This is where the incumbent
-  `Logo 120x60 AI` earns its ~38 imps/day.) On non-article templates the
-  watcher finds no breadcrumb row and intentionally renders nothing.
-- **Next.js article templates** — the page defines and fetches oop2 but
-  never binds its div (see the page-side-bug section), so GPT never
-  renders any creative there and no creative code can execute. Delivery on
-  articles is therefore whatever the page's own binding rate is —
-  effectively zero today. This is a property of the article template, not
-  of the GAM setup, and is unreachable from GAM by GPT's render contract.
+## Final architecture (2026-06-11): two OOP-family carriers, one LI
+
+The line item targets **oop2 (23207098418) + interstitial (23295929518)**;
+creative sizes route each request. Coverage, all verified live:
+
+| Template | Carrier | Logo appears |
+|---|---|---|
+| Next.js articles (both generations) | `interstitial` (2x1 creative) | on the reader's **first scroll**, then persists (incl. back at top) |
+| Sections that bind oop2 (e.g. `/ai`) | `oop2` (out-of-page creative) | at load, centered inside the oop2 div (`sl-indiv` mode, incumbent-style) |
+
+Why two carriers — the structural difference on article pages:
+- The eager **oop divs** (`fetchpriority=high`, bare, wrapperless) exist
+  only in the server HTML; the client tree doesn't render that branch, so
+  hydration deletes them and the wrapper's eager `display('dfp-ad-oop2')`
+  always fails. oop1/oop3 aren't even defined on article templates.
+- The **interstitial div** uses the lazy two-div wrapper pattern
+  (`dfp-ad-lazy dfp-ad-count`, like `inarticle*`), which IS client-rendered
+  → survives hydration on every article template. Their wrapper displays it
+  via IntersectionObserver as the reader scrolls toward the article's end —
+  hence first-scroll, not first-paint.
+
+**First-paint on articles is not reachable from GAM** under the
+no-page-changes constraint: the only first-paint mechanisms are the page
+client-rendering its eager oop branch (their hydration bug) or a bootstrap
+creative on an eagerly-rendered slot (built, verified, rolled back — see
+below). First-scroll-then-permanent is the ceiling, and the sponsor logo
+stays for the entire remainder of the read.
+
+Coordination note: the `interstitial` unit currently has **zero demand**,
+but if a real interstitial campaign ever launches, the same SOV-collision
+rules apply as with the oop2 incumbent.
 
 `scripts/setup_article_sponsor_logo.py` creates the GAM objects. Dry-run by
 default, `--apply` to create, safe to re-run (lookup-first by name).
@@ -34,8 +54,10 @@ default, `--apply` to create, safe to re-run (lookup-first by name).
 
 | Object | Id | Name | Notes |
 |---|---|---|---|
-| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily, on Newsweek_Test-2 (4082002976), targets oop2 + KV `nwdemocr=infiniti-logo` |
-| Creative (live) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), hardened watcher snippet |
+| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily / priority 3, on Newsweek_Test-2 (4082002976), targets oop2 + interstitial + KV `nwdemocr=infiniti-logo`, placeholders 1x1-OOP + 2x1 |
+| Creative (oop2) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), dual-mode watcher (`sl-bc` breadcrumbs / `sl-indiv` in-div) |
+| Creative (interstitial) | 138563124568 | `[TEST] … interstitial (2x1)` | **The article carrier.** Same watcher snippet, breadcrumb mode, logo via stable GAM CDN URL |
+| Creative (bootstrap, retired) | 138562352639 | `[TEST] … oop2 bootstrap (300x250)` | inarticle1 div-binder — worked, rolled back per the no-other-banner-slots constraint. LICA deactivated; safe to archive |
 | Creative (defunct) | 138563009050 | `[TEST] Article Sponsor Logo - oop2` | First attempt — API-created as plain 1x1, which GAM won't serve into an OOP slot. Unassociated; safe to archive |
 
 **Out-of-page creatives must be "Out of page" size, not 1x1.** The API
