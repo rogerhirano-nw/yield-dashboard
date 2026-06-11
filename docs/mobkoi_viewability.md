@@ -154,6 +154,43 @@ ping never fires on some browsers; plant the parent-document boot script
 large-creative 30% threshold above — a 100vw×auto image on mobile can
 exceed 242,500 px² and a 0.5 ratio becomes unreachable.
 
+### Proof both paths work — the homepage natural experiment (run 2026-06-11)
+
+Pulling the homepage takeover/insight LIs through the same diagnostic gave
+a clean A/B — same site, same homepage slots, overlapping flights:
+
+| Creative | Render path | Imps | AV viewable |
+|---|---|---|---|
+| Infiniti "Desktop 1" / "Infinity mobile" (ClipCentric Center Stage third-party tags, LI 7311682075) | in/around the GAM iframe | 59k / 88k | **66.9% / 58.6%** |
+| Infiniti "Mobile 2", "Homepage Takeover Desktop 2/3/4", "Homepage 3 Mobile", "Mobile 4" (CustomCreative `addImageToHomepage` innerHTML injection, no observer/ping; same LI) | parent-DOM injection | 9k–36k each | **0.00% each** |
+| Homepage Insight_Fluid (fluid native template, SafeFrame on, LI 7316340383) | in-iframe | 50k | **61.6%** |
+| Kia Homepage-Insight (template injecting into `dfp-ad-homepage3`, LI 7226895315) | parent-DOM injection | 54k | **0.00%** (3-month sold flight) |
+| 970x250_FullBleed test (injection **with** the view-macro observer, LI 7333906212) | parent-DOM injection + declared views | 5 | 0% — see below |
+
+Takeaways:
+- **In-frame rendering measures organically — no macro needed.** ClipCentric
+  runs full takeover formats at 58–67% AV on our own homepage; that's the
+  precedent to quote at Mobkoi for path 1 ("ClipCentric's Center Stage
+  renders measurably; we need the same from your scroller").
+- ClipCentric's tag comment says `Tag Type: GAM no view macro` — they ship
+  a **view-macro tag variant** as a product option, i.e. declared views in
+  third-party tags are an established vendor pattern (good sign for the 1b
+  watcher on Mobkoi's tag, and worth requesting from ClipCentric too when
+  their format does break out).
+- Every parent-DOM injection without declared views reads exactly 0.00%.
+  Same artifact class as Mobkoi.
+- **The FullBleed test's declared views aren't landing** (0/5 viewable and
+  one impression belonged to a click-tester who certainly looked at it).
+  The snippet explains it: `addImageToSlot` runs `el.innerHTML = …` first —
+  wiping the slot div's children **including the GPT iframe the script
+  itself lives in** — and only then calls `trackViewability`, so the
+  observer + 1s timer are created in a destroyed realm and never fire
+  reliably. Fix = parent-boot pattern above (injection *and* observer in
+  the parent realm) + the 30% large-creative threshold. n=5 is tiny —
+  re-test after fixing and re-dispatch the workflow with LI 7333906212.
+
+### 2. Verification loop (once Mobkoi ships a build)
+
 1. Have Mobkoi point a test `boot/<uuid>` at the new mode; traffic it on a
    `[TEST]` LI (the 2026-03 `Mobkoi-Publisher-Testing-*` LIs 7253027964 /
    7255084258 / 7256561225 can be reused) with a low goal.
