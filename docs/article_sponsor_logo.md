@@ -96,6 +96,41 @@ GAM-side note: `updateLineItems` re-runs the forecast — flip
 `skipInventoryCheck`/`allowOverbook` to `True` on the fetched object before
 any update to an oop-targeted LI, or it throws `NOT_ENOUGH_INVENTORY`.
 
+## Production flight: Infiniti Newsmakers (live 2026-06-11)
+
+**LI 7336465381** (`Newsweek_Direct_Automotive_…_Infiniti-Newsmakers-100%LOGO`,
+OMD order 4057788230, flight 6/10–9/30): SPONSORSHIP / CPD / 100% daily,
+targets **oop2 + interstitial**, scoped per article via the `article_id`
+key-value (e.g. `article_id=12010430` for the US Soccer Newsmakers
+interview) + DV `ids IS_NOT 1` fraud exclusion. Two creatives: 2x1 watcher
+(interstitial — this is what renders on articles, on first scroll) and a
+1x1 out-of-page (oop2 — ghost-serves until the page-side div fix lands;
+still carries the pre-watcher single-shot snippet, upgrade it when oop2
+starts rendering).
+
+Three production gotchas, all hit and fixed on launch day:
+
+1. **Roadblocking must be ONE_OR_MORE, never ONLY_ONE.** With ONLY_ONE,
+   GAM places the LI on the *unrenderable* oop2 request first, marks the
+   pageview consumed, and then refuses the interstitial request — the ghost
+   slot blocks the working one and nothing ever shows. This was why the
+   flight launched dark.
+2. **Grafting agency pixels into the watcher**: the watcher's document
+   variable is `d`, not `doc` — a pasted pixel block using `doc.` throws
+   inside `ensure()` *after* the logo renders, so the logo shows but the
+   DCM/IAS/etc. impression pixels silently never fire. Billing-grade bug;
+   check `#nw-sponsor-logo-px` exists on page to verify pixels ran.
+3. **Keyword-heavy breadcrumb rows overlap the absolute strip** (e.g. six
+   keywords on the US Soccer article). Late padding doesn't help — the
+   keyword list measures its width at hydration. The snippet now
+   collision-detects after injection and drops the strip to the row's flex
+   flow (`sl-wrap`), which renders right-aligned on the same line.
+
+When the engineering div fix ships: oop2 starts rendering too, which
+double-serves the LI per pageview (two rendered impressions) — **drop the
+interstitial targeting at that point** and the flight becomes pure-oop2,
+first-paint.
+
 ## How the creative works
 
 - GPT renders oop2 via `defineOutOfPageSlot`; with
