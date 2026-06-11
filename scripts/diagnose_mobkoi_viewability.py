@@ -89,7 +89,7 @@ def main() -> int:
     earliest_start = date.today()
     for li in lis:
         d = _ser(li)
-        sd = d.get("startDateTime", {}).get("date", {})
+        sd = (d.get("startDateTime") or {}).get("date") or {}
         if sd:
             earliest_start = min(
                 earliest_start, date(int(sd["year"]), int(sd["month"]), int(sd["day"]))
@@ -100,8 +100,8 @@ def main() -> int:
                   "deliveryRateType", "skipInventoryCheck", "webPropertyCode"):
             if d.get(k) is not None:
                 print(f"  {k}: {d[k]}")
-        print(f"  flight: {d.get('startDateTime', {}).get('date')} -> "
-              f"{d.get('endDateTime', {}).get('date')}")
+        print(f"  flight: {(d.get('startDateTime') or {}).get('date')} -> "
+              f"{(d.get('endDateTime') or {}).get('date')}")
         goal = d.get("primaryGoal") or {}
         print(f"  goal: {goal.get('goalType')} {goal.get('units')} {goal.get('unitType')}")
         for ph in d.get("creativePlaceholders") or []:
