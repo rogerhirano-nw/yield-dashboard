@@ -160,6 +160,13 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- Per-article scoping: the site sets the GPT key-value `article_id=<entityId>`
+  on every ad request (entityId = trailing number in the article URL).
+  Target it at the LI level (how the Infiniti Newsmakers logo LI is scoped)
+  or per creative via `scripts/restrict_creative_to_article.py`, which adds
+  a `CreativeTargeting` to the LI and points the creative's LICA
+  `targetingName` at it (dry-run default, `--apply` to write; Actions
+  wrapper: `restrict_creative_to_article.yml`).
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
