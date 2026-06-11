@@ -76,7 +76,83 @@ Notes for that conversation:
 - Expected result: interscrollers measured this way report well above the
   75% display baseline (the format's whole pitch is ~full-screen exposure).
 
-### 2. Verification loop (once they ship a build)
+### 1b. Publisher-declared views — our homepage-takeover trick, applied to their tag
+
+GAM's **view URL macro** (`%%VIEW_URL_UNESC%%`) exists for exactly this
+scenario: a creative that renders outside the measured frame implements the
+MRC criteria itself (IntersectionObserver, 50%-for-1s) and pings the macro
+URL, and GAM books a viewable impression on the line. The NW homepage
+full-bleed injection creative already does this, so the same logic can be
+appended to the Mobkoi creatives **without touching their tag**: their
+snippet is editable text in GAM — add a second `<script>` after it that
+plants a parent-document watcher observing the slot div (the unit's scroll
+window) and fires the ping. Mobkoi's bootstrap, consent macros, and click
+tracking stay byte-identical.
+
+Watcher template (append after Mobkoi's `<!-- END TAG -->`):
+
+```html
+<script>
+(function () {
+  try {
+    var PING = '%%VIEW_URL_UNESC%%';
+    var slot = window.frameElement &&
+               window.frameElement.closest('[id^="dfp-ad-inarticle"]');
+    if (!slot || PING.indexOf('%%') === 0) return;  /* macro didn't substitute */
+    /* Watcher lives in the PARENT document: the vendor tag hides/kills this
+       iframe, and observers/timers in a destroyed realm silently die. */
+    var D = window.parent.document;
+    var boot = D.createElement('script');
+    boot.textContent = '(' + function (sel, ping) {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      var fired = false, timer = null;
+      var io = new IntersectionObserver(function (es) {
+        var e = es[es.length - 1];
+        /* Mirror Active View's large-creative rule: >242,500 px^2 needs 30%
+           in view, not 50% — a full-viewport unit can never reach 50% of its
+           own area on small screens. */
+        var r = e.boundingClientRect;
+        var need = (r.width * r.height > 242500) ? 0.3 : 0.5;
+        if (!fired && e.isIntersecting && e.intersectionRatio >= need) {
+          if (!timer) timer = setTimeout(function () {
+            fired = true; io.disconnect(); new Image().src = ping;
+          }, 1000);
+        } else { clearTimeout(timer); timer = null; }
+      }, { threshold: [0.3, 0.5] });
+      io.observe(el);
+    } + ')(' + JSON.stringify('#' + slot.id) + ',' + JSON.stringify(PING) + ');';
+    (D.head || D.documentElement).appendChild(boot);
+  } catch (e) {}
+})();
+</script>
+```
+
+Caveats, in test order:
+- **Macro substitution**: the view macro is documented for *custom*
+  creatives; Mobkoi's are `ThirdPartyCreative`s. If GAM doesn't substitute
+  it there, the watcher self-disarms (the `%%` guard) — test on a `[TEST]`
+  LI and check whether viewable impressions move. If it doesn't
+  substitute, re-traffic the same tag inside a CustomCreative — but then
+  verify the `${GDPR}`/`${GDPR_CONSENT_898}` consent macros still resolve
+  (they're third-party-creative macros; UK flights break without consent).
+- **Slot-div geometry**: the watcher observes the slot div as a proxy for
+  the unit's scroll window. If Mobkoi collapses the slot div to 0-height,
+  the observer never fires — check the rendered DOM once (GAM preview) and
+  switch the selector to their injected container if needed.
+- **Self-declared ≠ third-party-verified**: declared views make *our* GAM
+  reporting truthful; an agency auditing with DV/IAS still sees the broken
+  number until path 1 lands. Use for our metrics/health, not as the
+  billing-grade answer to a vendor-measured IO.
+
+Hardening notes from the homepage creative (apply there too): don't
+`innerHTML`-wipe the slot div from inside your own iframe **before**
+handing the watcher to the parent — replacing the slot's children destroys
+the GPT iframe your script (and its observer/timeout) lives in, so the
+ping never fires on some browsers; plant the parent-document boot script
+*first* (same lesson as the sponsor-logo creative). And use the
+large-creative 30% threshold above — a 100vw×auto image on mobile can
+exceed 242,500 px² and a 0.5 ratio becomes unreachable.
 
 1. Have Mobkoi point a test `boot/<uuid>` at the new mode; traffic it on a
    `[TEST]` LI (the 2026-03 `Mobkoi-Publisher-Testing-*` LIs 7253027964 /
