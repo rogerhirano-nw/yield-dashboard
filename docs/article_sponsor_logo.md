@@ -2,40 +2,30 @@
 
 A "Presented by <logo>" strip at the **right of the article breadcrumb row**
 (`Autos | Volvo | Safety ............ Presented by [logo]`), sold as a
-sponsorship and served entirely through GAM — flights, impression counting,
-click tracking, and creative swaps all happen in ad ops with **no
-newsweek.com change of any kind** (hard product constraint).
+sponsorship and served entirely through GAM.
 
-## Final architecture (2026-06-11): one LI, two creatives
+**Hard product constraints (Roger, 2026-06-11): the solution is isolated to
+the out-of-page unit `oop2`** (`/22541732127/newsweek/oop2`, ad unit
+23207098418) — no page-side changes of any kind, and no other ad unit may
+be involved in any role. (A bootstrap creative riding inarticle1 to bind
+oop2's missing div was built, verified, and then **rolled back** on this
+instruction — PR #166, reverted. The bootstrap creative 138562352639 is
+deactivated/unassociated; safe to archive.)
 
-The sponsorship line item targets **both** `oop2` (23207098418) and
-`inarticle1` (23206070574); creative sizes route each request:
+The creative is an out-of-page CustomCreative whose JS injects the strip
+into the page DOM.
 
-1. **oop2 → the product.** Out-of-page CustomCreative (SafeFrame OFF) that
-   plants a parent-document watcher which injects the breadcrumb strip and
-   keeps it alive through React re-renders. The sponsor-facing serving —
-   and the logo itself — is entirely oop2.
-2. **inarticle1 → invisible bootstrap.** 300x250 CustomCreative (SafeFrame
-   OFF) that collapses its own slot, binds the `dfp-ad-oop2` div the page
-   fails to provide, and triggers the oop2 render (`display`, falling back
-   to `refresh` if the queued response was already consumed).
-
-Why the bootstrap exists: the article templates define and SRA-fetch oop2
-but **never bind its div** — Next.js hydration drops the server-rendered
-oop containers and the client tree doesn't include them — so the page's own
-`googletag.display('dfp-ad-oop2')` fails and an oop2-only creative never
-executes (GPT console: "Ad unit did not render", Iframe type `none`; the
-incumbent oop2 campaign delivered ~38 imps/day site-wide on a 100%-SOV
-sponsorship). `inarticle1` is hydration-proof by construction: it sits in
-the article-body HTML blob that React injects raw and never reconciles, so
-it renders on every article template. **Cost: the sponsorship occupies (and
-hides) the first in-article position on covered pages** — price it into
-the package, or run the sponsor's banner there instead of collapsing.
-
-Verified end-to-end 2026-06-11 on the demo URL (an article template where
-the logo had never rendered naturally): bootstrap wins inarticle1 →
-collapses → binds div → oop2 renders the logo creative → GPT console
-reports oop2 **Displayed / FriendlyIframe**. Stable across reloads.
+**Where it delivers, under isolation** (verified 2026-06-11):
+- **Templates that bind oop2** — e.g. the `/ai` section template — the
+  creative executes and works fully. (This is where the incumbent
+  `Logo 120x60 AI` earns its ~38 imps/day.) On non-article templates the
+  watcher finds no breadcrumb row and intentionally renders nothing.
+- **Next.js article templates** — the page defines and fetches oop2 but
+  never binds its div (see the page-side-bug section), so GPT never
+  renders any creative there and no creative code can execute. Delivery on
+  articles is therefore whatever the page's own binding rate is —
+  effectively zero today. This is a property of the article template, not
+  of the GAM setup, and is unreachable from GAM by GPT's render contract.
 
 `scripts/setup_article_sponsor_logo.py` creates the GAM objects. Dry-run by
 default, `--apply` to create, safe to re-run (lookup-first by name).
@@ -44,9 +34,8 @@ default, `--apply` to create, safe to re-run (lookup-first by name).
 
 | Object | Id | Name | Notes |
 |---|---|---|---|
-| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily / **priority 3**, on Newsweek_Test-2 (4082002976), targets oop2 + inarticle1 + KV `nwdemocr=infiniti-logo`, placeholders 1x1-OOP + 300x250 |
-| Creative (logo, live) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), hardened watcher snippet |
-| Creative (bootstrap) | 138562352639 | `[TEST] … oop2 bootstrap (300x250)` | Collapses inarticle1, binds the oop2 div, triggers the render |
+| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily, on Newsweek_Test-2 (4082002976), targets oop2 + KV `nwdemocr=infiniti-logo` |
+| Creative (live) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), hardened watcher snippet |
 | Creative (defunct) | 138563009050 | `[TEST] Article Sponsor Logo - oop2` | First attempt — API-created as plain 1x1, which GAM won't serve into an OOP slot. Unassociated; safe to archive |
 
 **Out-of-page creatives must be "Out of page" size, not 1x1.** The API
@@ -106,13 +95,13 @@ any update to an oop-targeted LI, or it throws `NOT_ENOUGH_INVENTORY`.
 
 ## Known page-side bug: hydration removes the oop divs (2026-06-11)
 
-> **Resolved within the GAM-only constraint by the inarticle1 bootstrap
-> creative** (see Final architecture above): the bootstrap executes on every
-> article view, binds the missing div, and re-triggers the render — the logo
-> no longer depends on the page winning this race. This section is kept as
-> the underlying explanation, and because the bug still caps every OTHER
-> oop campaign (including the incumbent `Logo 120x60 AI`, ~38 imps/day on a
-> 100%-SOV sponsorship) that doesn't ship its own bootstrap.
+> **Product constraint (Roger, 2026-06-11): everything is done through GAM —
+> no page-side changes, and no other ad slots may carry the logo.** This
+> section is kept as context, not as a plan: the bug caps the delivery rate
+> of every oop campaign (including the incumbent `Logo 120x60 AI`), and the
+> watcher creative recovers every render the page allows, but loads where
+> the div never exists at display time are unreachable from GAM by
+> construction — a creative only executes if GPT renders it somewhere.
 
 **Symptom:** the logo appears only sometimes, varying by article and load.
 
