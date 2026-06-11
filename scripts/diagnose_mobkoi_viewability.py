@@ -45,9 +45,16 @@ import pandas as pd  # noqa: E402
 
 from gam_client import GAMClient  # noqa: E402
 
-LINE_ITEM_IDS = ["7310815861", "7313011338", "7316916920"]
+# Override via env (workflow_dispatch input) to diagnose/verify other LIs,
+# e.g. a [TEST] LI carrying Mobkoi's AV-measurable tag build.
+LINE_ITEM_IDS = [
+    s.strip() for s in (
+        os.environ.get("MOBKOI_LI_IDS") or "7310815861,7313011338,7316916920"
+    ).split(",") if s.strip()
+]
 KNOWN_CREATIVE_IDS = ["138557481462", "138558555303"]  # from the GAM UI links
-SNIPPET_CHARS = 2500   # per-creative tag excerpt cap (PR comment budget)
+SNIPPET_CHARS = 2500    # per-creative tag excerpt cap (PR comment budget)
+LOOKBACK_MAX_DAYS = int(os.environ.get("LOOKBACK_MAX_DAYS") or "45")
 
 
 def _truncate(s: str, n: int) -> str:
@@ -182,7 +189,8 @@ def main() -> int:
 
     # ── 4. Delivery + Active View reports (REST) ─────────────────────────
     yesterday = date.today() - timedelta(days=1)
-    start = earliest_start
+    start = max(earliest_start, yesterday - timedelta(days=LOOKBACK_MAX_DAYS))
+    start = min(start, yesterday)
     av_metrics = [
         "AD_SERVER_IMPRESSIONS",
         "AD_SERVER_CLICKS",

@@ -43,32 +43,73 @@ and every creative — structural, not a regression. (The oop1/2/3 hydration
 bug in `docs/article_sponsor_logo.md` is unrelated: these serve in-article
 slots.)
 
-## What to do
+## Goal: make GAM's own Active View numbers real for these formats
 
-For the flight / IO reporting:
-1. **Report viewability from Mobkoi's own measurement** (their platform
-   measures the rendered unit), or have the advertiser's MRC-accredited
-   vendor (IAS/DV/MOAT) tag *inside* Mobkoi's unit at Mobkoi's end — not
-   wrapped at the GAM creative layer.
+The render *location* is what breaks AV, so no trafficking change on our
+side can fix it (SafeFrame on would kill the unit entirely; size/placeholder
+changes don't move what AV measures). The element the experience renders in
+has to be the element AV measures. Three paths, in order of preference:
+
+### 1. Mobkoi iframe-resident render mode (the real fix)
+
+The precise ask to the Mobkoi AM/solutions team:
+
+> Your interscroller/uniscroller tag currently hides the GAM friendly
+> iframe and rebuilds the unit in a parent-DOM layer, so Google Ad
+> Manager's Active View measures the hidden iframe: our GAM reporting
+> shows your three live Newsweek LIs at 0.4–0.6% viewable / 100%
+> measurable, while everything else on the same in-article slots measures
+> 75.4% viewable (31M imps, 7 days). We need a build where the **creative
+> experience stays inside the GAM iframe and your loader restyles/resizes
+> the iframe element itself** (fixed/sticky + parent clip container) for
+> the scroll-reveal — parent-DOM access for restyling the iframe is fine,
+> moving the content out of it is what breaks measurement. Active View
+> then tracks the real unit geometry, and both GAM and DoubleVerify
+> (which instruments the GAM-served element) report true viewability.
+
+Notes for that conversation:
+- Their GAM tag is a thin bootstrap (`boot/<uuid>` config) — this is a
+  render-mode flag on their side, not a retrafficking job for ad ops.
+- Active View's threshold for "large" creatives (>242,500 px², which a
+  full-viewport mobile unit is) is **30% of pixels for 1s**, so a
+  scroll-through reveal passes comfortably once the iframe is the unit.
+- Expected result: interscrollers measured this way report well above the
+  75% display baseline (the format's whole pitch is ~full-screen exposure).
+
+### 2. Verification loop (once they ship a build)
+
+1. Have Mobkoi point a test `boot/<uuid>` at the new mode; traffic it on a
+   `[TEST]` LI (the 2026-03 `Mobkoi-Publisher-Testing-*` LIs 7253027964 /
+   7255084258 / 7256561225 can be reused) with a low goal.
+2. Let it collect a few hundred impressions, wait a day (AV lags same-day).
+3. Dispatch `.github/workflows/diagnose_mobkoi_viewability.yml` with the
+   test LI id in the `line_item_ids` input — viewable% per day/ad unit
+   lands as a PR comment (or in the run log if no PR is open on the
+   branch).
+4. Sane number (≥70%) → swap the live LIs' creative tags to the new build
+   and re-verify; the daily table will show the step change.
+
+### 3. Fallbacks if Mobkoi won't/can't
+
+- **Publisher-owned scroller container**: the page provides the clipped
+  container and the GPT iframe genuinely fills the clip window while
+  scrolling; the creative fills the iframe. AV measures correctly for
+  *any* vendor's scroller asset. Web-team work — worth it only if
+  high-impact volume grows.
+- **Tracking-LI viewable events** (GAM-report-native, but not Active
+  View): Mobkoi fires a $0 GAM tracking pixel when their in-unit
+  measurement deems the unit viewable; viewability = tracker imps / main
+  LI imps in a two-line GAM report. Last resort — it puts a viewability
+  number inside GAM reporting, but it isn't the AV columns and won't
+  satisfy a buyer auditing Active View.
+
+## Until the fix lands (this flight)
+
+1. **Report viewability from Mobkoi's own measurement** (or the
+   advertiser's MRC vendor tagged inside Mobkoi's unit at Mobkoi's end),
+   not GAM/DV.
 2. If the GAM number gets challenged, the clicks-vs-viewable math above is
    the one-line rebuttal.
 3. **Never sell/convert these LIs to vCPM** (viewable-impression goals) —
    GAM would bill ~nothing and delivery logic would crater. They are plain
-   CPM today; keep it that way unless the measurement is fixed.
-
-Structural, for future Mobkoi flights:
-4. Ask Mobkoi for an **iframe-resident render mode**: the creative stays in
-   the GPT iframe and the *iframe itself* is resized/positioned as the
-   scroll-reveal window. AV then tracks the real geometry. (Their tag is a
-   thin bootstrap — the render behavior is controlled by the `boot/<uuid>`
-   config on their side, so this is a Mobkoi-AM conversation, not a
-   trafficking change.)
-5. Alternative publisher-side fix: a dedicated interscroller slot where the
-   page provides the clipped container and the GPT iframe genuinely fills
-   the clip window while scrolling. Web-team work; only worth it if Mobkoi
-   volume grows.
-
-Re-run the pull anytime: dispatch
-`.github/workflows/diagnose_mobkoi_viewability.yml` (needs an open PR on
-the branch for the comment step) — the LI list is at the top of
-`scripts/diagnose_mobkoi_viewability.py`.
+   CPM today; keep it that way until AV measures the real unit.

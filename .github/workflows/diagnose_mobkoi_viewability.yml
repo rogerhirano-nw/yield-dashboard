@@ -2,11 +2,15 @@ name: Diagnose Mobkoi viewability (one-off)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/wonderful-pascal-p3737t]
-    paths:
-      - 'scripts/diagnose_mobkoi_viewability.py'
-      - '.github/workflows/diagnose_mobkoi_viewability.yml'
+    inputs:
+      line_item_ids:
+        description: 'Comma-separated GAM line item IDs to diagnose'
+        required: false
+        default: '7310815861,7313011338,7316916920'
+      lookback_max_days:
+        description: 'Cap the report lookback (days before yesterday)'
+        required: false
+        default: '45'
 
 permissions:
   contents: read
@@ -29,6 +33,8 @@ jobs:
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          MOBKOI_LI_IDS: ${{ inputs.line_item_ids }}
+          LOOKBACK_MAX_DAYS: ${{ inputs.lookback_max_days }}
         run: |
           set -o pipefail
           python scripts/diagnose_mobkoi_viewability.py 2>&1 | tee /tmp/output.txt
