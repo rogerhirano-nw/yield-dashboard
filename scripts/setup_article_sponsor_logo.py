@@ -78,9 +78,16 @@ LOGO_SRC = (
 
 # ── creative snippet ──────────────────────────────────────────────────────────
 # oop2 renders in a friendly (same-origin) iframe as long as the creative is
-# NOT SafeFrame-compatible, so the JS can reach the parent document. It
-# injects the strip at the right of the breadcrumb row and bails silently on
-# any page that doesn't have one (self-scoping to article pages).
+# NOT SafeFrame-compatible, so the JS can reach the parent document. The
+# snippet plants a watcher <script> INTO the parent document, which then
+# injects the strip at the right of the breadcrumb row. Two reasons for the
+# indirection (learned 2026-06-11, see docs/article_sponsor_logo.md):
+#   - Next.js hydration destroys the oop divs (and this creative's iframe)
+#     shortly after GPT renders them; a watcher living in the parent
+#     document survives that and still injects.
+#   - Hydration re-renders can remove an already-injected strip; the
+#     watcher re-injects for ~2 minutes, then stops.
+# It bails silently on pages without a breadcrumb row (self-scoping).
 # Selectors match the hashed CSS-module classes by their stable prefix/suffix.
 _INJECT_CSS = (
     "#nw-sponsor-logo{position:absolute;right:0;top:50%;transform:translateY(-50%);"
@@ -98,27 +105,53 @@ _SNIPPET = """\
 <script>
 (function () {
   try {
-    var doc = window.top.document;
-    if (doc.getElementById('nw-sponsor-logo')) return;
-    var bc = doc.querySelector('[class*="ResponsiveBreadcrumbs"][class*="__container"]');
-    if (!bc) return;  /* not an article page: render nothing */
-    if (!doc.getElementById('nw-sponsor-logo-css')) {
-      var st = doc.createElement('style');
-      st.id = 'nw-sponsor-logo-css';
-      st.textContent = __CSS__;
-      doc.head.appendChild(st);
+    var W = window.top, D = W.document;
+    if (D.getElementById('nw-sponsor-logo-boot')) return;
+    var CFG = {
+      label: '__LABEL__',
+      logo: '__LOGO__',
+      href: '%%CLICK_URL_UNESC%%%%DEST_URL%%',
+      css: __CSS__
+    };
+    /* Runs in the PARENT document so hydration destroying this creative
+       iframe cannot kill it. Re-injects the strip whenever a re-render
+       removes it; self-stops after ~2 minutes. */
+    function watcher(cfg) {
+      var d = document;
+      function ensure() {
+        try {
+          if (d.getElementById('nw-sponsor-logo')) return;
+          var bc = d.querySelector('[class*="ResponsiveBreadcrumbs"][class*="__container"]');
+          if (!bc) return;  /* not an article page: render nothing */
+          if (!d.getElementById('nw-sponsor-logo-css')) {
+            var st = d.createElement('style');
+            st.id = 'nw-sponsor-logo-css';
+            st.textContent = cfg.css;
+            d.head.appendChild(st);
+          }
+          var a = d.createElement('a');
+          a.id = 'nw-sponsor-logo';
+          a.href = cfg.href;
+          a.target = '_blank';
+          a.rel = 'noopener sponsored';
+          a.innerHTML = '<span class="sl-label"></span><img class="sl-logo" alt="Sponsor logo">';
+          a.querySelector('.sl-label').textContent = cfg.label;
+          a.querySelector('.sl-logo').src = cfg.logo;
+          if (getComputedStyle(bc).position === 'static') bc.style.position = 'relative';
+          bc.appendChild(a);
+        } catch (e) {}
+      }
+      ensure();
+      var n = 0;
+      var iv = setInterval(function () {
+        ensure();
+        if (++n >= 400) clearInterval(iv);
+      }, 300);
     }
-    var a = doc.createElement('a');
-    a.id = 'nw-sponsor-logo';
-    a.href = '%%CLICK_URL_UNESC%%%%DEST_URL%%';
-    a.target = '_blank';
-    a.rel = 'noopener sponsored';
-    a.innerHTML = '<span class="sl-label">__LABEL__</span>' +
-      '<img class="sl-logo" src="__LOGO__" alt="Sponsor logo">';
-    if (window.top.getComputedStyle(bc).position === 'static') {
-      bc.style.position = 'relative';
-    }
-    bc.appendChild(a);
+    var s = D.createElement('script');
+    s.id = 'nw-sponsor-logo-boot';
+    s.textContent = '(' + watcher.toString() + ')(' + JSON.stringify(CFG) + ');';
+    (D.head || D.documentElement).appendChild(s);
   } catch (e) { /* safeframed or cross-origin: do nothing */ }
 })();
 </script>"""
@@ -188,8 +221,11 @@ if li is None:
         "skipInventoryCheck": True,
         "allowOverbook": True,
         "primaryGoal": {"goalType": "DAILY", "unitType": "IMPRESSIONS", "units": 100},
+        # INTERSTITIAL = GAM's "Out of page" creative size. A plain 1x1
+        # placeholder will NOT accept/serve an out-of-page creative.
         "creativePlaceholders": [{
             "size": {"width": 1, "height": 1, "isAspectRatio": False},
+            "creativeSizeType": "INTERSTITIAL",
         }],
         "targeting": {
             "inventoryTargeting": {
@@ -203,6 +239,11 @@ print(f"  line_item_id={li['id']}  {li['name']}")
 log.append({"type": "line_item", "id": li["id"], "name": li["name"]})
 
 if cr is None:
+    # Caveat: the API creates this as a plain 1x1 CustomCreative, which the
+    # GAM UI does NOT treat as "Out of page" — it may refuse to serve into
+    # an OOP slot. The reliable path is adding the creative from the line
+    # item in the UI (creative size "Out of page"), which is how the live
+    # creative 138563017162 was made. Kept here for the snippet template.
     print("Creating out-of-page custom creative...")
     cr = cr_svc.createCreatives([{
         "xsi_type": "CustomCreative",

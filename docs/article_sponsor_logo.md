@@ -18,14 +18,19 @@ default, `--apply` to create, safe to re-run (lookup-first by name).
 
 | Object | Id | Name | Notes |
 |---|---|---|---|
-| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily, on Newsweek_Test-2 (4082002976), targets oop2 |
-| Creative | 138563009050 | `[TEST] Article Sponsor Logo - oop2` | CustomCreative 1x1, **SafeFrame OFF**, inline SVG placeholder logo |
+| Line item | 7336410928 | `[TEST] Article Sponsor Logo - oop2` | SPONSORSHIP / CPD $0 / 100% daily, on Newsweek_Test-2 (4082002976), targets oop2 + KV `nwdemocr=infiniti-logo` |
+| Creative (live) | 138563017162 | `[nw] Test_…_Out-of-page` | UI-created **"Out of page"** size, **SafeFrame OFF**, Infiniti logo asset (`%%FILE:PNG1%%`), hardened watcher snippet |
+| Creative (defunct) | 138563009050 | `[TEST] Article Sponsor Logo - oop2` | First attempt — API-created as plain 1x1, which GAM won't serve into an OOP slot. Unassociated; safe to archive |
 
-Created 2026-06-10 (`--apply` run). The test LI is unapproved — approving it
-in the GAM UI is the on-site preview switch. Injection verified against the
-live article template the same day (desktop 1440px: strip absolute-right in
-the breadcrumb row; mobile <768px: static fallback, right-aligned in the
-row's flex flow).
+**Out-of-page creatives must be "Out of page" size, not 1x1.** The API
+equivalent on the line item is creative placeholder
+`creativeSizeType: INTERSTITIAL`; the creative itself is most reliably added
+from the LI in the UI with size "Out of page" (how 138563017162 was made).
+
+The test LI is demo-gated: the site's `?nwdemocr=<value>` URL param sets a
+GPT page-level key-value (watch for `[NWDEMOCR]` console logs), and the LI
+targets `nwdemocr=infiniti-logo`, so it serves only on URLs carrying the
+param. A real flight drops the KV.
 
 ## How the creative works
 
@@ -33,16 +38,62 @@ row's flex flow).
   `isSafeFrameCompatible: false` the creative gets a **friendly (same-origin)
   iframe**, so its JS can reach `window.top.document`. SafeFrame on = the
   injection silently no-ops — never flip that flag on this creative.
-- The JS looks for the breadcrumb container by the stable parts of its hashed
-  CSS-module class: `[class*="ResponsiveBreadcrumbs"][class*="__container"]`.
-  Found → inject the strip absolutely positioned at the row's right edge
-  (below 768px it drops to a right-aligned row under the breadcrumbs).
-  Not found → render nothing. That makes the creative **self-scoping to
-  article pages** even though oop2 may exist on other templates.
+- The snippet does not inject directly: it plants a **watcher `<script>` into
+  the parent document** (id `nw-sponsor-logo-boot`) and lets that do the
+  work. Reason: Next.js hydration destroys the oop divs — and with them this
+  creative's iframe — shortly after GPT renders them, and later re-renders
+  can remove an already-injected strip. The parent-document watcher survives
+  the iframe's death, injects as soon as the breadcrumb row exists, re-injects
+  if a re-render removes the strip, and self-stops after ~2 minutes.
+- The watcher finds the breadcrumb container by the stable parts of its
+  hashed CSS-module class:
+  `[class*="ResponsiveBreadcrumbs"][class*="__container"]`. Found → strip
+  absolutely positioned at the row's right edge (below 768px it falls back
+  into the row's flex flow, right-aligned). Not found → nothing renders,
+  making the creative **self-scoping to article pages**.
 - Click-through uses `%%CLICK_URL_UNESC%%%%DEST_URL%%`, so GAM click tracking
   works and the destination URL is managed on the creative.
 - Disclosure label ("Presented by") is part of the snippet — change there if
   sales needs "Sponsored by" / "In partnership with".
+
+## Known page-side bug: hydration removes the oop divs (2026-06-11)
+
+**Symptom:** the logo appears only sometimes, varying by article and load.
+
+**Root cause (verified in-browser on two articles):** article pages
+server-render the `dfp-ad-oop1/2/3` containers (some older layout variants
+don't render them at all), but the **Next.js client render does not include
+them, so hydration removes them** — taking any already-rendered creative
+iframe with them. The site's ad wrapper still calls
+`googletag.display('dfp-ad-oop2')` and GPT logs, several times per page:
+
+    [GPT] Error in googletag.display: could not find div with id
+    "dfp-ad-oop2" in DOM for slot: /22541732127/newsweek/oop2.
+
+GAM itself is fine — the slot's `getResponseInformation()` shows the
+sponsorship LI/creative winning on every load. The ad just has no div to
+render into by the time display runs. When the logo *did* appear, GPT's
+eager display had won the race against hydration. **This very likely
+no-ops every oop1/2/3 campaign on article pages** (skins, wallpapers,
+anything out-of-page), not just the sponsor logo.
+
+**Fix (web team, either works):**
+1. Render the oop slot containers in the client component tree on all
+   article layouts so hydration keeps them; or
+2. In the ad wrapper, before calling `display()` on an oop slot, create the
+   div if it's missing (out-of-page divs are position-independent):
+   `if (!document.getElementById(id)) document.body.appendChild(Object.assign(document.createElement('div'), {id}))`.
+
+**To reproduce / verify a fix** on any article page console:
+
+    document.body.appendChild(Object.assign(document.createElement('div'), {id: 'dfp-ad-oop2'}));
+    googletag.cmd.push(() => googletag.display('dfp-ad-oop2'));
+
+With the test URL param (`?nwdemocr=infiniti-logo`) the Infiniti strip
+appears in the breadcrumb row within ~1s. The creative-side watcher (above)
+already handles the *other* half of the race — strips removed by re-renders
+— but it can only run if the creative renders at least once, so the div fix
+is required for reliable delivery.
 
 ## Trafficking a real sponsor flight
 
