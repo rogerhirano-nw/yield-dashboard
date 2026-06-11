@@ -150,6 +150,11 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   so LIs targeting them need both `skipInventoryCheck` AND `allowOverbook`
   at create. Native-style macros are `[%Var%]` — bare `[Var]` is not
   substituted.
+- **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
+  plain 1x1 CustomCreative created via API will not serve an OOP slot.
+  LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
+  itself from the LI in the UI (size "Out of page"). The site's `?nwdemocr=`
+  URL param sets a same-named GPT key-value for demo-gating test campaigns.
 - One-off Actions-driven GAM pulls: `.github/workflows/pull_index_ob_requests.yml`
   is a template — it uses `secrets.GAM_SERVICE_ACCOUNT_JSON` /
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
