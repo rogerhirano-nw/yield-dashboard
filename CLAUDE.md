@@ -160,6 +160,15 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Active View reads ~0–1% viewable on Mobkoi interscroller/uniscroller
+  LIs** (and any third-party tag that breaks out of the friendly iframe to
+  render in the parent DOM). AV measures the GPT slot iframe, which the
+  Mobkoi tag hides — impressions score 100% measurable / ~0% viewable, and
+  DV (instrumenting the same GAM-served element) agrees, so `dv_attention`
+  numbers for these LIs are equally meaningless. The tell it's an artifact:
+  healthy CTR, even more clicks than "viewable" impressions. Use Mobkoi's
+  own measurement for IO reporting and never set vCPM goals on these
+  formats; full debrief in `docs/mobkoi_viewability.md`.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
