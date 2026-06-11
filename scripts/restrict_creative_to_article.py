@@ -11,7 +11,10 @@ creative serves only on the one article:
 
   1. get-or-create the `article_id` value for the article
   2. append a CreativeTargeting (name + customTargeting criterion) to
-     LineItem.creativeTargetings
+     LineItem.creativeTargetings AND stamp its name on the creative
+     placeholder matching the creative's size — GAM silently drops
+     creativeTargetings no placeholder references, and the LICA update
+     then fails INVALID_CREATIVE_TARGETING_NAME
   3. set targetingName on the creative's LICA to point at it
 
 Idempotent: re-runs reuse the existing value/CreativeTargeting/LICA state.
@@ -107,8 +110,10 @@ def main():
     print(f"Line item {li['id']}: {li['name']}")
     print(f"  type={li['lineItemType']}  status={li['status']}  "
           f"roadblocking={li['roadblockingType']}  rotation={li['creativeRotationType']}")
+    placeholders = list(li['creativePlaceholders'] or [])
     sizes = [f"{ph['size']['width']}x{ph['size']['height']}"
-             for ph in (li['creativePlaceholders'] or [])]
+             + (f"[{ph['targetingName']}]" if ph['targetingName'] else "")
+             for ph in placeholders]
     print(f"  placeholders: {', '.join(sizes)}")
     existing_cts = list(li['creativeTargetings'] or [])
     print(f"  creativeTargetings: {[ct['name'] for ct in existing_cts] or 'none'}")
@@ -119,6 +124,7 @@ def main():
     if not licas:
         sys.exit(f"No creatives associated with line item {args.line_item_id}")
     target_lica = None
+    target_cr = None
     print(f"  creatives on this LI ({len(licas)}):")
     for lica in licas:
         cid = lica['creativeId']
@@ -129,10 +135,14 @@ def main():
               f"targetingName={lica['targetingName'] or '—'}  "
               f"{cr['name'] if cr is not None else '(creative not readable)'}")
         if cid == args.creative_id:
-            target_lica = lica
+            target_lica, target_cr = lica, cr
     if target_lica is None:
         sys.exit(f"Creative {args.creative_id} is not associated with "
                  f"line item {args.line_item_id}")
+    if target_cr is None:
+        sys.exit(f"Creative {args.creative_id} not readable — cannot match "
+                 f"its size to a creative placeholder")
+    cr_w, cr_h = target_cr['size']['width'], target_cr['size']['height']
 
     # ── article_id key + value ────────────────────────────────────────────
     keys = _all(ct_svc.getCustomTargetingKeysByStatement(
@@ -155,11 +165,24 @@ def main():
 
     # ── plan ──────────────────────────────────────────────────────────────
     ct_match = next((ct for ct in existing_cts if ct['name'] == tname), None)
+    # the placeholder anchors the creative targeting: GAM drops
+    # creativeTargetings that no placeholder's targetingName references
+    ph_match = next((ph for ph in placeholders
+                     if ph['size']['width'] == cr_w and ph['size']['height'] == cr_h
+                     and (not ph['targetingName'] or ph['targetingName'] == tname)),
+                    None)
     print(f"\nPlan:")
     print(f"  1. CreativeTargeting {tname!r} on LI: "
           + ("already present — reuse" if ct_match is not None else "append"))
+    if ph_match is not None:
+        print(f"  2. {cr_w}x{cr_h} placeholder targetingName: "
+              f"{ph_match['targetingName'] or '—'} → {tname}"
+              + ("  (no-op)" if ph_match['targetingName'] == tname else ""))
+    else:
+        print(f"  2. no free {cr_w}x{cr_h} placeholder — append one with "
+              f"targetingName={tname}")
     cur = target_lica['targetingName']
-    print(f"  2. LICA targetingName: {cur or '—'} → {tname}"
+    print(f"  3. LICA targetingName: {cur or '—'} → {tname}"
           + ("  (no-op)" if cur == tname else ""))
 
     if not args.apply:
@@ -197,20 +220,42 @@ def main():
         }],
     }
 
+    li_dirty = False
     if ct_match is None:
         li['creativeTargetings'] = existing_cts + [
             {"name": tname, "targeting": {"customTargeting": criterion}}
         ]
+        li_dirty = True
+    else:
+        print(f"CreativeTargeting {tname!r} already on LI — left as-is "
+              f"(verify it targets {args.key}={args.article_id} if it predates this run)")
+    if ph_match is not None:
+        if ph_match['targetingName'] != tname:
+            ph_match['targetingName'] = tname
+            li_dirty = True
+    else:
+        li['creativePlaceholders'] = placeholders + [{
+            "size": {"width": cr_w, "height": cr_h, "isAspectRatio": False},
+            "creativeSizeType": "PIXEL",
+            "targetingName": tname,
+        }]
+        li_dirty = True
+
+    if li_dirty:
         # updateLineItems re-runs the forecast; skip it or a delivering
         # sponsorship can throw NOT_ENOUGH_INVENTORY (docs/article_sponsor_logo.md)
         li['skipInventoryCheck'] = True
         li['allowOverbook'] = True
         li = li_svc.updateLineItems([li])[0]
-        print(f"LI updated — creativeTargetings: "
-              f"{[ct['name'] for ct in li['creativeTargetings']]}")
-    else:
-        print(f"CreativeTargeting {tname!r} already on LI — left as-is "
-              f"(verify it targets {args.key}={args.article_id} if it predates this run)")
+        names = [ct['name'] for ct in (li['creativeTargetings'] or [])]
+        phs = [f"{ph['size']['width']}x{ph['size']['height']}"
+               + (f"[{ph['targetingName']}]" if ph['targetingName'] else "")
+               for ph in (li['creativePlaceholders'] or [])]
+        print(f"LI updated — creativeTargetings: {names}")
+        print(f"             placeholders: {', '.join(phs)}")
+        if tname not in names:
+            sys.exit(f"CreativeTargeting {tname!r} did not persist on the LI — "
+                     "aborting before the LICA update")
 
     if target_lica['targetingName'] != tname:
         target_lica['targetingName'] = tname

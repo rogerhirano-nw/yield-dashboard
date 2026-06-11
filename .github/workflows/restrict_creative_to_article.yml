@@ -73,7 +73,7 @@ jobs:
           {
             echo "### Restrict creative to article"
             echo ""
-            echo "LI \`${{ github.event.inputs.line_item_id }}\` / creative \`${{ github.event.inputs.creative_id }}\` → article \`${{ github.event.inputs.article_id }}\`  |  apply: \`${{ github.event.inputs.apply }}\`"
+            echo "LI \`${{ github.event.inputs.line_item_id || '7309466805' }}\` / creative \`${{ github.event.inputs.creative_id || '138557893457' }}\` → article \`${{ github.event.inputs.article_id || '12010430' }}\`  |  apply: \`${{ github.event.inputs.apply || 'false' }}\`"
             echo ""
             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ""
