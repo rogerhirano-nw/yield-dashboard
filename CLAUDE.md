@@ -120,6 +120,15 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   self-scopes to article pages by bailing when the breadcrumb container
   isn't found. Setup script: `scripts/setup_article_sponsor_logo.py`
   (dry-run by default, lookup-first, `--apply` to create).
+- `docs/gam_placement_injection.md` — the generalized technique behind the
+  sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
+  agency third-party tags) at an arbitrary article-DOM position with zero
+  page changes. Carrier slot + priority-3 LI + SafeFrame-OFF wrapper
+  creative that hides its slot, anchors on a DOM selector, and renders the
+  payload in its own friendly iframe. Worked example:
+  `scripts/setup_fito_top_banner.py` (970x250 between article title and
+  video player). Covers the INACTIVE-until-order-reapproved, viewport/size
+  eligibility, and ONE_OR_MORE roadblocking gotchas.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
