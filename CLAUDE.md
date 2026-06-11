@@ -166,7 +166,10 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   or per creative via `scripts/restrict_creative_to_article.py`, which adds
   a `CreativeTargeting` to the LI and points the creative's LICA
   `targetingName` at it (dry-run default, `--apply` to write; Actions
-  wrapper: `restrict_creative_to_article.yml`).
+  wrapper: `restrict_creative_to_article.yml`). Gotcha: GAM silently drops
+  `creativeTargetings` that no creative placeholder references — stamp the
+  name on the matching-size placeholder's `targetingName` in the same
+  update, or the LICA update fails `INVALID_CREATIVE_TARGETING_NAME`.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
