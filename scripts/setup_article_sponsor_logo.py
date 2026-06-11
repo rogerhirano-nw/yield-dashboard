@@ -213,6 +213,10 @@ if li is None:
         "orderId": ORDER_ID,
         "name": LI_NAME,
         "lineItemType": "SPONSORSHIP",
+        # Priority 3 outranks the incumbent oop2 sponsorship ("Logo 120x60
+        # AI", LI 6986067522, default priority 4) so the demo wins its
+        # KV-gated URLs. Real flights coordinate with the incumbent instead.
+        "priority": 3,
         "costType": "CPD",
         "costPerUnit": {"currencyCode": "USD", "microAmount": 0},
         "startDateTimeType": "IMMEDIATELY",
