@@ -1,35 +1,38 @@
-# Newsweek brand theme — DARK IS LOCKED. The Newsweek look is achieved on
-# dark by anchoring every surface on the warm-ink ramp (Newsweek Ink
-# #1F1E19) instead of Streamlit's cold #0E1117 — do not convert to a
-# light/paper theme; all custom CSS (assets/newsweek_dashboard.css) and the
-# severity grammar assume a dark canvas.
+# Newsweek "Paper" theme (2026-06 rebrand — design tokens live in the
+# style block of dashboard.py; source handoff in docs/design_handoff/).
+# Pin to light regardless of the user's OS prefers-color-scheme: all
+# custom CSS assumes the warm paper canvas (ink text #1f1e19 on #fefcf6)
+# so dark mode would render the page nearly invisible. Lock it.
+# (A warm-ink dark ramp is preserved, commented, at the bottom of
+# docs/design_handoff/newsweek-dashboard.css if dark ever has to return —
+# the 2026-06-12 dark variant lives in git history at PRs #199/#200.)
 #
-# Two-red rule: brand red (#E91D0C) is CHROME ONLY (eyebrow tick, active-tab
-# underline — both live in the custom CSS). primaryColor is deliberately a
-# warm neutral, NOT red: Streamlit paints primary buttons, focus rings,
-# checkboxes and sliders with it, and none of those may read as severity or
-# brand. Severity red (#EC4A3A) is applied per-band in the CSS, never here.
+# Two-red rule: brand red (#E91D0C) is CHROME ONLY (eyebrow tick,
+# active-tab underline — both live in the custom CSS). primaryColor is
+# INK, deliberately not red: Streamlit paints primary buttons, focus
+# rings, checkboxes and sliders with it, and none of those may read as
+# severity or brand. Severity red (#c41608) is applied per-band in the
+# CSS, never here.
 #
-# Values mirror the :root token tier in assets/newsweek_dashboard.css and
-# the NW_* constants in dashboard.py — keep all three in sync.
+# Values mirror the :root token tier in dashboard.py — keep them in sync.
 [theme]
-base = "dark"
-primaryColor = "#b8b3a3"               # --text-secondary: warm neutral accent
-backgroundColor = "#14130f"            # --surface-0
-secondaryBackgroundColor = "#1f1e19"   # --surface-1 (Newsweek Ink)
-textColor = "#f5f1e6"                  # --text-primary
-linkColor = "#b8b3a3"
-borderColor = "#3a382f"                # --border (warm hairline)
-baseRadius = "small"                   # 4px — square-ish, editorial
-# Built-in charts (st.line_chart / st.bar_chart) + the Altair theme pick up
-# this categorical sequence — the Newsweek secondary palette lifted for
-# dark (--viz-1…6). Keeps Streamlit-red off every chart series.
-chartCategoricalColors = ["#6b80f0", "#3fd7dd", "#9a6df0", "#ff7aae", "#ffd500", "#aef24a"]
-# Brand faces. Declared at theme level (not just CSS @font-face) so the
-# canvas-rendered dataframes and all widgets measure/render with them too.
-# The licensed binaries are NOT in the repo — drop them into static/fonts/
-# (see static/fonts/README.md); until then the fallbacks apply (Georgia for
-# display/serif, Helvetica/Arial for UI sans).
+base = "light"
+primaryColor = "#1f1e19"             # --text-primary (ink)
+backgroundColor = "#fefcf6"          # --surface-0 (Paper)
+secondaryBackgroundColor = "#f6f2e6" # --surface-2 (sunk fills)
+textColor = "#1f1e19"                # --text-primary
+linkColor = "#57564f"                # --text-secondary
+borderColor = "#e7e0c9"              # --border (warm hairline)
+baseRadius = "small"                 # 4px — square-ish, editorial
+# Built-in charts (st.line_chart / st.bar_chart) + the Altair theme pick
+# up this categorical sequence — the Newsweek secondary palette
+# (--viz-1…6, paper-toned). Keeps Streamlit-red off every chart series.
+chartCategoricalColors = ["#4b62e0", "#2d8d92", "#824dd7", "#d84f86", "#b08900", "#5f9e2a"]
+# Brand faces. Declared at theme level (not CSS @font-face) so the
+# canvas-rendered dataframes and all widgets measure/render with them
+# too. The licensed binaries are NOT in the repo — drop them into
+# static/fonts/ (see static/fonts/README.md); until then the fallbacks
+# apply (Georgia for display/serif, Helvetica/Arial for UI sans).
 font = "Franklin Gothic, Helvetica Neue, Arial, sans-serif"
 headingFont = "Benton Modern Display, Georgia, Times New Roman, serif"
 

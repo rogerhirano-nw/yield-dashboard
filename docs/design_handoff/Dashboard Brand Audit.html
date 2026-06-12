@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Newsweek Dashboard — Brand Audit</title>
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/colors.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/typography.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/spacing.css" />
+<link rel="stylesheet" href="audit.css" />
+</head>
+<body>
+
+<!-- ============ MASTHEAD ============ -->
+<header class="masthead">
+  <div class="wrap">
+    <div class="masthead__bar">
+      <div class="masthead__brand">
+        <img src="assets/logos/newsweek-icon-brand.svg" alt="Newsweek" />
+        <span>Newsweek · Design System</span>
+      </div>
+      <div class="masthead__meta">Brand Audit · v1 · June 2026</div>
+    </div>
+    <div class="masthead__head">
+      <span class="eyebrow">Ad Revenue Dashboard · Brand Audit</span>
+      <h1>Bringing the revenue dashboard onto the Newsweek system</h1>
+      <p class="lead">A token-level review of the Streamlit ad-revenue dashboard against the Newsweek Design System — what reads off-brand today, and the exact CSS variables to fix it without disturbing the dashboard's severity logic.</p>
+      <div class="masthead__facts">
+        <div class="fact"><div class="k">Scope</div><div class="v">Campaigns view (flagship) — patterns cascade to all 7 views</div></div>
+        <div class="fact"><div class="k">Theme</div><div class="v">Light · Newsweek Paper</div></div>
+        <div class="fact"><div class="k">Deliverable</div><div class="v">Token block + ~200 lines CSS</div></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ DECISIONS ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Two constraints, resolved</span>
+      <h2>Before any restyle: the calls that shape everything else</h2>
+      <p>You flagged two hard constraints. Neither lets us drop the Newsweek system in wholesale — both need an explicit decision, made here rather than assumed.</p>
+    </div>
+    <div class="decisions">
+      <div class="decision">
+        <h3>Go light — Paper canvas</h3>
+        <span class="verdict keep">Re-skin to Newsweek Paper</span>
+        <p>Newsweek is a light, print-rooted brand: warm Paper, Ink text, serif headlines. The dashboard runs dark only because <strong>base="dark"</strong> is pinned. With that pin lifted, the on-brand move is the honest one — re-skin to <strong>Paper #FEFCF6</strong>.</p>
+        <p>The cost is contained: the green/amber/red <strong>severity grammar is preserved</strong>, only re-toned for a light canvas — darker state text on pale tints, so contrast holds at AA. A warm-ink dark ramp stays in the back pocket as a fallback if dark ever has to return.</p>
+      </div>
+      <div class="decision">
+        <h3>The reds don't collide</h3>
+        <span class="verdict keep">Split brand red from state red</span>
+        <p>Newsweek Red is the identity; your dashboard already spends red on <strong>breach</strong>. Two reds, two jobs. We separate them by token namespace and — critically — by <strong>plane</strong>.</p>
+        <p><strong>--brand-red</strong> (#E91D0C) is chrome only: the mark, the active-tab underline, the eyebrow tick. It never touches a number. <strong>--state-critical</strong> owns the data plane for breaches, as a distinct warm red used mostly as a tint, not a fill. Because chrome lives at the top and data in the body, the two reds never compete in one glance.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRINCIPLES ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow eyebrow--muted">The translation</span>
+      <h2>Eight moves that make a dark dashboard read as Newsweek</h2>
+    </div>
+    <ol class="principles">
+      <li><span class="n">1</span><span class="t"><b>Paper, not charcoal</b>Warm Paper #FEFCF6 with Ink text — the native Newsweek canvas, not a dark SaaS shell.</span></li>
+      <li><span class="n">2</span><span class="t"><b>Serif for headers &amp; figures</b>Benton Modern Display on the H1 and the big KPI numbers. The serif/sans contrast is the brand.</span></li>
+      <li><span class="n">3</span><span class="t"><b>Franklin Gothic for the UI</b>Labels, eyebrows, table text, metadata — one sans, replacing Streamlit's default.</span></li>
+      <li><span class="n">4</span><span class="t"><b>Eyebrows do the labelling</b>Uppercase, 0.08em tracked, semibold. Section and KPI labels become editorial kickers.</span></li>
+      <li><span class="n">5</span><span class="t"><b>Tabular numerals everywhere</b>font-feature-settings "tnum" so figures align column-to-column.</span></li>
+      <li><span class="n">6</span><span class="t"><b>Severity as tint, not shout</b>Green/amber/red as low-opacity surface + saturated text, banded in cells — not full-bleed fills.</span></li>
+      <li><span class="n">7</span><span class="t"><b>Rules over boxes</b>1px warm hairlines and a heavier section rule replace heavy panel borders and shadows.</span></li>
+      <li><span class="n">8</span><span class="t"><b>Square corners</b>4px on tiles and cells, 8px on banners, pills only for status and ordinals.</span></li>
+    </ol>
+  </section>
+
+  <!-- ============ TOKEN BLOCK ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">The fix, as tokens</span>
+      <h2>Drop-in CSS variable block</h2>
+      <p>Paste this into your Streamlit token block (e.g. a <code style="font-size:13px">st.markdown</code> &lt;style&gt; injection). Every recommendation below resolves to one of these variables — recolor or rescale the whole dashboard by editing this tier alone.</p>
+    </div>
+    <div class="tokens">
+      <div class="tokens__bar">
+        <span class="name">newsweek-dashboard.tokens.css</span>
+        <span class="dots"><i></i><i></i><i></i></span>
+      </div>
+<pre><span class="tok-c">/* ---- BRAND CHROME — identity only, never on data ---- */</span>
+<span class="tok-v">--brand-red</span>:        <span class="tok-h">#e91d0c</span>;   <span class="tok-c">/* mark, tab underline, eyebrow tick */</span>
+<span class="tok-v">--brand-red-strong</span>: <span class="tok-h">#c41608</span>;   <span class="tok-c">/* hover / pressed chrome */</span>
+
+<span class="tok-c">/* ---- SURFACE — warm Paper (the native Newsweek canvas) ---- */</span>
+<span class="tok-v">--surface-0</span>:   <span class="tok-h">#fefcf6</span>;   <span class="tok-c">/* app background — Newsweek Paper */</span>
+<span class="tok-v">--surface-1</span>:   <span class="tok-h">#ffffff</span>;   <span class="tok-c">/* panels, tiles — lifted off paper */</span>
+<span class="tok-v">--surface-2</span>:   <span class="tok-h">#f6f2e6</span>;   <span class="tok-c">/* sunk rows, hover fills */</span>
+<span class="tok-v">--border</span>:      <span class="tok-h">#e7e0c9</span>;   <span class="tok-c">/* warm hairline */</span>
+<span class="tok-v">--border-strong</span>:<span class="tok-h">#1f1e19</span>;   <span class="tok-c">/* 2px editorial ink rule */</span>
+
+<span class="tok-c">/* ---- TEXT — Ink on paper ---- */</span>
+<span class="tok-v">--text-primary</span>:   <span class="tok-h">#1f1e19</span>; <span class="tok-c">/* Newsweek Ink */</span>
+<span class="tok-v">--text-secondary</span>: <span class="tok-h">#57564f</span>;
+<span class="tok-v">--text-muted</span>:     <span class="tok-h">#8c887b</span>;
+
+<span class="tok-c">/* ---- STATE — green / amber / red severity scale ---- */</span>
+<span class="tok-v">--state-positive</span>: <span class="tok-h">#3c6b14</span>;  <span class="tok-v">--state-positive-surface</span>: <span class="tok-h">rgba(76,122,25,.12)</span>;
+<span class="tok-v">--state-warning</span>:  <span class="tok-h">#8a6d00</span>;  <span class="tok-v">--state-warning-surface</span>:  <span class="tok-h">rgba(214,170,0,.18)</span>;
+<span class="tok-v">--state-critical</span>: <span class="tok-h">#c41608</span>;  <span class="tok-v">--state-critical-surface</span>: <span class="tok-h">rgba(233,29,12,.10)</span>;
+
+<span class="tok-c">/* ---- DATA-VIZ — Newsweek secondary palette (toned for paper) ---- */</span>
+<span class="tok-v">--viz-1</span>: <span class="tok-h">#4b62e0</span>; <span class="tok-v">--viz-2</span>: <span class="tok-h">#2d8d92</span>; <span class="tok-v">--viz-3</span>: <span class="tok-h">#824dd7</span>;
+<span class="tok-v">--viz-4</span>: <span class="tok-h">#d84f86</span>; <span class="tok-v">--viz-5</span>: <span class="tok-h">#b08900</span>; <span class="tok-v">--viz-6</span>: <span class="tok-h">#5f9e2a</span>;
+
+<span class="tok-c">/* ---- TYPE — serif editorial + sans UI ---- */</span>
+<span class="tok-v">--font-sans</span>:    <span class="tok-s">"Franklin Gothic"</span>, "Helvetica Neue", Arial, sans-serif;
+<span class="tok-v">--font-display</span>: <span class="tok-s">"Benton Modern Display"</span>, Georgia, serif;
+<span class="tok-v">--type-eyebrow</span>: <span class="tok-h">600 12px/1</span> var(--font-sans);   <span class="tok-c">/* + uppercase, .08em */</span>
+<span class="tok-v">--type-h1</span>:      <span class="tok-h">700 22px/1.15</span> var(--font-display);
+<span class="tok-v">--type-kpi</span>:     <span class="tok-h">700 30px/1.05</span> var(--font-display);
+<span class="tok-v">--type-body</span>:    <span class="tok-h">400 13px/1.5</span> var(--font-sans);
+<span class="tok-v">--num-feature</span>:  <span class="tok-s">"tnum" 1</span>;   <span class="tok-c">/* tabular numerals, all figures */</span>
+<span class="tok-v">--track-eyebrow</span>:<span class="tok-h">0.08em</span>;
+
+<span class="tok-c">/* ---- SPACING (4px base) &amp; RADIUS (square-ish) ---- */</span>
+<span class="tok-v">--space-1</span>:<span class="tok-h">4px</span>; <span class="tok-v">--space-2</span>:<span class="tok-h">8px</span>; <span class="tok-v">--space-3</span>:<span class="tok-h">12px</span>; <span class="tok-v">--space-4</span>:<span class="tok-h">16px</span>; <span class="tok-v">--space-6</span>:<span class="tok-h">24px</span>;
+<span class="tok-v">--radius-sm</span>:  <span class="tok-h">4px</span>;   <span class="tok-c">/* tiles, inputs, banded cells */</span>
+<span class="tok-v">--radius-md</span>:  <span class="tok-h">8px</span>;   <span class="tok-c">/* severity banners */</span>
+<span class="tok-v">--radius-pill</span>:<span class="tok-h">999px</span>; <span class="tok-c">/* status + ordinal pills */</span></pre>
+    </div>
+  </section>
+
+  <!-- ============ FINDINGS ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow eyebrow--muted">Findings</span>
+      <h2>What's off-brand now, and the token that fixes it</h2>
+      <p>Ordered by visual weight. Each fix is the variable above — nothing here asks you to touch component logic.</p>
+    </div>
+    <table class="findings">
+      <thead>
+        <tr><th>Area</th><th>Off-brand today</th><th>Newsweek-aligned fix</th><th>Token</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="area">Surface</td>
+          <td class="now">Cold blue-charcoal (#0E1117 / #262730) reads generic-SaaS, not editorial.</td>
+          <td>Warm Paper canvas #FEFCF6 with Ink text — the native editorial surface.</td>
+          <td><code>--surface-0…2</code></td>
+        </tr>
+        <tr>
+          <td class="area">UI type</td>
+          <td class="now">Streamlit's default Source Sans / system stack.</td>
+          <td>Franklin Gothic for all labels, tables, metadata.</td>
+          <td><code>--font-sans</code></td>
+        </tr>
+        <tr>
+          <td class="area">Headers &amp; figures</td>
+          <td class="now">Same sans, just bolded — no editorial contrast.</td>
+          <td>Benton Modern Display serif on H1 + KPI numbers.</td>
+          <td><code>--font-display</code></td>
+        </tr>
+        <tr>
+          <td class="area">Eyebrows / labels</td>
+          <td class="now">Sentence-case grey labels, low contrast, no rhythm.</td>
+          <td>Uppercase, 0.08em tracked, semibold kickers.</td>
+          <td><code>--type-eyebrow</code></td>
+        </tr>
+        <tr>
+          <td class="area">Accent red</td>
+          <td class="now">Streamlit #FF4B4B on buttons, links, charts <em>and</em> state — red means four things.</td>
+          <td>Brand red = chrome only; severity owns its own red.</td>
+          <td><code>--brand-red</code> · <code>--state-critical</code></td>
+        </tr>
+        <tr>
+          <td class="area">Severity grammar</td>
+          <td class="now">Ad-hoc saturated green/amber/red fills, inconsistent across views.</td>
+          <td>Tokenized scale: tint surface + saturated text + thin border.</td>
+          <td><code>--state-*-surface</code></td>
+        </tr>
+        <tr>
+          <td class="area">Data-viz palette</td>
+          <td class="now">Default Streamlit / Altair category colors.</td>
+          <td>Newsweek secondary palette, lifted for dark legibility.</td>
+          <td><code>--viz-1…6</code></td>
+        </tr>
+        <tr>
+          <td class="area">Numerals</td>
+          <td class="now">Proportional figures — columns don't align.</td>
+          <td>Tabular numerals on every metric and table cell.</td>
+          <td><code>--num-feature</code></td>
+        </tr>
+        <tr>
+          <td class="area">Radius</td>
+          <td class="now">Rounded 8px everywhere, including data tiles.</td>
+          <td>4px tiles/cells, 8px banners, pills for status only.</td>
+          <td><code>--radius-sm…pill</code></td>
+        </tr>
+        <tr>
+          <td class="area">Rules &amp; dividers</td>
+          <td class="now">Faint or absent; structure carried by panel borders.</td>
+          <td>1px warm hairline + heavier section rule, editorial.</td>
+          <td><code>--border</code> · <code>--border-strong</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ SIDE BY SIDE ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="eyebrow">Side by side · Campaigns view</span>
+      <h2>The same view, before and after the tokens</h2>
+      <p>Identical markup in both frames — only the CSS-variable values differ. That's the whole point: the realignment is a token swap, not a rebuild. The canvas moves to Paper; the severity grammar is re-toned for light but unchanged in meaning.</p>
+    </div>
+    <div class="compare">
+
+      <!-- BEFORE -->
+      <div class="spec-col spec-col--before">
+        <div class="spec-col__label"><span class="tag">Current</span><span class="muted">Streamlit defaults</span></div>
+        <div class="spec spec-before">
+          <div class="sp-head">
+            <span class="sp-eyebrow">Campaigns / Direct</span>
+            <div class="sp-h1">Revenue pacing</div>
+            <div class="sp-sub">Month to date · all sites</div>
+          </div>
+          <div class="sp-banner">
+            <span class="ic">!</span>
+            <div><b>2 campaigns breaching pace</b><span> Globex and Umbrella are under 75% of target delivery.</span></div>
+          </div>
+          <div class="sp-kpis">
+            <div class="sp-tile"><span class="delta up">+9.3%</span><div class="lab">Revenue</div><div class="num">$1.24M</div><div class="tgt">target $1.13M</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-accent)" stroke-width="1.6" points="0,17 12,15 24,16 36,11 48,12 60,8 72,9 84,5 100,3"/></svg></div>
+            <div class="sp-tile"><div class="lab">Viewability</div><div class="num">72.6%</div><div class="tgt">target 70%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-accent)" stroke-width="1.6" points="0,14 12,13 24,15 36,12 48,11 60,12 72,9 84,10 100,8"/></svg></div>
+            <div class="sp-tile"><div class="lab">SIVT</div><div class="num">0.8%</div><div class="tgt">ceiling 1.0%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-accent)" stroke-width="1.6" points="0,8 12,10 24,7 36,9 48,6 60,8 72,5 84,7 100,6"/></svg></div>
+            <div class="sp-tile"><div class="lab">VCR</div><div class="num">78.4%</div><div class="tgt">target 75%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-accent)" stroke-width="1.6" points="0,12 12,11 24,12 36,9 48,10 60,8 72,9 84,6 100,5"/></svg></div>
+          </div>
+          <div class="sp-table">
+            <div class="sp-tr sp-thead"><span>Campaign</span><span class="sp-cell hide-sm">Deliv.</span><span class="sp-cell">Pacing</span><span class="sp-cell hide-sm">View.</span><span class="sp-cell">Status</span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">1</span><span class="name">Acme Auto — Q2 Brand</span></div><span class="sp-cell hide-sm">76%</span><span class="sp-cell"><span class="sp-band good">98%</span></span><span class="sp-cell hide-sm"><span class="sp-band good">74%</span></span><span class="sp-cell"><span class="sp-pill good">On track</span></span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">2</span><span class="name">Globex Travel — Summer</span></div><span class="sp-cell hide-sm">40%</span><span class="sp-cell"><span class="sp-band warn">71%</span></span><span class="sp-cell hide-sm"><span class="sp-band warn">69%</span></span><span class="sp-cell"><span class="sp-pill warn">Behind</span></span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">3</span><span class="name">Umbrella Health — Aware.</span></div><span class="sp-cell hide-sm">28%</span><span class="sp-cell"><span class="sp-band bad">54%</span></span><span class="sp-cell hide-sm"><span class="sp-band bad">63%</span></span><span class="sp-cell"><span class="sp-pill bad">At risk</span></span></div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Cold charcoal canvas; one red (#FF4B4B) on delta, sparkline, banner and breach alike.</li>
+          <li>Sans H1 and figures — no editorial contrast; proportional numerals.</li>
+          <li>Saturated full-bleed banner shouts louder than the data.</li>
+        </ul>
+      </div>
+
+      <!-- AFTER -->
+      <div class="spec-col spec-col--after">
+        <div class="spec-col__label"><span class="tag">Newsweek-aligned</span><span class="muted">same markup · new tokens</span></div>
+        <div class="spec spec-after is-paper">
+          <div class="sp-head">
+            <span class="sp-eyebrow">Campaigns · Direct</span>
+            <div class="sp-h1">Revenue pacing</div>
+            <div class="sp-sub">Month to date · all sites</div>
+          </div>
+          <div class="sp-banner">
+            <span class="ic">!</span>
+            <div><b>2 campaigns breaching pace</b><span> Globex and Umbrella are under 75% of target delivery.</span></div>
+          </div>
+          <div class="sp-kpis">
+            <div class="sp-tile"><span class="delta up">+9.3%</span><div class="lab">Revenue</div><div class="num">$1.24M</div><div class="tgt">target $1.13M</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-text-2)" stroke-width="1.6" points="0,17 12,15 24,16 36,11 48,12 60,8 72,9 84,5 100,3"/></svg></div>
+            <div class="sp-tile"><div class="lab">Viewability</div><div class="num">72.6%</div><div class="tgt">target 70%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-text-2)" stroke-width="1.6" points="0,14 12,13 24,15 36,12 48,11 60,12 72,9 84,10 100,8"/></svg></div>
+            <div class="sp-tile"><div class="lab">SIVT</div><div class="num">0.8%</div><div class="tgt">ceiling 1.0%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-text-2)" stroke-width="1.6" points="0,8 12,10 24,7 36,9 48,6 60,8 72,5 84,7 100,6"/></svg></div>
+            <div class="sp-tile"><div class="lab">VCR</div><div class="num">78.4%</div><div class="tgt">target 75%</div>
+              <svg viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="var(--s-text-2)" stroke-width="1.6" points="0,12 12,11 24,12 36,9 48,10 60,8 72,9 84,6 100,5"/></svg></div>
+          </div>
+          <div class="sp-table">
+            <div class="sp-tr sp-thead"><span>Campaign</span><span class="sp-cell hide-sm">Deliv.</span><span class="sp-cell">Pacing</span><span class="sp-cell hide-sm">View.</span><span class="sp-cell">Status</span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">1</span><span class="name">Acme Auto — Q2 Brand</span></div><span class="sp-cell hide-sm">76%</span><span class="sp-cell"><span class="sp-band good">98%</span></span><span class="sp-cell hide-sm"><span class="sp-band good">74%</span></span><span class="sp-cell"><span class="sp-pill good">On track</span></span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">2</span><span class="name">Globex Travel — Summer</span></div><span class="sp-cell hide-sm">40%</span><span class="sp-cell"><span class="sp-band warn">71%</span></span><span class="sp-cell hide-sm"><span class="sp-band warn">69%</span></span><span class="sp-cell"><span class="sp-pill warn">Behind</span></span></div>
+            <div class="sp-tr sp-row"><div class="camp"><span class="sp-rank">3</span><span class="name">Umbrella Health — Aware.</span></div><span class="sp-cell hide-sm">28%</span><span class="sp-cell"><span class="sp-band bad">54%</span></span><span class="sp-cell hide-sm"><span class="sp-band bad">63%</span></span><span class="sp-cell"><span class="sp-pill bad">At risk</span></span></div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Warm Paper canvas, Ink serif headlines — the native Newsweek surface; brand red stays off the data.</li>
+          <li>Serif H1 and KPI figures; uppercase tracked eyebrows; tabular numerals align the columns.</li>
+          <li>Banner becomes a tinted strip with a state accent bar — present, not loud.</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ ROLLOUT ============ -->
+  <div class="foot">
+    <span class="eyebrow">Rollout</span>
+    <ol>
+      <li>Unpin <code style="font-family:inherit;background:none;border:none;padding:0;color:inherit">base="dark"</code> in config.toml, paste the token block into the dashboard's <code style="font-family:inherit;background:none;border:none;padding:0;color:inherit">&lt;style&gt;</code> injection, and load the two webfonts.</li>
+      <li>Re-point existing CSS to the variables — surfaces, text, severity, radius — starting with the Campaigns view.</li>
+      <li>Swap the chart color sequence (Altair / line / bar) to <code style="font-family:inherit;background:none;border:none;padding:0;color:inherit">--viz-1…6</code>.</li>
+      <li>Audit every red: if it's not the mark, a tab, or a breach, it shouldn't be red.</li>
+      <li>Let the other six views inherit — they reuse these same tiles, banners, grids and pills.</li>
+    </ol>
+  </div>
+
+</main>
+</body>
+</html>

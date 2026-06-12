@@ -190,23 +190,23 @@
   },
   "airtable_request_type_routing": [
     {
-      "context": "Direct line \u00b7 delivery problem",
+      "context": "Direct line · delivery problem",
       "request_type": "Direct Campaign - Troubleshooting"
     },
     {
-      "context": "Direct line \u00b7 viewability anomaly",
+      "context": "Direct line · viewability anomaly",
       "request_type": "Direct Campaign - Screenshot"
     },
     {
-      "context": "Direct line \u00b7 healthy end-of-flight",
+      "context": "Direct line · healthy end-of-flight",
       "request_type": "Direct Campaign - IO Review"
     },
     {
-      "context": "Direct line \u00b7 social media component",
+      "context": "Direct line · social media component",
       "request_type": "Direct Campaign - Social Posts"
     },
     {
-      "context": "PMP deal \u00b7 any issue",
+      "context": "PMP deal · any issue",
       "request_type": "PMP - Adjust"
     }
   ],
@@ -221,15 +221,15 @@
   "status_colors": [
     {
       "keyword": "Delivering",
-      "color": "#5fce82"
+      "color": "#3c6b14"
     },
     {
       "keyword": "Paused",
-      "color": "#f6c344"
+      "color": "#8a6d00"
     },
     {
       "keyword": "Completed",
-      "color": "#8a8579"
+      "color": "#8c887b"
     }
   ],
   "seller_colors": {},
@@ -293,7 +293,7 @@
       "match_field": "ad_format",
       "match_substring": "Interscroller",
       "severity": "amber",
-      "title": "Interscroller format \u2014 viewability caveat",
+      "title": "Interscroller format — viewability caveat",
       "body": "Interscroller creatives use a scroll-lock animation; viewability measurements may be artificially low compared to standard display. Compare to your display baseline before escalating."
     },
     {
@@ -325,7 +325,7 @@
         "Remaining": "remaining_impressions",
         "Clicks": "ad_server_clicks",
         "Pace": "pacing_pct",
-        "\u0394": "pacing_delta",
+        "Δ": "pacing_delta",
         "Viewability %": "ad_server_active_view_viewable_impressions_rate",
         "CTR %": "ad_server_ctr",
         "VCR %": "vcr",

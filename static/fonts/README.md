@@ -2,8 +2,9 @@
 
 The dashboard's `.streamlit/config.toml` declares `[[theme.fontFaces]]`
 entries pointing at this directory (served by Streamlit static serving at
-`/app/static/fonts/...`). The licensed binaries are **not** committed —
-copy them here from the Newsweek design system `/assets/fonts`:
+`/app/static/fonts/...`). The licensed binaries are **not** committed
+(this directory is gitignored except for this README) — copy them here
+from the Newsweek design system `/assets/fonts`:
 
 | File | Family | Weight |
 |---|---|---|
