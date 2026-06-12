@@ -185,10 +185,18 @@ _DEFAULT_SETTINGS: dict = {
     # between red_below and target renders amber. Leaving *_red_below null
     # falls back to target × 0.85 (the original implicit band), so existing
     # settings keep working without change.
+    # Keys follow the canonical taxonomy (dashboard_logic.CANONICAL_FORMATS):
+    # Display, Video (+ the derived Video Preroll >30s band), Interstitial,
+    # FITO, Centerstage, Apple News. Native/Multi rows are legacy — those
+    # formats fold into Display at canonicalization — kept so older saved
+    # settings merge cleanly; safe to delete from the editor.
     "benchmarks_by_format": {
         "Display":            {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
         "Video":              {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 70.0,  "vcr_red_below": None},
         "Video Preroll >30s": {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 50.0,  "vcr_red_below": None},
+        "FITO":               {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
+        "Centerstage":        {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
+        "Apple News":         {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
         "Native":             {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
         "Multi":              {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": 70.0,  "vcr_red_below": None},
         "Interstitial":       {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
