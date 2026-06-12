@@ -172,6 +172,34 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Active View reads ~0% viewable on any creative that renders in the
+  parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
+  uniscroller, the `addImageToHomepage`-style takeover customs, the Kia
+  Homepage-Insight template. AV measures the iframe the tag hides (100%
+  measurable / ~0% viewable) and DV instruments the same element, so
+  `dv_attention` agrees and is equally meaningless there. The tell it's an
+  artifact: healthy CTR, even more clicks than "viewable" impressions.
+  In-frame renders measure organically on the same slots (ClipCentric
+  Center Stage takeovers 58–67%, fluid native template 61.6%, site display
+  baseline 75.4%) — **rendering in the measured iframe is the only way to
+  move AV; there is no declare-viewable macro/API.** `%%VIEW_URL_UNESC%%`
+  counts *impressions* for out-of-page creatives (delayed impression
+  counting), NOT viewability — tested live 2026-06-11/12 (in-view watcher
+  pinging it on LI 7310815861 creative 138562143597): viewable% unchanged,
+  null result. GAM-report-native proxy if ever needed: in-view watcher →
+  $0 tracking-LI pixel (watcher must live in the parent document — the
+  breakout destroys the iframe realm and its observers/timers — and use
+  AV's 30% threshold for elements >242,500 px²). Publisher-side fix that
+  IS viable (DOM-verified 2026-06-12): Mobkoi *hides* the GPT iframe
+  (display:none, not detached) and its unit's box == the slot div, so an
+  **iframe mirror** (absolute transparent fill of the slot div) makes AV
+  score real geometry — `docs/snippets/mobkoi_iframe_mirror_creative.html`.
+  Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
+  On-site preview + DOM forensics for any creative: dispatch
+  `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
+  screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
+  Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
+  `line_item_ids`. Never set vCPM goals on breakout formats.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).

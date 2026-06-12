@@ -1,0 +1,102 @@
+<!--
+Mobkoi creative + NW iframe mirror — ready to paste into the GAM creative.
+
+Replaces the (useless) declared-view watcher: instead of pinging a macro,
+the mirror restyles the GPT iframe itself so Active View scores real
+geometry. DOM forensics (PR #164, preview run 27388089566) showed Mobkoi
+HIDES the iframe (display:none) rather than detaching it, and renders its
+unit in a div whose box is pixel-identical to the slot div — so filling
+the slot div with our transparent iframe makes AV measure exactly the
+well users scroll through.
+
+Behavior:
+  - waits for the breakout signature (our iframe display:none); creatives
+    that render the in-iframe fallback banner are left untouched (clicks
+    keep working, AV already measures those)
+  - then force-shows the iframe + its GPT container as an absolute,
+    transparent, pointer-events:none fill of the slot div, and re-asserts
+    every 500ms for ~2 min in case the vendor tag restyles it
+  - vendor tag untouched: Mobkoi/Celtra render, their DV (sid=mobkoi) and
+    xpln measurement, consent macros, click tracking all unchanged
+
+Vendor block below is the Invesco interscroller (creative 138557481462 /
+boot 696c9280…). For the Cartier creatives keep their own START/END TAG
+block and append the same mirror script.
+-->
+
+<!-- START TAG -->
+  <script>
+    (function (cs) {
+      /* Publisher options */
+      var options = {
+        clickUrl: '%%CLICK_URL_UNESC%%',
+        gdpr: '${GDPR}',
+        gdpr_consent: '${GDPR_CONSENT_898}',
+        coppa: '%%TFCD%%',
+      };
+      /* DO NOT TOUCH ANYTHING BELOW */
+      cs.parentNode.insertBefore(Object.assign(document.createElement('script'), {
+        type: 'application/javascript', async: 1,
+        src: 'https://tagservice.maximus.mobkoi.com/boot/696c9280-2913-465f-a735-7972d2da441c/?po=' + encodeURIComponent(JSON.stringify(options)) + '&cb=' + Math.random() + '&st=' + Date.now()
+      }), cs);
+    })(document.currentScript);
+  </script>
+<!-- END TAG -->
+
+<!-- NW iframe mirror: makes Active View measure the unit's real window.
+     Lives in the parent document (a display:none iframe keeps running,
+     but parent-side survives anything the vendor tag does later).
+     The GPT container div must stay UNTOUCHED and in normal flow: the
+     Mobkoi unit div lives inside it, so it's what props the slot div's
+     height — absolutizing it collapses the well to 0 (run 27388975990).
+     Only the iframe is absolutized; its containing block is the
+     position:relative slot div, so 100%x100% = the real well box. -->
+<script>
+(function () {
+  try {
+    var ifr = window.frameElement;
+    var slot = ifr && ifr.closest('[id^="dfp-ad-inarticle"]');
+    if (!ifr || !slot || !ifr.id || !slot.id) return;
+    var D = window.parent.document;
+    var boot = D.createElement('script');
+    boot.textContent = '(' + function (ifrId, slotId) {
+      var ifr = document.getElementById(ifrId);
+      var slot = document.getElementById(slotId);
+      if (!ifr || !slot) return;
+      var armed = false, n = 0;
+      function fill(el) {
+        var s = el.style;
+        s.setProperty('display', 'block', 'important');
+        s.setProperty('position', 'absolute', 'important');
+        s.setProperty('left', '0', 'important');
+        s.setProperty('top', '0', 'important');
+        s.setProperty('width', '100%', 'important');
+        s.setProperty('height', '100%', 'important');
+        s.setProperty('border', '0', 'important');
+        s.setProperty('background', 'transparent', 'important');
+        s.setProperty('pointer-events', 'none', 'important');
+        s.setProperty('z-index', '0', 'important');
+      }
+      var iv = setInterval(function () {
+        if (++n >= 240) clearInterval(iv);   /* enforce ~2 min, then stop */
+        if (!armed) {
+          /* breakout signature: vendor tag hid our iframe. Until then do
+             nothing — in-iframe fallback banners must keep their clicks. */
+          if (getComputedStyle(ifr).display !== 'none') return;
+          armed = true;
+        }
+        if (getComputedStyle(slot).position === 'static') {
+          slot.style.setProperty('position', 'relative');
+        }
+        var cont = ifr.parentElement;
+        if (cont && cont !== slot && cont.style.position === 'absolute') {
+          /* undo the v1 mistake if this page got the old mirror */
+          cont.style.cssText = '';
+        }
+        fill(ifr);
+      }, 500);
+    } + ')(' + JSON.stringify(ifr.id) + ',' + JSON.stringify(slot.id) + ');';
+    (D.head || D.documentElement).appendChild(boot);
+  } catch (e) { /* safeframed or cross-origin: do nothing */ }
+})();
+</script>

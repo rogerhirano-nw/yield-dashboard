@@ -1,0 +1,76 @@
+name: Preview Mobkoi creative DOM (one-off)
+
+on:
+  # push trigger bootstraps workflow registration (the repo template's
+  # pattern) — dispatch-only workflows on branches 404 until first run
+  push:
+    branches: [claude/wonderful-pascal-p3737t]
+    paths:
+      - '.github/workflows/preview_mobkoi_dom.yml'
+  workflow_dispatch:
+    inputs:
+      preview_pairs:
+        description: 'Comma-separated lineItemId:creativeId pairs ("auto" = first LICA creative)'
+        required: false
+        default: '7310815861:138557481462,7255084258:auto,7256561225:auto,7253027964:auto'
+      article_url:
+        description: 'newsweek.com article URL to preview on'
+        required: false
+        default: 'https://www.newsweek.com/trump-admin-vows-to-hold-8647-national-mall-vandals-accountable-threat-12062049'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install google-ads-admanager google-auth pandas googleads playwright
+          playwright install --with-deps chromium
+
+      - name: Render previews and inspect DOM
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          PREVIEW_PAIRS: ${{ inputs.preview_pairs }}
+          ARTICLE_URL: ${{ inputs.article_url }}
+        run: |
+          set -o pipefail
+          python scripts/preview_mobkoi_dom.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-screenshots
+          path: /tmp/shots/
+          if-no-files-found: ignore
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Mobkoi creative DOM preview (headless Chromium on GAM on-site preview)'
+            echo ''
+            echo "Workflow run (screenshots in artifacts): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            tail -c 58000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
