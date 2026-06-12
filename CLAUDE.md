@@ -114,11 +114,13 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   `ssp_publisher_ids` (surfaces our pub-id in the body); contacts accept
   RFC 5322 display names (`"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
 - `docs/article_sponsor_logo.md` — "Presented by <logo>" strip at the right
-  of the article breadcrumb row, served from GAM through the existing
-  out-of-page unit `oop2` (no newsweek.com release needed). Out-of-page
-  CustomCreative (SafeFrame OFF — required for the parent-DOM injection)
-  self-scopes to article pages by bailing when the breadcrumb container
-  isn't found. Setup script: `scripts/setup_article_sponsor_logo.py`
+  of the article breadcrumb row, served from GAM through the out-of-page
+  unit `oop1` (first paint; engineering ships the client-rendered container
+  — replaced `oop2` 2026-06-11). Out-of-page CustomCreative (SafeFrame OFF
+  — required for the parent-DOM injection) self-scopes to article pages,
+  self-heals via a parent-document watcher, fires once-guarded agency
+  pixels and an MRC viewability beacon. Live flight: Infiniti Newsmakers
+  LI 7336465381. Setup script: `scripts/setup_article_sponsor_logo.py`
   (dry-run by default, lookup-first, `--apply` to create).
 - `docs/gam_placement_injection.md` — the generalized technique behind the
   sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
