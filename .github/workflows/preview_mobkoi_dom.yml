@@ -1,6 +1,12 @@
 name: Preview Mobkoi creative DOM (one-off)
 
 on:
+  # push trigger bootstraps workflow registration (the repo template's
+  # pattern) — dispatch-only workflows on branches 404 until first run
+  push:
+    branches: [claude/wonderful-pascal-p3737t]
+    paths:
+      - '.github/workflows/preview_mobkoi_dom.yml'
   workflow_dispatch:
     inputs:
       preview_pairs:
