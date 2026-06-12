@@ -56,7 +56,9 @@ def _soap_retry(call, what: str, attempts: int = 3, base_sleep: int = 15):
             if attempt == attempts or "SERVER_ERROR" not in str(exc):
                 raise
             sleep_s = base_sleep * attempt
-            logger.warning(
+            # INFO, not WARNING — recovered retries shouldn't email; the
+            # final attempt re-raises and surfaces as ERROR.
+            logger.info(
                 "%s hit transient GAM ServerError (attempt %d/%d) — retrying in %ds",
                 what, attempt, attempts, sleep_s,
             )

@@ -344,7 +344,7 @@ def run_checks() -> list[CheckResult]:
         except sqlalchemy.exc.OperationalError as exc:
             if _attempt == 2:
                 break
-            logger.warning("DB connect failed (attempt %d/3): %s — retrying", _attempt + 1, exc)
+            logger.info("DB connect failed (attempt %d/3): %s — retrying", _attempt + 1, exc)
             time.sleep(15 * (_attempt + 1))
     with engine.connect() as conn:
         for table in ("dv_attention", "dv_ivt"):

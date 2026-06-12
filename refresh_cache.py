@@ -92,7 +92,9 @@ def _probe_connect_with_retry(engine: sqlalchemy.Engine,
             if attempt == attempts:
                 raise
             sleep_s = base_sleep * attempt
-            logger.warning(
+            # INFO, not WARNING — recovered retries shouldn't email; the
+            # final attempt re-raises and surfaces as ERROR.
+            logger.info(
                 "DB connect failed (attempt %d/%d): %s — retrying in %ds",
                 attempt, attempts, exc, sleep_s,
             )
