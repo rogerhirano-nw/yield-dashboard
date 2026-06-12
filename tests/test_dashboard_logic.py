@@ -261,3 +261,96 @@ def test_volume_pct_delta():
     assert volume_pct_delta(110, 10) == 10.0                  # 10 vs prior 100
     assert volume_pct_delta(10, 10) is None                   # no prior volume
     assert volume_pct_delta(math.nan, 10) is None
+
+
+# ── parse_gam_salesperson / li_part / token regexes ────────────────────────
+
+def test_parse_gam_salesperson():
+    from dashboard_logic import parse_gam_salesperson as p
+    assert p("Newsweek - Sales - Theresa Hern") == "Theresa Hern"
+    assert p("Newsweek - Sales- Jeremy Makin (jmakin@newsweek.com)") == "Jeremy Makin"
+    assert p("Just A Name") == "Just A Name"   # no prefix → stripped passthrough
+    assert p("") is None
+    assert p("   ") is None
+    assert p(None) is None
+    assert p(123) is None
+
+
+def test_li_part_token_extraction():
+    from dashboard_logic import li_part
+    name = "Newsweek_Direct_Gambling_NA_NA_NA_NA_Spinfinite_Spinfinite-Digital-Campaign_US_Display_IO1109_1_Team-USA_RShore"
+    assert li_part(name, 7) == "Spinfinite"          # advertiser
+    assert li_part(name, 8) == "Spinfinite-Digital-Campaign"  # campaign
+    assert li_part(name, 10) == "Display"            # format fallback
+    assert li_part("too_short", 10) is None
+    assert li_part(None, 7) is None
+
+
+def test_ae_and_team_token_regexes():
+    import re
+    from dashboard_logic import AE_TOKEN_RE, TEAM_TOKEN_RE
+    name = "Newsweek_Direct_Luxury_..._IO1086_1_Team-INTL_CMamboury"
+    assert re.search(AE_TOKEN_RE, name).group(1) == "CMamboury"
+    assert re.search(TEAM_TOKEN_RE, name).group(1) == "INTL"
+    assert re.search(AE_TOKEN_RE, "no token here") is None
+
+
+# ── pace_band / prior_pacing ───────────────────────────────────────────────
+
+def test_pace_band_boundaries():
+    from dashboard_logic import pace_band
+    assert pace_band(74.9, 100.0) == "red"
+    assert pace_band(75.0, 100.0) == "amber"   # exactly 75% of target = amber
+    assert pace_band(89.9, 100.0) == "amber"
+    assert pace_band(90.0, 100.0) == "green"   # exactly 90% = green
+    assert pace_band(110.0, 100.0) == "green"  # exactly 110% still green
+    assert pace_band(110.1, 100.0) == "over"
+    assert pace_band(100.0, None) == "over"    # no target → can't judge
+    # bands scale with a non-100 target
+    assert pace_band(82.4, 110.0) == "red"     # 82.4/110 ≈ 0.749
+
+
+def test_prior_pacing_pro_rates_through_day_before_yesterday():
+    import pandas as pd
+    from dashboard_logic import prior_pacing
+    today = pd.Timestamp("2026-06-08")
+    # Flight 06-01 → 06-11 (10 days). Day-before-yesterday = 06-06 →
+    # 5 elapsed days → pro-rated goal 1000 × 5/10 = 500. Delivery
+    # excluding the latest day = 600 − 100 = 500 → pace 100%.
+    assert prior_pacing(1000, 600, 100, "2026-06-01", "2026-06-11", today) == 100.0
+    # Flight too young for a prior (started yesterday) → None
+    assert prior_pacing(1000, 50, 50, "2026-06-07", "2026-06-11", today) is None
+    # No goal / missing dates / garbage → None, never raises
+    assert prior_pacing(0, 600, 100, "2026-06-01", "2026-06-11", today) is None
+    assert prior_pacing(1000, 600, 100, None, "2026-06-11", today) is None
+    assert prior_pacing(1000, 600, 100, "junk", "2026-06-11", today) is None
+    # Elapsed clamps at the flight end for finished flights
+    ended = prior_pacing(1000, 1000, 0, "2026-05-01", "2026-05-11", today)
+    assert ended == 100.0   # 10/10 days elapsed, full delivery
+
+
+# ── stale_deal_mask / idle_days ────────────────────────────────────────────
+
+def test_stale_deal_mask_two_clauses():
+    import pandas as pd
+    from dashboard_logic import stale_deal_mask
+    df = pd.DataFrame({
+        "last_bid_date":   ["2026-01-01", "2026-06-01", pd.NA,        pd.NA, pd.NA],
+        "first_seen_date": ["2025-12-01", "2026-01-01", "2026-01-01", pd.NA, "2026-06-01"],
+    })
+    mask = stale_deal_mask(df, "2026-03-14")  # 90d cutoff
+    # old last bid → stale; recent bid → fresh (even if seen long ago);
+    # never bid + seen long ago → stale; no dates at all → fresh;
+    # never bid but seen recently → fresh.
+    assert mask.tolist() == [True, False, True, False, False]
+
+
+def test_idle_days_prefers_last_bid_then_first_seen():
+    from datetime import date as d
+    from dashboard_logic import idle_days
+    today = d(2026, 6, 12)
+    assert idle_days("2026-06-01", "2026-01-01", today) == 11
+    assert idle_days(None, "2026-06-02", today) == 10
+    assert idle_days("nan", "2026-06-02", today) == 10   # junk string skipped
+    assert idle_days("not-a-date", None, today) == 0
+    assert idle_days(None, None, today) == 0
