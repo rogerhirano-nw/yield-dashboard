@@ -62,12 +62,22 @@ Mitigations, by rigor:
    in GTM/GA4) and requests `cfg.viewUrl` if set — **put the agency's DCM
    viewable-impression tracker there when they provide one**. Verification
    marker: `#nw-sponsor-logo-viewed` appears in the DOM on fire.
-2. **CSS-reposition variant (build before selling banner-size injections)**:
-   instead of hiding the carrier and writing a separate iframe, keep GPT's
-   own iframe and absolutely position the carrier slot over a spacer at the
-   target location (watcher syncs coordinates on resize). Nothing reloads,
-   GPT renders the tag natively, and **Active View measures the real
-   position** — GAM viewability becomes trustworthy with no custom beacon.
+2. **Carrier-reposition (LIVE on the Infiniti logo, 2026-06-11 evening)** —
+   makes GAM Active View honest: the watcher glues the carrier slot div
+   (whose iframe GAM measures) onto the injected element with
+   `position:fixed`, rAF-synced on scroll/resize plus img-load and delayed
+   re-syncs. CSS-only, so the GPT iframe never detaches/reloads;
+   transparent + `pointer-events:none`, so clicks pass through to the
+   content. Verified: carrier and strip geometry identical at rest and
+   while scrolling off-viewport. Empirical basis: the flight was already
+   99.5% Active-View-*measurable* but ~1% viewable because the iframe sat
+   at the page bottom — after this patch GAM's viewable% tracks the strip.
+   (The incumbent-era creatives measured 0% measurable — older render
+   path; this stack's friendly-iframe render is measurable.)
+3. **Full reposition variant (build before selling banner-size
+   injections)**: same idea but the GPT iframe IS the visible ad —
+   position the carrier over a spacer at the target location instead of
+   writing a separate iframe. Active View native, no beacon needed.
 
 ## Worked example: Apple FITO top banner (2026-06-11)
 

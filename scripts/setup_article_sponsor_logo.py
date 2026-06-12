@@ -116,7 +116,14 @@ _SNIPPET = """\
   try {
     var W = window.top, D = W.document;
     if (D.getElementById('nw-sponsor-logo-boot')) return;
+    var SLOTID = '';
+    try {
+      var _fe = window.frameElement;
+      var _sd = _fe && _fe.closest('[id^="dfp-ad-"]');
+      SLOTID = _sd ? _sd.id : '';
+    } catch (e) {}
     var CFG = {
+      slotId: SLOTID,
       label: '__LABEL__',
       logo: '__LOGO__',
       href: '%%CLICK_URL_UNESC%%%%DEST_URL%%',
@@ -163,6 +170,35 @@ _SNIPPET = """\
           io.observe(el);
         } catch (e) {}
       }
+      /* Active View honesty: glue the carrier slot div (whose iframe GAM
+         measures) onto the strip with position:fixed, synced on scroll and
+         resize. CSS-only — the GPT iframe never detaches, never reloads.
+         Transparent + pointer-events:none, so clicks reach the strip. */
+      var carrierSynced = false;
+      function syncCarrier() {
+        try {
+          var slot = cfg.slotId && d.getElementById(cfg.slotId);
+          var a = d.getElementById('nw-sponsor-logo');
+          if (!slot || !a) return;
+          var r = a.getBoundingClientRect();
+          slot.style.cssText = 'position:fixed;left:' + r.left + 'px;top:' + r.top +
+            'px;width:' + Math.max(2, r.width) + 'px;height:' + Math.max(2, r.height) +
+            'px;margin:0;padding:0;overflow:hidden;pointer-events:none;z-index:1';
+          var ifr = slot.querySelector('iframe');
+          if (ifr) ifr.style.cssText = 'width:100%;height:100%;border:0;display:block;background:transparent';
+          if (!carrierSynced) {
+            carrierSynced = true;
+            var pend = false;
+            var onmove = function () {
+              if (pend) return;
+              pend = true;
+              requestAnimationFrame(function () { pend = false; syncCarrier(); });
+            };
+            window.addEventListener('scroll', onmove, {passive: true});
+            window.addEventListener('resize', onmove, {passive: true});
+          }
+        } catch (e) {}
+      }
       function ensure() {
         try {
           if (d.getElementById('nw-sponsor-logo')) return;
@@ -194,6 +230,12 @@ _SNIPPET = """\
             if (kr && kr.right > sr.left - 12) { a.className = 'sl-bc sl-wrap'; }
           }
           armViewability(a);
+          syncCarrier();
+          try {
+            a.querySelector('.sl-logo').addEventListener('load', syncCarrier);
+            setTimeout(syncCarrier, 1000);
+            setTimeout(syncCarrier, 3000);
+          } catch (e) {}
         } catch (e) {}
       }
       ensure();
