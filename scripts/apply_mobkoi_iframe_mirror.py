@@ -94,13 +94,12 @@ def main() -> int:
         if END_MARKER not in snippet:
             print(f"  !! snippet has no {END_MARKER!r} marker — skipping")
             continue
-        if MIRROR_MARKER in snippet:
-            print("  already carries the iframe mirror — skipping (idempotent)")
-            continue
-
         vendor = snippet[: snippet.index(END_MARKER) + len(END_MARKER)]
         dropped = snippet[snippet.index(END_MARKER) + len(END_MARKER):].strip()
         new_snippet = vendor.rstrip() + "\n\n" + block + "\n"
+        if snippet == new_snippet:
+            print("  already carries the current mirror — skipping (idempotent)")
+            continue
 
         print(f"  vendor block: {len(vendor)} chars (kept byte-identical)")
         if dropped:

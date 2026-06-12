@@ -45,7 +45,12 @@ block and append the same mirror script.
 
 <!-- NW iframe mirror: makes Active View measure the unit's real window.
      Lives in the parent document (a display:none iframe keeps running,
-     but parent-side survives anything the vendor tag does later). -->
+     but parent-side survives anything the vendor tag does later).
+     The GPT container div must stay UNTOUCHED and in normal flow: the
+     Mobkoi unit div lives inside it, so it's what props the slot div's
+     height — absolutizing it collapses the well to 0 (run 27388975990).
+     Only the iframe is absolutized; its containing block is the
+     position:relative slot div, so 100%x100% = the real well box. -->
 <script>
 (function () {
   try {
@@ -58,7 +63,6 @@ block and append the same mirror script.
       var ifr = document.getElementById(ifrId);
       var slot = document.getElementById(slotId);
       if (!ifr || !slot) return;
-      var cont = ifr.parentElement; /* google_ads_iframe_*__container__ */
       var armed = false, n = 0;
       function fill(el) {
         var s = el.style;
@@ -84,7 +88,11 @@ block and append the same mirror script.
         if (getComputedStyle(slot).position === 'static') {
           slot.style.setProperty('position', 'relative');
         }
-        if (cont && cont !== slot) fill(cont);
+        var cont = ifr.parentElement;
+        if (cont && cont !== slot && cont.style.position === 'absolute') {
+          /* undo the v1 mistake if this page got the old mirror */
+          cont.style.cssText = '';
+        }
         fill(ifr);
       }, 500);
     } + ')(' + JSON.stringify(ifr.id) + ',' + JSON.stringify(slot.id) + ');';
