@@ -66,6 +66,8 @@ import pandas as pd
 import sqlalchemy
 import streamlit as st
 
+import dashboard_logic as dl
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -2621,19 +2623,17 @@ if st.session_state.active_view == "campaigns":
 
         # Recategorize ad_format → "Video Preroll >30s" when the line item's
         # longest video creative exceeds 30 seconds (duration sourced into
-        # _creative_max_dur above). MUST run after ad_format is derived from
+        # _creative_max_dur above; decision logic + tests live in
+        # dashboard_logic). MUST run after ad_format is derived from
         # inventory_format_name — the column doesn't exist before that, so
         # running earlier silently no-ops and every long-form line renders
         # under the plain "Video" benchmarks.
         if "_creative_max_dur" in gam_df.columns:
-            def _bump_video_format(row):
-                fmt = row.get("ad_format")
-                dur = row.get("_creative_max_dur")
-                if (isinstance(fmt, str) and "video" in fmt.lower()
-                    and pd.notna(dur) and float(dur) > 30):
-                    return "Video Preroll >30s"
-                return fmt
-            gam_df["ad_format"] = gam_df.apply(_bump_video_format, axis=1)
+            gam_df["ad_format"] = gam_df.apply(
+                lambda row: dl.bump_video_format(
+                    row.get("ad_format"), row.get("_creative_max_dur")),
+                axis=1,
+            )
 
         # Manual long-preroll override — applied AFTER the duration-based
         # auto-detection so user-curated rules win. Useful for Newsweek's
@@ -2641,30 +2641,10 @@ if st.session_state.active_view == "campaigns":
         # the GAM Creative API nor the VAST URL exposes duration.
         _lp_rules = _cfg.get("long_preroll_lines") or []
         if _lp_rules:
-            def _matches_long_preroll(row):
-                for rule in _lp_rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    field = (rule.get("match_field") or "").strip()
-                    val   = (rule.get("match_value") or "").strip()
-                    if not field or not val:
-                        continue
-                    if field == "line_item_id":
-                        if str(row.get("line_item_id") or "") == val:
-                            return True
-                    elif field == "order_name":
-                        cell = str(row.get("order_name") or "").lower()
-                        needle = val.lower().rstrip("*").rstrip("%")
-                        if needle and needle in cell:
-                            return True
-                    elif field == "line_item_name":
-                        cell = str(row.get("line_item_name") or "").lower()
-                        if val.lower() in cell:
-                            return True
-                return False
-            _lp_mask = gam_df.apply(_matches_long_preroll, axis=1)
+            _lp_mask = gam_df.apply(
+                lambda row: dl.matches_long_preroll(row, _lp_rules), axis=1)
             if _lp_mask.any():
-                gam_df.loc[_lp_mask, "ad_format"] = "Video Preroll >30s"
+                gam_df.loc[_lp_mask, "ad_format"] = dl.LONG_PREROLL_FORMAT
 
         # Load Pubmatic sellers so they appear in the shared filter
         try:
@@ -3879,32 +3859,14 @@ if st.session_state.active_view == "campaigns":
             # to `target * 0.85` — the original implicit band. So existing
             # settings keep their old visuals until a user configures an
             # explicit red threshold in Configure → Section 3.
+            # Threshold resolution + banding live in dashboard_logic (pure,
+            # tested); these wrappers just bind the session's settings dict.
             _bench_cfg = _cfg.get("benchmarks_by_format") or {}
             def _bench_target(fmt, key, fallback_key=None, fallback=None):
-                if isinstance(fmt, str) and fmt in _bench_cfg:
-                    v = _bench_cfg[fmt].get(key)
-                    if v is not None:
-                        return float(v)
-                if fallback_key and fallback_key in _bench_cfg:
-                    v = _bench_cfg[fallback_key].get(key)
-                    if v is not None:
-                        return float(v)
-                return float(fallback) if fallback is not None else None
+                return dl.bench_target(_bench_cfg, fmt, key, fallback_key, fallback)
 
             def _bench_red_cut(fmt, key, target, fallback_key=None):
-                """Return the configured `<key>_red_below` for this format,
-                falling back to the same lookup on `fallback_key`, then to
-                `target * 0.85`. `key` is e.g. 'viewability'."""
-                red_key = f"{key}_red_below"
-                if isinstance(fmt, str) and fmt in _bench_cfg:
-                    v = _bench_cfg[fmt].get(red_key)
-                    if v is not None:
-                        return float(v)
-                if fallback_key and fallback_key in _bench_cfg:
-                    v = _bench_cfg[fallback_key].get(red_key)
-                    if v is not None:
-                        return float(v)
-                return target * 0.85 if target else None
+                return dl.bench_red_cut(_bench_cfg, fmt, key, target, fallback_key)
 
             def _viewability_html(p, fmt=None, p_prior=None):
                 p = _parse_leading_pct(p)
@@ -3913,9 +3875,10 @@ if st.session_state.active_view == "campaigns":
                                        fallback_key="Display", fallback=70.0)
                 red_cut = _bench_red_cut(fmt, "viewability", target,
                                          fallback_key="Display")
-                if p < red_cut:
+                _b = dl.band(p, target, red_cut)
+                if _b == "red":
                     cell = f'<div class="pill pill-red">{p:.1f}%</div>'
-                elif p < target:
+                elif _b == "amber":
                     cell = f'<div class="txt-amber">{p:.1f}%</div>'
                 else:
                     cell = f'<div class="txt-green">{p:.1f}%</div>'
@@ -3938,9 +3901,10 @@ if st.session_state.active_view == "campaigns":
                 else:
                     red_cut = _bench_red_cut(fmt, "ctr", target,
                                              fallback_key="Display")
-                    if p < red_cut:
+                    _b = dl.band(p, target, red_cut)
+                    if _b == "red":
                         cell = f'<span class="pill pill-red">{p:.2f}%</span>'
-                    elif p < target:
+                    elif _b == "amber":
                         cell = f'<span class="txt-amber">{p:.2f}%</span>'
                     else:
                         cell = f'<span class="txt-green">{p:.2f}%</span>'
@@ -3957,9 +3921,10 @@ if st.session_state.active_view == "campaigns":
                                        fallback_key="Video", fallback=60.0)
                 red_cut = _bench_red_cut(fmt, "vcr", target,
                                          fallback_key="Video")
-                if p < red_cut:
+                _b = dl.band(p, target, red_cut)
+                if _b == "red":
                     cell = f'<div class="pill pill-red">{p:.1f}%</div>'
-                elif p < target:
+                elif _b == "amber":
                     cell = f'<div class="txt-amber">{p:.1f}%</div>'
                 else:
                     cell = f'<div class="txt-green">{p:.1f}%</div>'
