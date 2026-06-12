@@ -451,3 +451,38 @@ def canonicalize_format(raw, aliases=None):
 
     final = _alias(result)
     return final if isinstance(final, str) and final.strip() else None
+
+
+# Formats GAM's INVENTORY_FORMAT_NAME cannot express — it reports web
+# interstitials and high-impact/custom units as "Banner" (and FITO video
+# as "In-stream video") — so the line-item NAME is the source of truth
+# for these. Ordered by precedence; matched anywhere in the name, which
+# also survives the token-position drift some names have (e.g. the
+# AppleTv Cape Fear lines carry their format word at position 11, not 10).
+NAME_FORMAT_KEYWORDS = (
+    ("fito", "FITO"),
+    ("apple-news", "Apple News"),
+    ("apple news", "Apple News"),
+    ("centerstage", "Centerstage"),
+    ("interstitial", "Interstitial"),
+)
+
+
+def derive_format(inventory_format_name, line_item_name, aliases=None):
+    """Canonical format for a line item from its two signals.
+
+    Resolution order:
+      1. name keywords (NAME_FORMAT_KEYWORDS) — the name wins for formats
+         GAM's inventory vocabulary flattens into Banner/In-stream
+      2. the API's INVENTORY_FORMAT_NAME, canonicalized — authoritative
+         for the display/video families
+      3. the name's position-10 token, canonicalized (pre-dimension rows)
+    User format_aliases re-route any of the three outcomes."""
+    if isinstance(line_item_name, str):
+        low = line_item_name.lower()
+        for kw, fmt in NAME_FORMAT_KEYWORDS:
+            if kw in low:
+                return canonicalize_format(fmt, aliases)
+    if isinstance(inventory_format_name, str) and inventory_format_name.strip():
+        return canonicalize_format(inventory_format_name, aliases)
+    return canonicalize_format(li_part(line_item_name, 10), aliases)

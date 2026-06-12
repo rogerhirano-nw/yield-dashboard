@@ -2550,17 +2550,20 @@ if st.session_state.active_view == "campaigns":
         # hyphenated token form used inside the line-item-name convention.
         gam_df["advertiser"]    = gam_df["line_item_name"].apply(dl.li_part, idx=7).str.replace("-", " ", regex=False)
         gam_df["campaign_name"] = gam_df["line_item_name"].apply(dl.li_part, idx=8).str.replace("-", " ", regex=False)
-        # Prefer GAM's canonical INVENTORY_FORMAT_NAME (now pulled in
-        # run_delivery_report). Falls back to the position-10 token of
-        # line_item_name only when the API didn't return a format —
-        # backwards compat for any rows from before the dimension was added.
-        if "inventory_format_name" in gam_df.columns:
-            _from_api = gam_df["inventory_format_name"].astype("string").str.strip()
-            _from_api = _from_api.replace({"": pd.NA})
-            _from_name = gam_df["line_item_name"].apply(dl.li_part, idx=10)
-            gam_df["ad_format"] = _from_api.fillna(pd.Series(_from_name, index=gam_df.index))
-        else:
-            gam_df["ad_format"] = gam_df["line_item_name"].apply(dl.li_part, idx=10)
+        # Canonical format per line (dashboard_logic.derive_format): name
+        # keywords beat GAM's INVENTORY_FORMAT_NAME — the API flattens
+        # interstitials / FITO / Centerstage / Apple News into "Banner" —
+        # then the API value (authoritative for display/video), then the
+        # position-10 name token. User format_aliases re-route any outcome;
+        # junk resolves to NA (out of the filter, fallback benchmarks).
+        _format_aliases = _cfg.get("format_aliases") or {}
+        _api_fmt_col = (gam_df["inventory_format_name"]
+                        if "inventory_format_name" in gam_df.columns
+                        else pd.Series([None] * len(gam_df), index=gam_df.index))
+        gam_df["ad_format"] = [
+            dl.derive_format(_a, _n, _format_aliases)
+            for _a, _n in zip(_api_fmt_col, gam_df["line_item_name"])
+        ]
         _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
         gam_df["team"] = (
             gam_df["line_item_name"]
@@ -2570,18 +2573,6 @@ if st.session_state.active_view == "campaigns":
         for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae", "team"):
             if _col in gam_df.columns:
                 gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
-
-        # Collapse the raw format zoo — GAM inventory names ("Banner",
-        # "In-stream video"), name-token variants (FITO-Video,
-        # Contextual-PreRoll, Backfill-970x250…), and junk tokens from
-        # non-convention names — into one canonical bucket per thing, so
-        # the Format filter stops showing fifty spellings. User
-        # format_aliases win; unrecognized values become NA (out of the
-        # filter; benchmark fallbacks unchanged). Must run BEFORE the
-        # >30s bump, which expects the canonical "Video".
-        _format_aliases = _cfg.get("format_aliases") or {}
-        gam_df["ad_format"] = gam_df["ad_format"].map(
-            lambda f: dl.canonicalize_format(f, _format_aliases))
 
         # Recategorize ad_format → "Video Preroll >30s" when the line item's
         # longest video creative exceeds 30 seconds (duration sourced into
@@ -6461,49 +6452,34 @@ if st.session_state.active_view == "configure":
                 ].nunique()
                 return int(distinct_orders)
 
-            # Line item count per ad_format — mirrors the runtime logic that the
-            # Direct Campaigns table actually uses, so the Benchmarks editor's
-            # "Applies to" column matches reality:
-            #   0. Derive ad_format from line_item_name's position-10 token,
-            #      because gam_campaigns doesn't store it as a column — the
-            #      Campaigns rendering computes it via .apply(_li_part, idx=10).
-            #   1. Apply format_aliases (e.g. "Banner" → "Display") so the
-            #      benchmark keys (which are post-alias) match the count.
-            #   2. Apply the >30s preroll recategorization (join gam_lica +
-            #      gam_creatives on line_item_id → creative_id, take max
-            #      duration per LI, bump any Video line whose max creative
-            #      duration > 30s to "Video Preroll >30s").
-            def _li_format_part(name):
-                if not isinstance(name, str):
-                    return ""
-                parts = name.split("_")
-                return parts[10].strip() if len(parts) > 10 else ""
+            # Line item count per ad_format — mirrors the runtime logic that
+            # the Direct Campaigns table actually uses, so the Benchmarks
+            # editor's "Applies to" column matches reality:
+            #   1. dashboard_logic.derive_format with the saved aliases
+            #      (same call as the campaigns view).
+            #   2. The >30s preroll recategorization (max creative duration
+            #      per LI via gam_lica + gam_creatives, bump long Video to
+            #      "Video Preroll >30s").
 
             _format_counts = {}
             if (_gam_for_counts is not None
                 and not _gam_for_counts.empty
                 and ("inventory_format_name" in _gam_for_counts.columns
                      or "line_item_name" in _gam_for_counts.columns)):
-                # Prefer the canonical GAM dimension when present; fall back to
-                # position-10 parse of line_item_name for older cached rows.
-                if "inventory_format_name" in _gam_for_counts.columns:
-                    _api_fmt = (_gam_for_counts["inventory_format_name"]
-                                .astype("string").str.strip()
-                                .replace({"": pd.NA}))
-                    _name_fmt = _gam_for_counts["line_item_name"].apply(_li_format_part) \
-                        if "line_item_name" in _gam_for_counts.columns else pd.Series(pd.NA, index=_gam_for_counts.index)
-                    _fmt_series = _api_fmt.fillna(pd.Series(_name_fmt, index=_gam_for_counts.index)) \
-                                           .fillna("").astype("string")
-                else:
-                    _fmt_series = (_gam_for_counts["line_item_name"]
-                                   .apply(_li_format_part)
-                                   .fillna("").astype("string"))
+                # Mirror the runtime pipeline exactly: derive_format (name
+                # keywords beat the API value, then position-10 token),
+                # canonicalized with the same aliases.
                 _aliases = _s.get("format_aliases") or {}
-                # Mirror the runtime pipeline: canonicalize (aliases +
-                # family rules), not alias-replace only.
-                _fmt_series = (_fmt_series
-                               .map(lambda f: dl.canonicalize_format(f, _aliases))
-                               .fillna("").astype("string"))
+                _api_col = (_gam_for_counts["inventory_format_name"]
+                            if "inventory_format_name" in _gam_for_counts.columns
+                            else pd.Series([None] * len(_gam_for_counts), index=_gam_for_counts.index))
+                _name_col = (_gam_for_counts["line_item_name"]
+                             if "line_item_name" in _gam_for_counts.columns
+                             else pd.Series([None] * len(_gam_for_counts), index=_gam_for_counts.index))
+                _fmt_series = pd.Series(
+                    [dl.derive_format(_a, _n, _aliases) or ""
+                     for _a, _n in zip(_api_col, _name_col)],
+                    index=_gam_for_counts.index).astype("string")
                 # Recategorize >30s preroll using the pre-aggregated SQL
                 # GROUP BY (same data as the campaigns view, same cache).
                 try:
