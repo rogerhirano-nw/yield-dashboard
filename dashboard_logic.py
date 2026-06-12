@@ -30,10 +30,12 @@ LONG_PREROLL_MIN_SECONDS = 30.0
 
 
 def bump_video_format(fmt, max_duration_seconds):
-    """Benchmark format for a line item: video whose longest creative runs
-    longer than 30s is graded as "Video Preroll >30s"; everything else
-    keeps its format. Unknown/NaN durations stay unchanged — the manual
-    long_preroll_lines rules exist for those (3rd-party tags hide duration).
+    """Benchmark BAND for a line item: video whose longest creative runs
+    longer than 30s grades as "Video Preroll >30s"; everything else keeps
+    its format. The band only feeds threshold lookups (_bench_format) —
+    the Format filter shows plain "Video". Unknown/NaN durations stay
+    unchanged — the manual long_preroll_lines rules exist for those
+    (3rd-party tags hide duration).
     """
     if not isinstance(fmt, str) or "video" not in fmt.lower():
         return fmt
@@ -379,8 +381,11 @@ def idle_days(last_bid_date, first_seen_date, today: date) -> int:
 
 # ── Format canonicalization ─────────────────────────────────────────────
 
-CANONICAL_FORMATS = ("Display", "Video", LONG_PREROLL_FORMAT,
-                     "Interstitial", "FITO", "Centerstage", "Apple News")
+# The format taxonomy (Roger, 2026-06-12). Note "Video Preroll >30s" is
+# NOT here — it's a benchmark band layered on Video via bump_video_format
+# and carried in a separate _bench_format column, never a filter format.
+CANONICAL_FORMATS = ("Display", "Video", "Interstitial",
+                     "FITO", "Centerstage", "Apple News")
 
 _SIZE_TOKEN_RE = re.compile(r"\d{2,4}x\d{2,4}")
 

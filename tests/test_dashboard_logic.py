@@ -410,8 +410,9 @@ def test_canonicalize_alias_wins_and_folds_rule_results():
     assert c("banner", {"Banner": "Video"}) == "Video"
     # alias re-applies once to the rule result — re-route a whole bucket
     assert c("Centerstage", {"Centerstage": "Display"}) == "Display"
-    # bump output is canonical and untouched
-    assert c("Video Preroll >30s", ALIASES) == "Video Preroll >30s"
+    # the benchmark band is NOT a format — re-canonicalizing it yields
+    # the plain Video format (the band lives only on _bench_format)
+    assert c("Video Preroll >30s", ALIASES) == "Video"
 
 
 # ── derive_format ──────────────────────────────────────────────────────────
