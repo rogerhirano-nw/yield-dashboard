@@ -8,24 +8,30 @@ name: Daily data health check
 # Must run AFTER the daily refresh sweep, which fires at 09:00 UTC
 # (= 05:00 ET, cron-job.org → refresh.yml).
 #
-# Triggered by cron-job.org via workflow_dispatch, same pattern as
-# refresh.yml — two daily jobs:
-#   09:45 UTC  morning verdict (45 min behind the sweep; catches and
-#              remediates a failed sweep while the morning is young)
-#   13:45 UTC  follow-up retry ~4h later; quiet when green-with-nothing-
-#              to-do (run-history gate in health_check.py)
-# The punctual schedules were moved OFF GitHub-native cron: it drifts
-# hours late (observed 6-8h), delaying detection + remediation by the
-# same amount, and GitHub auto-disables it after 60 days of repo
-# inactivity.
+# Trigger of record: launchd on Roger's Mac
+# (~/Library/LaunchAgents/com.newsweek.yield-health-check.plist, same
+# host as the Confiant jobs) dispatching via the locally-authenticated
+# gh CLI — no tokens stored anywhere new. Two fires daily, pinned to ET
+# like the sweep itself:
+#   05:45 ET  morning verdict (45 min behind the sweep; catches and
+#             remediates a failed sweep while the morning is young)
+#   09:45 ET  follow-up retry ~4h later; quiet when green-with-nothing-
+#             to-do (run-history gate in health_check.py)
+# Plus RunAtLoad: a boot after a missed fire still dispatches (redundant
+# fires are silenced by the run-history gate, so they're free). The
+# punctual schedules were moved OFF GitHub-native cron: it drifts hours
+# late (observed 6-8h), delaying detection + remediation by the same
+# amount, and GitHub auto-disables it after 60 days of repo inactivity.
+# cron-job.org (workflow_dispatch + PAT, like refresh.yml) remains a
+# fine alternative if the Mac dependency ever becomes a problem.
 #
 # The single `schedule:` below is a DEAD-MAN FALLBACK, not a trigger of
-# record: if cron-job.org fired today, an earlier run already sent the
-# verdict and this run stays quiet (run-history gate). If cron-job.org
-# silently broke — job deleted, PAT expired — this becomes the first run
-# of the day and the verdict still goes out (late, which is the tell).
-# Without it, a dead external trigger would mean zero runs and zero
-# emails, and silence reads as "all good".
+# record: if launchd fired today, an earlier run already sent the
+# verdict and this run stays quiet (run-history gate). If the Mac is off
+# all day or gh auth breaks, this becomes the first run of the day and
+# the verdict still goes out (late, which is the tell). Without it, a
+# dead trigger would mean zero runs and zero emails, and silence reads
+# as "all good".
 #
 # Manual ad-hoc:  gh workflow run health_check.yml
 
