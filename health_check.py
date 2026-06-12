@@ -48,8 +48,8 @@ Optional:
     HEALTH_DIGEST_ONLY_FAILURES  "1"/"true" → send only failures and
                                  remediation outcomes; quiet green runs send
                                  nothing (default: send the ✅ daily too).
-                                 The 17:45 UTC follow-up schedule sets this
-                                 automatically so a clean afternoon re-check
+                                 The 13:45 UTC follow-up schedule sets this
+                                 automatically so a clean follow-up re-check
                                  doesn't email a second ✅.
     HEALTH_AUTO_REMEDIATE        default "1"; "0" disables the sweep re-run
     GITHUB_TOKEN / GITHUB_REPOSITORY  for the sweep-liveness check and the
@@ -158,6 +158,21 @@ def _check_dv_join_rate(conn, table: str) -> CheckResult:
     )
 
 
+# The sweep fires at 09:00 UTC and lands within ~15 min; give it slack.
+SWEEP_LANDS_BY = timedelta(hours=9, minutes=30)
+
+
+def _data_day(now: datetime) -> date:
+    """The day whose D-1 data the cache should currently hold.
+
+    Rolls over at 09:30 UTC — after the 09:00 sweep lands — instead of
+    midnight. Between 00:00 UTC and the sweep, yesterday's pull is the
+    freshest data that can exist; baselining on the calendar date there
+    would fail every date-capped table and trigger a pointless
+    remediation sweep."""
+    return (now - SWEEP_LANDS_BY).date()
+
+
 def _eval_freshness(name: str, observed: date | None, max_age_days: int,
                     today: date) -> CheckResult:
     """Pure comparison — split from the query so it's unit-testable."""
@@ -179,7 +194,7 @@ def _check_freshness(conn, name: str, table: str, col: str,
         f"SELECT max({col}::date) FROM {table}"
     )).scalar()
     return _eval_freshness(name, observed, max_age_days,
-                           datetime.now(timezone.utc).date())
+                           _data_day(datetime.now(timezone.utc)))
 
 
 def _check_pulled_at(conn, name: str, table: str, col: str,
@@ -314,7 +329,22 @@ def run_checks() -> list[CheckResult]:
 
     engine = sqlalchemy.create_engine(
         os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_recycle=300,
+        connect_args={"connect_timeout": 10},
     )
+    # Retry the initial connect — a transient pooler blip would otherwise
+    # error every SQL check at once and email a false ❌ (the same failure
+    # mode that killed the gam sweep job on 2026-06-11). After the retry
+    # budget, fall through and let the per-check guard report it.
+    for _attempt in range(3):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            break
+        except sqlalchemy.exc.OperationalError as exc:
+            if _attempt == 2:
+                break
+            logger.warning("DB connect failed (attempt %d/3): %s — retrying", _attempt + 1, exc)
+            time.sleep(15 * (_attempt + 1))
     with engine.connect() as conn:
         for table in ("dv_attention", "dv_ivt"):
             _guard(f"{table} id format", lambda t=table: _check_dv_id_format(conn, t))

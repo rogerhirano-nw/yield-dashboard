@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -73,6 +74,31 @@ def _run_with_alert(mode_label: str, callables: list) -> int:
 _ENGINE: sqlalchemy.Engine | None = None
 
 
+def _probe_connect_with_retry(engine: sqlalchemy.Engine,
+                              attempts: int = 4, base_sleep: int = 10) -> None:
+    """Probe DB connectivity, retrying transient pooler failures.
+
+    All six sweep jobs open connections at 09:00 UTC sharp, and the Supabase
+    pooler occasionally times out an initial connect under that stampede
+    (2026-06-11: both pooler IPs returned 'timeout expired' and the gam job
+    died in 53s). pool_pre_ping only revalidates already-established
+    connections — the first connect needs its own retry."""
+    for attempt in range(1, attempts + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return
+        except sqlalchemy.exc.OperationalError as exc:
+            if attempt == attempts:
+                raise
+            sleep_s = base_sleep * attempt
+            logger.warning(
+                "DB connect failed (attempt %d/%d): %s — retrying in %ds",
+                attempt, attempts, exc, sleep_s,
+            )
+            time.sleep(sleep_s)
+
+
 def _engine() -> sqlalchemy.Engine:
     global _ENGINE
     if _ENGINE is None:
@@ -95,6 +121,7 @@ def _engine() -> sqlalchemy.Engine:
                 "options": "-c statement_timeout=120000",
             },
         )
+        _probe_connect_with_retry(_ENGINE)
     return _ENGINE
 
 
