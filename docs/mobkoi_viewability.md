@@ -237,3 +237,14 @@ Takeaways:
 3. **Never sell/convert these LIs to vCPM** (viewable-impression goals) —
    GAM would bill ~nothing and delivery logic would crater. They are plain
    CPM today; keep it that way until AV measures the real unit.
+
+## Daily monitor log (temporary, through ~2026-06-16)
+
+The diagnose workflow runs on a daily cron (06:30/10:30 UTC) and posts the
+per-creative AV split for the three mirrored LIs to the open monitor PR.
+Findings get appended here; remove this section and the workflow's
+`schedule:` block once the flights wrap.
+
+- 2026-06-12: mirror live on all three creatives; Invesco control retired.
+  First evidence: ~34% viewable on the first ~240 mirrored impressions
+  (2–4am UK) vs 0.47% for the untouched tag.
