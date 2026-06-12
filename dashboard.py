@@ -1912,6 +1912,12 @@ if st.session_state.active_view == "pubmatic":
         if "publisher_deal_id" not in pm_df.columns:
             pm_df["publisher_deal_id"] = None
         pm_df["deal_label"] = pm_df["deal"].fillna(pm_df["publisher_deal_id"]).fillna(pm_df["deal_meta_id"].astype(str))
+        if "ad_format" in pm_df.columns:
+            # One canonical bucket per format ("Banner"→Display,
+            # "In-stream video"→Video) so the filter doesn't show two
+            # names for the same thing. User format_aliases win.
+            pm_df["ad_format"] = pm_df["ad_format"].map(
+                lambda f: dl.canonicalize_format(f, _cfg.get("format_aliases") or {}))
 
         dmin, dmax = pm_df["date"].min(), pm_df["date"].max()
         start, end = date_filter("pubmatic", dmin, dmax)
@@ -2556,6 +2562,18 @@ if st.session_state.active_view == "campaigns":
         for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae", "team"):
             if _col in gam_df.columns:
                 gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
+
+        # Collapse the raw format zoo — GAM inventory names ("Banner",
+        # "In-stream video"), name-token variants (FITO-Video,
+        # Contextual-PreRoll, Backfill-970x250…), and junk tokens from
+        # non-convention names — into one canonical bucket per thing, so
+        # the Format filter stops showing fifty spellings. User
+        # format_aliases win; unrecognized values become NA (out of the
+        # filter; benchmark fallbacks unchanged). Must run BEFORE the
+        # >30s bump, which expects the canonical "Video".
+        _format_aliases = _cfg.get("format_aliases") or {}
+        gam_df["ad_format"] = gam_df["ad_format"].map(
+            lambda f: dl.canonicalize_format(f, _format_aliases))
 
         # Recategorize ad_format → "Video Preroll >30s" when the line item's
         # longest video creative exceeds 30 seconds (duration sourced into
@@ -5245,8 +5263,12 @@ if st.session_state.active_view == "campaigns":
         combined_pmp["DSP"] = combined_pmp["DSP"].replace(_dsp_aliases)
 
     _format_aliases = _cfg.get("format_aliases", {})
-    if _format_aliases and "Format" in combined_pmp.columns:
-        combined_pmp["Format"] = combined_pmp["Format"].replace(_format_aliases)
+    if "Format" in combined_pmp.columns:
+        # Canonicalize (aliases + family rules) rather than alias-replace
+        # only — keeps the PMP Format filter on the same one-name-per-thing
+        # buckets as the Direct tab.
+        combined_pmp["Format"] = combined_pmp["Format"].map(
+            lambda f: dl.canonicalize_format(f, _format_aliases))
 
     _deal_source_aliases = _cfg.get("deal_source_aliases", {})
     if _deal_source_aliases and "Deal Source" in combined_pmp.columns:
@@ -6469,8 +6491,11 @@ if st.session_state.active_view == "configure":
                                    .apply(_li_format_part)
                                    .fillna("").astype("string"))
                 _aliases = _s.get("format_aliases") or {}
-                if _aliases:
-                    _fmt_series = _fmt_series.replace(_aliases)
+                # Mirror the runtime pipeline: canonicalize (aliases +
+                # family rules), not alias-replace only.
+                _fmt_series = (_fmt_series
+                               .map(lambda f: dl.canonicalize_format(f, _aliases))
+                               .fillna("").astype("string"))
                 # Recategorize >30s preroll using the pre-aggregated SQL
                 # GROUP BY (same data as the campaigns view, same cache).
                 try:

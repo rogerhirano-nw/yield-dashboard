@@ -375,3 +375,74 @@ def idle_days(last_bid_date, first_seen_date, today: date) -> int:
             except ValueError:
                 pass
     return 0
+
+
+# ── Format canonicalization ─────────────────────────────────────────────
+
+CANONICAL_FORMATS = ("Display", "Video", LONG_PREROLL_FORMAT,
+                     "Native", "Multi", "Interstitial")
+
+_SIZE_TOKEN_RE = re.compile(r"\d{2,4}x\d{2,4}")
+
+
+def canonicalize_format(raw, aliases=None):
+    """Collapse the ad-format zoo into one canonical bucket per thing.
+
+    The Direct tab's format column mixes GAM's INVENTORY_FORMAT_NAME
+    strings ("Banner", "In-stream video") with the freeform position-10
+    token of line-item names (FITO-Video, Contextual-PreRoll,
+    Backfill-970x250…) and, for names that don't follow the 14-field
+    convention, outright junk (initials, prices, geos). Resolution order:
+
+      1. user format_aliases (settings) — matched case-insensitively on
+         the raw value, and re-applied once to the rule result so an
+         alias like "Multi" → "Display" also folds rule-derived Multi
+      2. canonical names pass through (case-normalized)
+      3. family rules for the known variants
+      4. anything else → None: junk tokens are not formats. None keeps
+         them out of the Format filter, and their rows grade on the
+         default benchmark fallbacks exactly as unrecognized strings
+         did before.
+
+    A new legitimate format will surface as None until it gets a rule
+    here or a settings alias — the Settings page's unmapped-formats
+    panel is where to spot one."""
+    alias_map = {str(k).strip().lower(): v for k, v in (aliases or {}).items()}
+
+    def _alias(value):
+        return alias_map.get(str(value).strip().lower(), value)
+
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    s = _alias(raw.strip())
+    if not isinstance(s, str) or not s.strip():
+        return None
+    low = s.strip().lower()
+
+    canon_by_low = {c.lower(): c for c in CANONICAL_FORMATS}
+    if low in canon_by_low:
+        result = canon_by_low[low]
+    elif "interstitial" in low:
+        result = "Interstitial"
+    elif "native" in low:
+        result = "Native"
+    elif ("preroll" in low or "pre-roll" in low
+          or "in-stream" in low or "video" in low):
+        result = "Video"
+    elif ("display" in low or "banner" in low
+          or "interscroller" in low or "uniscroller" in low
+          or "centerstage" in low or low.startswith("backfill")
+          or _SIZE_TOKEN_RE.search(low)):
+        # Interscroller/Uniscroller/Centerstage are high-impact display
+        # units; size-named lines (Backfill-970x250, Direct-300x600) are
+        # display placements named by slot.
+        result = "Display"
+    elif "article" in low or "insight" in low or "apple-news" in low:
+        # Branded-content promo lines (Multi-Branded-Article*, Homepage-
+        # Insight, AV-Apple-News) — the convention's multi-format bucket.
+        result = "Multi"
+    else:
+        return None
+
+    final = _alias(result)
+    return final if isinstance(final, str) and final.strip() else None
