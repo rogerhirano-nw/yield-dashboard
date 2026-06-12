@@ -47,8 +47,16 @@
   --text-secondary: #b8b3a3;
   --text-muted:     #8a8579;
 
-  /* ---- STATE — severity scale (data plane only) ---- */
+  /* ---- STATE — severity scale (data plane only) ----
+     Asymmetric loudness (the green-overwhelm rule, 2026-05-25, re-tuned
+     2026-06-12): saturated --state-positive is reserved for green-as-a-
+     signal (status pills, enabled badges — rare, small). High-frequency
+     "fine/improving" elements — per-cell ▲ deltas, in-range values,
+     progress bars, all-clear banners — read from --state-positive-muted
+     so healthy recedes and amber/red exceptions own the page. */
   --state-positive: #5fce82;  --state-positive-surface: rgba(95,206,130,.13);
+  --state-positive-muted: #7da585;
+  --state-positive-muted-surface: rgba(95,206,130,.07);
   --state-warning:  #f6c344;  --state-warning-surface:  rgba(246,195,68,.13);
   --state-critical: #ec4a3a;  --state-critical-surface: rgba(236,74,58,.13);
 
@@ -269,8 +277,10 @@ h1, .stMarkdown h1 {
 .nw-banner.sev-red    .nw-banner-head { color: var(--state-critical); }
 .nw-banner.sev-amber  { background: var(--state-warning-surface);  border-left-color: var(--state-warning); }
 .nw-banner.sev-amber  .nw-banner-head { color: var(--state-warning); }
-.nw-banner.sev-ok     { background: var(--state-positive-surface); border-left-color: var(--state-positive); }
-.nw-banner.sev-ok     .nw-banner-head { color: var(--state-positive); }
+/* All-clear banners whisper: quieter tint + muted green (the old design
+   ran OK banners at 6% tint vs red's 10% for the same reason). */
+.nw-banner.sev-ok     { background: var(--state-positive-muted-surface); border-left-color: var(--state-positive-muted); }
+.nw-banner.sev-ok     .nw-banner-head { color: var(--state-positive-muted); }
 
 /* ============================================================
    5) KPI TILES — serif figure, top 2px rule, eyebrow label
@@ -297,7 +307,7 @@ h1, .stMarkdown h1 {
 .kpi-spark polyline, .nw-sm-panel svg polyline { stroke: var(--text-secondary); }
 .kpi-spark circle,   .nw-sm-panel svg circle   { fill: var(--text-secondary); }
 .kpi-target{ font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
-.kpi-delta-up    { color: var(--state-positive); }
+.kpi-delta-up    { color: var(--state-positive-muted); }
 .kpi-delta-down  { color: var(--state-critical); }
 .kpi-delta-amber { color: var(--state-warning); }
 .kpi-delta-flat  { color: var(--text-muted); }
@@ -352,30 +362,31 @@ h1, .stMarkdown h1 {
    width, so they right-align cleanly under a grid cell with `text-align:
    right` — same behavior as .pill.
 
-   In-range values render as plain state-colored text (no tint), so a
-   healthy page stays quiet and the eye is pulled only to the amber/red
-   banded exceptions — the green-overwhelm fix (2026-05-25) carried into
-   the token system. */
-.txt-green   { display: inline-block; color: var(--state-positive); font-weight: 500; font-size: 13px; }
+   In-range values render as plain MUTED green text (no tint, low
+   saturation), so a healthy page stays quiet and the eye is pulled only
+   to the amber/red banded exceptions — the green-overwhelm fix
+   (2026-05-25) carried into the token system. */
+.txt-green   { display: inline-block; color: var(--state-positive-muted); font-weight: 500; font-size: 13px; }
 .txt-amber   { display: inline-block; color: var(--state-warning);  font-weight: 500; font-size: 13px; }
 .txt-red     { display: inline-block; color: var(--state-critical); font-weight: 500; font-size: 13px; }
 /* Delta-row palette: critical (default, "worsening") + warning stay loud;
-   positive "up" (improving) is plain text so it doesn't compete with the
-   warning colors for attention. */
+   positive "up" (improving) is muted gray-green — these render under
+   nearly every cell on a healthy page, so they must recede. */
 .pace-delta  { font-size: 11px; margin-top: 4px; color: var(--state-critical); }
-.pace-delta.up { color: var(--state-positive); }
+.pace-delta.up { color: var(--state-positive-muted); }
 .pace-delta.amber { color: var(--state-warning); }
 /* Progress cell: bar + inline % label. Wrapper puts them side-by-side
    with a small gap so the number sits flush right of the bar without
-   wrapping. Bar fill stays state-positive (single hue — the pace pill
-   already communicates the band; coloring the bar too would repeat it). */
+   wrapping. Bar fill is MUTED green (single hue — the pace pill already
+   communicates the band; a column of saturated bars was a major
+   green-overwhelm contributor). */
 .nw-prog-wrap { display: flex; align-items: center; gap: 8px; }
 .nw-prog-bar  { flex: 1; height: 8px; background: var(--surface-2);
                 border-radius: 4px; overflow: hidden; min-width: 40px; }
 .nw-prog-fill { height: 100%; border-radius: 4px; }
 .prog-red   { background: var(--state-critical); }
 .prog-amber { background: var(--state-warning); }
-.prog-green { background: var(--state-positive); }
+.prog-green { background: var(--state-positive-muted); }
 .seller-prog { font-style: italic; color: var(--text-muted); }
 .cell-dash { display: inline-block; color: var(--text-muted); }
 /* Per-column alignment override — used for VCR right now (centered
@@ -519,10 +530,10 @@ h1, .stMarkdown h1 {
 }
 .nw-status-banner.sev-amber strong { color: var(--state-warning); }
 .nw-status-banner.sev-ok {
-  background: var(--state-positive-surface);
-  border-left-color: var(--state-positive);
+  background: var(--state-positive-muted-surface);
+  border-left-color: var(--state-positive-muted);
 }
-.nw-status-banner.sev-ok strong { color: var(--state-positive); }
+.nw-status-banner.sev-ok strong { color: var(--state-positive-muted); }
 /* Drawer 7-day delivery chart panel. */
 .nw-drawer-chart {
   margin-top: 12px; padding: 8px 12px 10px;
@@ -641,10 +652,11 @@ h1, .stMarkdown h1 {
 .pill-dt-pd  { background: var(--viz-1-surface); color: var(--viz-1); }
 .pill-dt-pa  { background: var(--surface-2); color: var(--text-secondary); }
 .pill-dt-pmp { background: var(--viz-3-surface); color: var(--viz-3); }
-/* eCPM threshold colors — under floor warning band, well above positive. */
+/* eCPM threshold colors — under floor warning band, well above muted
+   positive (clearing well is the normal case; it must not glow). */
 .ecpm-under { background: var(--state-warning-surface); color: var(--state-warning);
               padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
-.ecpm-over  { color: var(--state-positive); font-weight: 600; }
+.ecpm-over  { color: var(--state-positive-muted); font-weight: 600; }
 /* PMP table — same grid pattern as Direct but different column proportions. */
 .nw-pmp-rows .nw-row-header,
 .nw-pmp-rows .nw-pmp-row {

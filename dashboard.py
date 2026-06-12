@@ -76,6 +76,11 @@ import dashboard_logic as dl
 # constant here — nothing Python-rendered may use it. Severity uses NW_STATE_*.
 NW_VIZ = ["#6b80f0", "#3fd7dd", "#9a6df0", "#ff7aae", "#ffd500", "#aef24a"]
 NW_STATE_POSITIVE = "#5fce82"
+# Muted gray-green for high-frequency "fine/improving" signals (per-cell
+# deltas, on-track chart lines, gaining rows): healthy recedes, exceptions
+# pop. Saturated NW_STATE_POSITIVE is reserved for green-as-a-signal
+# (status pills). The green-overwhelm rule — see CLAUDE.md brand section.
+NW_STATE_POSITIVE_MUTED = "#7da585"
 NW_STATE_WARNING  = "#f6c344"
 NW_STATE_CRITICAL = "#ec4a3a"
 NW_TEXT_SECONDARY = "#b8b3a3"
@@ -3537,9 +3542,9 @@ if st.session_state.active_view == "campaigns":
                 avg = sum(non_null) / len(non_null) if non_null else 0
                 if expected and expected > 0:
                     ratio = avg / expected
-                    stroke = NW_STATE_POSITIVE if ratio >= 0.9 else NW_STATE_WARNING
+                    stroke = NW_STATE_POSITIVE_MUTED if ratio >= 0.9 else NW_STATE_WARNING
                 else:
-                    stroke = NW_STATE_POSITIVE
+                    stroke = NW_STATE_POSITIVE_MUTED
                 # Expected reference line — clip to chart top if above vmax.
                 exp_line = ""
                 if expected and expected > 0:
@@ -3953,7 +3958,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="nw-legend">'
                 '<span><span class="nw-legend-dot" style="background:var(--state-critical)"></span>under</span>'
                 '<span><span class="nw-legend-dot" style="background:var(--state-warning)"></span>off-target</span>'
-                '<span><span class="nw-legend-dot" style="background:var(--state-positive)"></span>healthy</span>'
+                '<span><span class="nw-legend-dot" style="background:var(--state-positive-muted)"></span>healthy</span>'
                 '<span>— = N/A</span>'
                 '</div>'
                 '</div>'
@@ -4002,7 +4007,7 @@ if st.session_state.active_view == "campaigns":
             _sign = "+" if _dlt > 0 else ""
             _dlt_s = f"{_sign}${abs(_dlt):,.0f}" if abs(_dlt) >= 0.5 else "—"
             _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
-            _clr   = (NW_STATE_POSITIVE if _dlt > 0
+            _clr   = (NW_STATE_POSITIVE_MUTED if _dlt > 0
                       else (NW_STATE_CRITICAL if _dlt < -0.5 else NW_TEXT_MUTED))
             rows.append(
                 f'<div class="sp-row">'
@@ -6329,7 +6334,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 '<div class="cfg-helper" style="font-size:12px;color:var(--text-secondary);'
                 'margin:-4px 0 6px 0">'
-                'Color bands: cell is <span style="color:var(--state-positive)">green</span> ≥ target, '
+                'Color bands: cell is <span style="color:var(--state-positive-muted)">green</span> ≥ target, '
                 '<span style="color:var(--state-warning)">amber</span> between target and red threshold, '
                 '<span style="color:var(--state-critical)">red</span> below threshold. '
                 'Leave “red &lt;” blank to default to 85% of target.'

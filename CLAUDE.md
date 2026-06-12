@@ -161,8 +161,17 @@ Rules that survive any future restyle:
   the same reason — Streamlit paints buttons/focus/checkboxes with it.)
 - **Severity is tint, not shout**: banded cells/pills = `--state-*-surface`
   background + saturated `--state-*` text; in-range values stay plain
-  colored text (the green-overwhelm fix, preserved). Thresholds/banding
-  logic untouched — lives in `dashboard_logic.py`.
+  colored text. Thresholds/banding logic untouched — lives in
+  `dashboard_logic.py`.
+- **Green is asymmetric** (the green-overwhelm rule, 2026-05-25; re-tuned
+  into the tokens 2026-06-12 after the first deploy glowed green):
+  high-frequency "fine/improving" signals — per-cell ▲ deltas, in-range
+  pace/eCPM text, progress bars, all-clear banners, on-track chart
+  lines, gaining momentum rows — use `--state-positive-muted`
+  (`#7da585`, + `NW_STATE_POSITIVE_MUTED`); all-clear banner tint runs
+  quieter than red/amber (.07 vs .13). Saturated `--state-positive` is
+  reserved for green-as-a-signal: status chips/pills, enabled badges.
+  Amber/red are always loud — healthy recedes, exceptions own the page.
 - **Sparklines are neutral** (`--text-secondary`) — trend shape only;
   severity belongs to bands/banners. The drawer 7-day delivery chart is
   the one state-colored line (it *is* a pace-health signal).
