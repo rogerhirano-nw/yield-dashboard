@@ -164,8 +164,11 @@ the mirror's first ~240 impressions — the 2–4am-UK tail of report-day
 6/11 — measured **~34% viewable vs 0.47%** for the untouched tag on the
 same LI, the first AV movement this format has ever shown, so the
 mirror was rolled to the Cartier creatives (138558786242, 138558555303)
-the same morning (run 27410237495). Clean full-day read: the 6/13
-diagnose pull on all three LIs.
+the same morning (run 27410237495). **Control retired:** once the A/B was
+banked, the un-mirrored original (138557481462) was deactivated on the
+Invesco LI (run 27411814804, reversible LICA deactivation via
+`retire_mobkoi_control.yml`) — all remaining Mobkoi delivery is
+mirrored. Clean full-day read: the 6/13 diagnose pull on all three LIs.
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
