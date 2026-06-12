@@ -60,16 +60,21 @@ sweep re-runs/day — anything still failing after that needs a human, and
 the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It is
-triggered by two cron-job.org jobs (09:45 + 13:45 UTC →
-`workflow_dispatch`, same PAT pattern as `refresh.yml`) — GitHub-native
-cron drifts hours late and auto-disables after 60 days of repo
-inactivity, so it is not the trigger of record. One `schedule:` cron
-remains (18:00 UTC) as a **dead-man fallback**: quiet when an earlier
-run already sent today's verdict, but if the cron-job.org jobs silently
-die (deleted job, expired PAT) it becomes the first run of the day and
-the verdict still goes out — late, which is the tell. The script exits
-non-zero on any failing check, so the Actions run goes red and GitHub's
-failure email fires as a second signal.
+triggered by **launchd on Roger's Mac**
+(`~/Library/LaunchAgents/com.newsweek.yield-health-check.plist`, same
+host as the Confiant jobs) firing `gh workflow run health_check.yml` at
+05:45 + 09:45 ET (ET-pinned like the sweep; `RunAtLoad` catches boots
+after missed fires, and redundant fires are free thanks to the
+run-history gate). GitHub-native cron drifts hours late and
+auto-disables after 60 days of repo inactivity, so it is not the
+trigger of record; cron-job.org (`workflow_dispatch` + PAT, like
+`refresh.yml`) is the alternative if the Mac dependency becomes a
+problem. One `schedule:` cron remains (18:00 UTC) as a **dead-man
+fallback**: quiet when an earlier run already sent today's verdict, but
+if the Mac is off all day or gh auth breaks it becomes the first run of
+the day and the verdict still goes out — late, which is the tell. The
+script exits non-zero on any failing check, so the Actions run goes red
+and GitHub's failure email fires as a second signal.
 
 **Betting CPA digest is retired.** The IO1109 Spinfinite campaign was
 paused mid-flight and no longer runs (per Roger, 2026-06-10); the digest
