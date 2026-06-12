@@ -97,6 +97,47 @@ not cover `betting_conversions`.
 
 Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
 
+## Dashboard ad-format taxonomy
+**Seven canonical formats** (owner-defined by Roger, 2026-06-12; PRs
+#189–#193): **Display, Video, Interstitial, Interscroller, FITO,
+Centerstage, Apple News**. The source of truth is
+`dashboard_logic.CANONICAL_FORMATS` + `derive_format()` /
+`canonicalize_format()`, all pinned by table-driven tests in
+`tests/test_dashboard_logic.py` that assert every format value observed
+in prod into its bucket.
+
+How a line item gets its format (`derive_format`, in order):
+1. **Name keywords beat the API** — GAM's `INVENTORY_FORMAT_NAME` has no
+   vocabulary for the house formats and flattens interstitials / FITO /
+   Centerstage / Apple News / Interscroller into "Banner" (FITO video
+   into "In-stream video"). Keywords match anywhere in the line-item
+   name (precedence: fito → apple-news → centerstage →
+   interscroller/uniscroller → interstitial), which also survives
+   token-position drift (the AppleTv Cape Fear names carry their format
+   word at position 11, not the convention's 10).
+2. The API value, canonicalized — authoritative for the display/video
+   families ("Banner"→Display, "In-stream video"→Video).
+3. The position-10 name token, canonicalized.
+
+Canonicalization facts: **Uniscroller folds into Interscroller** (same
+product, two names). There are **no Native or Multi buckets** — both
+fold into Display, as do branded-article promos, size-named placements
+(Backfill-970x250…), and Homepage-Insight. Junk tokens from
+non-convention names (initials, prices, geos, "cpm") resolve to **None**
+— table-visible, absent from the Format filter, default benchmark
+fallbacks. `format_aliases` in Settings re-routes any outcome and wins
+over the rules; new legitimate formats surface in the Settings
+unmapped-formats panel until given a rule or alias.
+
+**"Video Preroll >30s" is a benchmark band, NOT a format** ("it's just
+one video"). The Format filter shows plain Video; a separate
+`_bench_format` column carries the band (duration bump >30s + manual
+`long_preroll_lines` rules) and only threshold lookups read it — so
+long-form video grades against its own VCR line (35% red, per the
+benchmarks settings; the #156 fix) while filtering as Video. Its
+thresholds live under the "Video Preroll >30s" row of the Benchmarks
+editor, which is the band's only user-facing surface.
+
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
