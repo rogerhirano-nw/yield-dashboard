@@ -57,7 +57,9 @@ client = ad_manager.AdManagerClient(
 V = "v202605"
 
 # ── config ────────────────────────────────────────────────────────────────────
-OOP2_AD_UNIT_ID = 23207098418        # /22541732127/newsweek/oop2 (out-of-page)
+# Engineering replaced oop2 with oop1 in the article ad config (2026-06-11)
+# and ships a client-rendered container, so oop1 renders at first paint.
+OOP1_AD_UNIT_ID = 23207087801        # /22541732127/newsweek/oop1 (out-of-page)
 
 ORDER_ID      = 4082002976           # Newsweek_Test-2 (same as newsletter tests)
 ADVERTISER_ID = 5131205161
@@ -118,6 +120,7 @@ _SNIPPET = """\
       label: '__LABEL__',
       logo: '__LOGO__',
       href: '%%CLICK_URL_UNESC%%%%DEST_URL%%',
+      viewUrl: '',  /* agency DCM viewable-impression tracker, when provided */
       css: __CSS__
     };
     /* Runs in the PARENT document so hydration destroying this creative
@@ -127,6 +130,39 @@ _SNIPPET = """\
        Re-injects whenever a re-render removes it; self-stops after ~2 min. */
     function watcher(cfg) {
       var d = document;
+      /* MRC display viewability: >=50% in view for 1 continuous second.
+         Fires once per pageview: dataLayer event + cfg.viewUrl tracker. */
+      function armViewability(el) {
+        try {
+          var timer = null;
+          var io = new IntersectionObserver(function (entries) {
+            var e = entries[entries.length - 1];
+            if (e.intersectionRatio >= 0.5) {
+              if (!timer) timer = setTimeout(function () {
+                io.disconnect();
+                if (window.__nwSponsorViewable) return;
+                window.__nwSponsorViewable = 1;
+                try {
+                  (window.dataLayer = window.dataLayer || []).push(
+                    {event: 'nw_sponsor_logo_viewable', placement: 'breadcrumb'});
+                } catch (x) {}
+                if (cfg.viewUrl) {
+                  var im = d.createElement('img');
+                  im.src = cfg.viewUrl;
+                  im.style.display = 'none';
+                  im.width = im.height = 1;
+                  d.body.appendChild(im);
+                }
+                var m = d.createElement('span');
+                m.id = 'nw-sponsor-logo-viewed';
+                m.style.display = 'none';
+                d.body.appendChild(m);
+              }, 1000);
+            } else if (timer) { clearTimeout(timer); timer = null; }
+          }, {threshold: [0, 0.5, 1]});
+          io.observe(el);
+        } catch (e) {}
+      }
       function ensure() {
         try {
           if (d.getElementById('nw-sponsor-logo')) return;
@@ -157,6 +193,7 @@ _SNIPPET = """\
             var sr = a.getBoundingClientRect();
             if (kr && kr.right > sr.left - 12) { a.className = 'sl-bc sl-wrap'; }
           }
+          armViewability(a);
         } catch (e) {}
       }
       ensure();
@@ -209,9 +246,9 @@ li = existing_li()
 cr = existing_creative(CR_NAME)
 
 print("=" * 70)
-print(f"ARTICLE SPONSOR LOGO SETUP — oop2  ({'DRY RUN' if DRY_RUN else 'APPLY'})")
+print(f"ARTICLE SPONSOR LOGO SETUP — oop1  ({'DRY RUN' if DRY_RUN else 'APPLY'})")
 print("=" * 70)
-print(f"Ad unit:   oop2 (existing, id={OOP2_AD_UNIT_ID}) — no inventory changes")
+print(f"Ad unit:   oop1 (existing, id={OOP1_AD_UNIT_ID}) — no inventory changes")
 print(f"Line item: {LI_NAME!r} on order {ORDER_ID}"
       + (f"  [exists: id={li['id']}]" if li else "  [will create]"))
 print(f"Creative:  {CR_NAME!r} (out-of-page injection, SafeFrame off)"
@@ -252,7 +289,7 @@ if li is None:
         "targeting": {
             "inventoryTargeting": {
                 "targetedAdUnits": [
-                    {"adUnitId": OOP2_AD_UNIT_ID, "includeDescendants": True}
+                    {"adUnitId": OOP1_AD_UNIT_ID, "includeDescendants": True}
                 ]
             }
         },
