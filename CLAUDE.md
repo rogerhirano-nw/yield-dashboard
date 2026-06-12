@@ -91,11 +91,14 @@ Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pa
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
 **`st.cache_data` survives code-only deploys.** Table loads (`load()`,
-`_load_li_max_duration()`) cache for 6h keyed on function source — a push
-that doesn't change those functions hot-reloads the script but keeps the
-old cached frames. So after fixing data out-of-band (direct SQL against
-prod), the dashboard keeps rendering stale frames until TTL expiry; clear
-via the app menu (⋮ → Clear cache) or save Settings (which calls
+`_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (1h — was 6h
+until 2026-06-12; the 6h guarded the Free plan's 5 GB egress cap and the
+Nano disk-IO budget, neither of which binds on Pro + Micro compute),
+keyed on function source — a push that doesn't change those functions
+hot-reloads the script but keeps the old cached frames. So after fixing
+data out-of-band (direct SQL against prod), the dashboard keeps
+rendering stale frames until TTL expiry; clear via the app menu
+(⋮ → Clear cache) or save Settings (which calls
 `st.cache_data.clear()`). This bit us on 2026-06-10 after the DV
 `line_item_id` backfill.
 
