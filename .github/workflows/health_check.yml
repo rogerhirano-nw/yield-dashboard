@@ -6,12 +6,26 @@ name: Daily data health check
 # to know whether the morning sweep landed cleanly. See health_check.py.
 #
 # Must run AFTER the daily refresh sweep, which fires at 09:00 UTC
-# (= 05:00 ET, cron-job.org → refresh.yml). Preferred trigger is
-# cron-job.org via workflow_dispatch at 09:45 UTC, same pattern as
-# refresh.yml. The `schedule:` below is a fallback so the check runs even
-# before that external trigger is set up — GitHub-native cron drifts
-# (often hours late), which only delays the email.
-# Once the cron-job.org trigger exists, delete the `schedule:` block.
+# (= 05:00 ET, cron-job.org → refresh.yml).
+#
+# Triggered by cron-job.org via workflow_dispatch, same pattern as
+# refresh.yml — two daily jobs:
+#   09:45 UTC  morning verdict (45 min behind the sweep; catches and
+#              remediates a failed sweep while the morning is young)
+#   13:45 UTC  follow-up retry ~4h later; quiet when green-with-nothing-
+#              to-do (run-history gate in health_check.py)
+# The punctual schedules were moved OFF GitHub-native cron: it drifts
+# hours late (observed 6-8h), delaying detection + remediation by the
+# same amount, and GitHub auto-disables it after 60 days of repo
+# inactivity.
+#
+# The single `schedule:` below is a DEAD-MAN FALLBACK, not a trigger of
+# record: if cron-job.org fired today, an earlier run already sent the
+# verdict and this run stays quiet (run-history gate). If cron-job.org
+# silently broke — job deleted, PAT expired — this becomes the first run
+# of the day and the verdict still goes out (late, which is the tell).
+# Without it, a dead external trigger would mean zero runs and zero
+# emails, and silence reads as "all good".
 #
 # Manual ad-hoc:  gh workflow run health_check.yml
 
@@ -29,15 +43,7 @@ on:
         type: boolean
         default: true
   schedule:
-    # Morning verdict, 45 min behind the 09:00 UTC sweep — close enough to
-    # catch and remediate a failed sweep while the morning is young. (The
-    # original 13:45 slot assumed a 13:00 UTC sweep and would have left
-    # failures sitting ~5h — see the 2026-06-11 pooler-timeout incident.)
-    - cron: "45 9 * * *"
-    # Follow-up ~4h later: if the morning remediation didn't stick (provider
-    # outage still ongoing), this retries the sweep once more. Quiet when
-    # green-with-nothing-to-do — see the "Quiet green follow-up" step.
-    - cron: "45 13 * * *"
+    - cron: "0 18 * * *"   # dead-man fallback — see header comment
 
 permissions:
   contents: read
