@@ -453,18 +453,9 @@ _cfg = _load_settings()
 _ssp_enabled: dict[str, bool] = {s["name"]: s.get("enabled", True) for s in _cfg["ssps"]}
 
 
-def _parse_gam_salesperson(val):
-    """Extract the short name from GAM's User.display_name.
-
-    GAM returns values like "Newsweek - Sales - Theresa Hern" or
-    "Newsweek - Sales- Jeremy Makin (jmakin@newsweek.com)" — strip the
-    "Newsweek - Sales[-] " prefix and any trailing email parenthetical.
-    Returns None for empty / non-string inputs.
-    """
-    if not isinstance(val, str) or not val.strip():
-        return None
-    m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
-    return m.group(1).strip() if m else val.strip()
+# Salesperson short-name parsing lives in dashboard_logic (tested); this
+# alias keeps the historical name used across both table views.
+_parse_gam_salesperson = dl.parse_gam_salesperson
 
 
 def _attention_html(idx, prior=None) -> str:
@@ -2524,34 +2515,27 @@ if st.session_state.active_view == "campaigns":
 
         # Normalize salesperson in place so "Seller" shows short name regardless of
         # which column the settings point to (salesperson or seller_ae).
-        # _parse_gam_salesperson is defined at module level.
-        _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+        # Name-token parsing lives in dashboard_logic (tested).
         if "salesperson" in gam_df.columns:
-            gam_df["salesperson"] = gam_df["salesperson"].apply(_parse_gam_salesperson)
+            gam_df["salesperson"] = gam_df["salesperson"].apply(dl.parse_gam_salesperson)
 
         _parsed_sp = gam_df["salesperson"] if "salesperson" in gam_df.columns else pd.Series(dtype=str)
         _null_mask = _parsed_sp.isna()
 
         _regex_seller = (
-            gam_df["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+            gam_df["order_name"].str.extract(dl.AE_TOKEN_RE, expand=False).map(AE_NAMES)
         )
         _li_seller = (
-            gam_df["line_item_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
+            gam_df["line_item_name"].str.extract(dl.AE_TOKEN_RE, expand=False).map(AE_NAMES)
         )
         gam_df["seller_ae"] = _parsed_sp.where(~_null_mask, _regex_seller.fillna(_li_seller))
 
-        # Extract advertiser (index 7) and campaign (index 8) from line item name
-        def _li_part(name, idx):
-            if not isinstance(name, str):
-                return None
-            parts = name.split("_")
-            return parts[idx].strip() if len(parts) > idx else None
-
+        # Extract advertiser (index 7) and campaign (index 8) from line item name.
         # Replace hyphens with spaces so the displayed Advertiser / Campaign
         # columns read as "Ford Motor Company" / "Always On" rather than the
         # hyphenated token form used inside the line-item-name convention.
-        gam_df["advertiser"]    = gam_df["line_item_name"].apply(_li_part, idx=7).str.replace("-", " ", regex=False)
-        gam_df["campaign_name"] = gam_df["line_item_name"].apply(_li_part, idx=8).str.replace("-", " ", regex=False)
+        gam_df["advertiser"]    = gam_df["line_item_name"].apply(dl.li_part, idx=7).str.replace("-", " ", regex=False)
+        gam_df["campaign_name"] = gam_df["line_item_name"].apply(dl.li_part, idx=8).str.replace("-", " ", regex=False)
         # Prefer GAM's canonical INVENTORY_FORMAT_NAME (now pulled in
         # run_delivery_report). Falls back to the position-10 token of
         # line_item_name only when the API didn't return a format —
@@ -2559,14 +2543,14 @@ if st.session_state.active_view == "campaigns":
         if "inventory_format_name" in gam_df.columns:
             _from_api = gam_df["inventory_format_name"].astype("string").str.strip()
             _from_api = _from_api.replace({"": pd.NA})
-            _from_name = gam_df["line_item_name"].apply(_li_part, idx=10)
+            _from_name = gam_df["line_item_name"].apply(dl.li_part, idx=10)
             gam_df["ad_format"] = _from_api.fillna(pd.Series(_from_name, index=gam_df.index))
         else:
-            gam_df["ad_format"] = gam_df["line_item_name"].apply(_li_part, idx=10)
+            gam_df["ad_format"] = gam_df["line_item_name"].apply(dl.li_part, idx=10)
         _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
         gam_df["team"] = (
             gam_df["line_item_name"]
-            .str.extract(r"_Team-(USA|INTL)_", expand=False)
+            .str.extract(dl.TEAM_TOKEN_RE, expand=False)
             .map(_team_map)
         )
         for _col in ("advertiser", "campaign_name", "ad_format", "seller_ae", "team"):
@@ -3337,30 +3321,15 @@ if st.session_state.active_view == "campaigns":
             # Prior-day pacing — re-compute from lifetime minus 1d-impressions over a
             # goal pro-rated to one day earlier. No new refresh data needed for this.
             def _prior_pacing(row):
-                try:
-                    goal = row.get("impressions_goal")
-                    lifetime = row.get("lifetime_impressions_delivered")
-                    imp_1d = row.get("impressions_1d")
-                    if not (goal and goal > 0 and pd.notna(lifetime) and pd.notna(imp_1d)):
-                        return None
-                    raw_start = pd.to_datetime(row.get("start_date"))
-                    raw_end   = pd.to_datetime(row.get("end_date"))
-                    if pd.isna(raw_start) or pd.isna(raw_end):
-                        return None
-                    today    = pd.Timestamp(date.today())
-                    yesterday = today - pd.Timedelta(days=1)
-                    dbf_yest  = today - pd.Timedelta(days=2)
-                    total_days = max((raw_end - raw_start).days, 1)
-                    elapsed_dbf = max((min(dbf_yest, raw_end) - raw_start).days, 0)
-                    if elapsed_dbf <= 0:
-                        return None
-                    pro_rated_goal = goal * (elapsed_dbf / total_days)
-                    if pro_rated_goal <= 0:
-                        return None
-                    cum_dbf = max(lifetime - imp_1d, 0)
-                    return cum_dbf / pro_rated_goal * 100
-                except Exception:
-                    return None
+                # Date math + pro-rating live in dashboard_logic (tested).
+                return dl.prior_pacing(
+                    row.get("impressions_goal"),
+                    row.get("lifetime_impressions_delivered"),
+                    row.get("impressions_1d"),
+                    row.get("start_date"),
+                    row.get("end_date"),
+                    pd.Timestamp(date.today()),
+                )
 
             view_gam["pacing_prior_pct"] = view_gam.apply(_prior_pacing, axis=1)
 
@@ -3775,29 +3744,29 @@ if st.session_state.active_view == "campaigns":
                 return " · ".join(bits)
 
             def _pace_html(p, p_prior):
-                """Pace cell: pill (or green text) + variance below."""
+                """Pace cell: pill (or green text) + variance below.
+                Banding + delta decisions live in dashboard_logic."""
                 p = pd.to_numeric(p, errors="coerce")
                 p_prior = pd.to_numeric(p_prior, errors="coerce")
                 if pd.isna(p):
                     return '<div class="cell-dash">—</div>'
-                ratio = p / _pacing_target if _pacing_target else None
                 pct_int = int(round(p))
-                if ratio is not None and ratio < 0.75:
+                _b = dl.pace_band(p, _pacing_target)
+                if _b == "red":
                     cell = f'<div class="pill pill-red">{pct_int}%</div>'
-                elif ratio is not None and ratio < 0.90:
-                    cell = f'<div class="pill pill-amber">{pct_int}%</div>'
-                elif ratio is not None and ratio <= 1.10:
+                elif _b == "green":
                     cell = f'<div class="txt-green">{pct_int}%</div>'
-                else:
+                else:  # "amber" (underpacing) and "over" (overpacing) render alike
                     cell = f'<div class="pill pill-amber">{pct_int}%</div>'
                 if pd.notna(p_prior):
                     d = p - p_prior
-                    if abs(d) >= 0.05 and abs(d) <= 100:
-                        arrow = "▲" if d > 0 else "▼"
-                        cls = "pace-delta up" if d > 0 else "pace-delta"
-                        cell += f'<div class="{cls}">{arrow} {abs(d):.1f}pp</div>'
-                    elif abs(d) > 100:
+                    verdict = dl.classify_delta(d)
+                    if verdict == "new":
                         cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
+                    elif verdict is not None:
+                        arrow, is_improvement = verdict
+                        cls = "pace-delta up" if is_improvement else "pace-delta"
+                        cell += f'<div class="{cls}">{arrow} {abs(d):.1f}pp</div>'
                 return cell
 
             # Per-format viewability + CTR + VCR thresholds from settings.
@@ -5062,7 +5031,7 @@ if st.session_state.active_view == "campaigns":
                         if "order_name" in _gam_raw.columns and _gam_sp_map
                         else pd.Series([None] * len(_gam_raw), index=_gam_raw.index)
                     )
-                    _ae_regex = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+                    _ae_regex = dl.AE_TOKEN_RE
                     _regex_from_deal = _gam_raw["deal_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
                     _regex_from_order = (
                         _gam_raw["order_name"].str.extract(_ae_regex, expand=False).map(AE_NAMES)
@@ -5296,7 +5265,7 @@ if st.session_state.active_view == "campaigns":
     # Rows whose deal name doesn't carry the Team marker get NaN and are excluded when a Team filter is active.
     _team_map = _cfg.get("team_names", {"USA": "USA", "INTL": "International"})
     combined_pmp["Team"] = (
-        combined_pmp["Deal"].str.extract(r"_Team-(USA|INTL)_", expand=False).map(_team_map)
+        combined_pmp["Deal"].str.extract(dl.TEAM_TOKEN_RE, expand=False).map(_team_map)
         if "Deal" in combined_pmp.columns else None
     )
 
@@ -5864,27 +5833,18 @@ if st.session_state.active_view == "campaigns":
             _lbd_tbl = pd.DataFrame()
 
         if not _lbd_tbl.empty:
+            # Staleness + idle-age decisions live in dashboard_logic (tested).
             _today = datetime.now(timezone.utc).date()
             _cutoff = (_today - timedelta(days=90)).isoformat()
             _lbd_tbl["last_bid_date"]   = _lbd_tbl["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
             _lbd_tbl["first_seen_date"] = _lbd_tbl["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            _stale = _lbd_tbl[
-                (_lbd_tbl["last_bid_date"].notna()   & (_lbd_tbl["last_bid_date"]   < _cutoff)) |
-                (_lbd_tbl["last_bid_date"].isna()    & _lbd_tbl["first_seen_date"].notna() & (_lbd_tbl["first_seen_date"] < _cutoff))
-            ].copy()
+            _stale = _lbd_tbl[dl.stale_deal_mask(_lbd_tbl, _cutoff)].copy()
 
             if not _stale.empty:
-                def _idle_days(row) -> int:
-                    for _col in ("last_bid_date", "first_seen_date"):
-                        _v = row.get(_col)
-                        if pd.notna(_v) and str(_v) not in ("", "None", "nan"):
-                            try:
-                                return (_today - date.fromisoformat(str(_v))).days
-                            except ValueError:
-                                pass
-                    return 0
-
-                _stale["days_idle"] = _stale.apply(_idle_days, axis=1)
+                _stale["days_idle"] = _stale.apply(
+                    lambda row: dl.idle_days(row.get("last_bid_date"),
+                                             row.get("first_seen_date"), _today),
+                    axis=1)
                 _stale = _stale.sort_values("days_idle", ascending=False)
 
                 try:

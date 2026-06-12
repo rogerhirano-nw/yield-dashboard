@@ -17,6 +17,8 @@ put it here with a test, not inline.
 from __future__ import annotations
 
 import math
+import re
+from datetime import date
 
 import pandas as pd
 
@@ -269,3 +271,107 @@ def volume_pct_delta(lifetime, day):
     if prior <= 0:
         return None
     return d1 / prior * 100
+
+
+# ── Name-token parsing (14-field line-item convention) ─────────────────
+
+# The AE short-handle rides in the "Team-USA_RShore" / "Team-INTL_AShah"
+# tail of order and line-item names; the team token is the USA|INTL part.
+AE_TOKEN_RE = r"Team-(?:USA|INTL)_([A-Za-z]+)"
+TEAM_TOKEN_RE = r"_Team-(USA|INTL)_"
+
+
+def parse_gam_salesperson(val):
+    """Extract the short name from GAM's User.display_name.
+
+    GAM returns values like "Newsweek - Sales - Theresa Hern" or
+    "Newsweek - Sales- Jeremy Makin (jmakin@newsweek.com)" — strip the
+    "Newsweek - Sales[-] " prefix and any trailing email parenthetical.
+    Returns None for empty / non-string inputs."""
+    if not isinstance(val, str) or not val.strip():
+        return None
+    m = re.search(r"-\s*([^-(]+?)\s*(?:\(|$)", val)
+    return m.group(1).strip() if m else val.strip()
+
+
+def li_part(name, idx: int):
+    """Token at position `idx` of an underscore-delimited line-item name
+    (the 14-field convention: advertiser=7, campaign=8, format=10).
+    None for non-strings or names too short to carry the token."""
+    if not isinstance(name, str):
+        return None
+    parts = name.split("_")
+    return parts[idx].strip() if len(parts) > idx else None
+
+
+# ── Pacing ──────────────────────────────────────────────────────────────
+
+
+def pace_band(p, target) -> str:
+    """Band for a pacing % against the configured target:
+    red < 75% of target, amber < 90%, green ≤ 110%, "over" beyond that —
+    overpacing renders amber too (burning budget early is also a flag).
+    No/zero target → "over": can't judge, draw a look rather than show
+    green."""
+    ratio = p / target if target else None
+    if ratio is not None and ratio < 0.75:
+        return "red"
+    if ratio is not None and ratio < 0.90:
+        return "amber"
+    if ratio is not None and ratio <= 1.10:
+        return "green"
+    return "over"
+
+
+def prior_pacing(goal, lifetime, imp_1d, raw_start, raw_end, today):
+    """Pace as of the day BEFORE yesterday — the 'prior' for the Pace Δ.
+
+    Pro-rates the impression goal over the flight days elapsed through
+    day-before-yesterday (clamped to the flight end) and divides the
+    cumulative delivery excluding the latest day by it. None whenever the
+    inputs can't support the math (no goal, missing dates, flight too
+    young to have a prior). `today` is injected for testability."""
+    try:
+        if not (goal and goal > 0 and pd.notna(lifetime) and pd.notna(imp_1d)):
+            return None
+        start = pd.to_datetime(raw_start)
+        end = pd.to_datetime(raw_end)
+        if pd.isna(start) or pd.isna(end):
+            return None
+        dbf_yest = today - pd.Timedelta(days=2)
+        total_days = max((end - start).days, 1)
+        elapsed_dbf = max((min(dbf_yest, end) - start).days, 0)
+        if elapsed_dbf <= 0:
+            return None
+        pro_rated_goal = goal * (elapsed_dbf / total_days)
+        if pro_rated_goal <= 0:
+            return None
+        cum_dbf = max(lifetime - imp_1d, 0)
+        return cum_dbf / pro_rated_goal * 100
+    except Exception:  # noqa: BLE001 — row data is user/API input; None = no prior
+        return None
+
+
+# ── Stale PMP deals ─────────────────────────────────────────────────────
+
+
+def stale_deal_mask(lbd_df, cutoff_iso: str):
+    """Boolean mask over a pmp_last_bid_date frame: stale = last bid
+    strictly before the cutoff, or never bid at all and first seen before
+    the cutoff. Date columns are ISO strings with NA for missing — string
+    comparison is correct because ISO dates sort lexicographically."""
+    lb = lbd_df["last_bid_date"]
+    fs = lbd_df["first_seen_date"]
+    return (lb.notna() & (lb < cutoff_iso)) | (lb.isna() & fs.notna() & (fs < cutoff_iso))
+
+
+def idle_days(last_bid_date, first_seen_date, today: date) -> int:
+    """Days since the deal last showed life: last bid date when known,
+    first-seen date for deals that never bid, 0 when neither parses."""
+    for v in (last_bid_date, first_seen_date):
+        if pd.notna(v) and str(v) not in ("", "None", "nan"):
+            try:
+                return (today - date.fromisoformat(str(v))).days
+            except ValueError:
+                pass
+    return 0
