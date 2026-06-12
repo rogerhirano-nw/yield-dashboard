@@ -59,18 +59,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Quiet green follow-up runs
-        # Runs at/after 12:00 UTC email only failures and remediation
-        # outcomes — a clean follow-up re-check shouldn't send a second ✅.
-        # Setting repo var HEALTH_DIGEST_ONLY_FAILURES=1 quiets every green
-        # email regardless of hour. (10# strips the zero-padding from %H so
-        # bash doesn't read 08/09 as bad octal.)
-        run: |
-          h=$((10#$(date -u +%H)))
-          if [[ "${{ vars.HEALTH_DIGEST_ONLY_FAILURES }}" == "1" || $h -ge 12 ]]; then
-            echo "HEALTH_DIGEST_ONLY_FAILURES=1" >> "$GITHUB_ENV"
-          fi
-
+      # Quieting green re-runs is handled inside health_check.py
+      # (_already_verdicted_today): the first successful run of the day
+      # always emails the ✅; later green runs are silent. Run-history
+      # based — an hour-of-day gate here previously let GitHub cron drift
+      # (6-8h observed) push every run past the cutoff, so green days
+      # emailed nothing at all.
       - name: Run health checks
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
@@ -79,9 +73,10 @@ jobs:
             python health_check.py
           fi
         env:
-          DATABASE_URL:          ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:     ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID:    ${{ secrets.AGENTMAIL_INBOX_ID }}
-          HEALTH_DIGEST_TO:      ${{ vars.HEALTH_DIGEST_TO }}
-          HEALTH_AUTO_REMEDIATE: ${{ inputs.remediate == false && '0' || '1' }}
-          GITHUB_TOKEN:          ${{ github.token }}
+          DATABASE_URL:                ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:           ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID:          ${{ secrets.AGENTMAIL_INBOX_ID }}
+          HEALTH_DIGEST_TO:            ${{ vars.HEALTH_DIGEST_TO }}
+          HEALTH_DIGEST_ONLY_FAILURES: ${{ vars.HEALTH_DIGEST_ONLY_FAILURES }}
+          HEALTH_AUTO_REMEDIATE:       ${{ inputs.remediate == false && '0' || '1' }}
+          GITHUB_TOKEN:                ${{ github.token }}

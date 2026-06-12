@@ -48,9 +48,10 @@ Optional:
     HEALTH_DIGEST_ONLY_FAILURES  "1"/"true" → send only failures and
                                  remediation outcomes; quiet green runs send
                                  nothing (default: send the ✅ daily too).
-                                 The 13:45 UTC follow-up schedule sets this
-                                 automatically so a clean follow-up re-check
-                                 doesn't email a second ✅.
+                                 Independent of this flag, only the FIRST
+                                 green run of the day emails the ✅ — later
+                                 green re-runs are quiet automatically
+                                 (run-history check, drift-proof).
     HEALTH_AUTO_REMEDIATE        default "1"; "0" disables the sweep re-run
     GITHUB_TOKEN / GITHUB_REPOSITORY  for the sweep-liveness check and the
                                  remediation dispatch; both are present
@@ -397,13 +398,41 @@ def build_report(results: list[CheckResult], today: date,
     return subject, "\n".join(lines), all_ok
 
 
+def _already_verdicted_today() -> bool:
+    """True when an earlier run of this workflow already completed
+    successfully today (UTC) — i.e. a ✅ verdict has been emailed.
+
+    Used to quiet green re-runs WITHOUT assuming punctual scheduling:
+    GitHub cron drifts hours (observed 6-8h on 2026-06-10/11), so the
+    previous hour-of-day gate pushed every run past the cutoff and green
+    days emailed nothing at all. Failed runs exit non-zero → conclusion
+    'failure' → don't count, so the next run still reports."""
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repo:
+        return False
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        data = _gh_api(
+            f"/repos/{repo}/actions/workflows/health_check.yml/runs"
+            f"?status=success&created=%3E%3D{today}&per_page=10",
+            token=token,
+        )
+    except Exception as exc:  # noqa: BLE001 — fail open: a duplicate ✅ beats silence
+        logger.warning("Could not check today's run history (%s) — sending anyway", exc)
+        return False
+    current = str(os.environ.get("GITHUB_RUN_ID") or "")
+    return any(str(r.get("id")) != current
+               for r in (data.get("workflow_runs") or []))
+
+
 def should_send(all_ok: bool, only_failures: bool,
                 remediation: str | None) -> bool:
     """Failures always send. Remediation outcomes always send — you want to
     know the system healed itself even on a quiet day. A green run with
-    nothing to report sends unless HEALTH_DIGEST_ONLY_FAILURES suppresses
-    it (the follow-up schedule sets that so a clean afternoon re-check
-    doesn't email a second ✅)."""
+    nothing to report sends unless suppressed: by repo var
+    HEALTH_DIGEST_ONLY_FAILURES, or because today's ✅ verdict already went
+    out on an earlier run (_already_verdicted_today)."""
     return (not all_ok) or remediation is not None or not only_failures
 
 
@@ -462,10 +491,15 @@ def main(argv: list[str]) -> int:
 
     only_failures = (os.environ.get("HEALTH_DIGEST_ONLY_FAILURES") or "").lower() \
         in ("1", "true", "yes")
+    # Quiet green re-runs once today's ✅ has gone out — keyed on the
+    # workflow's own run history rather than the clock, so scheduling
+    # drift can't silence the first verdict of the day.
+    if not only_failures and not dry_run and all_ok:
+        only_failures = _already_verdicted_today()
     if dry_run:
         logger.info("--dry-run: not sending")
     elif not should_send(all_ok, only_failures, remediation):
-        logger.info("Quiet green run (HEALTH_DIGEST_ONLY_FAILURES) — not sending")
+        logger.info("Quiet green run (verdict already sent today) — not sending")
     else:
         to = [a.strip() for a in
               (os.environ.get("HEALTH_DIGEST_TO") or DEFAULT_RECIPIENT).split(",")

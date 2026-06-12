@@ -51,8 +51,11 @@ with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 six parallel sweep jobs stampede the pooler at 09:00 UTC and the initial
 connect can time out, 2026-06-11); the 09:45 UTC check re-runs the sweep
 once, immediately (the sweep itself fires 09:00 UTC / 05:00 ET); the
-13:45 UTC follow-up check retries once more ~4h later and is quiet when
-green-with-nothing-to-do (remediation outcomes always email). Max two
+13:45 UTC follow-up check retries once more ~4h later. The first green
+run of the day emails the ✅; later green runs are quiet — keyed on the
+workflow's own run history, NOT the clock, because GitHub cron drifts
+6-8h and an hour-based gate silenced entire green days (2026-06-11).
+Failures and remediation outcomes always email. Max two
 sweep re-runs/day — anything still failing after that needs a human, and
 the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
