@@ -412,3 +412,35 @@ def test_canonicalize_alias_wins_and_folds_rule_results():
     assert c("Centerstage", {"Centerstage": "Display"}) == "Display"
     # bump output is canonical and untouched
     assert c("Video Preroll >30s", ALIASES) == "Video Preroll >30s"
+
+
+# ── derive_format ──────────────────────────────────────────────────────────
+
+def test_name_keywords_beat_the_api_format():
+    from dashboard_logic import derive_format as d
+    # GAM reports web interstitials as "Banner" — the name is the truth.
+    # Real AppleTv Cape Fear line: format word at position 11, not 10.
+    cape_fear = ("Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_"
+                 "'Cape-Fear'-FY26-Q3_Display-AV-Pre-Avail_US_Interstitial_"
+                 "SO01090_Team-USA_ILee")
+    assert d("Banner", cape_fear, ALIASES) == "Interstitial"
+    # FITO video lines come back from the API as "In-stream video"
+    assert d("In-stream video", "Newsweek_..._FITO-Video_..._Team-USA_ILee", ALIASES) == "FITO"
+    assert d("Banner", "Newsweek_..._Jeep-Unconventional-Centerstage-FullEp2_US_Multi_IO1040", ALIASES) == "Centerstage"
+    assert d("Banner", "Newsweek_..._AV-Apple-News_...", ALIASES) == "Apple News"
+
+
+def test_api_value_authoritative_when_no_name_keyword():
+    from dashboard_logic import derive_format as d
+    name = "Newsweek_Direct_Gambling_NA_NA_NA_NA_Spinfinite_Spinfinite-Digital-Campaign_US_Display_IO1109_1_Team-USA_RShore"
+    assert d("Banner", name, ALIASES) == "Display"
+    assert d("In-stream video", name, ALIASES) == "Video"
+
+
+def test_token_fallback_when_api_missing():
+    from dashboard_logic import derive_format as d
+    name = "Newsweek_Direct_Gambling_NA_NA_NA_NA_Spinfinite_Spinfinite-Digital-Campaign_US_Video_IO1109_1_Team-USA_RShore"
+    assert d(None, name, ALIASES) == "Video"
+    assert d("", name, ALIASES) == "Video"
+    # non-convention name (no keywords, no API, no position-10 token) → no format
+    assert d(None, "Newsweek_Prebid_Video_$19.00", ALIASES) is None
