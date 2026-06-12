@@ -43,6 +43,32 @@ impression counting, and click tracking all live in GAM. Sibling doc:
 - Inside a `<script>` block, split any embedded `</script>` as
   `'</scr' + 'ipt>'` or the HTML parser terminates the wrapper's own tag.
 
+## Viewability
+
+**GAM Active View is junk for injected placements** — it measures the
+carrier slot's iframe, which is hidden (or a 2x1 speck), while the visible
+content lives elsewhere in the DOM. Expect ~0% viewable on these LIs in GAM
+reporting and warn agencies before they read it as breakage. Measurement
+that runs *inside* an injected friendly iframe (IAS/DV/MOAT wrappers in an
+agency payload) measures the true on-screen position and reports correctly.
+
+Mitigations, by rigor:
+
+1. **House MRC beacon (live on the Infiniti logo creatives, 2026-06-11)**:
+   the watcher arms an IntersectionObserver on the injected element — ≥50%
+   in view for 1 continuous second (timer cancels if it leaves view), fires
+   once per pageview (`window.__nwSponsorViewable`). On fire it pushes
+   `{event: 'nw_sponsor_logo_viewable'}` to `dataLayer` (inert until wired
+   in GTM/GA4) and requests `cfg.viewUrl` if set — **put the agency's DCM
+   viewable-impression tracker there when they provide one**. Verification
+   marker: `#nw-sponsor-logo-viewed` appears in the DOM on fire.
+2. **CSS-reposition variant (build before selling banner-size injections)**:
+   instead of hiding the carrier and writing a separate iframe, keep GPT's
+   own iframe and absolutely position the carrier slot over a spacer at the
+   target location (watcher syncs coordinates on resize). Nothing reloads,
+   GPT renders the tag natively, and **Active View measures the real
+   position** — GAM viewability becomes trustworthy with no custom beacon.
+
 ## Worked example: Apple FITO top banner (2026-06-11)
 
 `scripts/setup_fito_top_banner.py` (dry-run by default, lookup-first).
