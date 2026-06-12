@@ -1,8 +1,30 @@
-# Article-page sponsor logo (served from GAM via oop2)
+# Article-page sponsor logo (served from GAM via oop1)
 
 A "Presented by <logo>" strip at the **right of the article breadcrumb row**
 (`Autos | Volvo | Safety ............ Presented by [logo]`), sold as a
 sponsorship and served entirely through GAM.
+
+## ✅ RESOLVED — final state (2026-06-11 evening)
+
+Engineering replaced `oop2` with **`oop1` (23207087801)** in the article ad
+config and — after a first deploy that shipped only the slot definition —
+landed the client-rendered container div. The Infiniti Newsmakers flight
+(LI 7336465381) now targets **oop1 only** (interstitial dropped — no
+double-serving) and the logo renders **at first paint on every article
+view**, certified live: oop1 iframe rendering the watcher creative
+(138562255517, upgraded from the single-shot snippet just in time), exactly
+one logo, impression pixels exactly once, MRC viewability beacon firing,
+lazy interstitial returns "no ad" on scroll. The original goal — always
+through the eager OOP unit, everything in GAM, nothing else on the page —
+is achieved. GAM Active View remains meaningless for this placement (it
+measures the page-bottom oop1 div, not the strip) — viewability of record
+is the beacon → agency DCM tracker (`cfg.viewUrl`, pending OMD's URL).
+
+Everything below is the build history: the oop2 era (why it never rendered
+on articles), the carriers that were built and rolled back, and the gotchas
+— still the reference for the next placement of this kind. References to
+"oop2" as the carrier describe that era; the mechanics are identical on
+oop1.
 
 **The goal (Roger, 2026-06-11): the logo runs always and only through
 `oop2`** (`/22541732127/newsweek/oop2`, ad unit 23207098418) — no page-side
