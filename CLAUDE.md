@@ -58,9 +58,13 @@ the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It is
 triggered by two cron-job.org jobs (09:45 + 13:45 UTC →
-`workflow_dispatch`, same PAT pattern as `refresh.yml`); GitHub-native
-`schedule:` was deliberately removed — it drifts hours late and GitHub
-auto-disables it after 60 days of repo inactivity. The script exits
+`workflow_dispatch`, same PAT pattern as `refresh.yml`) — GitHub-native
+cron drifts hours late and auto-disables after 60 days of repo
+inactivity, so it is not the trigger of record. One `schedule:` cron
+remains (18:00 UTC) as a **dead-man fallback**: quiet when an earlier
+run already sent today's verdict, but if the cron-job.org jobs silently
+die (deleted job, expired PAT) it becomes the first run of the day and
+the verdict still goes out — late, which is the tell. The script exits
 non-zero on any failing check, so the Actions run goes red and GitHub's
 failure email fires as a second signal.
 
