@@ -2574,19 +2574,20 @@ if st.session_state.active_view == "campaigns":
             if _col in gam_df.columns:
                 gam_df[_col] = gam_df[_col].replace({None: pd.NA, "None": pd.NA, "": pd.NA})
 
-        # Recategorize ad_format → "Video Preroll >30s" when the line item's
-        # longest video creative exceeds 30 seconds (duration sourced into
-        # _creative_max_dur above; decision logic + tests live in
-        # dashboard_logic). MUST run after ad_format is derived from
-        # inventory_format_name — the column doesn't exist before that, so
-        # running earlier silently no-ops and every long-form line renders
-        # under the plain "Video" benchmarks.
+        # The >30s preroll distinction is a BENCHMARK band, not a format:
+        # the Format filter and columns show plain "Video" (it's just one
+        # video format — Roger, 2026-06-12), while _bench_format carries
+        # "Video Preroll >30s" for threshold lookups so long-form video
+        # keeps grading against its own VCR line (the #156 fix). MUST run
+        # after ad_format is derived — the column doesn't exist earlier.
         if "_creative_max_dur" in gam_df.columns:
-            gam_df["ad_format"] = gam_df.apply(
+            gam_df["_bench_format"] = gam_df.apply(
                 lambda row: dl.bump_video_format(
                     row.get("ad_format"), row.get("_creative_max_dur")),
                 axis=1,
             )
+        else:
+            gam_df["_bench_format"] = gam_df["ad_format"]
 
         # Manual long-preroll override — applied AFTER the duration-based
         # auto-detection so user-curated rules win. Useful for Newsweek's
@@ -2597,7 +2598,7 @@ if st.session_state.active_view == "campaigns":
             _lp_mask = gam_df.apply(
                 lambda row: dl.matches_long_preroll(row, _lp_rules), axis=1)
             if _lp_mask.any():
-                gam_df.loc[_lp_mask, "ad_format"] = dl.LONG_PREROLL_FORMAT
+                gam_df.loc[_lp_mask, "_bench_format"] = dl.LONG_PREROLL_FORMAT
 
         # Load Pubmatic sellers so they appear in the shared filter
         try:
@@ -4257,7 +4258,9 @@ if st.session_state.active_view == "campaigns":
                 return float(v) if v is not None else None
 
             def _drawer_small_multiples(row):
-                fmt = row.get("ad_format")
+                # Benchmark band, not the filter-facing format — the
+                # "Video Preroll >30s" settings row shapes these targets.
+                fmt = row.get("_bench_format") or row.get("ad_format")
                 is_video = isinstance(fmt, str) and "video" in fmt.lower()
                 view = _row_view_series(row)
                 second_label = "VCR" if is_video else "CTR"
@@ -4492,7 +4495,9 @@ if st.session_state.active_view == "campaigns":
                 _vw = _vw_rate.iloc[view_gam.index.get_loc(row.name)] if _vw_rate is not None else None
                 _ctr = _ctr_rate.iloc[view_gam.index.get_loc(row.name)] if _ctr_rate is not None else None
                 _vcr_val = row.get("vcr")
-                _fmt_str = row.get("ad_format")
+                # Benchmark band (e.g. "Video Preroll >30s"), not the
+                # filter-facing format — thresholds key on the band.
+                _fmt_str = row.get("_bench_format") or row.get("ad_format")
                 _is_video = isinstance(_fmt_str, str) and "video" in _fmt_str.lower()
                 _seller = row.get("seller_ae")
                 _seller_html = (f'<span class="seller-prog">Prog.</span>'
