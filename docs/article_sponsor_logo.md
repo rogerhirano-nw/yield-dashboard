@@ -16,9 +16,12 @@ view**, certified live: oop1 iframe rendering the watcher creative
 one logo, impression pixels exactly once, MRC viewability beacon firing,
 lazy interstitial returns "no ad" on scroll. The original goal — always
 through the eager OOP unit, everything in GAM, nothing else on the page —
-is achieved. GAM Active View remains meaningless for this placement (it
-measures the page-bottom oop1 div, not the strip) — viewability of record
-is the beacon → agency DCM tracker (`cfg.viewUrl`, pending OMD's URL).
+is achieved. GAM Active View was then made **honest** the same evening via
+the carrier-reposition patch (the watcher glues the carrier slot onto the
+strip with position:fixed scroll-synced CSS — see
+`docs/gam_placement_injection.md`), so GAM's viewable% tracks the real
+strip. Layered measurement: GAM AV + once-guarded agency pixels + MRC
+beacon → agency DCM tracker (`cfg.viewUrl`, pending OMD's URL).
 
 Everything below is the build history: the oop2 era (why it never rendered
 on articles), the carriers that were built and rolled back, and the gotchas
