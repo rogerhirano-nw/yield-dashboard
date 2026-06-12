@@ -1,0 +1,67 @@
+name: Rebuild HPTO injection customs in-iframe
+
+on:
+  # push trigger registers the workflow for dispatch-by-filename; push runs
+  # are always dry-run (APPLY comes only from the dispatch input)
+  push:
+    branches: [claude/nifty-mendel-24703a]
+    paths:
+      - 'scripts/fix_hpto_inframe.py'
+      - '.github/workflows/apply_hpto_inframe.yml'
+  workflow_dispatch:
+    inputs:
+      creative_ids:
+        description: 'Comma-separated creative IDs (default: all six QX65 Centerstage-June injection customs)'
+        required: false
+        default: ''
+      apply:
+        description: 'Set to true to write to GAM (default dry-run)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Rebuild creatives
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          CREATIVE_IDS: ${{ inputs.creative_ids }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -o pipefail
+          python scripts/fix_hpto_inframe.py 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found to post results to"; exit 0
+          fi
+          {
+            echo '### HPTO in-iframe rebuild — apply=${{ inputs.apply }}'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
