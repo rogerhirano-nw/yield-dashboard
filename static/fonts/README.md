@@ -1,25 +1,24 @@
-# Newsweek fonts — drop-in directory
+# Newsweek brand fonts — drop-in directory
 
-The dashboard's `@font-face` rules (top of the style block in
-`dashboard.py`) point here via Streamlit static serving
-(`/app/static/fonts/...`; `enableStaticServing = true` in
-`.streamlit/config.toml`).
+The dashboard's `.streamlit/config.toml` declares `[[theme.fontFaces]]`
+entries pointing at this directory (served by Streamlit static serving at
+`/app/static/fonts/...`). The licensed binaries are **not** committed
+(this directory is gitignored except for this README) — copy them here
+from the Newsweek design system `/assets/fonts`:
 
-The Newsweek type binaries are **licensed and must not be committed**
-(this directory is allowlisted in `.gitignore` for this README only).
-Copy them from the Newsweek design system `/assets/fonts` export:
+| File | Family | Weight |
+|---|---|---|
+| `FranklinGothic.ttf` | Franklin Gothic (UI sans) | 400 |
+| `FranklinGothicDemi.ttf` | Franklin Gothic (UI sans) | 600 |
+| `BentonModDisp-Regular.otf` | Benton Modern Display (headers + KPI figures) | 400 |
+| `BentonModDisp-Bold.otf` | Benton Modern Display | 700 |
+| `BentonModDisp-Black.otf` | Benton Modern Display | 800 |
 
-- `BentonModDisp-Regular.otf`
-- `BentonModDisp-Bold.otf`
-- `BentonModDisp-Black.otf`
-- `FranklinGothic.ttf`
-- `FranklinGothicDemi.ttf`
+Until the files exist, the designed fallback stacks apply automatically:
+**Georgia** for display/serif, **Helvetica Neue / Arial** for UI sans —
+the app renders fine without them.
 
-Until the files exist, the font requests 404 harmlessly and the CSS
-falls back to Georgia (display serif) and the system sans stack — the
-layout is identical, only the faces differ.
-
-For the Streamlit Cloud deploy the binaries have to be present in the
-deployed tree; since they can't live in the public repo, either vendor
-them through a private submodule/secret-managed step or accept the
-fallback stacks in production.
+Licensing note: these are licensed faces. Confirm the web-embedding license
+covers the Streamlit Cloud deployment before committing the binaries to a
+repo (this repo is private, but the served font URLs are public to anyone
+who can reach the app).

@@ -141,27 +141,52 @@ editor, which is the band's only user-facing surface.
 ## Dashboard design system (Newsweek "Paper", 2026-06)
 The dashboard is skinned to the Newsweek design system: **light warm-paper
 canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern
-Display serif for H1/KPI numbers, Franklin Gothic for UI. All values live
-as CSS tokens in the `:root` block at the top of dashboard.py's style
-block — component rules only read tokens. Source spec:
+Display serif on H1/section titles/KPI figures, Franklin Gothic for UI,
+tracked-uppercase eyebrows, tabular numerals everywhere. Source spec:
 `docs/design_handoff/` (Claude Design handoff: token CSS + before/after
-audit doc). Rules that bite:
-- **Brand red (`--brand-red #e91d0c`) is chrome-only** — eyebrow tick,
-  active-tab underline, mark. **Data severity owns its own red**
-  (`--state-critical #c41608`). If a red pixel is not the mark, a tab, or
-  a breach, it's a bug. Charts use the `--viz-*` palette (Newsweek bar in
-  peer charts = ink, peers = warm gray — never brand red on a series).
-- **Sparklines are neutral ink** — state lives in delta text and banded
-  cells, never the trend stroke.
-- Theme is pinned light in `.streamlit/config.toml`; `primaryColor` is
-  ink, deliberately not red (Streamlit paints it on focus rings/buttons).
-  A commented warm-ink dark ramp sits at the bottom of the handoff CSS if
-  dark must ever return.
-- Pandas Styler colors (`st.dataframe` cells) mirror the state tokens as
-  **literals** — the data-grid canvas can't resolve CSS vars. Same for
-  Vega/Altair series colors.
-- Licensed font binaries are NOT committed: drop into `static/fonts/`
-  (gitignored; see its README). Fallbacks: Georgia / system sans.
+audit doc). A dark warm-ink variant shipped briefly on 2026-06-12 (PRs
+#199/#200) and was superseded by this light version the same day (#201);
+its ramp survives, commented, at the bottom of the handoff CSS.
+Two places define tokens and **must stay in sync**:
+1. The `:root` token tier at the top of dashboard.py's style block —
+   every component rule reads only tokens.
+2. `.streamlit/config.toml` `[theme]` — same values for Streamlit
+   natives (widgets, canvas dataframes, fonts via `[[theme.fontFaces]]`,
+   built-in/Altair chart palette via `chartCategoricalColors`).
+Colors emitted as **literals** in dashboard.py (pandas-Styler cell
+styles, Vega/Altair series, settings defaults) mirror the tokens with a
+`--token-name` comment at each site — the data-grid canvas and Vega
+can't resolve CSS vars.
+
+Rules that survive any future restyle:
+- **Two reds, never mixed.** `--brand-red #e91d0c` is chrome only: the
+  eyebrow tick and the active-tab underline. `--state-critical #c41608`
+  owns data severity. Acceptance rule: *if a red pixel is not the mark,
+  a tab, or a breach, it's a bug.* (`primaryColor` is ink for the same
+  reason — Streamlit paints buttons/focus/checkboxes with it.)
+- **Severity is tint, not shout**: banded cells/pills = `--state-*-surface`
+  background + saturated `--state-*` text; in-range values stay plain
+  colored text. Thresholds/banding logic untouched — lives in
+  `dashboard_logic.py`.
+- **Green is asymmetric** (the green-overwhelm rule, 2026-05-25; muted
+  tier added 2026-06-12 after the first themed deploy glowed green):
+  high-frequency "fine/improving" signals — per-cell ▲ deltas, in-range
+  pace/eCPM text, progress bars, all-clear banners, on-track chart
+  lines, gaining momentum rows — use `--state-positive-muted`
+  (`#6f8f56` on paper); the all-clear banner tint runs quieter than
+  red/amber. Saturated `--state-positive #3c6b14` is reserved for
+  green-as-a-signal: status chips/pills, enabled badges. Amber/red are
+  always loud — healthy recedes, exceptions own the page.
+- **Sparklines are neutral** (`--text-secondary`) — trend shape only;
+  severity belongs to bands/banners. The drawer 7-day delivery chart is
+  the one state-colored line (it *is* a pace-health signal). Chart
+  series read the `--viz-*` palette; the OpenSincera peer charts render
+  Newsweek = ink vs peers = warm gray — never brand red on a series.
+- **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
+  hash colors), never the state scale.
+- Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
+  see its README; served via `enableStaticServing`); fallbacks Georgia /
+  Helvetica apply while it's empty.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.

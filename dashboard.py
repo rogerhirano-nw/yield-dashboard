@@ -234,9 +234,11 @@ _DEFAULT_SETTINGS: dict = {
     ],
     "airtable_reporter": "Roger Hirano",
     "status_colors": [
-        {"keyword": "Delivering", "color": "#2E7D32"},  # green
-        {"keyword": "Paused",     "color": "#F9A825"},  # amber
-        {"keyword": "Completed",  "color": "#5D4037"},  # brown
+        # Newsweek light state tokens (status chips are a sanctioned
+        # saturated-green surface per the asymmetric-green rule).
+        {"keyword": "Delivering", "color": "#3c6b14"},  # --state-positive
+        {"keyword": "Paused",     "color": "#8a6d00"},  # --state-warning
+        {"keyword": "Completed",  "color": "#8c887b"},  # --text-muted
     ],
     "seller_colors": {},  # per-seller overrides; sellers absent fall back to hash
     "deal_type_codes": {
@@ -697,15 +699,11 @@ st.markdown(
    Severity owns its own red (--state-critical). Acceptance rule: if a
    red pixel is not the mark, a tab, or a breach, it's a bug.
    ════════════════════════════════════════════════════════════════════ */
-/* Fonts: the licensed Newsweek binaries are NOT committed. Drop them in
-   static/fonts/ (see static/fonts/README.md) and these @font-face rules
-   pick them up via Streamlit static serving; until then the stacks fall
-   back to Georgia (display) / system sans (UI). */
-@font-face { font-family: "Benton Modern Display"; src: url("./app/static/fonts/BentonModDisp-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Benton Modern Display"; src: url("./app/static/fonts/BentonModDisp-Bold.otf")    format("opentype"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "Benton Modern Display"; src: url("./app/static/fonts/BentonModDisp-Black.otf")   format("opentype"); font-weight: 800; font-display: swap; }
-@font-face { font-family: "Franklin Gothic"; src: url("./app/static/fonts/FranklinGothic.ttf")     format("truetype"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Franklin Gothic"; src: url("./app/static/fonts/FranklinGothicDemi.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+/* Fonts are declared in .streamlit/config.toml ([theme] font/headingFont
+   + [[theme.fontFaces]] -> static/fonts/*) so the brand faces also reach
+   Streamlit natives, including canvas-rendered dataframes. The licensed
+   binaries are NOT committed — see static/fonts/README.md; the fallback
+   stacks in --font-sans / --font-display apply while the dir is empty. */
 :root {
   /* Brand chrome — identity only, NEVER on data. */
   --brand-red:        #e91d0c;
@@ -721,8 +719,15 @@ st.markdown(
   --text-secondary: #57564f;
   --text-muted:     #8c887b;
   /* State — severity scale (green/amber/red grammar preserved,
-     re-toned for light: saturated text on pale tints). */
+     re-toned for light: saturated text on pale tints).
+     Green is ASYMMETRIC (green-overwhelm rule, #200): the muted tier
+     carries high-frequency "fine/improving" signals (deltas, in-range
+     text, progress fills, all-clear banners, on-track chart lines);
+     saturated green is reserved for green-as-a-signal (status chips,
+     enabled badges). Amber/red are always loud. */
   --state-positive: #3c6b14;  --state-positive-surface: rgba(76,122,25,.12);
+  --state-positive-muted: #6f8f56;
+  --state-positive-surface-quiet: rgba(76,122,25,.07);
   --state-warning:  #8a6d00;  --state-warning-surface:  rgba(214,170,0,.18);
   --state-critical: #c41608;  --state-critical-surface: rgba(233,29,12,.10);
   /* Data-viz categorical palette (chart series only). */
@@ -909,8 +914,8 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-banner.sev-red .nw-banner-head    { color: var(--state-critical); }
 .nw-banner.sev-amber  { background: var(--state-warning-surface);  border-left-color: var(--state-warning); }
 .nw-banner.sev-amber .nw-banner-head  { color: var(--state-warning); }
-.nw-banner.sev-ok     { background: var(--state-positive-surface); border-left-color: var(--state-positive); }
-.nw-banner.sev-ok .nw-banner-head     { color: var(--state-positive); }
+.nw-banner.sev-ok     { background: var(--state-positive-surface-quiet); border-left-color: var(--state-positive-muted); }
+.nw-banner.sev-ok .nw-banner-head     { color: var(--state-positive-muted); }
 /* KPI strip — single grid so all nine tiles render at exactly the same
    height. Tile = white card with a 2px ink top rule and a serif number;
    the sparkline runs full-width under the figures (neutral stroke —
@@ -932,7 +937,7 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
              color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .kpi-spark { display: block; width: 100%; height: 22px; margin-top: var(--space-2); }
 .kpi-target{ font-size: 10.5px; color: var(--text-muted); }
-.kpi-delta-up    { color: var(--state-positive); }
+.kpi-delta-up    { color: var(--state-positive-muted); }
 .kpi-delta-down  { color: var(--state-critical); }
 .kpi-delta-amber { color: var(--state-warning); }
 .kpi-delta-flat  { color: var(--text-muted); }
@@ -1010,14 +1015,14 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
    is a quiet ink-green that recedes — "healthy" should never shout —
    while warning/critical band onto tinted surfaces so problems pop.
    Re-toned for paper 2026-06 (Newsweek rebrand). */
-.txt-green   { display: inline-block; color: var(--state-positive); font-weight: 600; font-size: 13px; }
+.txt-green   { display: inline-block; color: var(--state-positive-muted); font-weight: 600; font-size: 13px; }
 .txt-amber   { display: inline-block; color: var(--state-warning);  font-weight: 600; font-size: 13px; }
 .txt-red     { display: inline-block; color: var(--state-critical); font-weight: 600; font-size: 13px; }
 /* Delta-row palette: worsening = critical, drifting = warning; the
    improving "up" delta stays the quiet green. Same recede-vs-pop logic
    as .txt-green above. */
 .pace-delta  { font-size: 11px; margin-top: 4px; color: var(--state-critical); }
-.pace-delta.up { color: var(--state-positive); }
+.pace-delta.up { color: var(--state-positive-muted); }
 .pace-delta.amber { color: var(--state-warning); }
 /* Progress cell: bar + inline % label. Wrapper puts them side-by-side
    with a small gap so the number sits flush right of the bar without
@@ -1031,7 +1036,7 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
                 text-align: right; }
 .prog-red   { background: var(--state-critical); }
 .prog-amber { background: var(--state-warning); }
-.prog-green { background: var(--state-positive); }
+.prog-green { background: var(--state-positive-muted); }
 .seller-prog { font-style: italic; color: var(--text-muted); }
 .cell-dash { display: inline-block; color: var(--text-muted); }
 /* Per-column alignment override — used for VCR right now (centered
@@ -1173,10 +1178,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 }
 .nw-status-banner.sev-amber strong { color: var(--state-warning); }
 .nw-status-banner.sev-ok {
-  background: var(--state-positive-surface);
-  border-left-color: var(--state-positive);
+  background: var(--state-positive-surface-quiet);
+  border-left-color: var(--state-positive-muted);
 }
-.nw-status-banner.sev-ok strong { color: var(--state-positive); }
+.nw-status-banner.sev-ok strong { color: var(--state-positive-muted); }
 /* Drawer 7-day delivery chart panel. */
 .nw-drawer-chart {
   margin-top: 12px; padding: 8px 12px 10px;
@@ -1292,7 +1297,7 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 /* eCPM threshold colors — under floor amber, well above green. */
 .ecpm-under { background: var(--state-warning-surface); color: var(--state-warning);
               padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
-.ecpm-over  { color: var(--state-positive); font-weight: 600; }
+.ecpm-over  { color: var(--state-positive-muted); font-weight: 600; }
 /* PMP table — same grid pattern as Direct but different column proportions. */
 .nw-pmp-rows .nw-row-header,
 .nw-pmp-rows .nw-pmp-row {
@@ -3611,97 +3616,12 @@ if st.session_state.active_view == "campaigns":
                 view_gam = view_gam.sort_values("_pace_dev", ascending=False, na_position="last")
                 view_gam = view_gam.drop(columns=["_pace_dev"])
 
-            # ── Restrict to the spec's default column set; the rest live in
-            # the per-row detail drawer rendered below. Hardcoded for now —
-            # the Settings → direct_sources mapping still drives which fields
-            # are AVAILABLE; this filter decides which are SHOWN inline.
-            _TABLE_DEFAULT = ["Line Item", "Revenue", "Delivered", "Pace", "Δ",
-                              "Viewability %", "CTR %", "VCR %", "Seller", "Progress"]
+            # (The pre-redesign st.dataframe path — table_df + pandas-Styler
+            # color maps — was built here but never rendered after the custom
+            # HTML table below replaced it. Deleted 2026-06-12 per the dead-code
+            # note from #200 instead of re-pointing it at the new tokens.)
 
-            available_cols = [c for c in display_cols if c in view_gam.columns]
-            # Ensure progress_pct flows through under the "Progress" header.
-            if "progress_pct" in view_gam.columns and "progress_pct" not in display_cols:
-                display_cols["progress_pct"] = "Progress"
-                available_cols.append("progress_pct")
-            table_df_full = (
-                view_gam[available_cols + ["line_item_id"] if "line_item_id" in view_gam.columns else available_cols]
-                .drop_duplicates(subset=["line_item_name"] if "line_item_name" in available_cols else None)
-                .rename(columns={c: display_cols[c] for c in available_cols})
-            )
-
-            # Friendly transformation for display-only — applied after rename so
-            # it works regardless of which source column the user has mapped to
-            # Campaign / Advertiser in their settings (DB might map Campaign to
-            # order_name, which would otherwise render hyphenated).
-            for _friendly_col in ("Campaign", "Advertiser"):
-                if _friendly_col in table_df_full.columns:
-                    table_df_full[_friendly_col] = (
-                        table_df_full[_friendly_col].astype("string").str.replace("-", " ", regex=False)
-                    )
-
-            # "Prog." italic placeholder when Seller is empty.
-            if "Seller" in table_df_full.columns:
-                table_df_full["Seller"] = table_df_full["Seller"].astype("string").fillna("Prog.")
-
-            # Reset index so positional .iloc lookups in the drawer align
-            # with the row positions Streamlit returns in _sel.selection.rows.
-            table_df_full = table_df_full.reset_index(drop=True)
-
-            # The TABLE shows only the default subset; the FULL set is kept
-            # around so the drawer can show every field.
-            table_df = table_df_full[[c for c in _TABLE_DEFAULT if c in table_df_full.columns]].copy()
-
-            # ── M/K notation for Delivered. The cell is numeric pre-format;
-            # use Streamlit's compact format directly via the column_config.
-            def _mk(v):
-                if pd.isna(v): return ""
-                a = abs(v)
-                if a >= 1_000_000: return f"{v/1_000_000:.2f}M"
-                if a >= 1_000:     return f"{v/1_000:.1f}K"
-                return f"{int(v):,}"
-
-            # CTR formatting: 2 decimals. Apply via inline transform so we can
-            # use TextColumn for consistent text styling with other rate cells.
-            # (Annotation logic from earlier already produced the percent + delta
-            # string; reformat the percent part to 2 decimals.)
-            if "CTR %" in table_df.columns:
-                _ctr_2dp = pd.Series([
-                    re.sub(r"^([0-9.]+)%", lambda m: f"{float(m.group(1)):.2f}%", str(v))
-                    if isinstance(v, str) and "%" in v else v
-                    for v in table_df["CTR %"]
-                ], index=table_df.index)
-                table_df["CTR %"] = _ctr_2dp
-
-            col_config = {}
-            if "Delivered" in table_df.columns:
-                # Numeric column with custom format hook isn't supported in
-                # NumberColumn; transform to string M/K and render as text.
-                table_df["Delivered"] = table_df["Delivered"].apply(_mk)
-                col_config["Delivered"] = st.column_config.TextColumn("Delivered", width="small")
-            if "Pace" in table_df.columns:
-                col_config["Pace"] = st.column_config.TextColumn("Pace", width="small")
-            if "Δ" in table_df.columns:
-                col_config["Δ"] = st.column_config.TextColumn("Δ", width="small",
-                    help="Pace change vs prior day (percentage points)")
-            if "Viewability %" in table_df.columns:
-                col_config["Viewability %"] = st.column_config.TextColumn("Viewability", width="small")
-            if "VCR %" in table_df.columns:
-                col_config["VCR %"] = st.column_config.TextColumn("VCR", width="small")
-            if "CTR %" in table_df.columns:
-                col_config["CTR %"] = st.column_config.TextColumn("CTR", width="small")
-            if "Revenue" in table_df.columns:
-                col_config["Revenue"] = st.column_config.NumberColumn(format="dollar")
-            if "Progress" in table_df.columns:
-                col_config["Progress"] = st.column_config.ProgressColumn(
-                    "Progress", format="%.0f%%", min_value=0.0, max_value=1.0,
-                )
-            if "Line Item" in table_df.columns:
-                col_config["Line Item"] = st.column_config.TextColumn("Line item", width="large")
-            if "Seller" in table_df.columns:
-                col_config["Seller"] = st.column_config.TextColumn("Seller", width="small")
-
-            # Cells in Pacing % / Viewability % / CTR % / VCR % are now
-            # annotated strings like "0.6% (▲ +0.1pp)". Parse the leading
+            # Cells like "61% (▲2)" carry annotations — extract the leading
             # numeric percent so color coding still applies; tolerate the
             # pre-refresh numeric fallback too.
             def _parse_leading_pct(v):
@@ -3712,111 +3632,6 @@ if st.session_state.active_view == "campaigns":
                     if m:
                         return float(m.group(1))
                 return None
-
-            # Styler colors render inside the data-grid canvas, where CSS
-            # custom properties don't resolve — so the Newsweek state tokens
-            # are mirrored here as literals (--state-positive / -warning /
-            # -critical and their pale surface tints).
-            def _ramp_color(pct, target):
-                """Red→green gradient hitting solid green at `target`."""
-                if pct is None or target is None or target <= 0:
-                    return ""
-                if pct >= target:
-                    return "color: #3c6b14"
-                hue = int(max(0.0, pct) / float(target) * 120)
-                return f"color: hsl({hue}, 75%, 30%)"
-
-            # ── Status color: editable keyword → color map from settings.
-            #    Substring (case-insensitive); first matching rule wins.
-            _status_color_rules = _cfg.get("status_colors", []) or []
-            def _status_color(v):
-                if not isinstance(v, str): return ""
-                sl = v.strip().lower()
-                if not sl: return ""
-                for rule in _status_color_rules:
-                    kw  = (rule.get("keyword") or "").strip().lower()
-                    col = (rule.get("color")   or "").strip()
-                    if kw and col and kw in sl:
-                        return f"color: {col}"
-                return ""
-
-            # ── Seller color: editable per-seller overrides, falls back to
-            #    deterministic hash-derived hue so unseen sellers still get a
-            #    stable color.
-            _seller_color_overrides = _cfg.get("seller_colors", {}) or {}
-            import hashlib as _hashlib
-            def _seller_color(v):
-                if not isinstance(v, str) or not v.strip():
-                    return ""
-                name = v.strip()
-                override = _seller_color_overrides.get(name)
-                if override and str(override).strip():
-                    return f"color: {str(override).strip()}; font-weight: 600"
-                h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
-                return f"color: hsl({h % 360}, 55%, 38%); font-weight: 600"
-
-            # ── New three-tier color thresholds per redesign spec.
-            #    Pills only on OUT-OF-TOLERANCE values; in-range = plain colored text.
-
-            # Pace: red <75%, amber 75-90%, green 90-110%, amber >110%.
-            def _pace_color(v):
-                pct = _parse_leading_pct(v)
-                if pct is None: return ""
-                ratio = pct / _pacing_target if _pacing_target else None
-                if ratio is None: return ""
-                if ratio < 0.75:
-                    return ("background-color: rgba(233,29,12,0.10); color: #c41608; "
-                            "border-radius: 4px; padding: 2px 10px; font-weight: 600")
-                if ratio < 0.90:
-                    return ("background-color: rgba(214,170,0,0.18); color: #8a6d00; "
-                            "border-radius: 4px; padding: 2px 10px; font-weight: 600")
-                if ratio <= 1.10:
-                    return "color: #3c6b14; font-weight: 600"   # plain green text
-                return ("background-color: rgba(214,170,0,0.18); color: #8a6d00; "
-                        "border-radius: 4px; padding: 2px 10px; font-weight: 600")
-
-            # Viewability: red <40%, amber 40-65%, green ≥65%.
-            def _viewability_color(v):
-                pct = _parse_leading_pct(v)
-                if pct is None: return ""
-                if pct < 40:
-                    return ("background-color: rgba(233,29,12,0.10); color: #c41608; "
-                            "border-radius: 4px; padding: 2px 10px")
-                if pct < 65:
-                    return "color: #8a6d00"
-                return "color: #3c6b14"
-
-            # VCR: red <50%, amber 50-60%, green ≥60%. Skip 'N/A' cells.
-            def _vcr_color(v):
-                if isinstance(v, str) and v.strip().upper() == "N/A":
-                    return "color: #8c887b"
-                pct = _parse_leading_pct(v)
-                if pct is None: return ""
-                if pct < 50:
-                    return ("background-color: rgba(233,29,12,0.10); color: #c41608; "
-                            "border-radius: 4px; padding: 2px 10px")
-                if pct < 60:
-                    return "color: #8a6d00"
-                return "color: #3c6b14"
-
-            # Bold revenue values above $10K.
-            def _revenue_bold(v):
-                try:
-                    return "font-weight: 700" if float(v) > 10_000 else ""
-                except Exception:
-                    return ""
-
-            styled_df = table_df.style
-            if "Pace" in table_df.columns:
-                styled_df = styled_df.map(_pace_color, subset=["Pace"])
-            if "Viewability %" in table_df.columns:
-                styled_df = styled_df.map(_viewability_color, subset=["Viewability %"])
-            if "VCR %" in table_df.columns:
-                styled_df = styled_df.map(_vcr_color, subset=["VCR %"])
-            if "Seller" in table_df.columns:
-                styled_df = styled_df.map(_seller_color, subset=["Seller"])
-            if "Revenue" in table_df.columns:
-                styled_df = styled_df.map(_revenue_bold, subset=["Revenue"])
 
             # ── Custom HTML table — multi-line cells and proper typography
             # require this; st.dataframe can't render LI name + subtitle,
@@ -4284,9 +4099,9 @@ if st.session_state.active_view == "campaigns":
                 avg = sum(non_null) / len(non_null) if non_null else 0
                 if expected and expected > 0:
                     ratio = avg / expected
-                    stroke = "var(--state-positive)" if ratio >= 0.9 else "var(--state-warning)"
+                    stroke = "var(--state-positive-muted)" if ratio >= 0.9 else "var(--state-warning)"
                 else:
-                    stroke = "var(--state-positive)"
+                    stroke = "var(--state-positive-muted)"
                 # Expected reference line — clip to chart top if above vmax.
                 exp_line = ""
                 if expected and expected > 0:
@@ -4700,7 +4515,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="nw-legend">'
                 '<span><span class="nw-legend-dot" style="background:var(--state-critical)"></span>under</span>'
                 '<span><span class="nw-legend-dot" style="background:var(--state-warning)"></span>off-target</span>'
-                '<span><span class="nw-legend-dot" style="background:var(--state-positive)"></span>healthy</span>'
+                '<span><span class="nw-legend-dot" style="background:var(--state-positive-muted)"></span>healthy</span>'
                 '<span>— = N/A</span>'
                 '</div>'
                 '</div>'
@@ -4751,7 +4566,7 @@ if st.session_state.active_view == "campaigns":
             _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
             # Newsweek state tokens: gaining = positive, losing = critical,
             # flat = muted ink (inline style → var() resolves fine here).
-            _clr   = ("var(--state-positive)" if _dlt > 0
+            _clr   = ("var(--state-positive-muted)" if _dlt > 0
                       else ("var(--state-critical)" if _dlt < -0.5 else "var(--text-muted)"))
             rows.append(
                 f'<div class="sp-row">'

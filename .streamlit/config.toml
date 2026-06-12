@@ -1,23 +1,67 @@
-# Newsweek "Paper" theme (2026-06 rebrand — design tokens in dashboard.py,
-# source handoff in docs/design_handoff/). Pin to light regardless of the
-# user's OS prefers-color-scheme: all custom CSS assumes the warm paper
-# canvas (ink text #1f1e19 on #fefcf6) so dark mode would render the page
-# nearly invisible. Lock it.
+# Newsweek "Paper" theme (2026-06 rebrand — design tokens live in the
+# style block of dashboard.py; source handoff in docs/design_handoff/).
+# Pin to light regardless of the user's OS prefers-color-scheme: all
+# custom CSS assumes the warm paper canvas (ink text #1f1e19 on #fefcf6)
+# so dark mode would render the page nearly invisible. Lock it.
+# (A warm-ink dark ramp is preserved, commented, at the bottom of
+# docs/design_handoff/newsweek-dashboard.css if dark ever has to return —
+# the 2026-06-12 dark variant lives in git history at PRs #199/#200.)
 #
-# primaryColor is INK, deliberately not Newsweek red: Streamlit paints
-# primaryColor on focus rings, sliders, and primary buttons, and under the
-# brand system red is reserved for chrome (eyebrow tick, active tab, mark)
-# and data severity — a red widget accent would violate both.
+# Two-red rule: brand red (#E91D0C) is CHROME ONLY (eyebrow tick,
+# active-tab underline — both live in the custom CSS). primaryColor is
+# INK, deliberately not red: Streamlit paints primary buttons, focus
+# rings, checkboxes and sliders with it, and none of those may read as
+# severity or brand. Severity red (#c41608) is applied per-band in the
+# CSS, never here.
+#
+# Values mirror the :root token tier in dashboard.py — keep them in sync.
 [theme]
 base = "light"
-primaryColor = "#1f1e19"            # --text-primary (ink)
-backgroundColor = "#fefcf6"         # --surface-0 (Paper)
+primaryColor = "#1f1e19"             # --text-primary (ink)
+backgroundColor = "#fefcf6"          # --surface-0 (Paper)
 secondaryBackgroundColor = "#f6f2e6" # --surface-2 (sunk fills)
-textColor = "#1f1e19"               # --text-primary
+textColor = "#1f1e19"                # --text-primary
+linkColor = "#57564f"                # --text-secondary
+borderColor = "#e7e0c9"              # --border (warm hairline)
+baseRadius = "small"                 # 4px — square-ish, editorial
+# Built-in charts (st.line_chart / st.bar_chart) + the Altair theme pick
+# up this categorical sequence — the Newsweek secondary palette
+# (--viz-1…6, paper-toned). Keeps Streamlit-red off every chart series.
+chartCategoricalColors = ["#4b62e0", "#2d8d92", "#824dd7", "#d84f86", "#b08900", "#5f9e2a"]
+# Brand faces. Declared at theme level (not CSS @font-face) so the
+# canvas-rendered dataframes and all widgets measure/render with them
+# too. The licensed binaries are NOT in the repo — drop them into
+# static/fonts/ (see static/fonts/README.md); until then the fallbacks
+# apply (Georgia for display/serif, Helvetica/Arial for UI sans).
+font = "Franklin Gothic, Helvetica Neue, Arial, sans-serif"
+headingFont = "Benton Modern Display, Georgia, Times New Roman, serif"
 
-# Serves ./static at /app/static — the drop-in path for the licensed
-# Newsweek font binaries (see static/fonts/README.md). Until the files
-# exist the @font-face rules 404 harmlessly and the CSS falls back to
-# Georgia / system sans.
+[[theme.fontFaces]]
+family = "Franklin Gothic"
+url = "app/static/fonts/FranklinGothic.ttf"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Franklin Gothic"
+url = "app/static/fonts/FranklinGothicDemi.ttf"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Regular.otf"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Bold.otf"
+weight = 700
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Black.otf"
+weight = 800
+
 [server]
+# Serves ./static at /app/static — required for the self-hosted font
+# binaries above. An empty static dir is fine (fallback stacks apply).
 enableStaticServing = true
