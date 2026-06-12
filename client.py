@@ -296,7 +296,10 @@ class MagniteClient:
                     raise MagniteAPIError(
                         f"{method} {url} failed after {attempts_5xx} attempts: {exc}"
                     ) from exc
-                logger.warning(
+                # INFO, not WARNING: a retry that may yet succeed isn't an
+                # incident — the sweep alert collects WARNING+, and recovered
+                # blips were emailing (2026-06-12). Exhaustion raises → ERROR.
+                logger.info(
                     "Connection error from Magnite (attempt %d/%d): %s. Sleeping %ds before retry.",
                     attempts_5xx, self.retry_5xx_attempts, exc, self.retry_5xx_seconds,
                 )
@@ -308,7 +311,7 @@ class MagniteClient:
                     raise MagniteAPIError(
                         f"Exhausted {self.retry_429_attempts} 429-retry attempts on {method} {url}"
                     )
-                logger.warning(
+                logger.info(
                     "429 from Magnite (attempt %d/%d). Sleeping %ds before retry.",
                     attempts_429, self.retry_429_attempts, self.retry_429_seconds,
                 )
@@ -325,7 +328,7 @@ class MagniteClient:
                         f"{method} {url} returned {resp.status_code} after "
                         f"{attempts_5xx} attempts: {resp.text}"
                     )
-                logger.warning(
+                logger.info(
                     "%d from Magnite (attempt %d/%d). Sleeping %ds before retry.",
                     resp.status_code, attempts_5xx, self.retry_5xx_attempts,
                     self.retry_5xx_seconds,
