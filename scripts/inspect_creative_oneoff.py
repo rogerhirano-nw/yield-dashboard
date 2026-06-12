@@ -94,6 +94,11 @@ def main() -> int:
                   "isNativeEligible", "creativeTemplateId"):
             if d.get(k) is not None:
                 print(f"  {k}: {d[k]}")
+        for a in d.get("customCreativeAssets") or []:
+            asset = a.get("asset") or {}
+            print(f"  asset %%FILE:{a.get('macroName')}%% -> "
+                  f"{asset.get('fileName')} ({asset.get('fileSize')} bytes)  "
+                  f"{asset.get('assetUrl') or ''}")
         snippet = (d.get("snippet") or d.get("htmlSnippet")
                    or d.get("codeSnippet") or d.get("expandedSnippet") or "")
         if snippet:
@@ -186,8 +191,11 @@ def main() -> int:
         for au in inv_svc.getAdUnitsByStatement(stmt.ToStatement()).results or []:
             d = _ser(au)
             path = "/".join(p.get("name", "") for p in d.get("parentPath") or [])
+            sizes = [s.get("fullDisplayString")
+                     for s in d.get("adUnitSizes") or []]
             print(f"  {d.get('id')}  {path}/{d.get('name')}  "
                   f"code={d.get('adUnitCode')}  status={d.get('status')}")
+            print(f"      sizes: {sizes}")
 
     # ── 4. Delivery + Active View reports (REST) ─────────────────────────
     if not li_ids:
