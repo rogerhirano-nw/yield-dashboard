@@ -1383,12 +1383,16 @@ except Exception:
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
 
-# Cache TTL set to 6 hours — data only changes once daily (5 AM ET sweep)
-# plus intraday GAM refreshes. At 1h TTL the dashboard fetched full tables
-# 24×/day per unique cache key, driving Supabase egress past the plan limit.
-# 6h cuts that to 4×/day (~1.5 GB/month vs ~9 GB/month). The debug
-# "Clear cache + re-query" button handles on-demand refresh.
-@st.cache_data(ttl=21600)
+# Cache TTL: 1 hour. The original 6h TTL guarded the FREE plan's 5 GB/month
+# egress cap (1h ≈ 9 GB/month) and the Nano compute's daily disk-IO budget.
+# The org is on Pro now (250 GB egress included) and the project runs Micro
+# compute (covered by Pro's $10 compute credit), so neither constraint
+# binds — and 1h means post-sweep data shows up within the hour instead of
+# whenever the 6h window happened to roll. The debug "Clear cache +
+# re-query" button still handles on-demand refresh.
+_CACHE_TTL_SECONDS = 3600
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
@@ -1428,7 +1432,7 @@ def load(table: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=21600)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def _load_li_max_duration() -> pd.DataFrame:
     """Pre-aggregated max creative duration per line item.
 
@@ -1472,11 +1476,11 @@ with _hdr_left:
 
 _header_right_slot = _hdr_right.empty()
 
-@st.cache_data(ttl=21600)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def _last_data_refresh_iso() -> str | None:
     """Latest _pulled_at across gam_campaigns — the canonical 'when did the
-    data last update' signal for the header timestamp. Cached 6 hours to
-    match the rest of the cache profile (daily refresh cadence)."""
+    data last update' signal for the header timestamp. Cached on the shared
+    TTL to match the rest of the cache profile."""
     try:
         with _engine().connect() as _conn:
             row = _conn.execute(sqlalchemy.text(
