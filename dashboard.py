@@ -1398,11 +1398,13 @@ _CACHE_TTL_SECONDS = 3600
 def load(table: str) -> pd.DataFrame:
     try:
         with _engine().connect() as conn:
-            # IO-budget protection (2026-06-06): for time-series tables
-            # with a `date` column, cap to last N days. Dashboard views
-            # never look back more than ~7 days for these — anything
-            # larger was burning the Supabase Nano-tier disk IO budget
-            # on every dashboard cold-load.
+            # For time-series tables with a `date` column, cap to last N
+            # days. Dashboard views never look back more than ~7 days for
+            # these; full-table cold-loads of the big DV tables drove the
+            # 2026-06-06/07 disk-IO incidents. (Blamed on "Nano tier" at
+            # the time — the instance is actually Micro on Pro, so the
+            # budget is roomier than feared, but loading rows no view can
+            # render is waste at any size.)
             #
             # Add a table here only if (a) it has a `date` column and
             # (b) the dashboard surfaces only recent rows. Metadata /
