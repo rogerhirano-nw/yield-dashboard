@@ -1,6 +1,64 @@
-# Pin the theme to dark regardless of the user's OS prefers-color-scheme.
-# All custom CSS in dashboard.py assumes a dark background (text colors are
-# near-white rgba(250,250,250,...)) so light mode renders the page nearly
-# invisible. Lock it.
+# Newsweek brand theme — DARK IS LOCKED. The Newsweek look is achieved on
+# dark by anchoring every surface on the warm-ink ramp (Newsweek Ink
+# #1F1E19) instead of Streamlit's cold #0E1117 — do not convert to a
+# light/paper theme; all custom CSS (assets/newsweek_dashboard.css) and the
+# severity grammar assume a dark canvas.
+#
+# Two-red rule: brand red (#E91D0C) is CHROME ONLY (eyebrow tick, active-tab
+# underline — both live in the custom CSS). primaryColor is deliberately a
+# warm neutral, NOT red: Streamlit paints primary buttons, focus rings,
+# checkboxes and sliders with it, and none of those may read as severity or
+# brand. Severity red (#EC4A3A) is applied per-band in the CSS, never here.
+#
+# Values mirror the :root token tier in assets/newsweek_dashboard.css and
+# the NW_* constants in dashboard.py — keep all three in sync.
 [theme]
 base = "dark"
+primaryColor = "#b8b3a3"               # --text-secondary: warm neutral accent
+backgroundColor = "#14130f"            # --surface-0
+secondaryBackgroundColor = "#1f1e19"   # --surface-1 (Newsweek Ink)
+textColor = "#f5f1e6"                  # --text-primary
+linkColor = "#b8b3a3"
+borderColor = "#3a382f"                # --border (warm hairline)
+baseRadius = "small"                   # 4px — square-ish, editorial
+# Built-in charts (st.line_chart / st.bar_chart) + the Altair theme pick up
+# this categorical sequence — the Newsweek secondary palette lifted for
+# dark (--viz-1…6). Keeps Streamlit-red off every chart series.
+chartCategoricalColors = ["#6b80f0", "#3fd7dd", "#9a6df0", "#ff7aae", "#ffd500", "#aef24a"]
+# Brand faces. Declared at theme level (not just CSS @font-face) so the
+# canvas-rendered dataframes and all widgets measure/render with them too.
+# The licensed binaries are NOT in the repo — drop them into static/fonts/
+# (see static/fonts/README.md); until then the fallbacks apply (Georgia for
+# display/serif, Helvetica/Arial for UI sans).
+font = "Franklin Gothic, Helvetica Neue, Arial, sans-serif"
+headingFont = "Benton Modern Display, Georgia, Times New Roman, serif"
+
+[[theme.fontFaces]]
+family = "Franklin Gothic"
+url = "app/static/fonts/FranklinGothic.ttf"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Franklin Gothic"
+url = "app/static/fonts/FranklinGothicDemi.ttf"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Regular.otf"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Bold.otf"
+weight = 700
+
+[[theme.fontFaces]]
+family = "Benton Modern Display"
+url = "app/static/fonts/BentonModDisp-Black.otf"
+weight = 800
+
+[server]
+# Serves ./static at /app/static — required for the self-hosted font
+# binaries above. An empty static dir is fine (fallback stacks apply).
+enableStaticServing = true

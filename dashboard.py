@@ -68,6 +68,19 @@ import streamlit as st
 
 import dashboard_logic as dl
 
+# ── Newsweek design tokens — Python mirror of the CSS :root tier ─────────
+# For colors that must be emitted as literals (SVG presentation attributes,
+# Altair scales, settings defaults — places CSS var() can't reach). Keep in
+# sync with assets/newsweek_dashboard.css and .streamlit/config.toml.
+# Two-red rule: brand red (#e91d0c) is chrome-only and deliberately has no
+# constant here — nothing Python-rendered may use it. Severity uses NW_STATE_*.
+NW_VIZ = ["#6b80f0", "#3fd7dd", "#9a6df0", "#ff7aae", "#ffd500", "#aef24a"]
+NW_STATE_POSITIVE = "#5fce82"
+NW_STATE_WARNING  = "#f6c344"
+NW_STATE_CRITICAL = "#ec4a3a"
+NW_TEXT_SECONDARY = "#b8b3a3"
+NW_TEXT_MUTED     = "#8a8579"
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -234,9 +247,9 @@ _DEFAULT_SETTINGS: dict = {
     ],
     "airtable_reporter": "Roger Hirano",
     "status_colors": [
-        {"keyword": "Delivering", "color": "#2E7D32"},  # green
-        {"keyword": "Paused",     "color": "#F9A825"},  # amber
-        {"keyword": "Completed",  "color": "#5D4037"},  # brown
+        {"keyword": "Delivering", "color": NW_STATE_POSITIVE},  # green
+        {"keyword": "Paused",     "color": NW_STATE_WARNING},   # amber
+        {"keyword": "Completed",  "color": NW_TEXT_MUTED},      # neutral — done, recede
     ],
     "seller_colors": {},  # per-seller overrides; sellers absent fall back to hash
     "deal_type_codes": {
@@ -681,677 +694,19 @@ AE_NAMES = _cfg["ae_names"]
 st.set_page_config(page_title="Overall performance", layout="wide")
 
 # ──────────────────────────────────────────────────────────────────────────
-# Global polish: typography, sentence case, tabular nums, tab underline,
-# eyebrow / timestamp affordances, border radius tokens. Streamlit honors
-# inline CSS via st.markdown(unsafe_allow_html=True).
+# Newsweek brand system — design tokens + every component rule live in
+# assets/newsweek_dashboard.css (single style tier; edit the :root tokens
+# there to recolor/rescale all views). Loaded once, before any view
+# renders. Streamlit honors inline CSS via st.markdown(unsafe_allow_html).
+# Two-red rule: --brand-red is chrome only (eyebrow tick, active tab);
+# --state-critical owns data severity. If a red pixel is not the mark, a
+# tab, or a breach, it's a bug.
 # ──────────────────────────────────────────────────────────────────────────
-st.markdown(
-    """
-<style>
-:root {
-  --border-radius-md: 8px;
-  --border-radius-lg: 12px;
-}
-/* ── Streamlit defaults override ──────────────────────────────────────
-   Streamlit's global anchor styling (primary-color + underline) beats
-   unprefixed class selectors on specificity. Override with .stApp-prefixed
-   rules + !important + all link pseudo-classes so chrome links render as
-   plain text, never as blue underlined hyperlinks. */
-.stApp .nw-tab,
-.stApp .nw-tab:link,
-.stApp .nw-tab:visited,
-.stApp .nw-tab:active {
-  color: rgba(250,250,250,0.45) !important;
-  text-decoration: none !important;
-}
-.stApp .nw-tab:hover {
-  color: rgba(250,250,250,0.85) !important;
-  text-decoration: none !important;
-}
-.stApp .nw-tab.nw-tab-active,
-.stApp .nw-tab.nw-tab-active:link,
-.stApp .nw-tab.nw-tab-active:visited {
-  color: rgba(250,250,250,0.95) !important;
-  text-decoration: none !important;
-}
-/* Hide Streamlit's top toolbar / hamburger / running-status indicator
-   AND the auto-generated heading anchor link icon (the chain glyph). */
-#MainMenu, header[data-testid="stHeader"],
-[data-testid="stToolbar"], [data-testid="stStatusWidget"],
-[data-testid="stDecoration"], [data-testid="stAppDeployButton"],
-[data-testid="stHeaderActionElements"],
-[data-testid="stHeadingWithActionElements"] a,
-.stApp h1 a, .stApp h2 a, .stApp h3 a {
-  visibility: hidden !important;
-  height: 0 !important;
-  display: none !important;
-}
-/* Belt-and-suspenders for Streamlit's deploy/iframe top accent (the
-   stray red line above the eyebrow). */
-.stApp::before, .stApp::after { display: none !important; }
-[data-testid="stAppViewContainer"] > .stApp { border-top: none !important; }
-iframe[title="streamlit_app"] { border-top: none !important; }
-/* ── Streamlit multiselect chip overrides ──────────────────────────
-   Default chip color is the theme primary (red), which collides with
-   the dashboard's "red = severity" convention. Force a neutral chip
-   for all filters, then color the Status chip per its value so
-   "Delivering" reads as healthy, not as a warning.
-   BaseWeb tag exposes aria-label like "Delivering, close by backspace"
-   so we can target by prefix. */
-.stMultiSelect [data-baseweb="tag"] {
-  background-color: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.10) !important;
-  border-radius: var(--border-radius-md) !important;
-}
-.stMultiSelect [data-baseweb="tag"] span {
-  color: rgba(250,250,250,0.92) !important;
-}
-.stMultiSelect [data-baseweb="tag"] svg {
-  fill: rgba(250,250,250,0.55) !important;
-}
-.stMultiSelect [data-baseweb="tag"]:hover {
-  background-color: rgba(255,255,255,0.10) !important;
-}
-/* Status-specific chip color (matches the table pill palette). */
-.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] {
-  background-color: hsl(120, 35%, 22%) !important;
-  border-color: hsl(120, 40%, 32%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] span {
-  color: hsl(120, 40%, 78%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] svg {
-  fill: hsl(120, 40%, 70%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] {
-  background-color: hsl(40, 45%, 22%) !important;
-  border-color: hsl(40, 45%, 32%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] span {
-  color: hsl(40, 35%, 80%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] svg {
-  fill: hsl(40, 35%, 75%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] {
-  background-color: hsl(210, 40%, 22%) !important;
-  border-color: hsl(210, 45%, 32%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] span {
-  color: hsl(210, 45%, 80%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] svg {
-  fill: hsl(210, 45%, 75%) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] {
-  background-color: rgba(255,255,255,0.04) !important;
-  border-color: rgba(255,255,255,0.08) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] span {
-  color: rgba(250,250,250,0.55) !important;
-}
-.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] svg {
-  fill: rgba(250,250,250,0.45) !important;
-}
-/* Compact the top of the main container AND cap width on wide screens. */
-.stApp .main .block-container,
-.stApp [data-testid="stMain"] .block-container,
-.stApp [data-testid="stAppViewContainer"] .block-container {
-  padding-top: 1.5rem !important;
-  padding-bottom: 2rem !important;
-  padding-left: 1.5rem !important;
-  padding-right: 1.5rem !important;
-  max-width: 1600px !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
-/* H1 sizing per spec — Streamlit's default is much larger. */
-h1, .stMarkdown h1 { font-size: 22px !important; font-weight: 600; margin: 0 0 4px 0; line-height: 1.2; }
-/* Tabular numbers across every cell + KPI value. */
-[data-testid="stMetricValue"], [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th,
-.kpi-value, .kpi-target, .nw-num { font-variant-numeric: tabular-nums; }
-/* (Old st.tabs overrides removed — chrome is now custom HTML.) */
-/* Eyebrow label (page-level section heading above the H1). */
-.nw-eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
-              color: rgba(250,250,250,0.55); font-weight: 500; }
-.nw-timestamp { font-size: 12px; color: rgba(250,250,250,0.55);
-                font-variant-numeric: tabular-nums; }
-/* Filter labels — field labels above selects. Visibly less prominent than
-   the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
-.nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
-                   color: rgba(250,250,250,0.35); font-weight: 400; margin-bottom: 3px; }
-/* Exception banners — left severity bar, equal-height grid row.
-   margin-bottom gives breathing room before the KPI strip. */
-.nw-banner-row { display: grid; grid-template-columns: 1fr 1fr 1fr;
-                 gap: 8px; align-items: stretch; margin: 6px 0 1rem; }
-.nw-banner { border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
-             padding: 10px 12px; font-size: 12px; line-height: 1.35;
-             border: none; border-left: 3px solid transparent;
-             height: 100%; box-sizing: border-box; }
-.nw-banner .nw-banner-head { font-size: 11px; letter-spacing: 0.04em;
-                             text-transform: uppercase; font-weight: 500; margin-bottom: 4px; }
-.nw-banner.sev-red    { background: rgba(244, 67, 54, 0.10); border-left-color: hsl(0, 70%, 55%);   color: hsl(0, 60%, 82%); }
-.nw-banner.sev-amber  { background: rgba(255, 167, 38, 0.08); border-left-color: hsl(35, 75%, 55%); color: hsl(35, 60%, 80%); }
-.nw-banner.sev-ok     { background: rgba(76, 175, 80, 0.06);  border-left-color: hsl(120, 35%, 55%); color: hsl(120, 30%, 80%); }
-/* KPI strip — single grid so all six tiles render at exactly the same
-   height. .nw-kpi-row has no background/border — only individual tiles. */
-.nw-kpi-row { display: grid; grid-template-columns: repeat(9, 1fr);
-              gap: 8px; margin: 4px 0 10px;
-              background: transparent; border: none; }
-.kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
-             height: 96px; padding: 12px 14px;
-             border-radius: var(--border-radius-lg);
-             background: rgba(255,255,255,0.03);
-             border: 0.5px solid rgba(255,255,255,0.08);
-             box-sizing: border-box; }
-.kpi-label { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-             color: rgba(250,250,250,0.50); font-weight: 500; margin-bottom: 6px; }
-.kpi-value-row { display: flex; align-items: center; gap: 8px; min-height: 22px; }
-.kpi-value { font-size: 18px; font-weight: 500; line-height: 1.2;
-             color: rgba(250,250,250,0.92); font-variant-numeric: tabular-nums; }
-.kpi-spark { width: 56px; height: 20px; flex-shrink: 0; }
-.kpi-target{ font-size: 11px; color: rgba(250,250,250,0.50); margin-top: 4px; }
-.kpi-delta-up    { color: hsl(120, 50%, 65%); }
-.kpi-delta-down  { color: hsl(0, 60%, 70%); }
-.kpi-delta-amber { color: hsl(40, 60%, 65%); }
-.kpi-delta-flat  { color: rgba(250,250,250,0.55); }
-.kpi-delta-neutral { color: rgba(250,250,250,0.72); }
-/* Sentence-case helper class (utility — applied selectively). */
-.nw-sentence::first-letter { text-transform: uppercase; }
-/* Compact dataframe borders */
-[data-testid="stDataFrame"] table { border-collapse: collapse; }
-[data-testid="stDataFrame"] th, [data-testid="stDataFrame"] td { border-bottom-width: 0.5px !important; }
-/* "Prog." filler for sellerless rows */
-.nw-prog { font-style: italic; color: rgba(250,250,250,0.55); }
-/* Ordinal badge */
-.nw-ord { font-size: 10px; padding: 1px 6px; border-radius: 999px;
-          background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.65);
-          margin-right: 6px; font-variant-numeric: tabular-nums; }
-/* Differentiator subtitle */
-.nw-sub { font-size: 11px; color: rgba(250,250,250,0.50); font-variant-numeric: tabular-nums; }
-/* Title muted */
-h1, .stMarkdown h1 { color: rgba(250,250,250,0.92); }
-/* ── HTML tab row (replaces st.button-based nav so we get flat text tabs,
-   not Streamlit's red filled primary buttons). Active tab gets a 2px
-   neutral-color underline. Clicks update ?view= via real navigation. */
-.nw-tabrow { display: flex; align-items: stretch; gap: 4px;
-             border-bottom: 0.5px solid rgba(255,255,255,0.10);
-             margin: 8px 0 14px; font-size: 13px; }
-.nw-tabrow-spacer { flex: 1; }
-.nw-tab { padding: 8px 12px; color: rgba(250,250,250,0.45);
-          text-decoration: none; border-bottom: 2px solid transparent;
-          margin-bottom: -0.5px; transition: color 0.12s; }
-.nw-tab:hover { color: rgba(250,250,250,0.85); }
-.nw-tab-active { color: rgba(250,250,250,0.95); font-weight: 500;
-                 border-bottom-color: rgba(250,250,250,0.95); }
-.nw-tab-configure { color: rgba(250,250,250,0.35); border-left: 0.5px solid rgba(255,255,255,0.10);
-                    padding-left: 16px; margin-left: 6px; }
-.nw-tab-configure:hover { color: rgba(250,250,250,0.70); }
-.nw-tab-configure.nw-tab-active { color: rgba(250,250,250,0.95);
-                                  border-bottom-color: rgba(250,250,250,0.95); }
-/* Header right-side cluster — timestamp only (Configure tab is the sole
-   entry point into the settings view, no separate gear button). */
-.nw-header-right { display: flex; align-items: center; justify-content: flex-end; }
-/* ── Custom HTML table for Direct Campaigns ─────────────────────────── */
-.nw-tbl-wrap { background: rgba(255,255,255,0.03); border-radius: var(--border-radius-lg);
-               border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 18px; margin: 8px 0; }
-.nw-tbl-head { display: flex; justify-content: space-between; align-items: center;
-               margin-bottom: 10px; font-size: 12px; }
-.nw-tbl-title { color: rgba(250,250,250,0.85); font-weight: 500; }
-.nw-tbl-title .nw-tbl-sub { color: rgba(250,250,250,0.45); font-weight: 400; margin-left: 6px; }
-.nw-legend { display: flex; gap: 14px; font-size: 11px; color: rgba(250,250,250,0.55);
-             font-variant-numeric: tabular-nums; }
-.nw-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;
-                 vertical-align: middle; }
-.nw-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.nw-tbl th { text-align: left; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-             color: rgba(250,250,250,0.45); font-weight: 500; padding: 6px 10px 10px;
-             border-bottom: 0.5px solid rgba(255,255,255,0.08); }
-.nw-tbl th.num { text-align: right; }
-.nw-tbl td { padding: 10px; vertical-align: top; font-size: 13px; color: rgba(250,250,250,0.85);
-             border-bottom: 0.5px solid rgba(255,255,255,0.05); }
-.nw-tbl td.num { text-align: right; }
-.nw-tbl tr:last-child td { border-bottom: none; }
-.li-name { font-weight: 500; color: rgba(250,250,250,0.92); }
-.li-sub  { font-size: 11px; color: rgba(250,250,250,0.45); margin-top: 2px; }
-.li-ord  { font-size: 10px; padding: 1px 6px; border-radius: 999px;
-           background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.55); margin-right: 6px; }
-.pill { display: inline-block; padding: 2px 10px; border-radius: 6px; font-weight: 600;
-        font-size: 12px; line-height: 1.4; }
-.pill-red    { background: hsl(0, 35%, 22%);  color: hsl(0, 30%, 80%); }
-.pill-amber  { background: hsl(40, 45%, 22%); color: hsl(40, 35%, 78%); }
-/* inline-block forces the colored-text spans to shrink to their content
-   width, so they right-align cleanly under a grid cell with `text-align:
-   right` — same behavior as .pill.
-
-   Color palette is intentionally asymmetric: amber + red are loud
-   (saturated, brighter) because they need to grab attention. Green is
-   muted (gray-green, lower saturation) because "healthy" should recede
-   into the background — when most of the page is fine, you don't want
-   the eye distracted by a sea of bright greens, only pulled toward the
-   amber/red exceptions. Tuned 2026-05-25 after the green-overwhelm
-   audit. */
-.txt-green   { display: inline-block; color: hsl(140, 22%, 58%); font-weight: 500; font-size: 13px; }
-.txt-amber   { display: inline-block; color: hsl(40, 70%, 65%);  font-weight: 500; font-size: 13px; }
-.txt-red     { display: inline-block; color: hsl(0, 60%, 70%);   font-weight: 500; font-size: 13px; }
-/* Delta-row palette: red (default, "worsening") + amber stay loud;
-   green "up" (improving) is muted gray-green so it doesn't compete
-   with the warning colors for attention. Same asymmetric logic as
-   .txt-green above — healthy = recede, problem = pop. */
-.pace-delta  { font-size: 11px; margin-top: 4px; color: hsl(0, 50%, 70%); }
-.pace-delta.up { color: hsl(140, 20%, 52%); }
-.pace-delta.amber { color: hsl(40, 60%, 70%); }
-/* Progress cell: bar + inline % label. Wrapper puts them side-by-side
-   with a small gap so the number sits flush right of the bar without
-   wrapping. Bar fill color is muted gray-green to match the .txt-green
-   palette tuned in the same audit — large block of color in this
-   column was a major contributor to green-overwhelm. */
-.nw-prog-wrap { display: flex; align-items: center; gap: 8px; }
-.nw-prog-bar  { flex: 1; height: 8px; background: rgba(255,255,255,0.06);
-                border-radius: 4px; overflow: hidden; min-width: 40px; }
-.nw-prog-fill { height: 100%; border-radius: 4px; }
-.nw-prog-label{ font-size: 11px; color: rgba(250,250,250,0.55);
-                font-variant-numeric: tabular-nums; min-width: 28px;
-                text-align: right; }
-.prog-red   { background: hsl(0, 50%, 55%); }
-.prog-amber { background: hsl(40, 60%, 50%); }
-.prog-green { background: hsl(140, 22%, 50%); }
-.seller-prog { font-style: italic; color: rgba(250,250,250,0.45); }
-.cell-dash { display: inline-block; color: rgba(250,250,250,0.30); }
-/* Per-column alignment override — used for VCR right now (centered
-   reads better when the cell has a value+delta stack and the column
-   is wide enough that right-alignment leaves a big gap of empty
-   space on the left).
-   Selectors deliberately match the specificity of the table's existing
-   `.nw-row-header .num` / `.nw-row > summary .num` `text-align: right`
-   rules, which are defined further down the stylesheet and would
-   otherwise win on source order if we just wrote `.num.center {}`. */
-.nw-row-header .num.center,
-.nw-rows .nw-row > summary .num.center,
-.nw-pmp-rows .nw-row-header .num.center,
-.nw-pmp-rows .nw-pmp-row .num.center { text-align: center; }
-.bold-rev  { font-weight: 700; }
-/* ── Grid-based row layout + native <details> drawer ─────────────── */
-.nw-rows .nw-row-header,
-.nw-rows .nw-row > summary {
-  display: grid;
-  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | SIVT | GIVT | CTR | VCR | Seller | Progress
-     VCR widened from 7→10fr because its cells render a 2-line
-     value+delta ("68.4%" + "▲ 0.30pp") that was getting cramped
-     against the Seller column. SIVT/GIVT trimmed 7→6fr because they
-     just show "0.19%" / "—" — they had headroom to give. Pace
-     trimmed 11→10fr (already had margin). Net width unchanged. */
-  grid-template-columns:
-    22fr 10fr 9fr 10fr 9fr 9fr 6fr 6fr 8fr 10fr 10fr 14fr;
-  gap: 10px;
-  /* align-items: start so every cell's first line (the value) sits at
-     the same top edge. Was align-items: center, which works only when
-     every cell has the same line count. After adding per-row deltas
-     to most cells, rows mix 1-line (no delta when there's no signal)
-     and 2-line cells, so centering pulled the single-line values down
-     to the row midpoint while the value+delta stack stayed at the top
-     — values across a row no longer aligned horizontally. */
-  align-items: start;
-  padding: 10px 12px;
-  border-bottom: 0.5px solid rgba(255,255,255,0.05);
-}
-.nw-row-header {
-  font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500;
-  border-bottom-color: rgba(255,255,255,0.08);
-}
-.nw-row-header .num { text-align: right; }
-.nw-row {
-  font-variant-numeric: tabular-nums;
-  border-bottom: 0.5px solid rgba(255,255,255,0.04);
-}
-.nw-row > summary {
-  cursor: pointer; font-size: 13px;
-  color: rgba(250,250,250,0.85); list-style: none;
-}
-.nw-row > summary::-webkit-details-marker { display: none; }
-.nw-row > summary::marker { content: ""; }
-.nw-row > summary .num { text-align: right; }
-.nw-row[open] > summary { background: rgba(255,255,255,0.025); }
-.nw-row[open] > summary .nw-chev { transform: rotate(90deg); }
-.nw-chev {
-  display: inline-block; width: 10px;
-  margin-right: 6px; color: rgba(250,250,250,0.35);
-  transition: transform 0.15s;
-}
-.nw-drawer {
-  padding: 16px 22px 18px;
-  background: rgba(255,255,255,0.04);
-  border-top: 0.5px solid rgba(255,255,255,0.05);
-  font-size: 12px;
-}
-.nw-drawer-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
-.nw-drawer-li {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12px; color: rgba(250,250,250,0.85);
-  background: rgba(0,0,0,0.20); padding: 4px 8px;
-  border-radius: 4px; overflow-wrap: anywhere;
-}
-.nw-drawer-id {
-  font-size: 11px; color: rgba(250,250,250,0.55);
-  font-variant-numeric: tabular-nums;
-  user-select: all;
-}
-.nw-meta-grid {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px 24px; margin-top: 14px;
-}
-.nw-meta-grid > div { line-height: 1.4; min-width: 0; }
-.nw-meta-grid .lbl {
-  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: rgba(250,250,250,0.40); display: block; margin-bottom: 2px;
-}
-.nw-meta-grid .val {
-  color: rgba(250,250,250,0.85); font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.nw-warn {
-  margin-top: 14px; padding: 10px 12px;
-  border-radius: var(--border-radius-md);
-  background: hsl(40, 45%, 18%);
-  border: 0.5px solid hsl(40, 50%, 30%);
-  color: hsl(40, 35%, 80%);
-}
-.nw-warn strong {
-  display: block; font-size: 11px;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  margin-bottom: 4px; color: hsl(40, 45%, 88%);
-}
-.nw-warn.severity-red {
-  background: hsl(0, 35%, 18%); border-color: hsl(0, 40%, 30%);
-  color: hsl(0, 30%, 82%);
-}
-.nw-warn.severity-red strong { color: hsl(0, 40%, 90%); }
-.nw-warn.severity-info {
-  background: hsl(210, 40%, 18%); border-color: hsl(210, 45%, 30%);
-  color: hsl(210, 30%, 82%);
-}
-.nw-warn.severity-info strong { color: hsl(210, 45%, 90%); }
-/* Drawer status banner — thesis statement at the top. */
-.nw-status-banner {
-  display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
-  padding: 10px 12px; margin-top: 12px;
-  border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
-  border-left: 3px solid transparent;
-  font-size: 12px; line-height: 1.4;
-}
-.nw-status-banner strong {
-  font-size: 11px; letter-spacing: 0.04em;
-  text-transform: uppercase; font-weight: 500;
-  white-space: nowrap;
-}
-.nw-status-banner.sev-red {
-  background: rgba(244, 67, 54, 0.10);
-  border-left-color: hsl(0, 70%, 55%);
-  color: hsl(0, 60%, 82%);
-}
-.nw-status-banner.sev-amber {
-  background: rgba(255, 167, 38, 0.08);
-  border-left-color: hsl(35, 75%, 55%);
-  color: hsl(35, 60%, 80%);
-}
-.nw-status-banner.sev-ok {
-  background: rgba(76, 175, 80, 0.06);
-  border-left-color: hsl(120, 35%, 55%);
-  color: hsl(120, 30%, 80%);
-}
-/* Drawer 7-day delivery chart panel. */
-.nw-drawer-chart {
-  margin-top: 12px; padding: 8px 12px 10px;
-  background: rgba(255,255,255,0.02);
-  border-radius: var(--border-radius-md);
-  border: 0.5px solid rgba(255,255,255,0.06);
-}
-.nw-drawer-chart-label {
-  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 6px;
-  display: flex; justify-content: space-between; align-items: baseline;
-  flex-wrap: wrap; gap: 6px;
-}
-.nw-drawer-chart-label .legend-row { display: inline-flex; gap: 10px; }
-.nw-drawer-chart-label .legend {
-  font-size: 10px; color: rgba(250,250,250,0.45); font-weight: 400;
-  text-transform: none; letter-spacing: 0;
-}
-.nw-drawer-chart svg { display: block; }
-/* Day-of-week + date row under a 7-cell chart (drawer delivery chart). */
-.nw-date-row {
-  display: grid; grid-template-columns: repeat(7, 1fr);
-  margin-top: 4px; font-size: 9px;
-  color: rgba(250,250,250,0.40); font-variant-numeric: tabular-nums;
-}
-.nw-date-row > span { text-align: center; }
-.nw-date-row .is-today {
-  color: rgba(250,250,250,0.85); font-weight: 500;
-}
-.nw-date-row .is-soft { color: hsl(40, 60%, 65%); }
-/* Compact date row under small-multiples sparklines — first/last show day +
-   date, middle days are single-letter abbreviations. */
-.nw-sm-dates {
-  display: grid; grid-template-columns: repeat(7, 1fr);
-  margin-top: 3px; font-size: 8px;
-  color: rgba(250,250,250,0.40); font-variant-numeric: tabular-nums;
-}
-.nw-sm-dates > span { text-align: center; }
-.nw-sm-dates .is-today {
-  color: rgba(250,250,250,0.85); font-weight: 500;
-}
-/* Small multiples for viewability + CTR/VCR — compact, secondary weight. */
-.nw-sm-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
-}
-.nw-sm-panel {
-  padding: 8px 10px;
-  background: rgba(255,255,255,0.02);
-  border-radius: var(--border-radius-md);
-  border: 0.5px solid rgba(255,255,255,0.06);
-}
-.nw-sm-label {
-  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500; margin-bottom: 4px;
-  display: flex; justify-content: space-between; align-items: baseline;
-}
-.nw-sm-label .latest {
-  font-size: 11px; font-weight: 500; letter-spacing: 0;
-  color: rgba(250,250,250,0.85); text-transform: none;
-  font-variant-numeric: tabular-nums;
-}
-.nw-sm-panel svg { width: 100%; height: 24px; display: block; }
-.nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
-.nw-action {
-  display: inline-block; padding: 6px 14px;
-  border-radius: var(--border-radius-md);
-  background: rgba(255,255,255,0.06);
-  border: 0.5px solid rgba(255,255,255,0.10);
-  color: rgba(250,250,250,0.85);
-  font-size: 11px; text-decoration: none;
-}
-.nw-action:hover { background: rgba(255,255,255,0.10); }
-.nw-action-primary {
-  background: rgba(70,130,200,0.18);
-  border-color: rgba(70,130,200,0.35);
-  color: hsl(210, 50%, 80%);
-}
-.nw-action.is-disabled {
-  opacity: 0.4; cursor: not-allowed; pointer-events: auto;
-  background: transparent; color: rgba(250,250,250,0.55);
-}
-.nw-action.is-disabled:hover { background: transparent; }
-/* Clickable GAM ID in the drawer subtitle — anchor inheriting drawer style. */
-.stApp .nw-drawer-id-link,
-.stApp .nw-drawer-id-link:link,
-.stApp .nw-drawer-id-link:visited {
-  color: rgba(250,250,250,0.75) !important;
-  text-decoration: none !important;
-  border-bottom: 0.5px dotted rgba(250,250,250,0.30);
-  font-variant-numeric: tabular-nums;
-}
-.stApp .nw-drawer-id-link:hover {
-  color: rgba(250,250,250,0.95) !important;
-  border-bottom-color: rgba(250,250,250,0.60);
-}
-/* ── PMP section (matches the Direct Campaigns design language) ──── */
-.nw-section-div { height: 0.5px; border: 0; background: rgba(255,255,255,0.10);
-                  margin: 28px 0 14px; }
-.nw-section-eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
-                      color: rgba(250,250,250,0.45); font-weight: 500; }
-.nw-section-h3 { font-size: 18px; font-weight: 500; color: rgba(250,250,250,0.92);
-                 margin: 2px 0 10px 0; line-height: 1.2; }
-/* Deal-type pills (PG / PD / PA / PMP) */
-.pill-dt { display: inline-block; padding: 2px 8px; border-radius: 4px;
-           font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
-           text-transform: uppercase; line-height: 1.4;
-           font-variant-numeric: tabular-nums; }
-.pill-dt-pg  { background: hsl(120, 35%, 22%); color: hsl(120, 40%, 78%); }
-.pill-dt-pd  { background: hsl(210, 40%, 24%); color: hsl(210, 50%, 80%); }
-.pill-dt-pa  { background: rgba(255,255,255,0.08); color: rgba(250,250,250,0.65); }
-.pill-dt-pmp { background: hsl(280, 30%, 24%); color: hsl(280, 45%, 80%); }
-/* eCPM threshold colors — under floor amber, well above green. */
-.ecpm-under { background: hsl(40, 45%, 22%); color: hsl(40, 35%, 80%);
-              padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-.ecpm-over  { color: hsl(120, 50%, 65%); font-weight: 600; }
-/* PMP table — same grid pattern as Direct but different column proportions. */
-.nw-pmp-rows .nw-row-header,
-.nw-pmp-rows .nw-pmp-row {
-  display: grid;
-  /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | SIVT | GIVT | Seller */
-  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 7fr 7fr 13fr;
-  gap: 8px;
-  /* align-items: start matches the Direct table — see same-named CSS
-     rule above. Same reason: Attention/SIVT/GIVT cells now mix 1-line
-     and 2-line content depending on whether a delta is present, so
-     centering misaligned the values across the row. */
-  align-items: start;
-  padding: 10px 12px;
-  border-bottom: 0.5px solid rgba(255,255,255,0.05);
-  font-size: 13px; color: rgba(250,250,250,0.85);
-  font-variant-numeric: tabular-nums;
-}
-.nw-pmp-rows .nw-row-header {
-  font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-  color: rgba(250,250,250,0.45); font-weight: 500;
-  border-bottom-color: rgba(255,255,255,0.08);
-}
-.nw-pmp-rows .nw-row-header .num,
-.nw-pmp-rows .nw-pmp-row .num { text-align: right; }
-
-/* Sticky table headers — both Direct and PMP. Header row sticks to the
-   top of the viewport while the user scrolls through the table body, so
-   the column labels stay visible on long tables. Background must be
-   opaque (≈ wrapper effective fill of Streamlit dark bg #0e1117 + 3%
-   white overlay) so rows scrolling underneath don't show through.
-   z-index 5 = above pace pills + delta rows in the body, below
-   Streamlit's chrome (which uses higher z-indices). Defined LAST in
-   the stylesheet so the position/background props win on source order
-   over the earlier .nw-row-header / .nw-pmp-rows .nw-row-header rules
-   that set typography (specificity is equal). */
-.nw-row-header,
-.nw-pmp-rows .nw-row-header {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: #14171c;
-}
-/* Click-to-expand mechanics — each PMP row becomes <details name="pmp-cmprow">
-   so it's a native exclusive-accordion (only one drawer open at a time). */
-.nw-pmp-rows details > summary.nw-pmp-row {
-  cursor: pointer; list-style: none;
-}
-.nw-pmp-rows details > summary.nw-pmp-row::-webkit-details-marker { display: none; }
-.nw-pmp-rows details > summary.nw-pmp-row::marker { content: ""; }
-.nw-pmp-rows details[open] > summary.nw-pmp-row {
-  background: rgba(255,255,255,0.025);
-}
-.nw-pmp-drawer {
-  padding: 14px 18px 16px;
-  background: rgba(255,255,255,0.04);
-  border-top: 0.5px solid rgba(255,255,255,0.05);
-  font-size: 12px;
-}
-/* Legend (small color-coded glossary in the table card header) */
-.nw-legend-pill { display: flex; gap: 14px; font-size: 11px;
-                  color: rgba(250,250,250,0.55); align-items: center; }
-.nw-legend-pill .pill-dt { font-size: 9px; padding: 1px 6px; }
-/* PA inventory expandable card */
-.nw-pa-inv { background: rgba(255,255,255,0.03);
-             border: 0.5px solid rgba(255,255,255,0.08);
-             border-radius: var(--border-radius-lg);
-             padding: 12px 16px; margin: 12px 0; }
-.nw-pa-inv > summary { display: flex; justify-content: space-between;
-                       align-items: center; cursor: pointer; list-style: none;
-                       font-size: 12px; color: rgba(250,250,250,0.85); }
-.nw-pa-inv > summary::-webkit-details-marker { display: none; }
-.nw-pa-inv > summary::marker { content: ""; }
-.nw-pa-inv-left { display: flex; align-items: center; gap: 8px; }
-.nw-pa-inv-chev { color: rgba(250,250,250,0.45); transition: transform 0.15s; }
-.nw-pa-inv[open] > summary .nw-pa-inv-chev { transform: rotate(90deg); }
-.nw-pa-inv-hint { font-size: 11px; color: rgba(250,250,250,0.45); }
-.nw-pa-inv-body { padding-top: 12px; }
-/* Deal-name primary + parenthetical + subtitle */
-.pmp-name-primary { font-weight: 500; color: rgba(250,250,250,0.92); }
-.pmp-name-paren { color: rgba(250,250,250,0.50); font-weight: 400; margin-left: 4px; }
-.pmp-name-sub { font-size: 11px; color: rgba(250,250,250,0.45); margin-top: 2px;
-                font-variant-numeric: tabular-nums; }
-/* ── Settings sections (Direct Campaigns redesign) ───────────────── */
-.cfg-section { background: rgba(255,255,255,0.02); border-radius: var(--border-radius-lg);
-               border: 0.5px solid rgba(255,255,255,0.08); padding: 16px 20px; margin: 10px 0; }
-.cfg-section-head { display: flex; justify-content: space-between; align-items: baseline;
-                    margin-bottom: 4px; }
-.cfg-eyebrow { font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-               color: rgba(250,250,250,0.45); font-weight: 500; }
-.cfg-count   { font-size: 11px; color: rgba(250,250,250,0.45);
-               font-variant-numeric: tabular-nums; }
-.cfg-title   { font-size: 18px; font-weight: 600; color: rgba(250,250,250,0.92);
-               margin: 0 0 4px 0; }
-.cfg-desc    { font-size: 12px; color: rgba(250,250,250,0.55); margin-bottom: 14px;
-               line-height: 1.5; }
-.cfg-card    { background: rgba(255,255,255,0.025); border-radius: var(--border-radius-md);
-               border: 0.5px solid rgba(255,255,255,0.06); padding: 12px 14px; margin: 8px 0; }
-.cfg-card-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
-.cfg-card-meta  { font-size: 11px; color: rgba(250,250,250,0.45);
-                  margin-left: 8px; font-weight: 400; }
-.cfg-mono    { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-               color: rgba(250,250,250,0.80); }
-.cfg-tertiary{ color: rgba(250,250,250,0.45); }
-.cfg-status-enabled { display: inline-block; padding: 1px 8px; border-radius: 4px;
-                      background: hsl(120, 40%, 22%); color: hsl(120, 30%, 78%);
-                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
-.cfg-status-disabled{ display: inline-block; padding: 1px 8px; border-radius: 4px;
-                      background: rgba(255,255,255,0.06); color: rgba(250,250,250,0.45);
-                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
-.cfg-computed { display: inline-block; padding: 1px 6px; border-radius: 3px;
-                background: rgba(33, 150, 243, 0.18); color: hsl(207, 70%, 78%);
-                font-size: 9px; font-weight: 600; letter-spacing: 0.04em; margin-left: 6px;
-                vertical-align: middle; }
-.cfg-suggest { background: rgba(33, 150, 243, 0.10); color: hsl(207, 70%, 80%);
-               border: 0.5px solid rgba(33, 150, 243, 0.30);
-               border-radius: var(--border-radius-md); padding: 10px 14px;
-               font-size: 12px; margin: 8px 0; }
-.cfg-gradient { height: 12px; border-radius: 6px; margin: 6px 0;
-                background: linear-gradient(to right,
-                  hsl(0, 60%, 50%) 0%, hsl(35, 70%, 50%) 50%, hsl(120, 50%, 50%) 100%); position: relative; }
-.cfg-gradient-marker { position: absolute; top: -3px; width: 2px; height: 18px;
-                       background: rgba(255,255,255,0.85); border-radius: 1px; }
-.cfg-gradient-axis { display: flex; justify-content: space-between; font-size: 10px;
-                     color: rgba(250,250,250,0.45); margin-top: 2px; }
-.cfg-key-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px;
-               padding: 6px 0; border-bottom: 0.5px solid rgba(255,255,255,0.04); align-items: center; }
-.cfg-key-row:last-child { border-bottom: none; }
-.cfg-pill-preview { display: inline-block; padding: 2px 10px; border-radius: 6px;
-                    font-weight: 600; font-size: 12px; }
-.cfg-alias { font-size: 12px; color: rgba(250,250,250,0.70); padding: 2px 0 2px 18px;
-             font-family: ui-monospace, Menlo, Consolas, monospace; }
-.cfg-canonical { font-size: 13px; font-weight: 500; color: rgba(250,250,250,0.90); padding: 4px 0; }
-.cfg-canonical.system { font-style: italic; color: rgba(250,250,250,0.55); }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+_NW_CSS_PATH = Path(__file__).parent / "assets" / "newsweek_dashboard.css"
+try:
+    st.markdown(f"<style>{_NW_CSS_PATH.read_text()}</style>", unsafe_allow_html=True)
+except OSError as _css_err:  # missing stylesheet → unstyled but alive
+    st.warning(f"Brand stylesheet failed to load ({_css_err}); rendering unstyled.")
 
 # ──────────────────────────────────────────────────────────────────────────
 # Dual-entry navigation: data tabs + a Configure tab pushed to the right
@@ -2237,8 +1592,11 @@ if st.session_state.active_view == "opensincera":
                 # Side-by-side ranking charts for the two most-actionable
                 # metrics. Newsweek's bar is coloured distinctly so it
                 # pops out of the per-publisher comparison.
-                _nw_color   = "#d72638"   # Newsweek brand red
-                _peer_color = "#5b8def"
+                # Newsweek's bar gets the lead data-viz hue; peers recede in
+                # warm neutral. Brand red is chrome-only — never a chart
+                # series (two-red rule), so the old #d72638 highlight is out.
+                _nw_color   = NW_VIZ[0]
+                _peer_color = NW_TEXT_MUTED
                 col_a2cr, col_refresh = st.columns(2)
                 if "avg_ads_to_content_ratio_pct" in view.columns and not view["avg_ads_to_content_ratio_pct"].dropna().empty:
                     with col_a2cr:
@@ -2889,11 +2247,13 @@ if st.session_state.active_view == "campaigns":
                 return f"{int(v):,}"
 
             # ── Sparkline helpers ─────────────────────────────────────────
-            def _sparkline_svg(values, target=None, color="green", klass="kpi-spark"):
+            def _sparkline_svg(values, target=None, klass="kpi-spark"):
                 """SVG sparkline. `values` is the 7-day series (oldest first).
-                `target` optionally draws a dashed reference line. `color` keys
-                into the green/amber/red palette. `klass` controls outer sizing
-                (default `kpi-spark` = 56x20; pass `""` for parent-controlled)."""
+                `target` optionally draws a dashed reference line. `klass`
+                controls outer sizing (default `kpi-spark` = 56x20; pass `""`
+                for parent-controlled). Stroke is NEUTRAL by design — trend
+                shape only; severity lives in the bands/banners, never on a
+                sparkline (Newsweek token system, 2026-06)."""
                 if not values:
                     return ""
                 clean = [float(v) if (v is not None and not pd.isna(v)) else None for v in values]
@@ -2910,17 +2270,12 @@ if st.session_state.active_view == "campaigns":
                 def _y(v): return H - PAD - (v - vmin) / (vmax - vmin) * (H - 2 * PAD)
                 pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
                                for i, v in enumerate(clean) if v is not None)
-                palette = {
-                    "green": "hsl(120, 50%, 65%)",
-                    "amber": "hsl(40, 60%, 65%)",
-                    "red":   "hsl(0, 60%, 70%)",
-                }
-                stroke = palette.get(color, palette["green"])
+                stroke = NW_TEXT_SECONDARY
                 tline = ""
                 if target is not None:
                     ty = _y(float(target))
                     tline = (f'<line x1="0" y1="{ty:.1f}" x2="{W}" y2="{ty:.1f}" '
-                             f'stroke="rgba(250,250,250,0.30)" stroke-width="0.5" '
+                             f'stroke="{NW_TEXT_MUTED}" stroke-width="0.5" '
                              f'stroke-dasharray="2 2"/>')
                 last_i = max(i for i, v in enumerate(clean) if v is not None)
                 dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(clean[last_i]):.1f}" '
@@ -3041,24 +2396,6 @@ if st.session_state.active_view == "campaigns":
                     txt += f' · target {suffix_target}'
                 return (txt, cls)
 
-            def _spark_color(series, target=None, lower_is_worse=True):
-                """Pick green/amber/red for the sparkline based on latest vs target."""
-                if not series: return "green"
-                non = [v for v in series if v is not None and not pd.isna(v)]
-                if not non: return "green"
-                latest = non[-1]
-                if target is None:
-                    return "green"
-                ratio = latest / target if target else 1.0
-                if lower_is_worse:
-                    if ratio >= 1.0:  return "green"
-                    if ratio >= 0.90: return "amber"
-                    return "red"
-                else:  # higher is worse (rare)
-                    if ratio <= 1.0:  return "green"
-                    if ratio <= 1.10: return "amber"
-                    return "red"
-
             def _kpi_tile(label, value, target=None, spark=None):
                 """Render one KPI card. `target` is the subtitle text. `spark`
                 is the pre-rendered SVG markup (or '' for text-only)."""
@@ -3105,8 +2442,8 @@ if st.session_state.active_view == "campaigns":
             # ── DV SIVT and GIVT — publisher-wide impression-weighted %
             # per day (Σ Monitored Ads of that Fraud bucket / Σ all
             # Monitored Ads). Both target 1% (industry-standard tolerance);
-            # lower is better, opposite of Attention/Viewability — handled
-            # below by the spark_color call passing `lower_is_worse=False`.
+            # lower is better, opposite of Attention/Viewability — the
+            # per-row delta + band logic carries that polarity.
             _sivt_series: list = []; _sivt_total = None
             _givt_series: list = []; _givt_total = None
             if (not ivt_df.empty
@@ -3136,11 +2473,13 @@ if st.session_state.active_view == "campaigns":
                 _sivt_total  = _ivt_overall_pct("Fraud/SIVT")
                 _givt_total  = _ivt_overall_pct("Fraud/GIVT")
 
-            _rev_spark  = _sparkline_svg(_rev_series,  color="green") if _rev_series  else ""
-            _impr_spark = _sparkline_svg(_impr_series, color="green") if _impr_series else ""
+            # Sparklines are neutral-stroke trend shapes; the dashed line
+            # marks the target where one exists. (Severity coloring retired
+            # with the Newsweek token system — bands/banners own state.)
+            _rev_spark  = _sparkline_svg(_rev_series)  if _rev_series  else ""
+            _impr_spark = _sparkline_svg(_impr_series) if _impr_series else ""
             _pace_spark = _sparkline_svg(
                 _pace_series, target=float(_pacing_target),
-                color=_spark_color(_pace_series, float(_pacing_target), True),
             ) if _pace_series else ""
             # Viewability + CTR targets source from Configure → Benchmarks by
             # format → Display, so changing them in the Settings tab updates
@@ -3148,9 +2487,8 @@ if st.session_state.active_view == "campaigns":
             _view_target = _view_bench
             _view_spark = _sparkline_svg(
                 _view_series, target=_view_target,
-                color=_spark_color(_view_series, _view_target, True),
             ) if _view_series else ""
-            _ctr_spark = _sparkline_svg(_ctr_series, color="green") if _ctr_series else ""
+            _ctr_spark = _sparkline_svg(_ctr_series) if _ctr_series else ""
 
             # Attention sparkline + subtitle. Target = 100 (DV's industry
             # median, the same value used for the per-row column's color
@@ -3159,33 +2497,27 @@ if st.session_state.active_view == "campaigns":
             _attn_target = 100.0
             _attn_spark = _sparkline_svg(
                 _attn_series, target=_attn_target,
-                color=_spark_color(_attn_series, _attn_target, True),
             ) if _attn_series else ""
 
             # SIVT + GIVT sparklines. Both target = 1% (industry tolerance,
-            # top of green band). lower_is_worse=False because rising IVT
-            # is bad — opposite polarity from Attention/Viewability so the
-            # spark color flips correctly when crossing the 1% line.
+            # top of green band; rising IVT is bad — the band logic, not the
+            # sparkline, carries that polarity).
             _ivt_target = 1.0
             _sivt_spark = _sparkline_svg(
                 _sivt_series, target=_ivt_target,
-                color=_spark_color(_sivt_series, _ivt_target, lower_is_worse=False),
             ) if _sivt_series else ""
             _givt_spark = _sparkline_svg(
                 _givt_series, target=_ivt_target,
-                color=_spark_color(_givt_series, _ivt_target, lower_is_worse=False),
             ) if _givt_series else ""
 
             # VCR sparkline. Target sources from Configure → Benchmarks by
             # format → Video → VCR%; falls back to 70 (the standard benchmark
-            # for in-stream video). Like Viewability/Attention, higher is
-            # better, so default _spark_color polarity is correct.
+            # for in-stream video).
             _vcr_bench = ((_cfg.get("benchmarks_by_format") or {})
                           .get("Video", {}) or {}).get("vcr_pct")
             _vcr_target = float(_vcr_bench) if _vcr_bench is not None else 70.0
             _vcr_spark = _sparkline_svg(
                 _vcr_series, target=_vcr_target,
-                color=_spark_color(_vcr_series, _vcr_target, True),
             ) if _vcr_series else ""
 
             _view_target_str = f"{_view_target:g}%"
@@ -4197,14 +3529,17 @@ if st.session_state.active_view == "campaigns":
                 def _y(v): return H - PAD - v / vmax * (H - 2 * PAD)
                 pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
                                for i, v in enumerate(actuals) if v is not None)
-                # Color: green when on track, amber when off — never pure red on
-                # data lines (red is reserved for severity indicators).
+                # Color: state-positive when on track, state-warning when off —
+                # never pure red on data lines (red is reserved for severity
+                # indicators). This chart line is itself a pace-health signal,
+                # so it reads from the state scale, unlike the neutral
+                # KPI/small-multiple sparklines.
                 avg = sum(non_null) / len(non_null) if non_null else 0
                 if expected and expected > 0:
                     ratio = avg / expected
-                    stroke = "hsl(120, 50%, 65%)" if ratio >= 0.9 else "hsl(40, 60%, 65%)"
+                    stroke = NW_STATE_POSITIVE if ratio >= 0.9 else NW_STATE_WARNING
                 else:
-                    stroke = "hsl(120, 50%, 65%)"
+                    stroke = NW_STATE_POSITIVE
                 # Expected reference line — clip to chart top if above vmax.
                 exp_line = ""
                 if expected and expected > 0:
@@ -4212,7 +3547,7 @@ if st.session_state.active_view == "campaigns":
                     ey = max(raw_ey, PAD)  # don't escape the top edge
                     exp_line = (
                         f'<line x1="{PAD}" y1="{ey:.1f}" x2="{W-PAD}" y2="{ey:.1f}" '
-                        f'stroke="rgba(250,250,250,0.45)" stroke-width="1" '
+                        f'stroke="{NW_TEXT_MUTED}" stroke-width="1" '
                         f'stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>'
                     )
                 last_i = max(i for i, v in enumerate(actuals) if v is not None)
@@ -4278,7 +3613,7 @@ if st.session_state.active_view == "campaigns":
                     panels.append(
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
-                        f'{_sparkline_svg(view, target=view_target, color="green", klass="")}'
+                        f'{_sparkline_svg(view, target=view_target, klass="")}'
                         f'{sm_dates}'
                         '</div>'
                     )
@@ -4290,7 +3625,7 @@ if st.session_state.active_view == "campaigns":
                     panels.append(
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
-                        f'{_sparkline_svg(second, target=second_target, color="green", klass="")}'
+                        f'{_sparkline_svg(second, target=second_target, klass="")}'
                         f'{sm_dates}'
                         '</div>'
                     )
@@ -4616,9 +3951,9 @@ if st.session_state.active_view == "campaigns":
                 '<div class="nw-tbl-title">Direct campaigns'
                 '<span class="nw-tbl-sub">· sorted by variance</span></div>'
                 '<div class="nw-legend">'
-                '<span><span class="nw-legend-dot" style="background:hsl(0,50%,55%)"></span>under</span>'
-                '<span><span class="nw-legend-dot" style="background:hsl(40,55%,45%)"></span>off-target</span>'
-                '<span><span class="nw-legend-dot" style="background:hsl(120,40%,50%)"></span>healthy</span>'
+                '<span><span class="nw-legend-dot" style="background:var(--state-critical)"></span>under</span>'
+                '<span><span class="nw-legend-dot" style="background:var(--state-warning)"></span>off-target</span>'
+                '<span><span class="nw-legend-dot" style="background:var(--state-positive)"></span>healthy</span>'
                 '<span>— = N/A</span>'
                 '</div>'
                 '</div>'
@@ -4667,7 +4002,8 @@ if st.session_state.active_view == "campaigns":
             _sign = "+" if _dlt > 0 else ""
             _dlt_s = f"{_sign}${abs(_dlt):,.0f}" if abs(_dlt) >= 0.5 else "—"
             _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
-            _clr   = "#22c55e" if _dlt > 0 else ("#ef4444" if _dlt < -0.5 else "#6b7280")
+            _clr   = (NW_STATE_POSITIVE if _dlt > 0
+                      else (NW_STATE_CRITICAL if _dlt < -0.5 else NW_TEXT_MUTED))
             rows.append(
                 f'<div class="sp-row">'
                 f'<div class="sp-adv">{_sp_esc(_r[name_col] or "—")}</div>'
@@ -4831,11 +4167,11 @@ if st.session_state.active_view == "campaigns":
             '<style>'
             '.sp-row{display:grid;grid-template-columns:1fr 90px 90px 130px;'
             'gap:0 12px;padding:5px 4px;'
-            'border-bottom:1px solid rgba(255,255,255,.05);'
+            'border-bottom:0.5px solid var(--border);'
             'font-size:13px;align-items:center}'
-            '.sp-section{font-size:11px;font-weight:700;color:#aaa;'
-            'text-transform:uppercase;letter-spacing:.05em;padding:10px 4px 3px}'
-            '.sp-head{font-size:11px;font-weight:600;color:#666;'
+            '.sp-section{font-size:11px;font-weight:700;color:var(--text-secondary);'
+            'text-transform:uppercase;letter-spacing:.08em;padding:10px 4px 3px}'
+            '.sp-head{font-size:11px;font-weight:600;color:var(--text-muted);'
             'text-transform:uppercase;letter-spacing:.04em}'
             '.sp-adv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
             '.sp-num{text-align:right;font-variant-numeric:tabular-nums}'
@@ -6006,8 +5342,8 @@ if st.session_state.active_view == "configure":
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
         f'margin:6px 0 4px 0;">'
         f'<div><div class="nw-eyebrow">Yield &amp; pacing</div>'
-        f'<div style="font-size:22px;font-weight:600;color:rgba(250,250,250,0.92);">Configure</div></div>'
-        f'<div style="font-size:11px;color:rgba(250,250,250,0.45);">'
+        f'<div style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-0.01em;color:var(--text-primary);">Configure</div></div>'
+        f'<div style="font-size:11px;color:var(--text-muted);">'
         f'Last saved {_last_saved_disp} by {_by_user}</div>'
         f'</div>',
         unsafe_allow_html=True,
@@ -6263,7 +5599,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:8px">Deal type codes '
                 f'<span class="cfg-card-meta">· {len(_s.get("deal_type_codes", {}) or {})} mapped</span></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Short codes used inside deal/order names → canonical labels.</div>',
                 unsafe_allow_html=True,
             )
@@ -6433,8 +5769,8 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 14px 0;">'
                 f'<div><div class="nw-eyebrow">Yield &amp; pacing</div>'
-                f'<div style="font-size:22px;font-weight:600;color:rgba(250,250,250,0.92);">Configure</div></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.45);">Last saved: {_last_saved_label}</div>'
+                f'<div style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-0.01em;color:var(--text-primary);">Configure</div></div>'
+                f'<div style="font-size:11px;color:var(--text-muted);">Last saved: {_last_saved_label}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -6652,7 +5988,7 @@ if st.session_state.active_view == "configure":
             # ── 1c: Default Status Filter.
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Default status filter</div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Pre-selected when the table first loads.</div>',
                 unsafe_allow_html=True,
             )
@@ -6670,9 +6006,9 @@ if st.session_state.active_view == "configure":
             _env_net_id = os.environ.get("GAM_NETWORK_ID", "").strip()
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">GAM integration</div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Network ID used to build the deep link in every drawer\'s '
-                f'<span style="color:rgba(250,250,250,0.85)">Open in GAM ↗</span> button. '
+                f'<span style="color:var(--text-primary)">Open in GAM ↗</span> button. '
                 f'Find it in any GAM URL after <code>admanager.google.com/</code>.</div>',
                 unsafe_allow_html=True,
             )
@@ -6689,22 +6025,22 @@ if st.session_state.active_view == "configure":
                 if (_gam_network_id_edit or _existing_net_id):
                     _eff = (_gam_network_id_edit or _existing_net_id).strip()
                     st.markdown(
-                        f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
-                        f'Sample link: <span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">'
+                        f'<div style="font-size:11px;color:var(--text-secondary);padding-top:6px">'
+                        f'Sample link: <span style="font-family:ui-monospace,Menlo,monospace;color:var(--text-secondary)">'
                         f'admanager.google.com/{_eff}#delivery/line_item/detail/line_item_id=…</span></div>',
                         unsafe_allow_html=True,
                     )
                 elif _env_net_id:
                     st.markdown(
-                        f'<div style="font-size:11px;color:rgba(250,250,250,0.55);padding-top:6px">'
+                        f'<div style="font-size:11px;color:var(--text-secondary);padding-top:6px">'
                         f'Currently falling back to <code>GAM_NETWORK_ID</code> env var '
-                        f'(<span style="font-family:ui-monospace,Menlo,monospace;color:rgba(250,250,250,0.75)">{_env_net_id}</span>). '
+                        f'(<span style="font-family:ui-monospace,Menlo,monospace;color:var(--text-secondary)">{_env_net_id}</span>). '
                         f'Set above to override.</div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="font-size:11px;color:rgba(40,90%,60%,0.85);padding-top:6px">'
+                        f'<div style="font-size:11px;color:var(--state-warning);padding-top:6px">'
                         f'⚠ Not set — drawer "Open in GAM" buttons will be disabled.</div>',
                         unsafe_allow_html=True,
                     )
@@ -6713,9 +6049,9 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Long preroll override '
                 f'<span class="cfg-card-meta">· manual flag for &gt;30s preroll lines</span></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Force matching lines into the '
-                f'<span style="color:rgba(250,250,250,0.85)">Video Preroll &gt;30s</span> '
+                f'<span style="color:var(--text-primary)">Video Preroll &gt;30s</span> '
                 f'benchmark. Use this when Newsweek\'s 3rd-party video tags '
                 f'(Innovid / DCM) hide creative duration behind JS so neither '
                 f'the GAM API nor VAST parse can detect it. '
@@ -6748,9 +6084,9 @@ if st.session_state.active_view == "configure":
             # ── 1f: AirTable ticket integration ──
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">AirTable integration</div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Powers the drawer\'s '
-                f'<span style="color:rgba(250,250,250,0.85)">🎫 AirTable ticket</span> button. '
+                f'<span style="color:var(--text-primary)">🎫 AirTable ticket</span> button. '
                 f'Routes Request Type automatically based on the drawer\'s state.</div>',
                 unsafe_allow_html=True,
             )
@@ -6815,7 +6151,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:12px">Field name mapping '
                 f'<span class="cfg-card-meta">· canonical → AirTable form\'s actual field name</span></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'AirTable\'s prefill URL parameters must match the form\'s actual field names. '
                 f'Verify via AirTable → Share → Copy prefilled link.</div>',
                 unsafe_allow_html=True,
@@ -6939,7 +6275,7 @@ if st.session_state.active_view == "configure":
             _pacing_target_existing = float(_s.get("pacing_target_pct", 100.0))
             st.markdown(
                 f'<div class="cfg-card-title">Pacing target</div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);">'
+                f'<div style="font-size:11px;color:var(--text-secondary);">'
                 f'Solid green at or above target.</div>',
                 unsafe_allow_html=True,
             )
@@ -6991,11 +6327,11 @@ if st.session_state.active_view == "configure":
             # green; anything below "red <" is red; in between is amber. Leave
             # "red <" blank to keep the implicit fallback (target × 0.85).
             st.markdown(
-                '<div class="cfg-helper" style="font-size:12px;color:rgba(250,250,250,0.55);'
+                '<div class="cfg-helper" style="font-size:12px;color:var(--text-secondary);'
                 'margin:-4px 0 6px 0">'
-                'Color bands: cell is <span style="color:hsl(120,50%,65%)">green</span> ≥ target, '
-                '<span style="color:hsl(35,70%,65%)">amber</span> between target and red threshold, '
-                '<span style="color:hsl(0,55%,70%)">red</span> below threshold. '
+                'Color bands: cell is <span style="color:var(--state-positive)">green</span> ≥ target, '
+                '<span style="color:var(--state-warning)">amber</span> between target and red threshold, '
+                '<span style="color:var(--state-critical)">red</span> below threshold. '
                 'Leave “red &lt;” blank to default to 85% of target.'
                 '</div>',
                 unsafe_allow_html=True,
@@ -7116,7 +6452,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Account Manager mapping '
                 f'<span class="cfg-card-meta">· {_n_assigned} assigned · {_n_unassigned} blank</span></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Each AE (Seller) can be paired with one of the Account Managers below. '
                 f'Surfaces as the Account Manager filter on Direct campaigns. '
                 f'Leave blank to keep the AE in the "Unassigned" bucket.</div>',
@@ -7155,7 +6491,7 @@ if st.session_state.active_view == "configure":
             _status_color_rows = _s.get("status_colors", []) or []
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Status colors</div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'First substring match wins.</div>',
                 unsafe_allow_html=True,
             )
@@ -7169,7 +6505,7 @@ if st.session_state.active_view == "configure":
                 column_config={
                     "keyword": st.column_config.TextColumn("Status keyword", required=True),
                     "color":   st.column_config.TextColumn("Color", required=True,
-                                  help="Hex like #2E7D32 or any CSS color"),
+                                  help="Hex like #5fce82 or any CSS color"),
                 },
             )
             # Live preview pills underneath.
@@ -7177,14 +6513,19 @@ if st.session_state.active_view == "configure":
                 def _cfg_esc(s):
                     return (str(s).replace("&", "&amp;").replace("<", "&lt;")
                             .replace(">", "&gt;").replace('"', "&quot;"))
+                # Tint grammar preview — matches how status colors render on
+                # the dashboard (tinted surface + saturated text, not a full
+                # fill with white text, which goes illegible on light hues).
                 _pills = "".join(
-                    f'<span class="cfg-pill-preview" style="background:{_cfg_esc(r.get("color",""))};'
-                    f'color:#fff;margin-right:8px;opacity:0.95;">{_cfg_esc(r.get("keyword",""))}</span>'
+                    f'<span class="cfg-pill-preview" style="background:'
+                    f'color-mix(in srgb, {_cfg_esc(r.get("color",""))} 13%, transparent);'
+                    f'color:{_cfg_esc(r.get("color",""))};margin-right:8px;">'
+                    f'{_cfg_esc(r.get("keyword",""))}</span>'
                     for r in _status_color_rows
                     if r.get("keyword") and r.get("color")
                 )
                 st.markdown(
-                    f'<div style="margin:8px 0 0 0;font-size:10px;color:rgba(250,250,250,0.45);'
+                    f'<div style="margin:8px 0 0 0;font-size:10px;color:var(--text-muted);'
                     f'letter-spacing:0.08em;text-transform:uppercase">Preview</div>'
                     f'<div style="margin-top:4px">{_pills}</div>',
                     unsafe_allow_html=True,
@@ -7198,7 +6539,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Seller colors '
                 f'<span class="cfg-card-meta">· {_seller_card_meta}</span></div>'
-                f'<div style="font-size:11px;color:rgba(250,250,250,0.55);margin-bottom:6px">'
+                f'<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">'
                 f'Used in tables, filters, and chart legends.</div>',
                 unsafe_allow_html=True,
             )
@@ -7209,9 +6550,12 @@ if st.session_state.active_view == "configure":
             )
 
             def _hash_fallback_color(name):
+                # Stable bucket into the Newsweek data-viz palette — same
+                # seller always lands on the same hue (collisions accepted;
+                # the palette has 6 slots and overrides exist for clashes).
                 import hashlib as _hashlib
                 h = int(_hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
-                return f"hsl({h % 360}, 55%, 38%)"
+                return NW_VIZ[h % len(NW_VIZ)]
 
             _seller_color_rows = []
             for _name in _known_ae_names:
@@ -7243,7 +6587,7 @@ if st.session_state.active_view == "configure":
                 column_config={
                     "seller": st.column_config.TextColumn("Seller", required=True),
                     "color":  st.column_config.TextColumn("Override color",
-                                  help="Hex like #1976D2; leave blank to use hash fallback"),
+                                  help="Hex like #6b80f0; leave blank to use hash fallback"),
                     "Used in table": st.column_config.TextColumn("Used in table", disabled=True),
                 },
                 disabled=["Used in table"],
@@ -7254,7 +6598,7 @@ if st.session_state.active_view == "configure":
             if _hash_fb_rows:
                 _swatches = "".join(
                     f'<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px;'
-                    f'font-size:11px;color:rgba(250,250,250,0.55)">'
+                    f'font-size:11px;color:var(--text-secondary)">'
                     f'<span style="width:10px;height:10px;border-radius:2px;'
                     f'background:{_hash_fallback_color(r["seller"])}"></span>'
                     f'{r["seller"]} <span class="cfg-tertiary">(hash fallback)</span>'
@@ -7262,7 +6606,7 @@ if st.session_state.active_view == "configure":
                     for r in _hash_fb_rows[:8]
                 )
                 st.markdown(
-                    f'<div style="margin-top:6px;font-size:11px;color:rgba(250,250,250,0.45);'
+                    f'<div style="margin-top:6px;font-size:11px;color:var(--text-muted);'
                     f'letter-spacing:0.05em">{_swatches}</div>',
                     unsafe_allow_html=True,
                 )

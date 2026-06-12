@@ -221,15 +221,15 @@
   "status_colors": [
     {
       "keyword": "Delivering",
-      "color": "#2E7D32"
+      "color": "#5fce82"
     },
     {
       "keyword": "Paused",
-      "color": "#F9A825"
+      "color": "#f6c344"
     },
     {
       "keyword": "Completed",
-      "color": "#5D4037"
+      "color": "#8a8579"
     }
   ],
   "seller_colors": {},

@@ -1,0 +1,788 @@
+/* ============================================================
+   Newsweek Dashboard — design tokens + component CSS
+   ------------------------------------------------------------
+   Single style tier for the Streamlit ad-revenue dashboard.
+   Injected once by dashboard.py via st.markdown(<style>…),
+   before any view renders. Edit the :root token block to
+   recolor/rescale every view — component rules below only
+   read tokens.
+
+   THE TWO-RED RULE (acceptance rule for any change here):
+   - --brand-red / --brand-red-bright are CHROME ONLY: the
+     eyebrow tick, the active-tab underline, the mark. Never
+     on a metric, delta, sparkline, or chart series.
+   - --state-critical owns data severity (breach) and pairs
+     with --state-warning / --state-positive.
+   If a red pixel is not the mark, a tab, or a breach, it's a bug.
+
+   Fonts: declared in .streamlit/config.toml ([theme] font /
+   headingFont + [[theme.fontFaces]] → static/fonts/*) so the
+   brand faces also reach Streamlit natives, incl. the
+   canvas-rendered dataframes. Until the licensed binaries are
+   dropped into static/fonts/, the fallback stacks below apply
+   (Georgia for display, Helvetica/Arial for UI).
+
+   Severity THRESHOLDS are untouched by design — banding logic
+   lives in dashboard_logic.py; this file only restyles the
+   green/amber/red grammar onto the --state-* tokens.
+   ============================================================ */
+
+/* ============================================================
+   1) DESIGN TOKENS — edit this tier to recolor/rescale all
+   ============================================================ */
+:root {
+  /* ---- BRAND CHROME — identity only, NEVER on data ---- */
+  --brand-red:         #e91d0c;   /* mark, active-tab underline, eyebrow tick */
+  --brand-red-bright:  #ff3b2a;   /* same hue, lifted for dark chrome */
+
+  /* ---- SURFACE — warm-ink ramp (anchored on Newsweek Ink) ---- */
+  --surface-0:    #14130f;        /* app background        (was #0e1117) */
+  --surface-1:    #1f1e19;        /* panels, tiles         (Newsweek Ink) */
+  --surface-2:    #2a2820;        /* raised rows, hover fills */
+  --border:       #3a382f;        /* warm hairline         (was #363741) */
+  --border-strong:#56544a;        /* section rule */
+
+  /* ---- TEXT — paper-tinted on dark ---- */
+  --text-primary:   #f5f1e6;      /* warm white            (was #fafafa) */
+  --text-secondary: #b8b3a3;
+  --text-muted:     #8a8579;
+
+  /* ---- STATE — severity scale (data plane only) ---- */
+  --state-positive: #5fce82;  --state-positive-surface: rgba(95,206,130,.13);
+  --state-warning:  #f6c344;  --state-warning-surface:  rgba(246,195,68,.13);
+  --state-critical: #ec4a3a;  --state-critical-surface: rgba(236,74,58,.13);
+
+  /* ---- DATA-VIZ — Newsweek secondary palette (lifted for dark) ----
+     Mirrored in dashboard.py NW_VIZ + config.toml chartCategoricalColors. */
+  --viz-1:#6b80f0; --viz-2:#3fd7dd; --viz-3:#9a6df0;
+  --viz-4:#ff7aae; --viz-5:#ffd500; --viz-6:#aef24a;
+  --viz-1-surface: rgba(107,128,240,.13);
+  --viz-2-surface: rgba(63,215,221,.13);
+  --viz-3-surface: rgba(154,109,240,.13);
+
+  /* ---- TYPE ---- */
+  --font-sans:    "Franklin Gothic", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Benton Modern Display", Georgia, "Times New Roman", serif;
+  --track-eyebrow: 0.08em;
+  --num-feature:  "tnum" 1;       /* tabular numerals — apply to ALL figures */
+
+  /* ---- SPACING (4px base) & RADIUS (square-ish, editorial) ---- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
+  --radius-sm:  4px;              /* tiles, inputs, banded cells */
+  --radius-md:  8px;              /* severity banners */
+  --radius-pill:999px;            /* status + ordinal pills */
+}
+
+/* ============================================================
+   2) APP CANVAS + STREAMLIT-NATIVE OVERRIDES
+   ============================================================ */
+.stApp {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  /* Tabular numerals everywhere — figures align column-to-column.
+     (font-feature-settings inherits; canvas dataframes get tnum
+     via the theme font config instead.) */
+  font-feature-settings: var(--num-feature);
+}
+
+/* ── Streamlit defaults override ──────────────────────────────────────
+   Streamlit's global anchor styling (primary-color + underline) beats
+   unprefixed class selectors on specificity. Override with .stApp-prefixed
+   rules + !important + all link pseudo-classes so chrome links render as
+   plain text, never as blue underlined hyperlinks. */
+.stApp .nw-tab,
+.stApp .nw-tab:link,
+.stApp .nw-tab:visited,
+.stApp .nw-tab:active {
+  color: var(--text-muted) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-tab:hover {
+  color: var(--text-primary) !important;
+  text-decoration: none !important;
+}
+.stApp .nw-tab.nw-tab-active,
+.stApp .nw-tab.nw-tab-active:link,
+.stApp .nw-tab.nw-tab-active:visited {
+  color: var(--text-primary) !important;
+  text-decoration: none !important;
+}
+/* Hide Streamlit's top toolbar / hamburger / running-status indicator
+   AND the auto-generated heading anchor link icon (the chain glyph). */
+#MainMenu, header[data-testid="stHeader"],
+[data-testid="stToolbar"], [data-testid="stStatusWidget"],
+[data-testid="stDecoration"], [data-testid="stAppDeployButton"],
+[data-testid="stHeaderActionElements"],
+[data-testid="stHeadingWithActionElements"] a,
+.stApp h1 a, .stApp h2 a, .stApp h3 a {
+  visibility: hidden !important;
+  height: 0 !important;
+  display: none !important;
+}
+/* Belt-and-suspenders for Streamlit's deploy/iframe top accent (the
+   stray red line above the eyebrow). */
+.stApp::before, .stApp::after { display: none !important; }
+[data-testid="stAppViewContainer"] > .stApp { border-top: none !important; }
+iframe[title="streamlit_app"] { border-top: none !important; }
+
+/* ── Streamlit multiselect chip overrides ──────────────────────────
+   Default chip color is the theme primary, which has no business in
+   the data plane. Force a neutral warm chip for all filters, then
+   color the Status chip per its value so "Delivering" reads as
+   healthy (state tint grammar: tinted surface + saturated text).
+   BaseWeb tag exposes aria-label like "Delivering, close by backspace"
+   so we can target by prefix. */
+.stMultiSelect [data-baseweb="tag"] {
+  background-color: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+}
+.stMultiSelect [data-baseweb="tag"] span {
+  color: var(--text-primary) !important;
+}
+.stMultiSelect [data-baseweb="tag"] svg {
+  fill: var(--text-secondary) !important;
+}
+.stMultiSelect [data-baseweb="tag"]:hover {
+  background-color: var(--border) !important;
+}
+/* Status-specific chip color (matches the table pill grammar). */
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] {
+  background-color: var(--state-positive-surface) !important;
+  border-color: var(--state-positive-surface) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] span {
+  color: var(--state-positive) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Delivering"] svg {
+  fill: var(--state-positive) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] {
+  background-color: var(--state-warning-surface) !important;
+  border-color: var(--state-warning-surface) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] span {
+  color: var(--state-warning) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Paused"] svg {
+  fill: var(--state-warning) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] {
+  background-color: var(--viz-1-surface) !important;
+  border-color: var(--viz-1-surface) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] span {
+  color: var(--viz-1) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Upcoming"] svg {
+  fill: var(--viz-1) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] {
+  background-color: var(--surface-1) !important;
+  border-color: var(--border) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] span {
+  color: var(--text-muted) !important;
+}
+.stMultiSelect [data-baseweb="tag"][aria-label^="Completed"] svg {
+  fill: var(--text-muted) !important;
+}
+/* Compact the top of the main container AND cap width on wide screens. */
+.stApp .main .block-container,
+.stApp [data-testid="stMain"] .block-container,
+.stApp [data-testid="stAppViewContainer"] .block-container {
+  padding-top: 1.5rem !important;
+  padding-bottom: 2rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+  max-width: 1600px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* ============================================================
+   3) EDITORIAL HEADER — eyebrow, H1, timestamp, tabs
+   ============================================================ */
+/* H1 per spec — Benton Modern Display serif, 22px/1.15, sentence case. */
+h1, .stMarkdown h1 {
+  font-family: var(--font-display);
+  font-size: 22px !important; font-weight: 700; letter-spacing: -0.01em;
+  margin: 0 0 4px 0; line-height: 1.15;
+  color: var(--text-primary);
+}
+/* Tabular numbers across every cell + KPI value. */
+[data-testid="stMetricValue"], [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th,
+.kpi-value, .kpi-target, .nw-num { font-variant-numeric: tabular-nums; }
+/* Eyebrow / kicker (page-level label above the H1) — uppercase, tracked,
+   brand-red with the 8px tick. CHROME: this is one of the only places
+   brand red may appear. */
+.nw-eyebrow {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font: 600 12px/1 var(--font-sans); letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--brand-red-bright);
+}
+.nw-eyebrow::before { content: ""; width: 8px; height: 8px; background: var(--brand-red); }
+.nw-timestamp { font-size: 12px; color: var(--text-secondary);
+                font-variant-numeric: tabular-nums; }
+/* Filter labels — field labels above selects. Visibly less prominent than
+   the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
+.nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
+                   color: var(--text-muted); font-weight: 400; margin-bottom: 3px; }
+/* ── HTML tab row — flat editorial tabs. Active tab gets the 3px
+   brand-red underline (CHROME — the second sanctioned brand-red).
+   Clicks update ?view= via real navigation. */
+.nw-tabrow { display: flex; align-items: stretch; gap: 4px;
+             border-bottom: 1px solid var(--border);
+             margin: 8px 0 14px; font-size: 13px; }
+.nw-tabrow-spacer { flex: 1; }
+.nw-tab { padding: 12px 12px; color: var(--text-muted);
+          font-weight: 600; letter-spacing: 0.02em;
+          text-decoration: none; border-bottom: 3px solid transparent;
+          margin-bottom: -1px; transition: color 0.12s; }
+.nw-tab:hover { color: var(--text-primary); }
+.nw-tab-active { color: var(--text-primary);
+                 border-bottom-color: var(--brand-red); }
+.nw-tab-configure { color: var(--text-muted); border-left: 1px solid var(--border);
+                    padding-left: 16px; margin-left: 6px; }
+.nw-tab-configure:hover { color: var(--text-secondary); }
+.nw-tab-configure.nw-tab-active { color: var(--text-primary);
+                                  border-bottom-color: var(--brand-red); }
+/* Header right-side cluster — timestamp only (Configure tab is the sole
+   entry point into the settings view, no separate gear button). */
+.nw-header-right { display: flex; align-items: center; justify-content: flex-end; }
+
+/* ============================================================
+   4) SEVERITY BANNERS — tinted strip + 3px state accent bar
+   (present, not loud: tint surface + saturated head text)
+   ============================================================ */
+.nw-banner-row { display: grid; grid-template-columns: 1fr 1fr 1fr;
+                 gap: 8px; align-items: stretch; margin: 6px 0 1rem; }
+.nw-banner { border-radius: var(--radius-md);
+             padding: 10px 12px; font-size: 12px; line-height: 1.35;
+             border: none; border-left: 3px solid transparent;
+             height: 100%; box-sizing: border-box;
+             color: var(--text-secondary); }
+.nw-banner .nw-banner-head { font-size: 11px; letter-spacing: 0.04em;
+                             text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
+.nw-banner.sev-red    { background: var(--state-critical-surface); border-left-color: var(--state-critical); }
+.nw-banner.sev-red    .nw-banner-head { color: var(--state-critical); }
+.nw-banner.sev-amber  { background: var(--state-warning-surface);  border-left-color: var(--state-warning); }
+.nw-banner.sev-amber  .nw-banner-head { color: var(--state-warning); }
+.nw-banner.sev-ok     { background: var(--state-positive-surface); border-left-color: var(--state-positive); }
+.nw-banner.sev-ok     .nw-banner-head { color: var(--state-positive); }
+
+/* ============================================================
+   5) KPI TILES — serif figure, top 2px rule, eyebrow label
+   ============================================================ */
+.nw-kpi-row { display: grid; grid-template-columns: repeat(9, 1fr);
+              gap: 8px; margin: 4px 0 10px;
+              background: transparent; border: none; }
+.kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
+             min-height: 96px; padding: 12px 14px;
+             border-radius: var(--radius-sm);
+             background: var(--surface-1);
+             border: 1px solid var(--border);
+             border-top: 2px solid var(--text-primary);
+             box-sizing: border-box; }
+.kpi-label { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+             color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; }
+.kpi-value-row { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.kpi-value { font-family: var(--font-display);
+             font-size: 23px; font-weight: 700; line-height: 1.05;
+             color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.kpi-spark { width: 56px; height: 20px; flex-shrink: 0; }
+/* Sparklines are NEUTRAL — trend shape only, never a state color
+   (the per-row bands + banners already carry severity). */
+.kpi-spark polyline, .nw-sm-panel svg polyline { stroke: var(--text-secondary); }
+.kpi-spark circle,   .nw-sm-panel svg circle   { fill: var(--text-secondary); }
+.kpi-target{ font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+.kpi-delta-up    { color: var(--state-positive); }
+.kpi-delta-down  { color: var(--state-critical); }
+.kpi-delta-amber { color: var(--state-warning); }
+.kpi-delta-flat  { color: var(--text-muted); }
+.kpi-delta-neutral { color: var(--text-secondary); }
+/* Sentence-case helper class (utility — applied selectively). */
+.nw-sentence::first-letter { text-transform: uppercase; }
+/* Compact dataframe borders */
+[data-testid="stDataFrame"] table { border-collapse: collapse; }
+[data-testid="stDataFrame"] th, [data-testid="stDataFrame"] td { border-bottom-width: 0.5px !important; }
+/* "Prog." filler for sellerless rows */
+.nw-prog { font-style: italic; color: var(--text-secondary); }
+/* Ordinal badge — rank pill: raised surface, never a state color. */
+.nw-ord { font-size: 10px; padding: 1px 6px; border-radius: var(--radius-pill);
+          background: var(--surface-2); color: var(--text-secondary);
+          margin-right: 6px; font-variant-numeric: tabular-nums; }
+/* Differentiator subtitle */
+.nw-sub { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   6) DIRECT CAMPAIGNS TABLE (custom HTML grid)
+   ============================================================ */
+.nw-tbl-wrap { background: var(--surface-1); border-radius: var(--radius-sm);
+               border: 1px solid var(--border); padding: 16px 18px; margin: 8px 0; }
+.nw-tbl-head { display: flex; justify-content: space-between; align-items: center;
+               margin-bottom: 10px; font-size: 12px; }
+.nw-tbl-title { color: var(--text-primary); font-weight: 600; }
+.nw-tbl-title .nw-tbl-sub { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+.nw-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-secondary);
+             font-variant-numeric: tabular-nums; }
+.nw-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;
+                 vertical-align: middle; }
+.nw-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.nw-tbl th { text-align: left; font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+             color: var(--text-secondary); font-weight: 600; padding: 6px 10px 10px;
+             border-bottom: 1px solid var(--border); }
+.nw-tbl th.num { text-align: right; }
+.nw-tbl td { padding: 10px; vertical-align: top; font-size: 13px; color: var(--text-primary);
+             border-bottom: 0.5px solid var(--border); }
+.nw-tbl td.num { text-align: right; }
+.nw-tbl tr:last-child td { border-bottom: none; }
+.li-name { font-weight: 600; color: var(--text-primary); }
+.li-sub  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.li-ord  { font-size: 10px; padding: 1px 6px; border-radius: var(--radius-pill);
+           background: var(--surface-2); color: var(--text-secondary); margin-right: 6px; }
+/* Banded value cell: tinted surface + saturated state text (NOT a full
+   fill) — the severity-as-tint grammar. 4px radius per spec. */
+.pill { display: inline-block; padding: 2px 10px; border-radius: var(--radius-sm); font-weight: 600;
+        font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.pill-red    { background: var(--state-critical-surface); color: var(--state-critical); }
+.pill-amber  { background: var(--state-warning-surface);  color: var(--state-warning); }
+/* inline-block forces the colored-text spans to shrink to their content
+   width, so they right-align cleanly under a grid cell with `text-align:
+   right` — same behavior as .pill.
+
+   In-range values render as plain state-colored text (no tint), so a
+   healthy page stays quiet and the eye is pulled only to the amber/red
+   banded exceptions — the green-overwhelm fix (2026-05-25) carried into
+   the token system. */
+.txt-green   { display: inline-block; color: var(--state-positive); font-weight: 500; font-size: 13px; }
+.txt-amber   { display: inline-block; color: var(--state-warning);  font-weight: 500; font-size: 13px; }
+.txt-red     { display: inline-block; color: var(--state-critical); font-weight: 500; font-size: 13px; }
+/* Delta-row palette: critical (default, "worsening") + warning stay loud;
+   positive "up" (improving) is plain text so it doesn't compete with the
+   warning colors for attention. */
+.pace-delta  { font-size: 11px; margin-top: 4px; color: var(--state-critical); }
+.pace-delta.up { color: var(--state-positive); }
+.pace-delta.amber { color: var(--state-warning); }
+/* Progress cell: bar + inline % label. Wrapper puts them side-by-side
+   with a small gap so the number sits flush right of the bar without
+   wrapping. Bar fill stays state-positive (single hue — the pace pill
+   already communicates the band; coloring the bar too would repeat it). */
+.nw-prog-wrap { display: flex; align-items: center; gap: 8px; }
+.nw-prog-bar  { flex: 1; height: 8px; background: var(--surface-2);
+                border-radius: 4px; overflow: hidden; min-width: 40px; }
+.nw-prog-fill { height: 100%; border-radius: 4px; }
+.prog-red   { background: var(--state-critical); }
+.prog-amber { background: var(--state-warning); }
+.prog-green { background: var(--state-positive); }
+.seller-prog { font-style: italic; color: var(--text-muted); }
+.cell-dash { display: inline-block; color: var(--text-muted); }
+/* Per-column alignment override — used for VCR right now (centered
+   reads better when the cell has a value+delta stack and the column
+   is wide enough that right-alignment leaves a big gap of empty
+   space on the left).
+   Selectors deliberately match the specificity of the table's existing
+   `.nw-row-header .num` / `.nw-row > summary .num` `text-align: right`
+   rules, which are defined further down the stylesheet and would
+   otherwise win on source order if we just wrote `.num.center {}`. */
+.nw-row-header .num.center,
+.nw-rows .nw-row > summary .num.center,
+.nw-pmp-rows .nw-row-header .num.center,
+.nw-pmp-rows .nw-pmp-row .num.center { text-align: center; }
+.bold-rev  { font-weight: 700; }
+/* ── Grid-based row layout + native <details> drawer ─────────────── */
+.nw-rows .nw-row-header,
+.nw-rows .nw-row > summary {
+  display: grid;
+  /* Columns: Line item | Revenue | Delivered | Pace | Viewable | Attention | SIVT | GIVT | CTR | VCR | Seller | Progress
+     VCR widened from 7→10fr because its cells render a 2-line
+     value+delta ("68.4%" + "▲ 0.30pp") that was getting cramped
+     against the Seller column. SIVT/GIVT trimmed 7→6fr because they
+     just show "0.19%" / "—" — they had headroom to give. Pace
+     trimmed 11→10fr (already had margin). Net width unchanged. */
+  grid-template-columns:
+    22fr 10fr 9fr 10fr 9fr 9fr 6fr 6fr 8fr 10fr 10fr 14fr;
+  gap: 10px;
+  /* align-items: start so every cell's first line (the value) sits at
+     the same top edge. Was align-items: center, which works only when
+     every cell has the same line count. After adding per-row deltas
+     to most cells, rows mix 1-line (no delta when there's no signal)
+     and 2-line cells, so centering pulled the single-line values down
+     to the row midpoint while the value+delta stack stayed at the top
+     — values across a row no longer aligned horizontally. */
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--border);
+}
+.nw-row-header {
+  font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600;
+  border-bottom-color: var(--border);
+}
+.nw-row-header .num { text-align: right; }
+.nw-row {
+  font-variant-numeric: tabular-nums;
+  border-bottom: 0.5px solid var(--border);
+}
+.nw-row > summary {
+  cursor: pointer; font-size: 13px;
+  color: var(--text-primary); list-style: none;
+}
+.nw-row > summary::-webkit-details-marker { display: none; }
+.nw-row > summary::marker { content: ""; }
+.nw-row > summary .num { text-align: right; }
+.nw-row > summary:hover { background: var(--surface-2); }
+.nw-row[open] > summary { background: var(--surface-2); }
+.nw-row[open] > summary .nw-chev { transform: rotate(90deg); }
+.nw-chev {
+  display: inline-block; width: 10px;
+  margin-right: 6px; color: var(--text-muted);
+  transition: transform 0.15s;
+}
+.nw-drawer {
+  padding: 16px 22px 18px;
+  background: var(--surface-2);
+  border-top: 0.5px solid var(--border);
+  font-size: 12px;
+}
+.nw-drawer-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.nw-drawer-li {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px; color: var(--text-primary);
+  background: var(--surface-0); padding: 4px 8px;
+  border-radius: var(--radius-sm); overflow-wrap: anywhere;
+}
+.nw-drawer-id {
+  font-size: 11px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+.nw-meta-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 24px; margin-top: 14px;
+}
+.nw-meta-grid > div { line-height: 1.4; min-width: 0; }
+.nw-meta-grid .lbl {
+  font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); display: block; margin-bottom: 2px;
+}
+.nw-meta-grid .val {
+  color: var(--text-primary); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* Drawer callouts — same tint + 3px state bar grammar as the banners. */
+.nw-warn {
+  margin-top: 14px; padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--state-warning-surface);
+  border-left: 3px solid var(--state-warning);
+  color: var(--text-secondary);
+}
+.nw-warn strong {
+  display: block; font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 4px; color: var(--state-warning);
+}
+.nw-warn.severity-red {
+  background: var(--state-critical-surface);
+  border-left-color: var(--state-critical);
+}
+.nw-warn.severity-red strong { color: var(--state-critical); }
+.nw-warn.severity-info {
+  background: var(--viz-1-surface);
+  border-left-color: var(--viz-1);
+}
+.nw-warn.severity-info strong { color: var(--viz-1); }
+/* Drawer status banner — thesis statement at the top. */
+.nw-status-banner {
+  display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 12px; margin-top: 12px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid transparent;
+  font-size: 12px; line-height: 1.4;
+  color: var(--text-secondary);
+}
+.nw-status-banner strong {
+  font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; font-weight: 600;
+  white-space: nowrap;
+}
+.nw-status-banner.sev-red {
+  background: var(--state-critical-surface);
+  border-left-color: var(--state-critical);
+}
+.nw-status-banner.sev-red strong { color: var(--state-critical); }
+.nw-status-banner.sev-amber {
+  background: var(--state-warning-surface);
+  border-left-color: var(--state-warning);
+}
+.nw-status-banner.sev-amber strong { color: var(--state-warning); }
+.nw-status-banner.sev-ok {
+  background: var(--state-positive-surface);
+  border-left-color: var(--state-positive);
+}
+.nw-status-banner.sev-ok strong { color: var(--state-positive); }
+/* Drawer 7-day delivery chart panel. */
+.nw-drawer-chart {
+  margin-top: 12px; padding: 8px 12px 10px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border);
+}
+.nw-drawer-chart-label {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600; margin-bottom: 6px;
+  display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 6px;
+}
+.nw-drawer-chart-label .legend-row { display: inline-flex; gap: 10px; }
+.nw-drawer-chart-label .legend {
+  font-size: 10px; color: var(--text-muted); font-weight: 400;
+  text-transform: none; letter-spacing: 0;
+}
+.nw-drawer-chart svg { display: block; }
+/* Day-of-week + date row under a 7-cell chart (drawer delivery chart). */
+.nw-date-row {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  margin-top: 4px; font-size: 9px;
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.nw-date-row > span { text-align: center; }
+.nw-date-row .is-today {
+  color: var(--text-primary); font-weight: 600;
+}
+.nw-date-row .is-soft { color: var(--state-warning); }
+/* Compact date row under small-multiples sparklines — first/last show day +
+   date, middle days are single-letter abbreviations. */
+.nw-sm-dates {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  margin-top: 3px; font-size: 8px;
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.nw-sm-dates > span { text-align: center; }
+.nw-sm-dates .is-today {
+  color: var(--text-primary); font-weight: 600;
+}
+/* Small multiples for viewability + CTR/VCR — compact, secondary weight. */
+.nw-sm-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+}
+.nw-sm-panel {
+  padding: 8px 10px;
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border);
+}
+.nw-sm-label {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600; margin-bottom: 4px;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.nw-sm-label .latest {
+  font-size: 11px; font-weight: 500; letter-spacing: 0;
+  color: var(--text-primary); text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.nw-sm-panel svg { width: 100%; height: 24px; display: block; }
+.nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+.nw-action {
+  display: inline-block; padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  color: var(--text-primary);
+  font-size: 11px; text-decoration: none;
+}
+.nw-action:hover { background: var(--border); }
+.nw-action-primary {
+  background: var(--viz-1-surface);
+  border-color: var(--viz-1);
+  color: var(--viz-1);
+}
+.nw-action.is-disabled {
+  opacity: 0.4; cursor: not-allowed; pointer-events: auto;
+  background: transparent; color: var(--text-secondary);
+}
+.nw-action.is-disabled:hover { background: transparent; }
+/* Clickable GAM ID in the drawer subtitle — anchor inheriting drawer style. */
+.stApp .nw-drawer-id-link,
+.stApp .nw-drawer-id-link:link,
+.stApp .nw-drawer-id-link:visited {
+  color: var(--text-secondary) !important;
+  text-decoration: none !important;
+  border-bottom: 0.5px dotted var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.stApp .nw-drawer-id-link:hover {
+  color: var(--text-primary) !important;
+  border-bottom-color: var(--text-secondary);
+}
+
+/* ============================================================
+   7) PMP SECTION (matches the Direct design language)
+   ============================================================ */
+/* Section rule — editorial: heavier than row hairlines. */
+.nw-section-div { height: 0; border: 0; border-top: 2px solid var(--border-strong);
+                  margin: 28px 0 14px; }
+/* Section eyebrow — muted kicker (no tick; the page eyebrow owns brand red). */
+.nw-section-eyebrow { font-size: 11px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+                      color: var(--text-muted); font-weight: 600; }
+.nw-section-h3 { font-family: var(--font-display);
+                 font-size: 18px; font-weight: 700; color: var(--text-primary);
+                 margin: 2px 0 10px 0; line-height: 1.2; }
+/* Deal-type pills (PG / PD / PA / PMP) — categorical chips, so they read
+   from the data-viz palette (tint + saturated text), never the state scale. */
+.pill-dt { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm);
+           font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+           text-transform: uppercase; line-height: 1.4;
+           font-variant-numeric: tabular-nums; }
+.pill-dt-pg  { background: var(--viz-2-surface); color: var(--viz-2); }
+.pill-dt-pd  { background: var(--viz-1-surface); color: var(--viz-1); }
+.pill-dt-pa  { background: var(--surface-2); color: var(--text-secondary); }
+.pill-dt-pmp { background: var(--viz-3-surface); color: var(--viz-3); }
+/* eCPM threshold colors — under floor warning band, well above positive. */
+.ecpm-under { background: var(--state-warning-surface); color: var(--state-warning);
+              padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
+.ecpm-over  { color: var(--state-positive); font-weight: 600; }
+/* PMP table — same grid pattern as Direct but different column proportions. */
+.nw-pmp-rows .nw-row-header,
+.nw-pmp-rows .nw-pmp-row {
+  display: grid;
+  /* Columns: Deal | Type | DSP | SSP | Format | Revenue | Impressions | eCPM | Attention | SIVT | GIVT | Seller */
+  grid-template-columns: 22fr 6fr 9fr 7fr 9fr 10fr 11fr 9fr 8fr 7fr 7fr 13fr;
+  gap: 8px;
+  /* align-items: start matches the Direct table — see same-named CSS
+     rule above. Same reason: Attention/SIVT/GIVT cells now mix 1-line
+     and 2-line content depending on whether a delta is present, so
+     centering misaligned the values across the row. */
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 13px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.nw-pmp-rows .nw-row-header {
+  font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600;
+  border-bottom-color: var(--border);
+}
+.nw-pmp-rows .nw-row-header .num,
+.nw-pmp-rows .nw-pmp-row .num { text-align: right; }
+
+/* Sticky table headers — both Direct and PMP. Header row sticks to the
+   top of the viewport while the user scrolls through the table body, so
+   the column labels stay visible on long tables. Background must be
+   opaque and match the wrapper fill — the wrapper is now opaque
+   --surface-1, so the header uses the same token and rows scrolling
+   underneath can't show through. z-index 5 = above pace pills + delta
+   rows in the body, below Streamlit's chrome (which uses higher
+   z-indices). Defined LAST in this section so the position/background
+   props win on source order over the earlier .nw-row-header /
+   .nw-pmp-rows .nw-row-header rules that set typography (specificity
+   is equal). */
+.nw-row-header,
+.nw-pmp-rows .nw-row-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface-1);
+}
+/* Click-to-expand mechanics — each PMP row becomes <details name="pmp-cmprow">
+   so it's a native exclusive-accordion (only one drawer open at a time). */
+.nw-pmp-rows details > summary.nw-pmp-row {
+  cursor: pointer; list-style: none;
+}
+.nw-pmp-rows details > summary.nw-pmp-row::-webkit-details-marker { display: none; }
+.nw-pmp-rows details > summary.nw-pmp-row::marker { content: ""; }
+.nw-pmp-rows details > summary.nw-pmp-row:hover {
+  background: var(--surface-2);
+}
+.nw-pmp-rows details[open] > summary.nw-pmp-row {
+  background: var(--surface-2);
+}
+.nw-pmp-drawer {
+  padding: 14px 18px 16px;
+  background: var(--surface-2);
+  border-top: 0.5px solid var(--border);
+  font-size: 12px;
+}
+/* Legend (small color-coded glossary in the table card header) */
+.nw-legend-pill { display: flex; gap: 14px; font-size: 11px;
+                  color: var(--text-secondary); align-items: center; }
+.nw-legend-pill .pill-dt { font-size: 9px; padding: 1px 6px; }
+/* PA inventory expandable card */
+.nw-pa-inv { background: var(--surface-1);
+             border: 1px solid var(--border);
+             border-radius: var(--radius-sm);
+             padding: 12px 16px; margin: 12px 0; }
+.nw-pa-inv > summary { display: flex; justify-content: space-between;
+                       align-items: center; cursor: pointer; list-style: none;
+                       font-size: 12px; color: var(--text-primary); }
+.nw-pa-inv > summary::-webkit-details-marker { display: none; }
+.nw-pa-inv > summary::marker { content: ""; }
+.nw-pa-inv-left { display: flex; align-items: center; gap: 8px; }
+.nw-pa-inv-chev { color: var(--text-muted); transition: transform 0.15s; }
+.nw-pa-inv[open] > summary .nw-pa-inv-chev { transform: rotate(90deg); }
+.nw-pa-inv-hint { font-size: 11px; color: var(--text-muted); }
+.nw-pa-inv-body { padding-top: 12px; }
+/* Deal-name primary + parenthetical + subtitle */
+.pmp-name-primary { font-weight: 600; color: var(--text-primary); }
+.pmp-name-paren { color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+.pmp-name-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px;
+                font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   8) SETTINGS / CONFIGURE
+   ============================================================ */
+.cfg-section { background: var(--surface-1); border-radius: var(--radius-sm);
+               border: 1px solid var(--border); padding: 16px 20px; margin: 10px 0; }
+.cfg-section-head { display: flex; justify-content: space-between; align-items: baseline;
+                    margin-bottom: 4px; }
+.cfg-eyebrow { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+               color: var(--text-muted); font-weight: 600; }
+.cfg-count   { font-size: 11px; color: var(--text-muted);
+               font-variant-numeric: tabular-nums; }
+.cfg-title   { font-family: var(--font-display);
+               font-size: 18px; font-weight: 700; color: var(--text-primary);
+               margin: 0 0 4px 0; }
+.cfg-desc    { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;
+               line-height: 1.5; }
+.cfg-card    { background: var(--surface-2); border-radius: var(--radius-sm);
+               border: 0.5px solid var(--border); padding: 12px 14px; margin: 8px 0; }
+.cfg-card-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.cfg-card-meta  { font-size: 11px; color: var(--text-muted);
+                  margin-left: 8px; font-weight: 400; }
+.cfg-mono    { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+               color: var(--text-primary); }
+.cfg-tertiary{ color: var(--text-muted); }
+.cfg-status-enabled { display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill);
+                      background: var(--state-positive-surface); color: var(--state-positive);
+                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
+.cfg-status-disabled{ display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill);
+                      background: var(--surface-2); color: var(--text-muted);
+                      font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
+.cfg-computed { display: inline-block; padding: 1px 6px; border-radius: 3px;
+                background: var(--viz-1-surface); color: var(--viz-1);
+                font-size: 9px; font-weight: 600; letter-spacing: 0.04em; margin-left: 6px;
+                vertical-align: middle; }
+.cfg-suggest { background: var(--viz-1-surface); color: var(--viz-1);
+               border: 0.5px solid var(--viz-1);
+               border-radius: var(--radius-md); padding: 10px 14px;
+               font-size: 12px; margin: 8px 0; }
+.cfg-gradient { height: 12px; border-radius: 6px; margin: 6px 0;
+                background: linear-gradient(to right,
+                  var(--state-critical) 0%, var(--state-warning) 50%, var(--state-positive) 100%); position: relative; }
+.cfg-gradient-marker { position: absolute; top: -3px; width: 2px; height: 18px;
+                       background: var(--text-primary); border-radius: 1px; }
+.cfg-gradient-axis { display: flex; justify-content: space-between; font-size: 10px;
+                     color: var(--text-muted); margin-top: 2px; }
+.cfg-key-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px;
+               padding: 6px 0; border-bottom: 0.5px solid var(--border); align-items: center; }
+.cfg-key-row:last-child { border-bottom: none; }
+.cfg-pill-preview { display: inline-block; padding: 2px 10px; border-radius: var(--radius-sm);
+                    font-weight: 600; font-size: 12px; }
+.cfg-alias { font-size: 12px; color: var(--text-secondary); padding: 2px 0 2px 18px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+.cfg-canonical { font-size: 13px; font-weight: 600; color: var(--text-primary); padding: 4px 0; }
+.cfg-canonical.system { font-style: italic; color: var(--text-secondary); }

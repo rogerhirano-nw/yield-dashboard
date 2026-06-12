@@ -24,6 +24,8 @@ fast dashboard read. No source is queried at render time.
 - `dv_ivt_client.py` — same pipeline for DV Pinnacle "IVT" CSV → `dv_ivt` table (SIVT / GIVT / Valid Traffic rows with `monitored_ads` counts).
 - `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into Postgres (`DATABASE_URL`). Wire to cron / Airflow / systemd timer. Accepts `--mode={all,direct,opensincera}`.
 - `dashboard.py` — Streamlit dashboard reading from the cache. Deployed to Streamlit Cloud from `main`.
+- `assets/newsweek_dashboard.css` — the Newsweek brand layer: design-token tier (`:root`) + every component rule. Injected once by `dashboard.py`; mirrored by the `[theme]` block in `.streamlit/config.toml` and the `NW_*` constants in `dashboard.py`. See CLAUDE.md → "Dashboard brand system".
+- `static/fonts/` — drop-in dir for the licensed Newsweek font binaries (Benton Modern Display + Franklin Gothic); fallbacks (Georgia / Helvetica) apply while empty. See `static/fonts/README.md`.
 
 ### Brand-safety pipeline (Confiant → GAM + SSPs) — see `docs/confiant_blocklist.md`
 
