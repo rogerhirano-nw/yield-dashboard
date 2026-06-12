@@ -1,0 +1,60 @@
+name: Inspect GAM creative (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      creative_ids:
+        description: 'Comma-separated GAM creative IDs to inspect'
+        required: false
+        default: '138562096700'
+      lookback_max_days:
+        description: 'Cap the report lookback (days before yesterday)'
+        required: false
+        default: '45'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Inspect creative
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          CREATIVE_IDS: ${{ inputs.creative_ids }}
+          LOOKBACK_MAX_DAYS: ${{ inputs.lookback_max_days }}
+        run: |
+          set -o pipefail
+          python scripts/inspect_creative_oneoff.py 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found to post results to"; exit 0
+          fi
+          {
+            echo '### GAM creative inspection — ${{ inputs.creative_ids }}'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
