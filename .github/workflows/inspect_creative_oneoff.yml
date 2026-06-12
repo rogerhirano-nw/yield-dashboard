@@ -1,6 +1,14 @@
 name: Inspect GAM creative (one-off)
 
 on:
+  # push trigger registers the workflow with GitHub so workflow_dispatch by
+  # filename works on this branch (same trick as restrict_creative_to_article.yml);
+  # push runs inspect the default creative — read-only either way
+  push:
+    branches: [claude/nifty-mendel-24703a]
+    paths:
+      - 'scripts/inspect_creative_oneoff.py'
+      - '.github/workflows/inspect_creative_oneoff.yml'
   workflow_dispatch:
     inputs:
       creative_ids:
@@ -33,8 +41,8 @@ jobs:
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
-          CREATIVE_IDS: ${{ inputs.creative_ids }}
-          LOOKBACK_MAX_DAYS: ${{ inputs.lookback_max_days }}
+          CREATIVE_IDS: ${{ inputs.creative_ids || '138562096700' }}
+          LOOKBACK_MAX_DAYS: ${{ inputs.lookback_max_days || '45' }}
         run: |
           set -o pipefail
           python scripts/inspect_creative_oneoff.py 2>&1 | tee /tmp/output.txt
@@ -49,7 +57,7 @@ jobs:
             echo "No open PR found to post results to"; exit 0
           fi
           {
-            echo '### GAM creative inspection — ${{ inputs.creative_ids }}'
+            echo '### GAM creative inspection — ${{ inputs.creative_ids || '138562096700' }}'
             echo ''
             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ''
