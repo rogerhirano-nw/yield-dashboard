@@ -384,7 +384,7 @@ def idle_days(last_bid_date, first_seen_date, today: date) -> int:
 # The format taxonomy (Roger, 2026-06-12). Note "Video Preroll >30s" is
 # NOT here — it's a benchmark band layered on Video via bump_video_format
 # and carried in a separate _bench_format column, never a filter format.
-CANONICAL_FORMATS = ("Display", "Video", "Interstitial",
+CANONICAL_FORMATS = ("Display", "Video", "Interstitial", "Interscroller",
                      "FITO", "Centerstage", "Apple News")
 
 _SIZE_TOKEN_RE = re.compile(r"\d{2,4}x\d{2,4}")
@@ -440,16 +440,20 @@ def canonicalize_format(raw, aliases=None):
         result = "Centerstage"
     elif "interstitial" in low:
         result = "Interstitial"
+    elif "interscroller" in low or "uniscroller" in low:
+        # One format, two product names — Uniscroller folds into
+        # Interscroller (Roger, 2026-06-12).
+        result = "Interscroller"
     elif ("preroll" in low or "pre-roll" in low
           or "in-stream" in low or "video" in low):
         result = "Video"
     elif ("display" in low or "banner" in low or "native" in low
-          or "multi" in low or "interscroller" in low or "uniscroller" in low
+          or "multi" in low
           or low.startswith("backfill") or _SIZE_TOKEN_RE.search(low)
           or "article" in low or "insight" in low):
         # Display is the catch-all visual family: native and multi/branded-
         # article promo lines fold here (no Native/Multi buckets), as do
-        # high-impact scroll units and size-named placements.
+        # size-named placements.
         result = "Display"
     else:
         return None
@@ -469,6 +473,8 @@ NAME_FORMAT_KEYWORDS = (
     ("apple-news", "Apple News"),
     ("apple news", "Apple News"),
     ("centerstage", "Centerstage"),
+    ("interscroller", "Interscroller"),
+    ("uniscroller", "Interscroller"),
     ("interstitial", "Interstitial"),
 )
 

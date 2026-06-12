@@ -389,11 +389,14 @@ def test_canonicalize_the_live_zoo_into_the_house_taxonomy():
     # Display is the catch-all visual family: native, multi/branded-article
     # promos, scroll units, size-named placements
     for v in ("Native", "Multi", "Multi-Branded-Article2", "Homepage-Insight",
-              "FITO" if False else "AV-Display", "Contextual-Display",
+              "AV-Display", "Contextual-Display",
               "Custom-Audience-Contextual-Display", "Editorial Promotion Display",
-              "Interscroller", "Uniscroller", "Backfill-970x250",
+              "Backfill-970x250",
               "Backfill-1536x864", "Direct-970x250", "Direct--300x600"):
         assert c(v, ALIASES) == "Display", v
+    # Interscroller is its own format; Uniscroller is the same product
+    for v in ("Interscroller", "Uniscroller", "uniscroller"):
+        assert c(v, ALIASES) == "Interscroller", v
     assert c("Multi-Branded-Article3", {}) == "Display"   # no Multi bucket even sans alias
     # junk tokens from non-convention names → None
     for v in ("cpm", "BRobinson", "ILee", "US", "adv", "NA", "Team-USA",
@@ -429,6 +432,9 @@ def test_name_keywords_beat_the_api_format():
     assert d("In-stream video", "Newsweek_..._FITO-Video_..._Team-USA_ILee", ALIASES) == "FITO"
     assert d("Banner", "Newsweek_..._Jeep-Unconventional-Centerstage-FullEp2_US_Multi_IO1040", ALIASES) == "Centerstage"
     assert d("Banner", "Newsweek_..._AV-Apple-News_...", ALIASES) == "Apple News"
+    # Mobkoi scroll units come back from the API as "Banner" too
+    assert d("Banner", "Newsweek_Direct_Luxury_NA_NA_NA_Mobkoi_Cartier-UK_Cartier-Santos-UK-FY27_UK_Interscroller_IO1118_2_Team-INTL_AShah", ALIASES) == "Interscroller"
+    assert d("Banner", "Newsweek_..._UK_Uniscroller_IO1118_1_Team-INTL_AShah", ALIASES) == "Interscroller"
 
 
 def test_api_value_authoritative_when_no_name_keyword():
