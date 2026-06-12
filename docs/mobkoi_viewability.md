@@ -180,6 +180,7 @@ a clean A/B — same site, same homepage slots, overlapping flights:
 | Homepage Insight_Fluid (fluid native template, SafeFrame on, LI 7316340383) | in-iframe | 50k | **61.6%** |
 | Kia Homepage-Insight (template injecting into `dfp-ad-homepage3`, LI 7226895315) | parent-DOM injection | 54k | **0.00%** (3-month sold flight) |
 | 970x250_FullBleed test (injection **with** the view-macro observer, LI 7333906212) | parent-DOM injection + view-macro ping | 5 | 0% — see below |
+| Infiniti QX65 NewsMakers HPTO image customs (six `addImageToHomepage` CustomCreatives painting `#dfp-ad-homepage2/3/4`, **with** the 1b watcher + ping — incl. 138562096700; LI 7332833490 "Centerstage-June", flight 6/11–18) | parent-DOM injection — **rebuilt in-iframe 2026-06-12** | 0.7k–3.1k each (day 1) | **0.00% each** pre-rebuild |
 
 Takeaways:
 - **In-frame rendering measures organically — no macro needed.** ClipCentric
@@ -198,6 +199,25 @@ Takeaways:
   even a live observer pinging `%%VIEW_URL%%` couldn't have moved AV (see
   1b). For any injected format, expect 0% AV; the realm-death and
   30%-threshold lessons still apply to tracking-pixel watchers.
+- The QX65 Centerstage-June HPTO (last row) repeated the artifact on a
+  fresh flight, at volume — day 1: every injection custom 0.00%
+  (138562096700: 870 imps / 0 viewable / 100% measurable, watcher + ping
+  armed — both FullBleed failure modes verbatim), while the LI's two
+  Responsiveads "Radical" tags (`flowlineTarget:'iframe'`) read 76–87%.
+  The 45.67% outlier (138562855921) is the artifact's other face: a
+  custom serving a slot it doesn't paint leaves its own iframe EMPTY but
+  geometrically real, and AV scores that box. **Fixed 2026-06-12**: all
+  six customs rebuilt in-iframe — same asset + click macro inside the
+  nw-fullbleed shim, dead watcher dropped — via
+  `scripts/fix_hpto_inframe.py` / `apply_hpto_inframe.yml` (dry-run
+  default; old snippets archived in apply run 27419135744's log for
+  rollback, or use GAM creative history). The rebuild paints-in-place,
+  which also removes the race where a custom's `innerHTML` wipe could
+  stomp a sibling's render in its hard-coded div. Asset gotcha encoded
+  in the script: the API reports `customCreativeAssets` size as 1x1 —
+  the natural WxH lives in the asset filename. Verify on the 6/13 read
+  (dispatch `inspect_creative_oneoff.yml`; the contrast table covers
+  the whole LI).
 
 ### 2. Verification loop (once Mobkoi ships a build)
 

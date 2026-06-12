@@ -269,7 +269,15 @@ rendering stale frames until TTL expiry; clear via the app menu
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
   screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
   Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
-  `line_item_ids`. Never set vCPM goals on breakout formats.
+  `line_item_ids`. Identify any creative — type, snippet, LIs, AV
+  posture: dispatch `inspect_creative_oneoff.yml` with `creative_ids`.
+  House `addImageToHomepage` injection customs are rebuildable to render
+  in-iframe (same asset + click macro inside the fullbleed shim; AV then
+  measures organically): `scripts/fix_hpto_inframe.py` /
+  `apply_hpto_inframe.yml`, dry-run default — first used 2026-06-12 on
+  the six QX65 NewsMakers HPTO customs (LI 7332833490; debrief in
+  `docs/mobkoi_viewability.md`). Never set vCPM goals on breakout
+  formats.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
