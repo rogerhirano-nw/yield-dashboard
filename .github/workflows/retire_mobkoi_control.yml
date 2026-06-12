@@ -1,12 +1,18 @@
-name: Apply Mobkoi iframe mirror
+name: Retire Mobkoi control LICA
 
 on:
+  # bootstrap: registers the workflow and runs the dry-run (inputs empty
+  # on push => APPLY false). Remove after first use if it gets noisy.
+  push:
+    branches: [claude/wonderful-pascal-p3737t]
+    paths:
+      - 'scripts/retire_mobkoi_control_lica.py'
   workflow_dispatch:
     inputs:
-      creative_ids:
-        description: 'Comma-separated GAM creative IDs to update'
+      retire_pairs:
+        description: 'Comma-separated lineItemId:creativeId associations to deactivate'
         required: false
-        default: '138562143597'
+        default: '7310815861:138557481462'
       apply:
         description: 'Set "true" to write to GAM (default is dry-run)'
         required: false
@@ -17,7 +23,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  apply:
+  retire:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -29,15 +35,15 @@ jobs:
       - name: Install minimal deps
         run: pip install google-ads-admanager google-auth pandas googleads
 
-      - name: Apply mirror
+      - name: Retire LICA
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
-          CREATIVE_IDS: ${{ inputs.creative_ids }}
+          RETIRE_PAIRS: ${{ inputs.retire_pairs }}
           APPLY: ${{ inputs.apply }}
         run: |
           set -o pipefail
-          python scripts/apply_mobkoi_iframe_mirror.py 2>&1 | tee /tmp/output.txt
+          python scripts/retire_mobkoi_control_lica.py 2>&1 | tee /tmp/output.txt
 
       - name: Post output as PR comment
         if: always()
@@ -49,7 +55,7 @@ jobs:
             echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
           fi
           {
-            echo '### Apply Mobkoi iframe mirror'
+            echo '### Retire Mobkoi control LICA'
             echo ''
             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ''
