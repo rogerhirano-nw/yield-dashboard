@@ -1,13 +1,6 @@
 name: Apply Mobkoi iframe mirror
 
 on:
-  # push trigger bootstraps workflow registration AND runs the dry-run
-  # (inputs are empty on push events, so APPLY defaults to false)
-  push:
-    branches: [claude/wonderful-pascal-p3737t]
-    paths:
-      - 'scripts/apply_mobkoi_iframe_mirror.py'
-      - '.github/workflows/apply_mobkoi_iframe_mirror.yml'
   workflow_dispatch:
     inputs:
       creative_ids:
