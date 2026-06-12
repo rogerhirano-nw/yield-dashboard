@@ -485,9 +485,10 @@ def _attention_html(idx, prior=None) -> str:
     if idx is None or pd.isna(idx):
         return '<div class="cell-dash">—</div>'
     v = float(idx)
-    if v < 85:
+    _b = dl.attention_band(v)
+    if _b == "red":
         cell = f'<div class="pill pill-red">{v:.0f}</div>'
-    elif v < 100:
+    elif _b == "amber":
         cell = f'<div class="txt-amber">{v:.0f}</div>'
     else:
         cell = f'<div class="txt-green">{v:.0f}</div>'
@@ -518,12 +519,14 @@ def _delta_below_html(
 
     Returns "" when there's no signal (None / NaN / |d| < noise band).
     """
-    if d is None or pd.isna(d) or abs(d) < noise_threshold:
+    verdict = dl.classify_delta(d, lower_is_worse,
+                                new_line_threshold=new_line_threshold,
+                                noise_threshold=noise_threshold)
+    if verdict is None:
         return ""
-    if new_line_threshold is not None and abs(d) > new_line_threshold:
+    if verdict == "new":
         return '<div class="pace-delta" style="font-style:italic">new line item</div>'
-    arrow = "▲" if d > 0 else "▼"
-    is_improvement = (d > 0) if lower_is_worse else (d < 0)
+    arrow, is_improvement = verdict
     cls = "pace-delta up" if is_improvement else "pace-delta"
     # Sub-1 deltas get 2 decimals (so 0.04 vs 0.10 are distinguishable);
     # larger deltas stay at 1 decimal for tidiness.
@@ -566,9 +569,10 @@ def _ivt_html(pct, prior=None) -> str:
     if pct is None or pd.isna(pct):
         return '<div class="cell-dash">—</div>'
     v = float(pct)
-    if v >= 3:
+    _b = dl.ivt_band(v)
+    if _b == "red":
         cell = f'<div class="pill pill-red">{v:.1f}%</div>'
-    elif v >= 1:
+    elif _b == "amber":
         cell = f'<div class="txt-amber">{v:.1f}%</div>'
     elif v == 0:
         cell = '<div class="txt-green">0%</div>'
@@ -2392,36 +2396,16 @@ if st.session_state.active_view == "campaigns":
     _dv_prior_by_li: dict = {}   # latest-day-excluded mean (for the per-row delta)
     _dv_prior_by_order: dict = {}
     if not dv_df.empty and "attention_index" in dv_df.columns:
-
-        def _attn_current_and_prior(group_col: str) -> tuple[dict, dict]:
-            """Two lookups per group: (current = overall mean, prior =
-            mean excluding the latest date)."""
-            if group_col not in dv_df.columns:
-                return {}, {}
-            sub = dv_df.dropna(subset=[group_col, "attention_index", "date"])
-            if sub.empty:
-                return {}, {}
-            # Per (line, date) mean attention — multiple DV rows per day
-            # can exist when DV measured several creatives on the line.
-            daily = (sub.groupby([group_col, "date"])["attention_index"]
-                        .mean().sort_index())
-            cur, prior = {}, {}
-            for line in daily.index.get_level_values(0).unique():
-                vals = daily.loc[line].sort_index()
-                cur[line] = float(vals.mean())
-                if len(vals) >= 2:
-                    prior[line] = float(vals.iloc[:-1].mean())
-            return cur, prior
-
+        # Aggregation + join-column choice live in dashboard_logic (tested).
         # Prefer ID-based join (immune to name changes); fall back to name.
-        _dv_li_col = "line_item_id" if "line_item_id" in dv_df.columns and dv_df["line_item_id"].notna().any() else "line_item_name"
+        _dv_li_col = dl.choose_join_col(dv_df)
         if _dv_li_col in dv_df.columns:
-            _dv_by_li, _dv_prior_by_li = _attn_current_and_prior(_dv_li_col)
+            _dv_by_li, _dv_prior_by_li = dl.attention_current_and_prior(dv_df, _dv_li_col)
         if "order_name" in dv_df.columns:
             # PMP deals (combined_pmp.Deal) join by order_name — DV emits
             # the deal name in the Order column for PMP rows. Build the
             # same current/prior pair so the PMP table can show a delta.
-            _dv_by_order, _dv_prior_by_order = _attn_current_and_prior("order_name")
+            _dv_by_order, _dv_prior_by_order = dl.attention_current_and_prior(dv_df, "order_name")
 
     # DV IVT — daily Pinnacle CSV emailed to newsweek@agentmail.to with
     # subject "Unified Analytics Report: IVT". Polled by refresh_dv_ivt()
@@ -2462,49 +2446,15 @@ if st.session_state.active_view == "campaigns":
     _givt_prior_by_order: dict = {}
     if (not ivt_df.empty
             and {"traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns)):
-        _ads = pd.to_numeric(ivt_df["monitored_ads"], errors="coerce").fillna(0)
-        _validity_str = ivt_df["traffic_validity"].astype(str)
-
-        def _imp_share_with_prior(group_col: str, fraud_label: str) -> tuple[dict, dict]:
-            """Two lookups per group: (current = whole-window imp-weighted
-            %, prior = imp-weighted % excluding the latest date). Used by
-            the per-row Δ annotation below the SIVT/GIVT cells."""
-            sub = ivt_df.dropna(subset=[group_col, "date"])
-            if sub.empty:
-                return {}, {}
-            ads_sub = _ads.reindex(sub.index)
-            mask = _validity_str.reindex(sub.index) == fraud_label
-
-            # Per-(line, date) impression totals + fraud-bucket totals.
-            tot_pd = ads_sub.groupby([sub[group_col], sub["date"]]).sum()
-            frd_pd = (ads_sub[mask]
-                          .groupby([sub.loc[mask, group_col], sub.loc[mask, "date"]])
-                          .sum())
-            joined = pd.DataFrame({"tot": tot_pd, "frd": frd_pd}).fillna(0)
-
-            cur, prior = {}, {}
-            for line in joined.index.get_level_values(0).unique():
-                rows = joined.loc[line].sort_index()  # ordered by date
-                # Current = whole-window aggregate share.
-                tot_all = rows["tot"].sum()
-                if tot_all <= 0:
-                    continue
-                cur[line] = float(rows["frd"].sum() / tot_all * 100)
-                # Prior = share excluding the latest date.
-                if len(rows) >= 2:
-                    rows_prior = rows.iloc[:-1]
-                    tot_prior = rows_prior["tot"].sum()
-                    if tot_prior > 0:
-                        prior[line] = float(rows_prior["frd"].sum() / tot_prior * 100)
-            return cur, prior
-
-        _ivt_li_col = "line_item_id" if "line_item_id" in ivt_df.columns and ivt_df["line_item_id"].notna().any() else "line_item_name"
+        # MRC impression-weighted share + join-column choice live in
+        # dashboard_logic (tested).
+        _ivt_li_col = dl.choose_join_col(ivt_df)
         if _ivt_li_col in ivt_df.columns:
-            _sivt_by_li, _sivt_prior_by_li = _imp_share_with_prior(_ivt_li_col, "Fraud/SIVT")
-            _givt_by_li, _givt_prior_by_li = _imp_share_with_prior(_ivt_li_col, "Fraud/GIVT")
+            _sivt_by_li, _sivt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/SIVT")
+            _givt_by_li, _givt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/GIVT")
         if "order_name" in ivt_df.columns:
-            _sivt_by_order, _sivt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/SIVT")
-            _givt_by_order, _givt_prior_by_order = _imp_share_with_prior("order_name", "Fraud/GIVT")
+            _sivt_by_order, _sivt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/SIVT")
+            _givt_by_order, _givt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/GIVT")
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4614,16 +4564,13 @@ if st.session_state.active_view == "campaigns":
                 def _lt_minus_1d_ratio(lt_num_col, d1_num_col, lt_den_col, d1_den_col, scale=100.0):
                     if not all(c in row.index for c in (lt_num_col, d1_num_col, lt_den_col, d1_den_col)):
                         return None
-                    ltn = pd.to_numeric(row.get(lt_num_col),  errors="coerce")
-                    d1n = pd.to_numeric(row.get(d1_num_col),  errors="coerce")
-                    ltd = pd.to_numeric(row.get(lt_den_col),  errors="coerce")
-                    d1d = pd.to_numeric(row.get(d1_den_col),  errors="coerce")
-                    if any(pd.isna(x) for x in (ltn, d1n, ltd, d1d)):
-                        return None
-                    den = max(ltd - d1d, 0)
-                    if den <= 0:
-                        return None
-                    return (ltn - d1n) / den * scale
+                    return dl.lt_minus_1d_ratio(
+                        pd.to_numeric(row.get(lt_num_col),  errors="coerce"),
+                        pd.to_numeric(row.get(d1_num_col),  errors="coerce"),
+                        pd.to_numeric(row.get(lt_den_col),  errors="coerce"),
+                        pd.to_numeric(row.get(d1_den_col),  errors="coerce"),
+                        scale=scale,
+                    )
                 _vw_prior  = _lt_minus_1d_ratio("lifetime_viewable_imps",   "viewable_imps_1d",
                                                 "lifetime_measurable_imps", "measurable_imps_1d")
                 _ctr_prior = _lt_minus_1d_ratio("lifetime_clicks",          "clicks_1d",
@@ -4639,14 +4586,10 @@ if st.session_state.active_view == "campaigns":
                 def _volume_pct_delta(lifetime_col: str, day_col: str):
                     if lifetime_col not in row.index or day_col not in row.index:
                         return None
-                    lt  = pd.to_numeric(row.get(lifetime_col), errors="coerce")
-                    d1  = pd.to_numeric(row.get(day_col),      errors="coerce")
-                    if pd.isna(lt) or pd.isna(d1):
-                        return None
-                    prior = lt - d1
-                    if prior <= 0:
-                        return None
-                    return d1 / prior * 100   # latest day's growth vs prior cumulative
+                    return dl.volume_pct_delta(
+                        pd.to_numeric(row.get(lifetime_col), errors="coerce"),
+                        pd.to_numeric(row.get(day_col),      errors="coerce"),
+                    )
                 _rev_pct   = _volume_pct_delta("lifetime_revenue", "revenue_1d")
                 _imp_pct   = _volume_pct_delta("lifetime_impressions_delivered", "impressions_1d")
                 _rev_delta = _delta_below_html(_rev_pct, lower_is_worse=True,

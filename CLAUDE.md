@@ -7,6 +7,16 @@ See `README.md` for project overview, files, and quickstart.
 - One client module per data source (`*_client.py`), one `refresh_<source>` function in `refresh_cache.py`, called from `main()`.
 - Pull yesterday's data, not today's — same-day data has latency.
 - **Never push directly to `main`.** Branch protection enforces PRs for everyone including admins. Always work on a branch and open a PR — even for docs-only changes. README/CLAUDE.md updates go in the same PR as the code they describe.
+- **Dashboard testability rule: dashboard.py renders, `dashboard_logic.py`
+  decides.** Decision logic — format classification, benchmark thresholds
+  and banding, DV/IVT aggregation and join-column choice, delta/ratio
+  math — lives in `dashboard_logic.py` with tests in
+  `tests/test_dashboard_logic.py`. When you touch an inline decision in
+  dashboard.py, extract it; don't grow it in place. The 2026-06 bug pair
+  (#151 ".0" join keys, #156 format bump ordering) lived precisely in
+  inline decision code where no test could see it. When extracting,
+  prove behavior-identical against prod data (see PRs #185/#187 for the
+  pattern: run old and new side by side, assert equality).
 
 ## Data sources currently wired
 When auditing or adding data, the production sources are:

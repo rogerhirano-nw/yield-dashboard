@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import math
 
+import pandas as pd
+
 # Long-form video gets its own benchmark band: longer spots complete less,
 # so grading a 60s film against 15s-preroll VCR targets just paints the
 # table red. See benchmarks_by_format in the dashboard settings.
@@ -114,3 +116,156 @@ def band(value, target, red_cut) -> str:
     if target is not None and value < target:
         return "amber"
     return "green"
+
+
+def attention_band(idx) -> str:
+    """Band for the DV Attention Index (100 = DV's industry median):
+    red < 85 (15%+ below median), amber 85-100, green ≥ 100."""
+    v = float(idx)
+    if v < 85:
+        return "red"
+    return "amber" if v < 100 else "green"
+
+
+def ivt_band(pct) -> str:
+    """Band for an impression-weighted IVT% (industry thresholds):
+    green < 1, amber 1-3, red ≥ 3. Boundary semantics: exactly 1 is
+    amber, exactly 3 is red — rising fraud rounds against us."""
+    v = float(pct)
+    if v >= 3:
+        return "red"
+    return "amber" if v >= 1 else "green"
+
+
+# ── DV / IVT aggregation ───────────────────────────────────────────────
+
+
+def choose_join_col(df, id_col: str = "line_item_id",
+                    name_col: str = "line_item_name") -> str:
+    """Prefer the numeric-ID join column (immune to line-item renames)
+    when the frame carries any non-null IDs; fall back to the name
+    column. This is the dashboard side of the #151 join — the IDs only
+    work because the DV parsers normalize them to integer strings."""
+    if id_col in df.columns and df[id_col].notna().any():
+        return id_col
+    return name_col
+
+
+def attention_current_and_prior(dv_df, group_col: str) -> tuple[dict, dict]:
+    """Per-group Attention Index lookups: (current = mean of per-date
+    means over the whole window, prior = same excluding the latest date —
+    powers the per-row Δ annotation). Multiple DV rows per (line, date)
+    exist when DV measured several creatives on the line; averaging per
+    date first keeps heavy-creative days from dominating the mean."""
+    if group_col not in dv_df.columns:
+        return {}, {}
+    sub = dv_df.dropna(subset=[group_col, "attention_index", "date"])
+    if sub.empty:
+        return {}, {}
+    daily = (sub.groupby([group_col, "date"])["attention_index"]
+                .mean().sort_index())
+    cur, prior = {}, {}
+    for line in daily.index.get_level_values(0).unique():
+        vals = daily.loc[line].sort_index()
+        cur[line] = float(vals.mean())
+        if len(vals) >= 2:
+            prior[line] = float(vals.iloc[:-1].mean())
+    return cur, prior
+
+
+def ivt_share_with_prior(ivt_df, group_col: str,
+                         fraud_label: str) -> tuple[dict, dict]:
+    """Per-group impression-weighted IVT% lookups per the MRC standard:
+
+        IVT % = Σ Monitored Ads (rows of this fraud bucket) /
+                Σ Monitored Ads (all rows) × 100
+
+    Returns (current = whole-window share, prior = share excluding the
+    latest date — powers the per-row Δ annotation). Groups with zero
+    monitored impressions are omitted, never reported as 0%."""
+    if not {group_col, "traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns):
+        return {}, {}
+    sub = ivt_df.dropna(subset=[group_col, "date"])
+    if sub.empty:
+        return {}, {}
+    ads = pd.to_numeric(ivt_df["monitored_ads"], errors="coerce").fillna(0)
+    validity = ivt_df["traffic_validity"].astype(str)
+    ads_sub = ads.reindex(sub.index)
+    mask = validity.reindex(sub.index) == fraud_label
+
+    tot_pd = ads_sub.groupby([sub[group_col], sub["date"]]).sum()
+    frd_pd = (ads_sub[mask]
+                  .groupby([sub.loc[mask, group_col], sub.loc[mask, "date"]])
+                  .sum())
+    joined = pd.DataFrame({"tot": tot_pd, "frd": frd_pd}).fillna(0)
+
+    cur, prior = {}, {}
+    for line in joined.index.get_level_values(0).unique():
+        rows = joined.loc[line].sort_index()
+        tot_all = rows["tot"].sum()
+        if tot_all <= 0:
+            continue
+        cur[line] = float(rows["frd"].sum() / tot_all * 100)
+        if len(rows) >= 2:
+            rows_prior = rows.iloc[:-1]
+            tot_prior = rows_prior["tot"].sum()
+            if tot_prior > 0:
+                prior[line] = float(rows_prior["frd"].sum() / tot_prior * 100)
+    return cur, prior
+
+
+# ── Delta / ratio math ─────────────────────────────────────────────────
+
+
+def classify_delta(d, lower_is_worse: bool = True,
+                   new_line_threshold: float | None = 100.0,
+                   noise_threshold: float = 0.05):
+    """Decision half of the "▲/▼ X.Xpp" sub-cell annotation.
+
+    Returns None (no signal: missing value or inside the noise band),
+    the string "new" (magnitude says "brand-new line item", when
+    new_line_threshold applies), or (arrow, is_improvement) where
+    `lower_is_worse=True` means higher values are better (Viewability,
+    CTR, VCR, Pace…) and False flips polarity for IVT-style metrics
+    where rising = bad."""
+    if d is None or pd.isna(d) or abs(d) < noise_threshold:
+        return None
+    if new_line_threshold is not None and abs(d) > new_line_threshold:
+        return "new"
+    arrow = "▲" if d > 0 else "▼"
+    is_improvement = (d > 0) if lower_is_worse else (d < 0)
+    return arrow, is_improvement
+
+
+def _num(x) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def lt_minus_1d_ratio(lt_num, d1_num, lt_den, d1_den, scale: float = 100.0):
+    """The "prior" value for ratio metrics: (lifetime − latest-day)
+    numerator over the same-window denominator, scaled. None when any
+    input is missing or the prior-window denominator is ≤ 0 (a line
+    that only ever delivered on the latest day has no prior)."""
+    ltn, d1n, ltd, d1d = _num(lt_num), _num(d1_num), _num(lt_den), _num(d1_den)
+    if any(math.isnan(x) for x in (ltn, d1n, ltd, d1d)):
+        return None
+    den = max(ltd - d1d, 0)
+    if den <= 0:
+        return None
+    return (ltn - d1n) / den * scale
+
+
+def volume_pct_delta(lifetime, day):
+    """% change of the latest day's volume vs everything before it —
+    volumes need % change, not pp. None when inputs are missing or there
+    is no prior volume to compare against."""
+    lt, d1 = _num(lifetime), _num(day)
+    if math.isnan(lt) or math.isnan(d1):
+        return None
+    prior = lt - d1
+    if prior <= 0:
+        return None
+    return d1 / prior * 100
