@@ -180,6 +180,7 @@ a clean A/B — same site, same homepage slots, overlapping flights:
 | Homepage Insight_Fluid (fluid native template, SafeFrame on, LI 7316340383) | in-iframe | 50k | **61.6%** |
 | Kia Homepage-Insight (template injecting into `dfp-ad-homepage3`, LI 7226895315) | parent-DOM injection | 54k | **0.00%** (3-month sold flight) |
 | 970x250_FullBleed test (injection **with** the view-macro observer, LI 7333906212) | parent-DOM injection + view-macro ping | 5 | 0% — see below |
+| Infiniti QX65 NewsMakers HPTO display strip (CustomCreative `addImageToHomepage` into `#dfp-ad-homepage4`, **with** the 1b watcher + view-macro ping — incl. 138562096700; LI 7332833490 "Centerstage-June", flight 6/11–18) | parent-DOM injection + view-macro ping | 0.9k–3.1k each (day 1) | **0.00% each** |
 
 Takeaways:
 - **In-frame rendering measures organically — no macro needed.** ClipCentric
@@ -198,6 +199,13 @@ Takeaways:
   even a live observer pinging `%%VIEW_URL%%` couldn't have moved AV (see
   1b). For any injected format, expect 0% AV; the realm-death and
   30%-threshold lessons still apply to tracking-pixel watchers.
+- The QX65 Centerstage-June HPTO (last row) repeated the artifact on a
+  fresh flight, at volume: day 1, all three display customs read exactly
+  0.00% (138562096700: 870 imps / 0 viewable / 100% measurable, with the
+  watcher + ping armed — both FullBleed failure modes apply verbatim),
+  while the LI's in-iframe video creatives read 46–87%. Two sibling
+  video customs (138562856644/47) also read 0% — same render-path smell,
+  worth a snippet pull if their numbers matter.
 
 ### 2. Verification loop (once Mobkoi ships a build)
 
