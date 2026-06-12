@@ -119,7 +119,8 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   — replaced `oop2` 2026-06-11). Out-of-page CustomCreative (SafeFrame OFF
   — required for the parent-DOM injection) self-scopes to article pages,
   self-heals via a parent-document watcher, fires once-guarded agency
-  pixels and an MRC viewability beacon. Live flight: Infiniti Newsmakers
+  pixels and an MRC viewability beacon, and keeps GAM Active View honest
+  by gluing the carrier slot onto the strip (carrier-reposition). Live flight: Infiniti Newsmakers
   LI 7336465381. Setup script: `scripts/setup_article_sponsor_logo.py`
   (dry-run by default, lookup-first, `--apply` to create).
 - `docs/gam_placement_injection.md` — the generalized technique behind the
