@@ -354,3 +354,56 @@ def test_idle_days_prefers_last_bid_then_first_seen():
     assert idle_days("nan", "2026-06-02", today) == 10   # junk string skipped
     assert idle_days("not-a-date", None, today) == 0
     assert idle_days(None, None, today) == 0
+
+
+# ── canonicalize_format ────────────────────────────────────────────────────
+
+# Mirrors the prod format_aliases at the time of writing.
+ALIASES = {"Multi": "Display", "Banner": "Display",
+           "PreRoll": "Video", "In-stream video": "Video"}
+
+
+def test_canonicalize_the_live_zoo():
+    from dashboard_logic import canonicalize_format as c
+    # GAM inventory names
+    assert c("Banner", ALIASES) == "Display"
+    assert c("In-stream video", ALIASES) == "Video"
+    assert c("In-stream video", {}) == "Video"     # rule covers it without the alias too
+    # canonical names pass through
+    assert c("Display", ALIASES) == "Display"
+    assert c("Video", ALIASES) == "Video"
+    assert c("Interstitial", ALIASES) == "Interstitial"
+    assert c("Native", ALIASES) == "Native"
+    # name-token variants
+    for v in ("FITO-Video", "fito Video", "PreRoll", "Contextual-PreRoll",
+              "Custom-Audience-Contextual-PreRoll", "Custom-Audience-PreRoll"):
+        assert c(v, ALIASES) == "Video", v
+    for v in ("FITO-Display", "AV-Display", "Contextual-Display",
+              "Custom-Audience-Contextual-Display", "Editorial Promotion Display",
+              "Interscroller", "Uniscroller", "Centerstage",
+              "Backfill-970x250", "Backfill-1536x864", "Direct-970x250",
+              "Direct--300x600"):
+        assert c(v, ALIASES) == "Display", v
+    # branded-content promos → Multi, folded into Display by the user alias
+    for v in ("Multi-Branded-Article2", "Multi-Branded-Article1-Apple-news",
+              "Homepage-Insight", "AV-Apple-News"):
+        assert c(v, ALIASES) == "Display", v
+        assert c(v, {}) == "Multi", v              # without the alias, Multi stands
+    # junk tokens from non-convention names → None
+    for v in ("cpm", "BRobinson", "ILee", "US", "adv", "NA", "Team-USA",
+              "Hispanic", "$21", "AA", "pgmpg", "Global", "Fiber",
+              "iPhone 17e Launch", "ILee - do not use", ""):
+        assert c(v, ALIASES) is None, v
+    # non-strings carry no signal
+    assert c(None, ALIASES) is None
+    assert c(float("nan"), ALIASES) is None
+
+
+def test_canonicalize_alias_wins_and_folds_rule_results():
+    from dashboard_logic import canonicalize_format as c
+    # raw alias wins over rules, case-insensitively
+    assert c("banner", {"Banner": "Video"}) == "Video"
+    # alias re-applies once to the rule result ("Multi" → "Display")
+    assert c("Multi", ALIASES) == "Display"
+    # bump output is canonical and untouched
+    assert c("Video Preroll >30s", ALIASES) == "Video Preroll >30s"
