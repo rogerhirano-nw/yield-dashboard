@@ -170,18 +170,31 @@ def main() -> int:
         target = re.search(r"querySelector\(['\"]#?([\w-]+)['\"]\)", snippet)
         w, h = cr["size"]["width"], cr["size"]["height"]
 
-        # Box aspect: prefer the attached image's natural aspect (the
-        # injected strip rendered width:100%/height:auto, so the IMAGE
-        # ruled the height, not the declared placeholder).
+        # Box aspect: the injected strip rendered width:100%/height:auto,
+        # so the IMAGE's natural aspect ruled the height, not the declared
+        # placeholder. The API's asset.size is degenerate here (1x1 — the
+        # creatives were trafficked as 1x1), so fall back to the WxH the
+        # asset filename carries (NW__..._3200x700.png).
         bw, bh = w, h
         assets = cr["customCreativeAssets"] or []
         for a in assets:
-            if a["macroName"] == macro:
-                nat = a["asset"]["size"] if a["asset"] else None
-                if nat and nat["width"] and nat["height"]:
-                    bh = round(bw * nat["height"] / nat["width"])
-                    print(f"  asset {a['asset']['fileName']}: natural "
-                          f"{nat['width']}x{nat['height']} -> box {bw}x{bh}")
+            if a["macroName"] != macro or not a["asset"]:
+                continue
+            fname = a["asset"]["fileName"] or ""
+            nat = a["asset"]["size"]
+            nw, nh = (nat["width"], nat["height"]) if nat else (0, 0)
+            src = "asset.size"
+            if not (nw and nh and nw > 1 and nh > 1):
+                fm = re.search(r"(\d{2,5})x(\d{2,5})", fname)
+                if fm:
+                    nw, nh, src = int(fm.group(1)), int(fm.group(2)), "filename"
+            if nw > 1 and nh > 1:
+                bh = round(bw * nh / nw)
+                print(f"  asset {fname}: natural {nw}x{nh} ({src}) "
+                      f"-> box {bw}x{bh}")
+            else:
+                print(f"  asset {fname}: natural size UNKNOWN -> keeping "
+                      f"declared box {bw}x{bh}")
         print(f"  declared size: {w}x{h}   injection target: "
               f"{target.group(1) if target else '?'}")
         print(f"  destinationUrl: {cr['destinationUrl']}")
