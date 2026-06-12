@@ -177,10 +177,17 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   null result. GAM-report-native proxy if ever needed: in-view watcher →
   $0 tracking-LI pixel (watcher must live in the parent document — the
   breakout destroys the iframe realm and its observers/timers — and use
-  AV's 30% threshold for elements >242,500 px²). Debrief:
-  `docs/mobkoi_viewability.md`. Per-LI AV pulls: dispatch
-  `diagnose_mobkoi_viewability.yml` with any `line_item_ids`. Never set
-  vCPM goals on breakout formats.
+  AV's 30% threshold for elements >242,500 px²). Publisher-side fix that
+  IS viable (DOM-verified 2026-06-12): Mobkoi *hides* the GPT iframe
+  (display:none, not detached) and its unit's box == the slot div, so an
+  **iframe mirror** (absolute transparent fill of the slot div) makes AV
+  score real geometry — `docs/snippets/mobkoi_iframe_mirror_creative.html`.
+  Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
+  On-site preview + DOM forensics for any creative: dispatch
+  `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
+  screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
+  Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
+  `line_item_ids`. Never set vCPM goals on breakout formats.
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).

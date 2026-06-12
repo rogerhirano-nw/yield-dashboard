@@ -116,7 +116,41 @@ Two corollaries survive the dead end:
   >242,500 px²** (a full-viewport unit can never reach 50% of its own
   area on small screens).
 
-### Proof both paths work — the homepage natural experiment (run 2026-06-11)
+### 1c. Iframe mirror — publisher-side fix, validated viable by DOM forensics
+
+Since AV scores the GPT iframe's *geometry*, the iframe itself can be made
+to track the unit — no Mobkoi cooperation needed. Checked live on
+2026-06-12 by minting on-site preview URLs via SOAP
+`LineItemCreativeAssociationService.getPreviewUrl` and rendering them in
+headless Chromium (`.github/workflows/preview_mobkoi_dom.yml`, mobile
+emulation, screenshots in run artifacts):
+
+- Mobkoi **hides** the GPT iframe (`display:none`) — it stays in the DOM,
+  so it can be restyled. (Detached would have killed this path.)
+- Their unit renders in `div#mobkoi-<digits>` whose box is
+  **pixel-identical to the slot div** (`dfp-ad-inarticleN`, grown to a
+  390×844 viewport-height well). The slot div IS the unit's window, so
+  mirroring needs no Mobkoi-specific selectors.
+- Stack intel: the creatives are **Celtra**-built (`cdn.celtra.com`),
+  wrapped in Mobkoi's own advertiser-side DV (`dvtp_src.js?sid=mobkoi`)
+  and `xpln.tech` analytics — all untouched by the mirror. The payload
+  rendered on a US runner, so previews aren't geo-blocked.
+
+The mirror (append to the vendor tag —
+`docs/snippets/mobkoi_iframe_mirror_creative.html` is the full creative):
+parent-document script waits for the breakout signature (our iframe going
+`display:none`; in-iframe fallback banners are left alone so their clicks
+keep working), then force-shows the iframe + its GPT container as an
+absolute transparent pointer-events:none fill of the slot div, re-asserted
+every 500ms for ~2 min. AV then scores the well users actually scroll
+through — expect viewability to land near (or above) the 75% display
+baseline. This fixes the **GAM-served-layer** measurement (AV, and DV
+Pinnacle if it instruments the GAM layer); it should be done openly — the
+slot frame mirrors the unit's window, reporting true exposure.
+
+Verify the same way as the watcher test: swap the mirror into creative
+138562143597 (replace the dead watcher block), let it serve a day, then
+dispatch the diagnose workflow and watch the per-creative viewable% split.
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
