@@ -152,16 +152,20 @@ Verify the same way as the watcher test: swap the mirror into creative
 138562143597 (replace the dead watcher block), let it serve a day, then
 dispatch the diagnose workflow and watch the per-creative viewable% split.
 
-**Status: live.** Applied 2026-06-12 via
+**Status: live on all three Mobkoi creatives.** Applied 2026-06-12 via
 `.github/workflows/apply_mobkoi_iframe_mirror.yml` (dry-run by default,
 `apply=true` to write; scoped by `creative_ids`, idempotent). Geometry
 validated same day (preview run 27389132646): on all five inarticle
 slots, iframe == slot div == Mobkoi unit at 390×844, wells back in
 normal flow, vendor stack untouched. v1 lesson encoded in the snippet:
 absolutize ONLY the iframe — the GPT container props the well height
-(run 27388975990 collapsed it). Awaiting the AV split in the 6/13
-diagnose pull; if it lands near the in-frame baselines, apply to the
-Cartier creatives (138558786242, 138558555303) with one dispatch.
+(run 27388975990 collapsed it). **First AV evidence (run 27409601588):**
+the mirror's first ~240 impressions — the 2–4am-UK tail of report-day
+6/11 — measured **~34% viewable vs 0.47%** for the untouched tag on the
+same LI, the first AV movement this format has ever shown, so the
+mirror was rolled to the Cartier creatives (138558786242, 138558555303)
+the same morning (run 27410237495). Clean full-day read: the 6/13
+diagnose pull on all three LIs.
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
