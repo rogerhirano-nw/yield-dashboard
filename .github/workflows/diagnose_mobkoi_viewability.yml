@@ -11,12 +11,6 @@ on:
         description: 'Cap the report lookback (days before yesterday)'
         required: false
         default: '45'
-  # Temporary: daily pull while the declared-view watcher test runs on the
-  # live Mobkoi flights (creative 138562143597 on LI 7310815861, added
-  # 2026-06-11). Posts the per-creative AV table to the open PR. Remove
-  # this block once the flights end (~2026-06-16) or monitoring is done.
-  schedule:
-    - cron: '30 14 * * *'
 
 permissions:
   contents: read

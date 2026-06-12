@@ -169,17 +169,17 @@ via the app menu (⋮ → Clear cache) or save Settings (which calls
   artifact: healthy CTR, even more clicks than "viewable" impressions.
   In-frame renders measure organically on the same slots (ClipCentric
   Center Stage takeovers 58–67%, fluid native template 61.6%, site display
-  baseline 75.4%). Fixes: vendor in-frame render mode, or **declared
-  views** — append a watcher implementing MRC criteria that pings
-  `%%VIEW_URL_UNESC%%`. The watcher MUST live in the parent document
-  (breakouts destroy the iframe realm, killing its observers/timers — why
-  the 970x250_FullBleed test read 0%) and use AV's 30% threshold for
-  elements >242,500 px². Ready-to-paste creative:
-  `docs/snippets/mobkoi_declared_view_creative.html`; debrief + test plan:
+  baseline 75.4%) — **rendering in the measured iframe is the only way to
+  move AV; there is no declare-viewable macro/API.** `%%VIEW_URL_UNESC%%`
+  counts *impressions* for out-of-page creatives (delayed impression
+  counting), NOT viewability — tested live 2026-06-11/12 (in-view watcher
+  pinging it on LI 7310815861 creative 138562143597): viewable% unchanged,
+  null result. GAM-report-native proxy if ever needed: in-view watcher →
+  $0 tracking-LI pixel (watcher must live in the parent document — the
+  breakout destroys the iframe realm and its observers/timers — and use
+  AV's 30% threshold for elements >242,500 px²). Debrief:
   `docs/mobkoi_viewability.md`. Per-LI AV pulls: dispatch
-  `diagnose_mobkoi_viewability.yml` (any `line_item_ids`; also runs daily
-  by cron while the watcher test on creative 138562143597 / LI 7310815861
-  is being monitored — delete the schedule block when done). Never set
+  `diagnose_mobkoi_viewability.yml` with any `line_item_ids`. Never set
   vCPM goals on breakout formats.
 
 ## Things to never commit

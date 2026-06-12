@@ -48,7 +48,8 @@ slots.)
 The render *location* is what breaks AV, so no trafficking change on our
 side can fix it (SafeFrame on would kill the unit entirely; size/placeholder
 changes don't move what AV measures). The element the experience renders in
-has to be the element AV measures. Three paths, in order of preference:
+has to be the element AV measures. The paths, in order of preference (and
+one tested dead end kept for the record):
 
 ### 1. Mobkoi iframe-resident render mode (the real fix)
 
@@ -76,90 +77,44 @@ Notes for that conversation:
 - Expected result: interscrollers measured this way report well above the
   75% display baseline (the format's whole pitch is ~full-screen exposure).
 
-### 1b. Publisher-declared views — our homepage-takeover trick, applied to their tag
+### 1b. Dead end, tested: you cannot declare viewability to GAM
 
-GAM's **view URL macro** (`%%VIEW_URL_UNESC%%`) exists for exactly this
-scenario: a creative that renders outside the measured frame implements the
-MRC criteria itself (IntersectionObserver, 50%-for-1s) and pings the macro
-URL, and GAM books a viewable impression on the line. The NW homepage
-full-bleed injection creative already does this, so the same logic can be
-appended to the Mobkoi creatives **without touching their tag**: their
-snippet is editable text in GAM — add a second `<script>` after it that
-plants a parent-document watcher observing the slot div (the unit's scroll
-window) and fires the ping. Mobkoi's bootstrap, consent macros, and click
-tracking stay byte-identical.
+We tried the obvious publisher-side hack — append a watcher to the Mobkoi
+tag that implements the MRC criteria itself (parent-document
+IntersectionObserver, 50%-for-1s / 30% for large units) and pings GAM's
+`%%VIEW_URL_UNESC%%` macro when met. **It does not work, by design.**
+Tested live 2026-06-11→12: creative 138562143597 (`DIRECT- NEWSWEEK
+(modified)`) on the Invesco LI served ~1k impressions with the watcher
+armed and confirmed serving (snippet stored intact, EVEN rotation) — and
+read 0.50% viewable vs 0.47% for the untouched tag. Null result.
 
-**Live test (2026-06-11): creative 138562143597 on the Invesco LI
-7310815861 carries this watcher.** The diagnose workflow runs daily by
-cron (once merged to main) and posts the per-creative AV table to the open
-PR — watch whether the new creative's viewable% separates from the
-original tag's ~0.5%. First meaningful read: 6/13 reporting on 6/12.
-Ready-to-paste full creative: `docs/snippets/mobkoi_declared_view_creative.html`.
+Per Google's macro documentation, the view URL macro is **delayed
+impression counting for out-of-page creatives** — it lets Ad Manager
+"count an impression each time a creative is downloaded… and has begun to
+load," and is documented "only for out-of-page creatives"
+(support.google.com/admanager/answer/2376981). It books *impressions*,
+never viewable impressions, and **no macro or API exists to declare
+Active View viewable impressions** — AV is MRC-accredited
+Google-measured; publishers can't write into it. The watcher's pings
+appear deduped against the already-counted impression (no impression
+inflation in the 6/11 data), so the modified creative is harmless but
+useless — strip the watcher block from 138562143597 or pause that
+creative.
 
-Watcher template (append after Mobkoi's `<!-- END TAG -->`):
-
-```html
-<script>
-(function () {
-  try {
-    var PING = '%%VIEW_URL_UNESC%%';
-    var slot = window.frameElement &&
-               window.frameElement.closest('[id^="dfp-ad-inarticle"]');
-    if (!slot || PING.indexOf('%%') === 0) return;  /* macro didn't substitute */
-    /* Watcher lives in the PARENT document: the vendor tag hides/kills this
-       iframe, and observers/timers in a destroyed realm silently die. */
-    var D = window.parent.document;
-    var boot = D.createElement('script');
-    boot.textContent = '(' + function (sel, ping) {
-      var el = document.querySelector(sel);
-      if (!el) return;
-      var fired = false, timer = null;
-      var io = new IntersectionObserver(function (es) {
-        var e = es[es.length - 1];
-        /* Mirror Active View's large-creative rule: >242,500 px^2 needs 30%
-           in view, not 50% — a full-viewport unit can never reach 50% of its
-           own area on small screens. */
-        var r = e.boundingClientRect;
-        var need = (r.width * r.height > 242500) ? 0.3 : 0.5;
-        if (!fired && e.isIntersecting && e.intersectionRatio >= need) {
-          if (!timer) timer = setTimeout(function () {
-            fired = true; io.disconnect(); new Image().src = ping;
-          }, 1000);
-        } else { clearTimeout(timer); timer = null; }
-      }, { threshold: [0.3, 0.5] });
-      io.observe(el);
-    } + ')(' + JSON.stringify('#' + slot.id) + ',' + JSON.stringify(PING) + ');';
-    (D.head || D.documentElement).appendChild(boot);
-  } catch (e) {}
-})();
-</script>
-```
-
-Caveats, in test order:
-- **Macro substitution**: the view macro is documented for *custom*
-  creatives; Mobkoi's are `ThirdPartyCreative`s. If GAM doesn't substitute
-  it there, the watcher self-disarms (the `%%` guard) — test on a `[TEST]`
-  LI and check whether viewable impressions move. If it doesn't
-  substitute, re-traffic the same tag inside a CustomCreative — but then
-  verify the `${GDPR}`/`${GDPR_CONSENT_898}` consent macros still resolve
-  (they're third-party-creative macros; UK flights break without consent).
-- **Slot-div geometry**: the watcher observes the slot div as a proxy for
-  the unit's scroll window. If Mobkoi collapses the slot div to 0-height,
-  the observer never fires — check the rendered DOM once (GAM preview) and
-  switch the selector to their injected container if needed.
-- **Self-declared ≠ third-party-verified**: declared views make *our* GAM
-  reporting truthful; an agency auditing with DV/IAS still sees the broken
-  number until path 1 lands. Use for our metrics/health, not as the
-  billing-grade answer to a vendor-measured IO.
-
-Hardening notes from the homepage creative (apply there too): don't
-`innerHTML`-wipe the slot div from inside your own iframe **before**
-handing the watcher to the parent — replacing the slot's children destroys
-the GPT iframe your script (and its observer/timeout) lives in, so the
-ping never fires on some browsers; plant the parent-document boot script
-*first* (same lesson as the sponsor-logo creative). And use the
-large-creative 30% threshold above — a 100vw×auto image on mobile can
-exceed 242,500 px² and a 0.5 ratio becomes unreachable.
+Two corollaries survive the dead end:
+- **Rendering inside the measured iframe is the only way to move Active
+  View** — which the natural experiment below proves works for takeover
+  formats (ClipCentric 58–67% on our own homepage).
+- The in-view watcher logic itself is sound and reusable for the
+  **tracking-LI proxy** (fallbacks below): point the ping at a $0 GAM
+  tracking line item's impression tag instead of the view macro, and
+  in-view% = tracker imps / main-LI imps in a two-row GAM report (clearly
+  labeled ours, not Active View). Two hard-won implementation rules: the
+  watcher must live in the **parent document** (breakouts destroy the
+  iframe realm and its observers/timers — why the 970x250_FullBleed
+  observer never fired), and use the **30% threshold for elements
+  >242,500 px²** (a full-viewport unit can never reach 50% of its own
+  area on small screens).
 
 ### Proof both paths work — the homepage natural experiment (run 2026-06-11)
 
@@ -172,29 +127,25 @@ a clean A/B — same site, same homepage slots, overlapping flights:
 | Infiniti "Mobile 2", "Homepage Takeover Desktop 2/3/4", "Homepage 3 Mobile", "Mobile 4" (CustomCreative `addImageToHomepage` innerHTML injection, no observer/ping; same LI) | parent-DOM injection | 9k–36k each | **0.00% each** |
 | Homepage Insight_Fluid (fluid native template, SafeFrame on, LI 7316340383) | in-iframe | 50k | **61.6%** |
 | Kia Homepage-Insight (template injecting into `dfp-ad-homepage3`, LI 7226895315) | parent-DOM injection | 54k | **0.00%** (3-month sold flight) |
-| 970x250_FullBleed test (injection **with** the view-macro observer, LI 7333906212) | parent-DOM injection + declared views | 5 | 0% — see below |
+| 970x250_FullBleed test (injection **with** the view-macro observer, LI 7333906212) | parent-DOM injection + view-macro ping | 5 | 0% — see below |
 
 Takeaways:
 - **In-frame rendering measures organically — no macro needed.** ClipCentric
   runs full takeover formats at 58–67% AV on our own homepage; that's the
   precedent to quote at Mobkoi for path 1 ("ClipCentric's Center Stage
   renders measurably; we need the same from your scroller").
-- ClipCentric's tag comment says `Tag Type: GAM no view macro` — they ship
-  a **view-macro tag variant** as a product option, i.e. declared views in
-  third-party tags are an established vendor pattern (good sign for the 1b
-  watcher on Mobkoi's tag, and worth requesting from ClipCentric too when
-  their format does break out).
-- Every parent-DOM injection without declared views reads exactly 0.00%.
-  Same artifact class as Mobkoi.
-- **The FullBleed test's declared views aren't landing** (0/5 viewable and
-  one impression belonged to a click-tester who certainly looked at it).
-  The snippet explains it: `addImageToSlot` runs `el.innerHTML = …` first —
-  wiping the slot div's children **including the GPT iframe the script
-  itself lives in** — and only then calls `trackViewability`, so the
-  observer + 1s timer are created in a destroyed realm and never fire
-  reliably. Fix = parent-boot pattern above (injection *and* observer in
-  the parent realm) + the 30% large-creative threshold. n=5 is tiny —
-  re-test after fixing and re-dispatch the workflow with LI 7333906212.
+- ClipCentric's tag comment says `Tag Type: GAM no view macro` — that
+  refers to the same out-of-page *impression* macro covered in 1b, not a
+  viewability mechanism.
+- Every parent-DOM injection reads exactly 0.00%. Same artifact class as
+  Mobkoi.
+- The FullBleed test (0/5 viewable) had two independent problems: its
+  observer died with its own iframe (`addImageToSlot` runs
+  `el.innerHTML = …` — wiping the slot div's children **including the GPT
+  iframe the script lives in** — before `trackViewability` ever runs), and
+  even a live observer pinging `%%VIEW_URL%%` couldn't have moved AV (see
+  1b). For any injected format, expect 0% AV; the realm-death and
+  30%-threshold lessons still apply to tracking-pixel watchers.
 
 ### 2. Verification loop (once Mobkoi ships a build)
 
@@ -216,12 +167,13 @@ Takeaways:
   scrolling; the creative fills the iframe. AV measures correctly for
   *any* vendor's scroller asset. Web-team work — worth it only if
   high-impact volume grows.
-- **Tracking-LI viewable events** (GAM-report-native, but not Active
-  View): Mobkoi fires a $0 GAM tracking pixel when their in-unit
-  measurement deems the unit viewable; viewability = tracker imps / main
-  LI imps in a two-line GAM report. Last resort — it puts a viewability
-  number inside GAM reporting, but it isn't the AV columns and won't
-  satisfy a buyer auditing Active View.
+- **Tracking-LI in-view events** (GAM-report-native, but not Active
+  View): a $0 GAM tracking pixel fired when the unit meets MRC criteria —
+  either by Mobkoi's own measurement, or by our parent-document in-view
+  watcher from 1b with the ping pointed at the tracker instead of the view
+  macro. In-view% = tracker imps / main-LI imps in a two-line GAM report.
+  It puts the number inside GAM reporting, but it isn't the AV columns and
+  won't satisfy a buyer auditing Active View.
 
 ## Until the fix lands (this flight)
 
