@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
-from health_check import CheckResult, _eval_freshness, build_report, should_send
+from health_check import (CheckResult, _data_day, _eval_freshness,
+                          build_report, should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -68,6 +69,14 @@ def test_report_still_failing_after_remediation_flags_human():
         remediation="re-ran refresh sweep → success (url)")
     assert not all_ok
     assert "needs a human" in body
+
+
+def test_data_day_rolls_over_after_the_sweep_not_at_midnight():
+    # 02:00 UTC: the new calendar day's sweep hasn't run yet — still the
+    # prior data-day, so pre-sweep runs don't demand data that can't exist.
+    assert _data_day(datetime(2026, 6, 12, 2, 0, tzinfo=timezone.utc)) == date(2026, 6, 11)
+    # 09:45 UTC: sweep has landed — the morning check must require D-1.
+    assert _data_day(datetime(2026, 6, 12, 9, 45, tzinfo=timezone.utc)) == date(2026, 6, 12)
 
 
 def test_should_send_matrix():

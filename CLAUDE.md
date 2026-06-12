@@ -47,11 +47,14 @@ upstream failures heal hands-free. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients
-(Magnite 429 ×10 / 5xx ×3, GAM SOAP ×3); the 13:45 UTC check re-runs the
-sweep once, immediately; the 17:45 UTC follow-up check retries once more
-~4h later and is quiet when green-with-nothing-to-do (remediation outcomes
-always email). Max two sweep re-runs/day — anything still failing after
-that needs a human, and the ❌ email + red Actions run says so. The
+(Magnite 429 ×10 / 5xx ×3, GAM SOAP ×3, Supabase pooler connect ×4 — the
+six parallel sweep jobs stampede the pooler at 09:00 UTC and the initial
+connect can time out, 2026-06-11); the 09:45 UTC check re-runs the sweep
+once, immediately (the sweep itself fires 09:00 UTC / 05:00 ET); the
+13:45 UTC follow-up check retries once more ~4h later and is quiet when
+green-with-nothing-to-do (remediation outcomes always email). Max two
+sweep re-runs/day — anything still failing after that needs a human, and
+the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It ships
 with GitHub-native `schedule:` triggers as a fallback — swap to
