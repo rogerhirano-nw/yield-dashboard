@@ -1,0 +1,181 @@
+/* ============================================================
+   Newsweek Dashboard — design tokens + component CSS
+   Drop-in for the Streamlit ad-revenue dashboard.
+   Theme: LIGHT — Newsweek Paper (the native brand canvas).
+   Severity grammar (green/amber/red) preserved, re-toned for light.
+   Brand red is chrome-only; severity owns its own red.
+   ------------------------------------------------------------
+   Install: unpin base="dark" in .streamlit/config.toml, then
+   inject via st.markdown("<style>…</style>", unsafe_allow_html=True)
+   OR serve as a static .css.
+   Fonts: copy the Benton Modern Display + Franklin Gothic
+   binaries (from the Newsweek DS /assets/fonts) into ./fonts/
+   and serve them; otherwise the fallback stacks apply.
+   A dark fallback ramp is listed at the bottom, commented out.
+   ============================================================ */
+
+/* ---------- FONTS (self-hosted; adjust url() to your static path) ---------- */
+@font-face { font-family: "Benton Modern Display"; src: url("./fonts/BentonModDisp-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Benton Modern Display"; src: url("./fonts/BentonModDisp-Bold.otf")    format("opentype"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Benton Modern Display"; src: url("./fonts/BentonModDisp-Black.otf")   format("opentype"); font-weight: 800; font-display: swap; }
+@font-face { font-family: "Franklin Gothic"; src: url("./fonts/FranklinGothic.ttf")     format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Franklin Gothic"; src: url("./fonts/FranklinGothicDemi.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+
+/* ============================================================
+   1) DESIGN TOKENS  — edit this tier to recolor/rescale all
+   ============================================================ */
+:root {
+  /* ---- BRAND CHROME — identity only, NEVER on data ---- */
+  --brand-red:        #e91d0c;    /* mark, active-tab underline, eyebrow tick */
+  --brand-red-strong: #c41608;    /* hover / pressed chrome, links */
+
+  /* ---- SURFACE — warm Paper (the native Newsweek canvas) ---- */
+  --surface-0:    #fefcf6;        /* app background — Newsweek Paper */
+  --surface-1:    #ffffff;        /* panels, tiles — lifted off paper */
+  --surface-2:    #f6f2e6;        /* sunk rows, hover fills */
+  --border:       #e7e0c9;        /* warm hairline */
+  --border-strong:#1f1e19;        /* 2px editorial ink rule */
+
+  /* ---- TEXT — Ink on paper ---- */
+  --text-primary:   #1f1e19;      /* Newsweek Ink */
+  --text-secondary: #57564f;
+  --text-muted:     #8c887b;
+
+  /* ---- STATE — severity scale, re-toned for a light canvas ---- */
+  --state-positive: #3c6b14;  --state-positive-surface: rgba(76,122,25,.12);
+  --state-warning:  #8a6d00;  --state-warning-surface:  rgba(214,170,0,.18);
+  --state-critical: #c41608;  --state-critical-surface: rgba(233,29,12,.10);
+
+  /* ---- DATA-VIZ — Newsweek secondary palette (toned for paper) ---- */
+  --viz-1:#4b62e0; --viz-2:#2d8d92; --viz-3:#824dd7;
+  --viz-4:#d84f86; --viz-5:#b08900; --viz-6:#5f9e2a;
+
+  /* ---- TYPE ---- */
+  --font-sans:    "Franklin Gothic", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Benton Modern Display", Georgia, "Times New Roman", serif;
+  --track-eyebrow: 0.08em;
+  --num-feature:  "tnum" 1;       /* tabular numerals — apply to ALL figures */
+
+  /* ---- SPACING (4px base) & RADIUS (square-ish, editorial) ---- */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
+  --radius-sm:  4px;              /* tiles, inputs, banded cells */
+  --radius-md:  8px;              /* severity banners */
+  --radius-pill:999px;           /* status + ordinal pills */
+}
+
+/* ============================================================
+   2) COMPONENT CSS  — every rule reads a token above
+   Map these classes onto the dashboard's existing markup
+   (or wrap Streamlit blocks in containers with these classes).
+   ============================================================ */
+
+/* ---- App canvas ---- */
+.stApp, .nw-app { background: var(--surface-0); color: var(--text-primary); font-family: var(--font-sans); }
+.nw-app, .nw-app * { font-feature-settings: var(--num-feature); }
+
+/* ---- Eyebrow / kicker ---- */
+.nw-eyebrow {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font: 600 12px/1 var(--font-sans); letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--brand-red);
+}
+.nw-eyebrow::before { content: ""; width: 8px; height: 8px; background: var(--brand-red); }
+
+/* ---- H1 (22px serif, sentence case) + subtitle ---- */
+.nw-h1  { margin: var(--space-2) 0 0; font: 700 22px/1.15 var(--font-display); letter-spacing: -0.01em; color: var(--text-primary); }
+.nw-sub { margin-top: var(--space-1); font: 400 13px/1.4 var(--font-sans); color: var(--text-secondary); }
+
+/* ---- Severity banner (8px radius, tinted + accent bar) ---- */
+.nw-banner {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+  margin: var(--space-4) 0; font: 400 13px/1.45 var(--font-sans);
+}
+.nw-banner b { display: block; margin-bottom: 2px; }
+.nw-banner span { color: var(--text-secondary); }
+.nw-banner--critical { background: var(--state-critical-surface); border-left: 3px solid var(--state-critical); }
+.nw-banner--critical b, .nw-banner--critical .nw-banner__ic { color: var(--state-critical); }
+.nw-banner--warning  { background: var(--state-warning-surface);  border-left: 3px solid var(--state-warning); }
+.nw-banner--warning  b, .nw-banner--warning .nw-banner__ic  { color: var(--state-warning); }
+.nw-banner--positive { background: var(--state-positive-surface); border-left: 3px solid var(--state-positive); }
+.nw-banner--positive b, .nw-banner--positive .nw-banner__ic { color: var(--state-positive); }
+.nw-banner__ic { font-weight: 700; flex: 0 0 auto; }
+
+/* ---- KPI tile (9-up strip) ---- */
+.nw-kpis { display: grid; grid-template-columns: repeat(9, 1fr); gap: var(--space-2); }
+.nw-tile {
+  position: relative; overflow: hidden; padding: var(--space-3);
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-top: 2px solid var(--text-primary); border-radius: var(--radius-sm);
+}
+.nw-tile__lab { font: 600 10px/1.1 var(--font-sans); letter-spacing: var(--track-eyebrow); text-transform: uppercase; color: var(--text-secondary); padding-right: 38px; }
+.nw-tile__num { margin: 7px 0 2px; font: 700 23px/1.05 var(--font-display); color: var(--text-primary); font-feature-settings: var(--num-feature); }
+.nw-tile__tgt { font: 400 10.5px/1.2 var(--font-sans); color: var(--text-muted); }
+.nw-tile__spark { display: block; margin-top: var(--space-2); width: 100%; height: 22px; }
+.nw-tile__spark polyline { fill: none; stroke: var(--text-secondary); stroke-width: 1.6; }  /* NEUTRAL — not red */
+.nw-tile__delta { position: absolute; top: var(--space-3); right: var(--space-3); font: 700 11px/1 var(--font-sans); }
+.nw-tile__delta.up { color: var(--state-positive); }
+.nw-tile__delta.dn { color: var(--state-critical); }
+
+/* ---- Grid table with benchmark-banded cells ---- */
+.nw-grid { font: 400 12.5px/1.4 var(--font-sans); }
+.nw-grid__head, .nw-grid__row { display: grid; grid-template-columns: 1.7fr .8fr .9fr .9fr .8fr; gap: var(--space-2); align-items: center; }
+.nw-grid__head {
+  padding: 0 var(--space-1) var(--space-2); margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border); color: var(--text-secondary);
+  font: 600 10px/1 var(--font-sans); letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+}
+.nw-grid__row { padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--border); }
+.nw-grid__row:hover { background: var(--surface-2); }
+.nw-cell { text-align: right; color: var(--text-primary); font-feature-settings: var(--num-feature); }
+.nw-cell--name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font-weight: 600; }
+.nw-cell--name .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Banded cell: tint surface + saturated text (NOT a full fill) */
+.nw-band { display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); font-weight: 600; font-feature-settings: var(--num-feature); }
+.nw-band--good { background: var(--state-positive-surface); color: var(--state-positive); }
+.nw-band--warn { background: var(--state-warning-surface);  color: var(--state-warning); }
+.nw-band--bad  { background: var(--state-critical-surface); color: var(--state-critical); }
+
+/* ---- Pills (status) + ordinal rank ---- */
+.nw-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+  border-radius: var(--radius-pill); font: 600 10.5px/1 var(--font-sans);
+  letter-spacing: var(--track-eyebrow); text-transform: uppercase; white-space: nowrap;
+}
+.nw-pill::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.nw-pill--good { background: var(--state-positive-surface); color: var(--state-positive); }
+.nw-pill--warn { background: var(--state-warning-surface);  color: var(--state-warning); }
+.nw-pill--bad  { background: var(--state-critical-surface); color: var(--state-critical); }
+.nw-rank {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-secondary);
+  font: 700 11px/1 var(--font-sans); flex: 0 0 auto; font-feature-settings: var(--num-feature);
+}
+
+/* ---- Tab row (custom HTML tabs) — active = brand-red underline (chrome) ---- */
+.nw-tabs { display: flex; gap: var(--space-6); border-bottom: 1px solid var(--border); }
+.nw-tab {
+  position: relative; padding: 12px 0; background: none; border: 0; cursor: pointer;
+  font: 600 13px/1 var(--font-sans); letter-spacing: 0.02em; color: var(--text-secondary);
+}
+.nw-tab[aria-selected="true"] { color: var(--text-primary); }
+.nw-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--brand-red); }
+
+/* ---- Section rule ---- */
+.nw-rule { height: 0; border: 0; border-top: 2px solid var(--border-strong); margin: var(--space-6) 0; }
+
+/* ============================================================
+   FALLBACK — warm-ink DARK ramp, if base="dark" must return.
+   Re-declare only these tokens inside a [data-theme="dark"] (or
+   the .stApp) scope; everything else inherits unchanged.
+   ------------------------------------------------------------
+   --surface-0:#1a1813; --surface-1:#24221b; --surface-2:#302d24;
+   --border:#403c31;   --border-strong:#56544a;
+   --text-primary:#f5f1e6; --text-secondary:#b8b3a3; --text-muted:#8a8579;
+   --state-positive:#5fce82; --state-positive-surface:rgba(95,206,130,.13);
+   --state-warning:#f6c344;  --state-warning-surface:rgba(246,195,68,.13);
+   --state-critical:#ec4a3a; --state-critical-surface:rgba(236,74,58,.13);
+   --viz-1:#6b80f0; --viz-2:#3fd7dd; --viz-3:#9a6df0;
+   --viz-4:#ff7aae; --viz-5:#ffd500; --viz-6:#aef24a;
+   ============================================================ */

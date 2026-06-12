@@ -138,6 +138,31 @@ benchmarks settings; the #156 fix) while filtering as Video. Its
 thresholds live under the "Video Preroll >30s" row of the Benchmarks
 editor, which is the band's only user-facing surface.
 
+## Dashboard design system (Newsweek "Paper", 2026-06)
+The dashboard is skinned to the Newsweek design system: **light warm-paper
+canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern
+Display serif for H1/KPI numbers, Franklin Gothic for UI. All values live
+as CSS tokens in the `:root` block at the top of dashboard.py's style
+block — component rules only read tokens. Source spec:
+`docs/design_handoff/` (Claude Design handoff: token CSS + before/after
+audit doc). Rules that bite:
+- **Brand red (`--brand-red #e91d0c`) is chrome-only** — eyebrow tick,
+  active-tab underline, mark. **Data severity owns its own red**
+  (`--state-critical #c41608`). If a red pixel is not the mark, a tab, or
+  a breach, it's a bug. Charts use the `--viz-*` palette (Newsweek bar in
+  peer charts = ink, peers = warm gray — never brand red on a series).
+- **Sparklines are neutral ink** — state lives in delta text and banded
+  cells, never the trend stroke.
+- Theme is pinned light in `.streamlit/config.toml`; `primaryColor` is
+  ink, deliberately not red (Streamlit paints it on focus rings/buttons).
+  A commented warm-ink dark ramp sits at the bottom of the handoff CSS if
+  dark must ever return.
+- Pandas Styler colors (`st.dataframe` cells) mirror the state tokens as
+  **literals** — the data-grid canvas can't resolve CSS vars. Same for
+  Vega/Altair series colors.
+- Licensed font binaries are NOT committed: drop into `static/fonts/`
+  (gitignored; see its README). Fallbacks: Georgia / system sans.
+
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 

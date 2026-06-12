@@ -1,6 +1,23 @@
-# Pin the theme to dark regardless of the user's OS prefers-color-scheme.
-# All custom CSS in dashboard.py assumes a dark background (text colors are
-# near-white rgba(250,250,250,...)) so light mode renders the page nearly
-# invisible. Lock it.
+# Newsweek "Paper" theme (2026-06 rebrand — design tokens in dashboard.py,
+# source handoff in docs/design_handoff/). Pin to light regardless of the
+# user's OS prefers-color-scheme: all custom CSS assumes the warm paper
+# canvas (ink text #1f1e19 on #fefcf6) so dark mode would render the page
+# nearly invisible. Lock it.
+#
+# primaryColor is INK, deliberately not Newsweek red: Streamlit paints
+# primaryColor on focus rings, sliders, and primary buttons, and under the
+# brand system red is reserved for chrome (eyebrow tick, active tab, mark)
+# and data severity — a red widget accent would violate both.
 [theme]
-base = "dark"
+base = "light"
+primaryColor = "#1f1e19"            # --text-primary (ink)
+backgroundColor = "#fefcf6"         # --surface-0 (Paper)
+secondaryBackgroundColor = "#f6f2e6" # --surface-2 (sunk fills)
+textColor = "#1f1e19"               # --text-primary
+
+# Serves ./static at /app/static — the drop-in path for the licensed
+# Newsweek font binaries (see static/fonts/README.md). Until the files
+# exist the @font-face rules 404 harmlessly and the CSS falls back to
+# Georgia / system sans.
+[server]
+enableStaticServing = true

@@ -11,6 +11,11 @@ __pycache__/
 .streamlit/secrets.toml
 .DS_Store
 
+# Licensed Newsweek font binaries are dropped into static/fonts/ locally
+# but must never be committed (see static/fonts/README.md).
+static/fonts/*
+!static/fonts/README.md
+
 # Claude Code: track shared settings, ignore local/session state
 .claude/*
 !.claude/settings.json
