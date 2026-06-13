@@ -1252,7 +1252,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   color: var(--text-primary); text-transform: none;
   font-variant-numeric: tabular-nums;
 }
-.nw-sm-panel svg { width: 100%; height: 24px; display: block; }
+/* Small-multiple sparklines scale UNIFORMLY (uniform=True viewBox, no
+   preserveAspectRatio="none") — height:auto keeps geometry true at any
+   panel width instead of crushing the trend flat on the wide layout. */
+.nw-sm-panel svg { width: 100%; height: auto; display: block; }
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -3036,7 +3039,8 @@ if st.session_state.active_view == "campaigns":
                 return f"{int(v):,}"
 
             # ── Sparkline helpers ─────────────────────────────────────────
-            def _sparkline_svg(values, target=None, color="neutral", klass="kpi-spark"):
+            def _sparkline_svg(values, target=None, color="neutral", klass="kpi-spark",
+                               uniform=False):
                 """SVG sparkline. `values` is the 7-day series (oldest first).
                 `target` optionally draws a dashed reference line. `color` keys
                 into the token palette — per the Newsweek handoff, trend lines
@@ -3044,7 +3048,17 @@ if st.session_state.active_view == "campaigns":
                 banded cells, never in the sparkline stroke). Colors ride on
                 style= because SVG presentation attributes can't read var().
                 `klass` controls outer sizing (default `kpi-spark` stretches
-                across the tile; pass `""` for parent-controlled)."""
+                across the tile; pass `""` for parent-controlled).
+
+                Two geometry regimes (CLAUDE.md): default stretches to fill
+                width (preserveAspectRatio="none") — right for the compact
+                ~130px KPI tiles, where filling width edge-to-edge is the
+                point. `uniform=True` scales PROPORTIONALLY (plain viewBox, no
+                preserveAspectRatio; the caller's CSS sets width:100% +
+                height:auto) for the drawer small multiples, whose ~370px
+                panels otherwise crush the trend flat — the delivery-chart
+                distortion in miniature. A wide viewBox keeps the rendered
+                height compact under uniform scaling."""
                 if not values:
                     return ""
                 clean = [float(v) if (v is not None and not pd.isna(v)) else None for v in values]
@@ -3055,9 +3069,15 @@ if st.session_state.active_view == "campaigns":
                 vmin, vmax = min(pool), max(pool)
                 if vmax == vmin:
                     vmax = vmin + 1
-                W, H, PAD = 56, 20, 2
+                # Uniform mode: wide viewBox (height stays compact when it
+                # scales proportionally) + an x-inset so the end dot doesn't
+                # clip at the panel edge. Stretch mode keeps the flush 56×20.
+                if uniform:
+                    W, H, PAD, XPAD = 300, 34, 5, 6
+                else:
+                    W, H, PAD, XPAD = 56, 20, 2, 0
                 n = len(clean)
-                def _x(i): return i / (n - 1) * W if n > 1 else W / 2
+                def _x(i): return (XPAD + i / (n - 1) * (W - 2 * XPAD)) if n > 1 else W / 2
                 def _y(v): return H - PAD - (v - vmin) / (vmax - vmin) * (H - 2 * PAD)
                 pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
                                for i, v in enumerate(clean) if v is not None)
@@ -3071,20 +3091,20 @@ if st.session_state.active_view == "campaigns":
                 tline = ""
                 if target is not None:
                     ty = _y(float(target))
-                    tline = (f'<line x1="0" y1="{ty:.1f}" x2="{W}" y2="{ty:.1f}" '
+                    tline = (f'<line x1="{XPAD}" y1="{ty:.1f}" x2="{W - XPAD}" y2="{ty:.1f}" '
                              f'style="stroke:var(--spark-ref)" stroke-width="0.75" '
                              f'stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>')
                 last_i = max(i for i, v in enumerate(clean) if v is not None)
                 # End marker is a zero-length round-capped stroke, NOT a <circle>:
-                # preserveAspectRatio="none" stretches the viewBox non-uniformly,
-                # which renders a <circle> as a smeared ellipse. A non-scaling
-                # round cap stays a true round dot at any container width.
+                # in the stretch regime preserveAspectRatio="none" warps a
+                # <circle> into a smeared ellipse. A non-scaling round cap stays
+                # a true round dot in either regime, at any container width.
                 dot = (f'<path d="M{_x(last_i):.1f} {_y(clean[last_i]):.1f}h0" '
                        f'fill="none" style="stroke:{stroke}" stroke-width="4" '
                        f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
                 class_attr = f' class="{klass}"' if klass else ""
-                return (f'<svg{class_attr} viewBox="0 0 {W} {H}" '
-                        f'preserveAspectRatio="none" '
+                par = "" if uniform else ' preserveAspectRatio="none"'
+                return (f'<svg{class_attr} viewBox="0 0 {W} {H}"{par} '
                         f'xmlns="http://www.w3.org/2000/svg">{tline}'
                         f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
                         f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
@@ -4258,7 +4278,7 @@ if st.session_state.active_view == "campaigns":
                     panels.append(
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
-                        f'{_sparkline_svg(view, target=view_target, klass="")}'
+                        f'{_sparkline_svg(view, target=view_target, klass="", uniform=True)}'
                         f'{sm_dates}'
                         '</div>'
                     )
@@ -4270,7 +4290,7 @@ if st.session_state.active_view == "campaigns":
                     panels.append(
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
-                        f'{_sparkline_svg(second, target=second_target, klass="")}'
+                        f'{_sparkline_svg(second, target=second_target, klass="", uniform=True)}'
                         f'{sm_dates}'
                         '</div>'
                     )
