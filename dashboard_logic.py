@@ -356,6 +356,35 @@ def li_part(name, idx: int):
     return parts[idx].strip() if len(parts) > idx else None
 
 
+def line_item_display_name(name) -> str:
+    """Friendly "<Client> - <MediaType>" label for a GAM line-item name
+    (14-field convention: client = token 7, media = token 10). Strips any
+    leading "#N " ordinal badge first. Surfaces house products (Uniscroller /
+    Interscroller / CenterStage / FITO / Preroll) paired with the advertiser.
+    Either half may be missing — fall back to mid-name tokens, then the
+    cleaned name. Also the alphabetical sort key for the Direct table, so it
+    must match exactly what the row renders."""
+    if name is None or (isinstance(name, float) and pd.isna(name)):
+        return ""
+    clean = re.sub(r"^#\d+\s+", "", str(name))
+    tokens = clean.split("_")
+    client_raw = tokens[7] if len(tokens) >= 8 else ""
+    media_raw = tokens[10] if len(tokens) >= 11 else ""
+    client = client_raw.replace("-", " ") if client_raw and client_raw not in ("NA", "N/A", "") else ""
+    media = media_raw.replace("-", " ") if media_raw and media_raw not in ("NA", "N/A", "") else ""
+    if client and media:
+        return f"{client} - {media}"
+    if media:
+        return media
+    if client:
+        return client
+    if len(tokens) >= 5:
+        return "_".join(tokens[2:5])
+    if len(tokens) >= 3:
+        return "_".join(tokens[2:])
+    return clean
+
+
 # ── Pacing ──────────────────────────────────────────────────────────────
 
 

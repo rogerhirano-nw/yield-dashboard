@@ -3919,14 +3919,18 @@ if st.session_state.active_view == "campaigns":
                     axis=1,
                 )
 
-            # ── Default sort: |pacing - 100| descending. Worst pacers (and
-            # worst overpacers) float to the top, healthy lines sink. The
-            # earlier ascending sort by pacing_pct is overridden here.
-            if "pacing_pct" in view_gam.columns:
-                _pace_for_sort = pd.to_numeric(view_gam["pacing_pct"], errors="coerce")
-                view_gam = view_gam.assign(_pace_dev=(_pace_for_sort - _pacing_target).abs())
-                view_gam = view_gam.sort_values("_pace_dev", ascending=False, na_position="last")
-                view_gam = view_gam.drop(columns=["_pace_dev"])
+            # ── Default sort: alphabetical (A–Z) by the displayed line-item
+            # name — the same derivation each row renders, so the order matches
+            # what you read. Case-insensitive; stable so same-named LIs keep
+            # their ordinal order. (Previously |pacing - target| descending —
+            # variance-first; changed per request 2026-06-13.)
+            if "line_item_name" in view_gam.columns:
+                _name_key = (view_gam["line_item_name"]
+                             .map(dl.line_item_display_name)
+                             .str.casefold())
+                view_gam = view_gam.assign(_name_key=_name_key)
+                view_gam = view_gam.sort_values("_name_key", kind="stable", na_position="last")
+                view_gam = view_gam.drop(columns=["_name_key"])
 
             # (The pre-redesign st.dataframe path — table_df + pandas-Styler
             # color maps — was built here but never rendered after the custom
@@ -4751,7 +4755,7 @@ if st.session_state.active_view == "campaigns":
                 _imp = pd.to_numeric(view_gam["lifetime_impressions_delivered"], errors="coerce")
                 _ctr_rate = (_clk / _imp * 100).where(_imp > 0, other=None)
 
-            # Iterate; view_gam is already sorted by |pacing - target| desc.
+            # Iterate; view_gam is already sorted A–Z by display name.
             # No row cap: ad-ops needs the whole Direct list visible (~35
             # rows today). If row count grows past ~500 and the custom
             # HTML grid starts feeling slow, reintroduce pagination here.
@@ -4792,25 +4796,7 @@ if st.session_state.active_view == "campaigns":
                 # the product alone. See `project_gam_line_item_naming
                 # _convention.md` for the full SOP. Either half may be
                 # missing — fall back gracefully.
-                _tokens = _li_clean.split("_")
-                _client_raw = _tokens[7] if len(_tokens) >= 8 else ""
-                _media_raw  = _tokens[10] if len(_tokens) >= 11 else ""
-                _client = (_client_raw.replace("-", " ")
-                           if _client_raw and _client_raw not in ("NA", "N/A", "") else "")
-                _media  = (_media_raw.replace("-", " ")
-                           if _media_raw and _media_raw not in ("NA", "N/A", "") else "")
-                if _client and _media:
-                    _display_name = f"{_client} - {_media}"
-                elif _media:
-                    _display_name = _media
-                elif _client:
-                    _display_name = _client
-                elif len(_tokens) >= 5:
-                    _display_name = "_".join(_tokens[2:5])
-                elif len(_tokens) >= 3:
-                    _display_name = "_".join(_tokens[2:])
-                else:
-                    _display_name = _li_clean
+                _display_name = dl.line_item_display_name(_li_clean)
                 # DV Attention + SIVT + GIVT (current values + priors for
                 # the Δ row below each cell). Lookups built once at view
                 # load from dv_attention / dv_ivt tables. Rows with no DV
@@ -4922,7 +4908,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="nw-tbl-wrap nw-tbl-direct">'
                 '<div class="nw-tbl-head">'
                 '<div class="nw-tbl-title">Direct campaigns'
-                '<span class="nw-tbl-sub">· sorted by variance</span></div>'
+                '<span class="nw-tbl-sub">· sorted A–Z</span></div>'
                 '<div class="nw-legend">'
                 '<span><span class="nw-legend-dot" style="background:var(--state-critical)"></span>under</span>'
                 '<span><span class="nw-legend-dot" style="background:var(--state-warning)"></span>off-target</span>'
