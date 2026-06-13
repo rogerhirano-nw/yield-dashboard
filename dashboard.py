@@ -923,6 +923,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-kpi-row { display: grid; grid-template-columns: repeat(9, 1fr);
               gap: var(--space-2); margin: 4px 0 10px;
               background: transparent; border: none; }
+/* PMP overview strip carries 4 tiles, not 9. The two-class selector outranks
+   the ≤1024 auto-fit rule at every width, so this holds 4-up on desktop and
+   tablet without the inline style it used to need. */
+.nw-kpi-row.nw-kpi-row--pmp { grid-template-columns: repeat(4, 1fr); }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
              padding: var(--space-3); position: relative; overflow: hidden;
              border-radius: var(--radius-sm);
@@ -1469,6 +1473,11 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
+  /* KPI strips: the ≤1024 fluid auto-fit packs 4 tiles across on a phone and
+     crushes them (labels wrap, values cramped). Pin the main 9-tile strip to
+     3-up (clean 3×3) and the PMP 4-tile strip to 2-up (2×2). */
+  .nw-kpi-row { grid-template-columns: repeat(3, 1fr); }
+  .nw-kpi-row.nw-kpi-row--pmp { grid-template-columns: repeat(2, 1fr); }
   /* Exception banners: 3-up → stacked full-width (legible over cramped). */
   .nw-banner-row { grid-template-columns: 1fr; }
   /* Tab row: scroll horizontally instead of wrapping/clipping, so every
@@ -5500,7 +5509,7 @@ if st.session_state.active_view == "campaigns":
         _rev_sub  = f"vs ${_d_rev/1000:,.1f}K direct" if _d_rev else None
         _ecpm_sub = f"vs ${_d_ecpm:.2f} direct" if _d_ecpm else None
         st.markdown(
-            '<div class="nw-kpi-row" style="grid-template-columns: repeat(4, 1fr);">'
+            '<div class="nw-kpi-row nw-kpi-row--pmp">'
             + _pmp_tile("Revenue", _pmp_fmt_money(_pmp_rev), _rev_sub)
             + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr))
             + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub)
