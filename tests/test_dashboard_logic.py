@@ -226,6 +226,48 @@ def test_ivt_share_is_impression_weighted_per_mrc():
     assert g_cur["A"] == 1.0         # 2/200
 
 
+# ── per-LI daily series (drawer sparklines) ─────────────────────────────────
+
+def test_attention_daily_series_by_li_per_date_mean():
+    import pandas as pd
+    from datetime import date as d
+    from dashboard_logic import attention_daily_series_by_li
+    # Line A: date1 two creatives (100, 200 → day mean 150), date2 one (90).
+    # Per-date means, oldest first; B is a separate single-date line.
+    df = pd.DataFrame({
+        "line_item_id": ["A", "A", "A", "B"],
+        "attention_index": [100.0, 200.0, 90.0, 999.0],
+        "date": [d(2026, 6, 1), d(2026, 6, 1), d(2026, 6, 2), d(2026, 6, 1)],
+    })
+    out = attention_daily_series_by_li(df, "line_item_id")
+    assert out["A"] == [150.0, 90.0]
+    assert out["B"] == [999.0]
+    assert "missing" not in out
+    assert attention_daily_series_by_li(pd.DataFrame({"x": [1]}), "line_item_id") == {}
+
+
+def test_ivt_daily_series_by_li_impression_weighted_per_day():
+    import pandas as pd
+    from datetime import date as d
+    from dashboard_logic import ivt_daily_series_by_li
+    # Line A, date1: 1 SIVT / (97+1+2)=100 → 1.0%; date2: 5 SIVT / (95+5)=100 → 5.0%.
+    # Oldest-first [1.0, 5.0]; GIVT is 2/100 = 2.0% on date1, then a real 0.0%
+    # on date2 (traffic, no GIVT). Line Z has zero monitored ads → omitted.
+    df = pd.DataFrame({
+        "line_item_id":     ["A"] * 5 + ["Z"],
+        "traffic_validity": ["Valid Traffic", "Fraud/SIVT", "Fraud/GIVT",
+                             "Valid Traffic", "Fraud/SIVT", "Valid Traffic"],
+        "monitored_ads":    [97, 1, 2, 95, 5, 0],
+        "date": [d(2026, 6, 1)] * 3 + [d(2026, 6, 2)] * 2 + [d(2026, 6, 1)],
+    })
+    sivt = ivt_daily_series_by_li(df, "line_item_id", "Fraud/SIVT")
+    assert sivt["A"] == [1.0, 5.0]
+    assert "Z" not in sivt
+    givt = ivt_daily_series_by_li(df, "line_item_id", "Fraud/GIVT")
+    assert givt["A"] == [2.0, 0.0]
+    assert ivt_daily_series_by_li(pd.DataFrame({"x": [1]}), "line_item_id", "Fraud/SIVT") == {}
+
+
 # ── classify_delta ─────────────────────────────────────────────────────────
 
 def test_classify_delta_noise_new_and_polarity():

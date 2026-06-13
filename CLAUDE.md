@@ -197,7 +197,12 @@ Rules that survive any future restyle:
     `stroke-linecap="round"`), never a `<circle>` — a circle smears into an
     ellipse at the rendered width.
   - `_sparkline_svg(uniform=True)` (the **drawer small multiples** —
-    Viewability + CTR/VCR) scales **uniformly**: wide viewBox (`300×34`), *no*
+    Viewability + CTR/VCR + Attention + SIVT + GIVT, the last three added
+    2026-06-13; Attention targets 100, SIVT/GIVT target 1%, and their per-LI
+    daily series come from the precomputed `dl.attention_daily_series_by_li` /
+    `dl.ivt_daily_series_by_li` dicts — one groupby pass, not a per-row scan of
+    the 290k-row IVT table; a panel is skipped when the line has <2 days of DV
+    coverage) scales **uniformly**: wide viewBox (`300×34`), *no*
     `preserveAspectRatio="none"`, CSS `width:100%; height:auto`. Their `.nw-sm-grid`
     panels run ~370px on the wide layout, so the old stretch crushed the trend
     flat exactly like the delivery chart did (the "viewability/CTR still
