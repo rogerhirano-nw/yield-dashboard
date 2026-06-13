@@ -259,8 +259,13 @@ Rules that survive any future restyle:
      the GAM creds held in *repo* secrets — so GAM write-creds never live on
      the read-only dashboard. Flips to "✓ Archive requested"
      (`_pmp_dispatched_deals`); the archive runs async in Actions.
-  3. **Neither** → "Archive in GAM UI" (manual). Non-GAM SSPs → "Manual ·
-     `<SSP>` UI".
+  3. **Neither** → an **"Archive in GAM ↗" `st.link_button`** that opens GAM
+     Ad Manager (`#delivery` for the network code from settings — works with
+     no secrets; the deal name is on the card to find it). Non-GAM SSPs →
+     "Manual · `<SSP>` UI". When neither archive path is wired, the expander
+     also shows a one-time **capability diagnostic** (which expected secret
+     keys are seen ✓/✗ + every top-level `st.secrets` key name, values
+     never shown) so a misnamed/`[section]`-nested secret is obvious.
   Archived `deal_key`s are remembered in
   `st.session_state["_pmp_archived_deals"]` so the button flips to
   "✓ Archived" (the row only drops on the next sweep, when

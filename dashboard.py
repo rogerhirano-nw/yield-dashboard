@@ -6361,6 +6361,13 @@ if st.session_state.active_view == "campaigns":
                             f"saving.\n\n- Expected: {_status}\n- Secret keys the app currently "
                             f"sees: {_seen_keys}"
                         )
+                    # GAM deep-link for the "Archive in GAM" fallback button —
+                    # the network code comes from settings (present even when
+                    # GAM creds aren't), so this link works with no secrets.
+                    _gam_net = (_cfg.get("gam_network_id")
+                                or os.environ.get("GAM_NETWORK_ID") or "").strip()
+                    _gam_url = (f"https://admanager.google.com/{_gam_net}#delivery"
+                                if _gam_net else "https://admanager.google.com/")
                     for _, _sr in _stale.iterrows():
                         _deal_key = str(_sr["deal_key"])
                         _ssp = str(_sr["ssp"])
@@ -6417,9 +6424,12 @@ if st.session_state.active_view == "campaigns":
                                         _dispatched.add(_deal_key)
                                         st.rerun()
                             elif _can_api:
-                                # GAM deal, but neither GAM creds nor an Actions
-                                # dispatch token here → archive in the GAM UI.
-                                _act_col.caption("Archive in GAM UI")
+                                # GAM deal, but neither GAM creds nor a dispatch
+                                # token here → a real button that opens GAM Ad
+                                # Manager (the deal name is on the card to find
+                                # it), no secrets needed.
+                                _act_col.link_button("Archive in GAM ↗", _gam_url,
+                                                     use_container_width=True)
                             else:
                                 _act_col.caption(f"Manual · {_ssp} UI")
 
