@@ -246,13 +246,22 @@ Rules that survive any future restyle:
   secrets in `st.secrets` and is otherwise read-only (Supabase data, no GAM
   creds), so `_gam_creds_ready()` bridges `GAM_SERVICE_ACCOUNT_JSON` /
   `GAM_NETWORK_ID` from `st.secrets`→`os.environ` and returns whether
-  they're present. **Creds present + GAM deal with a resolvable PLI** → a
-  working **Archive** button (SOAP `archive_proposal_line_item`, called with
-  `raise_on_error=True` so the real reason surfaces inline instead of a
-  swallowed "check logs"). **GAM deal, no creds** → "Archive in GAM UI"
-  (the default deploy can't make GAM API calls — add the two secrets to
-  enable the button; note it's *write* access to GAM). **Other SSPs** →
-  "Manual · `<SSP>` UI". Archived `deal_key`s are remembered in
+  they're present. The **Archive** action has three tiers (worst-case
+  first wins):
+  1. **GAM creds present** (`_gam_creds_ready()`) + GAM deal with a
+     resolvable PLI → a button that archives **in-process** (SOAP
+     `archive_proposal_line_item`, `raise_on_error=True` so the real reason
+     surfaces inline instead of a swallowed "check logs").
+  2. **No GAM creds but a dispatch token** (`_gh_dispatch_ready()` —
+     `GH_DISPATCH_TOKEN` + `GH_DISPATCH_REPO` in the app secrets) → a button
+     that POSTs a `workflow_dispatch` to **`.github/workflows/archive_pli.yml`**
+     (`_dispatch_archive_workflow`), which runs `scripts/archive_pli.py` with
+     the GAM creds held in *repo* secrets — so GAM write-creds never live on
+     the read-only dashboard. Flips to "✓ Archive requested"
+     (`_pmp_dispatched_deals`); the archive runs async in Actions.
+  3. **Neither** → "Archive in GAM UI" (manual). Non-GAM SSPs → "Manual ·
+     `<SSP>` UI".
+  Archived `deal_key`s are remembered in
   `st.session_state["_pmp_archived_deals"]` so the button flips to
   "✓ Archived" (the row only drops on the next sweep, when
   `pmp_last_bid_date` updates). Native containers replaced the old HTML
