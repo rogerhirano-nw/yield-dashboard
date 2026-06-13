@@ -220,7 +220,14 @@ Rules that survive any future restyle:
 - **Responsive: desktop-first + a mobile override block** at the bottom of
   the style block (behind `@media` queries, source-ordered last so they
   win). Desktop layout is untouched. ≤1024px: the 9-up KPI strip becomes
-  a fluid `auto-fit minmax(96px,1fr)` grid (wraps 9→3-up on phones).
+  a fluid `auto-fit minmax(96px,1fr)` grid. That auto-fit packed 4 tiles
+  across on a phone and crushed them (labels wrapping mid-word), so ≤640px
+  the strip is **pinned** explicitly: the main 9-tile `.nw-kpi-row` to
+  3-up (clean 3×3), the PMP 4-tile `.nw-kpi-row.nw-kpi-row--pmp` to 2-up
+  (2×2). That PMP modifier is a **two-class selector** (not an inline
+  style) precisely so it outranks the ≤1024 single-class auto-fit rule and
+  holds 4-up on desktop/tablet while the ≤640 rule can still take it to
+  2-up.
   ≤640px: banners stack 1-up, the tab row and the dense 12-column
   Direct/PMP tables become horizontally swipeable (`overflow-x:auto` +
   row `min-width:760px` — they crushed/clipped otherwise), drawer
