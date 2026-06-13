@@ -218,6 +218,56 @@ def ivt_share_with_prior(ivt_df, group_col: str,
     return cur, prior
 
 
+def attention_daily_series_by_li(dv_df, group_col: str, n: int = 7) -> dict:
+    """Per-line daily mean Attention Index (oldest-first, last `n` dates),
+    keyed by str(line). One groupby pass — precompute once, then look up per
+    row (the drawer builds eagerly for every row). Mirrors
+    attention_current_and_prior's per-(line,date) averaging. Powers the
+    drawer's Attention trend sparkline."""
+    if dv_df is None or group_col not in getattr(dv_df, "columns", []):
+        return {}
+    if not {"attention_index", "date"}.issubset(dv_df.columns):
+        return {}
+    sub = dv_df.dropna(subset=[group_col, "attention_index", "date"])
+    if sub.empty:
+        return {}
+    daily = sub.groupby([group_col, "date"])["attention_index"].mean().sort_index()
+    out: dict = {}
+    for line in daily.index.get_level_values(0).unique():
+        out[str(line)] = [float(v) for v in daily.loc[line].sort_index().tail(n).tolist()]
+    return out
+
+
+def ivt_daily_series_by_li(ivt_df, group_col: str, fraud_label: str,
+                           n: int = 7) -> dict:
+    """Per-line daily impression-weighted IVT% for one Fraud bucket (MRC:
+    Σ Monitored Ads of this bucket / Σ all Monitored Ads × 100, per date),
+    oldest-first last `n` dates, keyed by str(line). One groupby pass. Days
+    with zero monitored ads are dropped, never reported as 0% (days with
+    traffic but no fraud are a real 0% and kept). Powers the drawer's
+    SIVT/GIVT trend sparklines."""
+    if ivt_df is None or group_col not in getattr(ivt_df, "columns", []):
+        return {}
+    if not {"traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns):
+        return {}
+    sub = ivt_df.dropna(subset=[group_col, "date"])
+    if sub.empty:
+        return {}
+    ads = pd.to_numeric(sub["monitored_ads"], errors="coerce").fillna(0)
+    validity = sub["traffic_validity"].astype(str)
+    tot_pd = ads.groupby([sub[group_col], sub["date"]]).sum()
+    mask = validity == fraud_label
+    frd_pd = ads[mask].groupby([sub.loc[mask, group_col], sub.loc[mask, "date"]]).sum()
+    joined = pd.DataFrame({"tot": tot_pd, "frd": frd_pd}).fillna(0)
+    joined["pct"] = (joined["frd"] / joined["tot"] * 100).where(joined["tot"] > 0)
+    out: dict = {}
+    for line in joined.index.get_level_values(0).unique():
+        s = joined.loc[line]["pct"].dropna().sort_index()
+        if len(s):
+            out[str(line)] = [float(v) for v in s.tail(n).tolist()]
+    return out
+
+
 # ── Delta / ratio math ─────────────────────────────────────────────────
 
 

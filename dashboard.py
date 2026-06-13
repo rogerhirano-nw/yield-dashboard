@@ -2664,6 +2664,7 @@ if st.session_state.active_view == "campaigns":
     _dv_by_order:    dict = {}
     _dv_prior_by_li: dict = {}   # latest-day-excluded mean (for the per-row delta)
     _dv_prior_by_order: dict = {}
+    _attn_series_by_li: dict = {}   # per-LI daily Attention series (drawer sparkline)
     # Default to the name join so the row builder (which reads _dv_li_col
     # unconditionally) survives an empty dv_attention — e.g. local SQLite
     # dev, or a DV outage on a fresh cache. Matches choose_join_col's
@@ -2675,6 +2676,7 @@ if st.session_state.active_view == "campaigns":
         _dv_li_col = dl.choose_join_col(dv_df)
         if _dv_li_col in dv_df.columns:
             _dv_by_li, _dv_prior_by_li = dl.attention_current_and_prior(dv_df, _dv_li_col)
+            _attn_series_by_li = dl.attention_daily_series_by_li(dv_df, _dv_li_col)
         if "order_name" in dv_df.columns:
             # PMP deals (combined_pmp.Deal) join by order_name — DV emits
             # the deal name in the Order column for PMP rows. Build the
@@ -2718,6 +2720,8 @@ if st.session_state.active_view == "campaigns":
     _givt_prior_by_li:    dict = {}
     _sivt_prior_by_order: dict = {}
     _givt_prior_by_order: dict = {}
+    _sivt_series_by_li:   dict = {}   # per-LI daily SIVT%/GIVT% series (drawer)
+    _givt_series_by_li:   dict = {}
     # Same empty-frame default as _dv_li_col above — the row builder reads
     # this unconditionally.
     _ivt_li_col = "line_item_name"
@@ -2729,6 +2733,8 @@ if st.session_state.active_view == "campaigns":
         if _ivt_li_col in ivt_df.columns:
             _sivt_by_li, _sivt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/SIVT")
             _givt_by_li, _givt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/GIVT")
+            _sivt_series_by_li = dl.ivt_daily_series_by_li(ivt_df, _ivt_li_col, "Fraud/SIVT")
+            _givt_series_by_li = dl.ivt_daily_series_by_li(ivt_df, _ivt_li_col, "Fraud/GIVT")
         if "order_name" in ivt_df.columns:
             _sivt_by_order, _sivt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/SIVT")
             _givt_by_order, _givt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/GIVT")
@@ -4303,6 +4309,22 @@ if st.session_state.active_view == "campaigns":
                     out.append(float(c / s * 100) if pd.notna(c) and pd.notna(s) and s > 0 else None)
                 return out if any(v is not None for v in out) else None
 
+            # DV trust-metric series come from the precomputed per-LI dicts
+            # (dv_attention / dv_ivt) keyed the same way the table cells join.
+            def _row_dv_key(row, join_col):
+                if join_col == "line_item_id":
+                    return str(row.get("line_item_id") or "")
+                return re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
+
+            def _row_attn_series(row):
+                return _attn_series_by_li.get(_row_dv_key(row, _dv_li_col), [])
+
+            def _row_sivt_series(row):
+                return _sivt_series_by_li.get(_row_dv_key(row, _ivt_li_col), [])
+
+            def _row_givt_series(row):
+                return _givt_series_by_li.get(_row_dv_key(row, _ivt_li_col), [])
+
             def _date_row_html(actuals, expected=None):
                 """7-cell row of 'Mon 12'-style labels under the delivery chart.
                 Marks today (rightmost) and below-expected days for visual
@@ -4494,6 +4516,28 @@ if st.session_state.active_view == "campaigns":
                         '<div class="nw-sm-panel">'
                         f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
                         f'{_sparkline_svg(second, target=second_target, klass="", uniform=True)}'
+                        f'{sm_dates}'
+                        '</div>'
+                    )
+                # DV trust-metric trends (Attention / SIVT / GIVT) — per-LI
+                # daily series. Attention target = 100 (DV median); SIVT/GIVT
+                # target = 1% (industry tolerance). Skipped when a line has
+                # fewer than two days of DV coverage.
+                for _dv_label, _dv_series, _dv_target, _dv_fmt in (
+                    ("Attention", _row_attn_series(row), 100.0, lambda v: f"{v:.0f}"),
+                    ("SIVT",      _row_sivt_series(row), 1.0,   lambda v: f"{v:.2f}%"),
+                    ("GIVT",      _row_givt_series(row), 1.0,   lambda v: f"{v:.2f}%"),
+                ):
+                    _dv_pts = [v for v in (_dv_series or []) if v is not None]
+                    if len(_dv_pts) < 2:
+                        continue
+                    _dv_latest = next((v for v in reversed(_dv_series) if v is not None), None)
+                    _dv_lh = (f'<span class="latest">{_dv_fmt(_dv_latest)}</span>'
+                              if _dv_latest is not None else '')
+                    panels.append(
+                        '<div class="nw-sm-panel">'
+                        f'<div class="nw-sm-label"><span>{_dv_label}</span>{_dv_lh}</div>'
+                        f'{_sparkline_svg(_dv_series, target=_dv_target, klass="", uniform=True)}'
                         f'{sm_dates}'
                         '</div>'
                     )
