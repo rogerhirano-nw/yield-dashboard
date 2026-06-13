@@ -248,3 +248,18 @@ Findings get appended here; remove this section and the workflow's
 - 2026-06-12: mirror live on all three creatives; Invesco control retired.
   First evidence: ~34% viewable on the first ~240 mirrored impressions
   (2–4am UK) vs 0.47% for the untouched tag.
+- 2026-06-13 (reporting full day 6/12 — first full mirrored day): **it
+  works.** Per-day AV viewable% on 6/12 vs the ~0.4% these LIs read for
+  the prior month:
+  - Invesco interscroller 7310815861: **52.08%** (15,588 / 29,930)
+  - Cartier interscroller 7313011338: **56.58%** (499 / 882)
+  - Cartier uniscroller 7316916920: **34.38%** (1,017 / 2,958)
+  Cleanest A/B (same Invesco LI, both creatives, cumulative): retired
+  control 138557481462 = **0.51%** (85,325 imps) vs mirror 138562143597
+  = **56.81%** (27,553 imps) — a ~110× lift, ~100% measurable throughout.
+  Cartier *cumulative* still reads ~1.3–1.5% because the in-place edits
+  blend a month of broken data with one good day; the 6/12 daily rows are
+  the true post-mirror signal. Uniscroller runs lower than the
+  interscrollers (34% vs 52–57%), consistent with its shorter (~585px)
+  well clearing the viewability bar on fewer impressions. Numbers are
+  real, MRC-measured, and agency-defensible.
