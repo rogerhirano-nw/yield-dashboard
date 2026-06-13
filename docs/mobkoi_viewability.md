@@ -168,7 +168,21 @@ the same morning (run 27410237495). **Control retired:** once the A/B was
 banked, the un-mirrored original (138557481462) was deactivated on the
 Invesco LI (run 27411814804, reversible LICA deactivation via
 `retire_mobkoi_control.yml`) — all remaining Mobkoi delivery is
-mirrored. Clean full-day read: the 6/13 diagnose pull on all three LIs.
+mirrored.
+
+**Proven (full day 6/12, pulled 6/13).** GAM Active View viewable% on the
+first full mirrored day, vs the ~0.4% these LIs read for the prior month:
+Invesco interscroller **52.08%**, Cartier interscroller **56.58%**, Cartier
+uniscroller **34.38%** — all ~100% measurable. Same-LI A/B settles it:
+retired control creative 138557481462 = **0.51%** (85,325 imps) vs mirror
+138562143597 = **56.81%** (27,553 imps), ~110× lift. The uniscroller reads
+lower than the interscrollers (shorter ~585px well clears the bar on fewer
+impressions). Cartier *cumulative* still shows ~1.3–1.5% — the in-place
+edits blend a month of broken data with the good days; read the per-day
+rows, not lifetime, until the old impressions age out. Numbers are
+MRC-measured and agency-defensible. **This fixes our GAM/DV reporting; the
+durable fix is still Mobkoi's own iframe-resident render mode (§1) — now
+ask with the before/after in hand.**
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
@@ -237,3 +251,29 @@ Takeaways:
 3. **Never sell/convert these LIs to vCPM** (viewable-impression goals) —
    GAM would bill ~nothing and delivery logic would crater. They are plain
    CPM today; keep it that way until AV measures the real unit.
+
+## Daily monitor log (temporary, through ~2026-06-16)
+
+The diagnose workflow runs on a daily cron (06:30/10:30 UTC) and posts the
+per-creative AV split for the three mirrored LIs to the open monitor PR.
+Findings get appended here; remove this section and the workflow's
+`schedule:` block once the flights wrap.
+
+- 2026-06-12: mirror live on all three creatives; Invesco control retired.
+  First evidence: ~34% viewable on the first ~240 mirrored impressions
+  (2–4am UK) vs 0.47% for the untouched tag.
+- 2026-06-13 (reporting full day 6/12 — first full mirrored day): **it
+  works.** Per-day AV viewable% on 6/12 vs the ~0.4% these LIs read for
+  the prior month:
+  - Invesco interscroller 7310815861: **52.08%** (15,588 / 29,930)
+  - Cartier interscroller 7313011338: **56.58%** (499 / 882)
+  - Cartier uniscroller 7316916920: **34.38%** (1,017 / 2,958)
+  Cleanest A/B (same Invesco LI, both creatives, cumulative): retired
+  control 138557481462 = **0.51%** (85,325 imps) vs mirror 138562143597
+  = **56.81%** (27,553 imps) — a ~110× lift, ~100% measurable throughout.
+  Cartier *cumulative* still reads ~1.3–1.5% because the in-place edits
+  blend a month of broken data with one good day; the 6/12 daily rows are
+  the true post-mirror signal. Uniscroller runs lower than the
+  interscrollers (34% vs 52–57%), consistent with its shorter (~585px)
+  well clearing the viewability bar on fewer impressions. Numbers are
+  real, MRC-measured, and agency-defensible.

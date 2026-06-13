@@ -414,11 +414,17 @@ rendering stale frames until TTL expiry; clear via the app menu
   $0 tracking-LI pixel (watcher must live in the parent document — the
   breakout destroys the iframe realm and its observers/timers — and use
   AV's 30% threshold for elements >242,500 px²). Publisher-side fix that
-  IS viable (DOM-verified 2026-06-12): Mobkoi *hides* the GPT iframe
+  **works, proven in production 2026-06-12**: Mobkoi *hides* the GPT iframe
   (display:none, not detached) and its unit's box == the slot div, so an
-  **iframe mirror** (absolute transparent fill of the slot div) makes AV
+  **iframe mirror** (absolute transparent fill of the slot div, applied via
+  `apply_mobkoi_iframe_mirror.py` after the breakout signature) makes AV
   score real geometry — `docs/snippets/mobkoi_iframe_mirror_creative.html`.
-  Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
+  Live on all three Mobkoi LIs, first full mirrored day read **34–57%
+  viewable vs ~0.4%** the prior month; same-LI A/B (retired control
+  creative vs mirror) = 0.51% → 56.81%, ~100% measurable. Mirror ONLY the
+  iframe, never the GPT container (it props the well height; absolutizing
+  it collapses the well to 0). Mobkoi creatives are Celtra-built with
+  advertiser-side DV `sid=mobkoi`.
   On-site preview + DOM forensics for any creative: dispatch
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
   screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
