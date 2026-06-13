@@ -183,18 +183,29 @@ Rules that survive any future restyle:
   faint same-color area wash (`fill-opacity .10`) + a `--border` baseline.
   Chart series read the `--viz-*` palette; the OpenSincera peer charts render
   Newsweek = ink vs peers = warm gray — never brand red on a series.
-- **Inline-SVG geometry — two regimes (the 2026-06-13 "distorted graph"
-  bug, fixed in two parts):**
-  - `_sparkline_svg` (KPI tiles + drawer small multiples) are **compact
-    fixed-height sparklines** that *do* stretch to fill width
-    (`preserveAspectRatio="none"`). Under `layout="wide"` that stretch is
-    extreme, so every stroke is pinned with
+- **Inline-SVG geometry — width-fill vs uniform (the 2026-06-13 "distorted
+  graph" bug, fixed in three parts):** the rule is **the wider the box a chart
+  occupies, the less it may stretch.** Pixel-fixed-height SVGs that fill width
+  under `layout="wide"` get crushed flat — so anything wider than a KPI tile
+  scales uniformly.
+  - `_sparkline_svg` **default** (`uniform=False`, the KPI tiles only) are
+    **compact fixed-height sparklines** that *do* stretch to fill width
+    (`preserveAspectRatio="none"`). The tile is only ~130px, so the stretch is
+    mild; every stroke is still pinned with
     `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
     **zero-length round-capped `<path>`** (`d="M{x} {y}h0"`,
     `stroke-linecap="round"`), never a `<circle>` — a circle smears into an
     ellipse at the rendered width.
+  - `_sparkline_svg(uniform=True)` (the **drawer small multiples** —
+    Viewability + CTR/VCR) scales **uniformly**: wide viewBox (`300×34`), *no*
+    `preserveAspectRatio="none"`, CSS `width:100%; height:auto`. Their `.nw-sm-grid`
+    panels run ~370px on the wide layout, so the old stretch crushed the trend
+    flat exactly like the delivery chart did (the "viewability/CTR still
+    distorted" follow-up). The wide viewBox keeps the rendered height compact
+    while scaling proportionally; an `XPAD` x-inset keeps the end dot off the
+    panel edge. **Don't pass these through the default stretch path.**
   - `_drawer_delivery_chart` is a **real chart**, so it scales **uniformly**
-    (plain `viewBox` + CSS `width:100%; height:auto`, *no*
+    (plain `viewBox` `600×112` + CSS `width:100%; height:auto`, *no*
     `preserveAspectRatio="none"`) — geometry is never warped. Its panel
     (`.nw-drawer-chart`, and the sibling `.nw-sm-grid`) is capped at
     `max-width:760px` so on the wide layout it stays a proportioned card
