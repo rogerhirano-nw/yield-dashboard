@@ -899,12 +899,13 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
 .nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
                    color: var(--text-muted); font-weight: 400; margin-bottom: 3px; }
-/* Campaigns filter bar: a single "Filters" popover trigger + removable
-   active-filter chips (replaces the 6-up dropdown row that pushed the data
-   below the fold on mobile). .st-key-* hooks Streamlit's keyed container. */
-.st-key-nw_filter_bar { gap: 8px !important; align-items: center;
+/* Campaigns + PMP filter bars: a single "Filters" popover trigger + removable
+   active-filter chips (replaces the 6-up dropdown rows that pushed the data
+   below the fold on mobile). .st-key-* hooks Streamlit's keyed containers. */
+.st-key-nw_filter_bar, .st-key-nw_pmp_filter_bar { gap: 8px !important; align-items: center;
                         flex-wrap: wrap !important; margin: 2px 0 14px; }
-.st-key-nw_filter_bar [data-testid="stPopover"] button {
+.st-key-nw_filter_bar [data-testid="stPopover"] button,
+.st-key-nw_pmp_filter_bar [data-testid="stPopover"] button {
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border-strong) !important;
   background: var(--surface-1) !important; color: var(--text-primary) !important;
@@ -912,13 +913,15 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 }
 /* Active-filter chips: quiet paper pills that flush red on hover to signal a
    click removes them. */
-.st-key-nw_filter_bar .stButton button {
+.st-key-nw_filter_bar .stButton button,
+.st-key-nw_pmp_filter_bar .stButton button {
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
   background: var(--surface-1) !important; color: var(--text-secondary) !important;
   font-weight: 600 !important; padding: 4px 12px !important; min-height: 0 !important;
 }
-.st-key-nw_filter_bar .stButton button:hover {
+.st-key-nw_filter_bar .stButton button:hover,
+.st-key-nw_pmp_filter_bar .stButton button:hover {
   border-color: var(--state-critical) !important; color: var(--state-critical) !important;
 }
 /* Exception banners — left severity bar, equal-height grid row. Tinted
@@ -5058,49 +5061,85 @@ if st.session_state.active_view == "campaigns":
     _pmp_formats_opts     = st.session_state.get("_pmp_formats_opts", [])
     _pmp_deal_sources_opts = st.session_state.get("_pmp_deal_sources_opts", [])
     _pmp_teams_opts        = st.session_state.get("_pmp_teams_opts", [])
-    _pf1, _pf2, _pf3, _pf4, _pf5, _pf6 = st.columns(6)
-    with _pf1:
+    # Filters as a "Filters" popover + removable chips (same treatment as the
+    # Direct section above). The six controls live in the popover; applied
+    # filters surface as chips beside the trigger and clear on click. Widget
+    # keys are unchanged, so the PMP filtering below is untouched.
+    def _pmp_ms_summary(vals):
+        return str(vals[0]) if len(vals) == 1 else f"{vals[0]} +{len(vals) - 1}"
+    _pmp_filter_specs = [
+        ("campaigns_pmp_deal_type_filter",   "Deal type"),
+        ("campaigns_pmp_ssp_filter",         "SSP"),
+        ("campaigns_pmp_dsp_filter",         "DSP"),
+        ("campaigns_pmp_format_filter",      "Format"),
+        ("campaigns_pmp_deal_source_filter", "Deal source"),
+        ("campaigns_pmp_team_filter",        "Team"),
+    ]
+    _pmp_chips = []
+    for _pk, _plbl in _pmp_filter_specs:
+        _pv = st.session_state.get(_pk, [])
+        if _pv:
+            _pmp_chips.append((_pk, f"{_plbl}: {_pmp_ms_summary(_pv)}"))
+    _pmp_n_active = len(_pmp_chips)
+
+    def _pmp_clear_filter(state_key):
+        st.session_state[state_key] = []
+
+    def _pmp_clear_all_filters():
+        for _ck, _ in _pmp_filter_specs:
+            st.session_state[_ck] = []
+
+    with st.container(horizontal=True, key="nw_pmp_filter_bar"):
+        _pmp_pop = st.popover(
+            "Filters" if not _pmp_n_active else f"Filters · {_pmp_n_active}",
+            icon=":material/tune:",
+        )
+        for _ck, _txt in _pmp_chips:
+            st.button(_txt, key=f"nw_pmp_chip_{_ck}",
+                      icon=":material/close:", icon_position="right",
+                      on_click=_pmp_clear_filter, args=(_ck,))
+
+    with _pmp_pop:
         st.markdown('<div class="nw-filter-label">Deal Type</div>', unsafe_allow_html=True)
         sel_pmp_deal_types = st.multiselect(
             "Deal Type", _pmp_deal_types_available,
             key="campaigns_pmp_deal_type_filter",
             label_visibility="collapsed", placeholder="All",
         )
-    with _pf2:
         st.markdown('<div class="nw-filter-label">SSP</div>', unsafe_allow_html=True)
         sel_pmp_ssps = st.multiselect(
             "SSP", _pmp_ssps_available,
             key="campaigns_pmp_ssp_filter",
             label_visibility="collapsed", placeholder="All",
         )
-    with _pf3:
         st.markdown('<div class="nw-filter-label">DSP</div>', unsafe_allow_html=True)
         sel_pmp_dsps = st.multiselect(
             "DSP", _pmp_dsps_opts,
             key="campaigns_pmp_dsp_filter",
             label_visibility="collapsed", placeholder="All",
         )
-    with _pf4:
         st.markdown('<div class="nw-filter-label">Format</div>', unsafe_allow_html=True)
         sel_pmp_formats = st.multiselect(
             "Format", _pmp_formats_opts,
             key="campaigns_pmp_format_filter",
             label_visibility="collapsed", placeholder="All",
         )
-    with _pf5:
         st.markdown('<div class="nw-filter-label">Deal Source</div>', unsafe_allow_html=True)
         sel_pmp_deal_sources = st.multiselect(
             "Deal Source", _pmp_deal_sources_opts,
             key="campaigns_pmp_deal_source_filter",
             label_visibility="collapsed", placeholder="All",
         )
-    with _pf6:
         st.markdown('<div class="nw-filter-label">Team</div>', unsafe_allow_html=True)
         sel_pmp_teams = st.multiselect(
             "Team", _pmp_teams_opts,
             key="campaigns_pmp_team_filter",
             label_visibility="collapsed", placeholder="All",
         )
+        if _pmp_n_active:
+            st.button("Clear all filters", key="nw_pmp_clear_all_filters",
+                      type="tertiary", icon=":material/close:",
+                      on_click=_pmp_clear_all_filters)
 
     # ── Pubmatic ──────────────────────────────────────────────────────────
     pmp_summary = pd.DataFrame()

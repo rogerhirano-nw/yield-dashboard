@@ -247,8 +247,13 @@ Rules that survive any future restyle:
   top of the run (Status seeds its default through the `_status_ver`
   guard) so it reflects the latest selections. This replaced a
   `st.columns(6)` row that stacked into six full-width dropdowns on
-  mobile and buried the data below the fold. The other tabs still use
-  plain `st.columns` filter rows.
+  mobile and buried the data below the fold. The **PMP deals** section
+  lower on the same page got the identical treatment — a second keyed
+  container (`nw_pmp_filter_bar`) for its six controls (Deal Type / SSP /
+  DSP / Format / Deal Source / Team), sharing the pill CSS (both
+  `.st-key-*` keys are listed in the same rules). The other tabs (By
+  site / size, By DSP, Pubmatic, Magnite) still use plain `st.columns`
+  filter rows.
 - **Campaigns alerts are a "Needs attention" accordion, not three stacked
   banners.** The pacing/viewability exceptions render as one `.nw-na`
   card with a row per category. A category with offenders is a native
