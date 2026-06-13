@@ -6334,6 +6334,33 @@ if st.session_state.active_view == "campaigns":
                     _dispatched = st.session_state.setdefault("_pmp_dispatched_deals", set())
                     _gam_ready = _gam_creds_ready()
                     _gh_ready = _gh_dispatch_ready()
+                    # Diagnostic: when neither archive path is wired, show exactly
+                    # which secret keys the app does/doesn't see, so a misnamed or
+                    # section-nested secret is obvious (key NAMES only, no values).
+                    if not (_gam_ready or _gh_ready):
+                        def _secret_seen(_k):
+                            if os.environ.get(_k):
+                                return True
+                            try:
+                                return bool(st.secrets[_k])
+                            except Exception:
+                                return False
+                        _expected = ["GH_DISPATCH_TOKEN", "GH_DISPATCH_REPO",
+                                     "GAM_SERVICE_ACCOUNT_JSON", "GAM_NETWORK_ID"]
+                        _status = "  ".join(("✓ " if _secret_seen(_k) else "✗ ") + _k
+                                            for _k in _expected)
+                        try:
+                            _seen_keys = ", ".join(sorted(st.secrets.keys())) or "(none)"
+                        except Exception:
+                            _seen_keys = "(st.secrets unavailable)"
+                        st.warning(
+                            "In-app archiving is **off** — the app sees no GAM creds or Actions "
+                            "dispatch token, so deals show *Archive in GAM UI* instead of a button. "
+                            "Add **top-level** `GH_DISPATCH_TOKEN` + `GH_DISPATCH_REPO` to the app "
+                            "Secrets (exact names, not inside a `[section]`); restart the app after "
+                            f"saving.\n\n- Expected: {_status}\n- Secret keys the app currently "
+                            f"sees: {_seen_keys}"
+                        )
                     for _, _sr in _stale.iterrows():
                         _deal_key = str(_sr["deal_key"])
                         _ssp = str(_sr["ssp"])
