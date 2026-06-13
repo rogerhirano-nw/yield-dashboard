@@ -1200,6 +1200,30 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
                        margin-top: 1px; letter-spacing: .03em; text-transform: uppercase; }
 .nw-row-m .m-right { text-align: right; }
 .nw-row-m .m-right .m-rev { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+/* PMP mobile card — same idea as .nw-row-m but PMP deals have no daily
+   series, so the visual is an eCPM-vs-floor bar (floor at the 50% tick)
+   instead of a delivery sparkline. Hidden on desktop; the ≤640 block swaps
+   it in for the 12-column summary. */
+.nw-pmp-m { display: none; grid-template-columns: 1fr auto; gap: 12px;
+            align-items: start; padding: 11px 12px; }
+.nw-pmp-m .m-main { min-width: 0; }
+.nw-pmp-m .m-name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+                    font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.25; }
+.nw-pmp-m .m-sub { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+.nw-pmp-m .m-ecpm-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.nw-pmp-m .m-ecpm-bar { position: relative; flex: 1; max-width: 200px; height: 7px;
+                        background: var(--border); border-radius: 4px; overflow: hidden; }
+.nw-pmp-m .m-ecpm-bar > i { display: block; height: 100%; border-radius: 4px; }
+.nw-pmp-m .m-ecpm-bar > i.amber   { background: var(--state-warning); }
+.nw-pmp-m .m-ecpm-bar > i.green   { background: var(--state-positive-muted); }
+.nw-pmp-m .m-ecpm-bar > i.neutral { background: var(--text-secondary); }
+.nw-pmp-m .m-floor-tick { position: absolute; top: 0; bottom: 0; left: 50%;
+                          width: 2px; background: var(--text-primary); opacity: .55; }
+.nw-pmp-m .m-ecpm-lbl { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+.nw-pmp-m .m-right { text-align: right; min-width: 0; }
+.nw-pmp-m .m-right .m-rev { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+.nw-pmp-m .m-right .m-ecpm { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.nw-pmp-m .m-right .m-impr { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 .nw-chev {
   display: inline-block; width: 10px;
   margin-right: 6px; color: var(--text-muted);
@@ -1586,21 +1610,26 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
                -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .nw-tabrow::-webkit-scrollbar { display: none; }
   .nw-tab { white-space: nowrap; flex: 0 0 auto; }
-  /* Dense 12-column tables: hold the grid open at its desktop widths and
-     let the card itself scroll horizontally (swipe) rather than crushing
-     12 columns into ~320px and clipping more than half of them. */
+  /* Any remaining dense grid table keeps the horizontal swipe by default. */
   .nw-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .nw-pmp-rows { min-width: 760px; }
   /* Direct table → compact "graph card" rows (Solution 3): swap each row's
      12-column summary for the .nw-row-m card (name + pace bar + delivery
-     sparkline + revenue/pace). No horizontal scroll. The PMP table keeps the
-     swipe above. */
+     sparkline + revenue/pace). No horizontal scroll. */
   .nw-tbl-wrap.nw-tbl-direct { overflow-x: visible; }
   .nw-tbl-direct .nw-rows { min-width: 0; }
   .nw-tbl-direct .nw-row-header { display: none; }
   .nw-tbl-direct .nw-row > summary { display: block; padding: 0; }
   .nw-tbl-direct .nw-row > summary > *:not(.nw-row-m) { display: none; }
   .nw-tbl-direct .nw-row-m { display: grid; }
+  /* PMP table → the same graph-card treatment. PMP deals have no daily
+     series, so the card's visual is an eCPM-vs-floor bar (see .nw-pmp-m).
+     The summary IS .nw-pmp-row, so the grid swap targets it directly. */
+  .nw-tbl-wrap.nw-tbl-pmp { overflow-x: visible; }
+  .nw-tbl-pmp .nw-pmp-rows { min-width: 0; }
+  .nw-tbl-pmp .nw-row-header { display: none; }
+  .nw-tbl-pmp .nw-pmp-row { display: block; padding: 0; }
+  .nw-tbl-pmp .nw-pmp-row > *:not(.nw-pmp-m) { display: none; }
+  .nw-tbl-pmp .nw-pmp-m { display: grid; }
   /* Drawer metadata: 4-up → 2-up. */
   .nw-meta-grid { grid-template-columns: 1fr 1fr; }
   /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
@@ -6072,6 +6101,38 @@ if st.session_state.active_view == "campaigns":
             _pmp_sivt_prior = _sivt_prior_by_order.get(_deal_key) if _sivt_prior_by_order else None
             _pmp_givt       = _givt_by_order.get(_deal_key)       if _givt_by_order       else None
             _pmp_givt_prior = _givt_prior_by_order.get(_deal_key) if _givt_prior_by_order else None
+
+            # PMP mobile card (shown only ≤640px; CSS hides the 12 grid cells).
+            # These deals have no daily series, so the visual is an eCPM-vs-floor
+            # bar — floor at the 50% tick, banded like the eCPM cell (under floor
+            # amber, ≥2× floor green, otherwise neutral).
+            _m_ecpm_num = pd.to_numeric(row.get("eCPM"), errors="coerce")
+            _m_ecpm_bar = ""
+            if (_floor_val is not None and not pd.isna(_floor_val)
+                    and float(_floor_val) > 0 and pd.notna(_m_ecpm_num)):
+                _m_fl = float(_floor_val); _m_ec = float(_m_ecpm_num)
+                if _m_ec < _m_fl:        _m_esev = "amber"
+                elif _m_ec >= _m_fl * 2: _m_esev = "green"
+                else:                    _m_esev = "neutral"
+                _m_ew = max(0.0, min(_m_ec / (_m_fl * 2) * 100, 100.0))
+                _m_ecpm_bar = (
+                    '<div class="m-ecpm-wrap"><div class="m-ecpm-bar">'
+                    f'<i class="{_m_esev}" style="width:{_m_ew:.0f}%"></i>'
+                    '<span class="m-floor-tick"></span></div>'
+                    f'<span class="m-ecpm-lbl">floor ${_m_fl:.2f}</span></div>'
+                )
+            _row_m_pmp = (
+                '<div class="nw-pmp-m"><div class="m-main">'
+                f'<div class="m-name">{_pmp_esc(_primary)}{_dt_pill(_dt)}</div>'
+                f'<div class="m-sub">{_pmp_esc(row.get("DSP") or "—")} · '
+                f'{_pmp_esc(row.get("SSP") or "—")} · {_pmp_esc(row.get("Format") or "—")}</div>'
+                f'{_m_ecpm_bar}</div>'
+                '<div class="m-right">'
+                f'<div class="m-rev">{_rev_cell(row.get("Revenue"))}</div>'
+                f'<div class="m-ecpm">{_ecpm_cell(row.get("eCPM"), _floor_val)} eCPM</div>'
+                f'<div class="m-impr">{_impr_cell(row.get("Paid Impressions"))} impr</div>'
+                '</div></div>'
+            )
             _pmp_rows_html.append(
                 '<details name="pmp-cmprow">'
                 '<summary class="nw-pmp-row">'
@@ -6087,6 +6148,7 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="num center">{_ivt_html(_pmp_sivt, prior=_pmp_sivt_prior)}</div>'
                 f'<div class="num center">{_ivt_html(_pmp_givt, prior=_pmp_givt_prior)}</div>'
                 f'<div>{_seller_html}</div>'
+                + _row_m_pmp +
                 '</summary>'
                 + _pmp_drawer_html(row) +
                 '</details>'
@@ -6101,7 +6163,7 @@ if st.session_state.active_view == "campaigns":
             _pmp_tbl_sub += f" · page {_cur_page + 1}/{_pmp_total_pages}"
 
         st.markdown(
-            '<div class="nw-tbl-wrap">'
+            '<div class="nw-tbl-wrap nw-tbl-pmp">'
             '<div class="nw-tbl-head">'
             f'<div class="nw-tbl-title">PMP deals'
             f'<span class="nw-tbl-sub">{_pmp_tbl_sub}</span></div>'

@@ -234,24 +234,27 @@ Rules that survive any future restyle:
   holds 4-up on desktop/tablet while the ≤640 rule can still take it to
   2-up.
   ≤640px: banners stack 1-up, the tab row stays horizontally swipeable
-  (`overflow-x:auto`). The **PMP** 12-column table also stays swipeable
-  (`.nw-pmp-rows { min-width:760px }`). The **Direct** table instead
-  **collapses to graph cards** (see the next bullet). Drawer meta-grid
+  (`overflow-x:auto`). Both the **Direct** and **PMP** 12-column tables
+  **collapse to graph cards** (see the next bullet). Drawer meta-grid
   4→2. Most tab filters reflow for free (Streamlit stacks `st.columns`).
   When adding a fixed multi-column grid, add its mobile rule here too.
-- **Direct table → "graph card" rows on mobile (Solution 3).** Each Direct
-  row is a `<details>` whose summary is the 12-column grid on desktop;
-  the builder also emits a hidden `.nw-row-m` card (name + pace bar +
-  7-day delivery sparkline + revenue/pace). ≤640px the
-  `.nw-tbl-wrap.nw-tbl-direct` rules swap them: `summary` drops `display:
-  grid`, `summary > *:not(.nw-row-m)` is hidden, and `.nw-row-m` shows —
-  so the row reads as a compact card with no horizontal scroll, and
-  tapping it still opens the same drawer. The pace bar reuses the row's
-  pace banding (`_pacing_critical`/`_warn_low`/`_warn_high`); the
-  sparkline is `_sparkline_svg(_row_daily_imp_series(row), klass="")`
-  (compact stretch regime). Desktop is untouched. The marker class
-  `nw-tbl-direct` distinguishes this table's wrap from the PMP one (which
-  keeps the swipe).
+- **Direct + PMP tables → "graph card" rows on mobile (Solution 3).** Each
+  row is a `<details>` whose summary is the 12-column grid on desktop; the
+  builder also emits a hidden mobile card. ≤640px a marker class on the
+  table wrap swaps them — `summary`/`.nw-*-row` drops `display:grid`,
+  `> *:not(.nw-*-m)` is hidden, and the card shows — so the row reads as a
+  compact card with no horizontal scroll, and tapping it still opens the
+  same drawer. Desktop is untouched.
+  - **Direct** (`.nw-tbl-direct` → `.nw-row-m`): name + pace bar + 7-day
+    delivery sparkline + revenue/pace. Pace bar reuses the row's pace
+    banding (`_pacing_critical`/`_warn_low`/`_warn_high`); sparkline is
+    `_sparkline_svg(_row_daily_imp_series(row), klass="")` (compact stretch
+    regime).
+  - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal + type pill + an
+    **eCPM-vs-floor bar** (PMP deals have no daily series) + revenue / eCPM
+    / impressions. The bar scales eCPM against `2 × floor` so the floor sits
+    at the **50% tick**, and bands like `_ecpm_cell` (under floor amber,
+    ≥2× floor green, otherwise neutral).
 - **Campaigns filters are a popover + active chips, not a dropdown row.**
   The six Campaigns filters (Seller / Advertiser / Format / Status /
   Team / Account Manager) live inside one `st.popover` whose trigger
