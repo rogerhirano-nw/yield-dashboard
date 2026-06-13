@@ -3063,17 +3063,23 @@ if st.session_state.active_view == "campaigns":
                 if target is not None:
                     ty = _y(float(target))
                     tline = (f'<line x1="0" y1="{ty:.1f}" x2="{W}" y2="{ty:.1f}" '
-                             f'style="stroke:var(--spark-ref)" stroke-width="0.5" '
-                             f'stroke-dasharray="2 2"/>')
+                             f'style="stroke:var(--spark-ref)" stroke-width="0.75" '
+                             f'stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>')
                 last_i = max(i for i, v in enumerate(clean) if v is not None)
-                dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(clean[last_i]):.1f}" '
-                       f'r="2" style="fill:{stroke}"/>')
+                # End marker is a zero-length round-capped stroke, NOT a <circle>:
+                # preserveAspectRatio="none" stretches the viewBox non-uniformly,
+                # which renders a <circle> as a smeared ellipse. A non-scaling
+                # round cap stays a true round dot at any container width.
+                dot = (f'<path d="M{_x(last_i):.1f} {_y(clean[last_i]):.1f}h0" '
+                       f'fill="none" style="stroke:{stroke}" stroke-width="4" '
+                       f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
                 class_attr = f' class="{klass}"' if klass else ""
                 return (f'<svg{class_attr} viewBox="0 0 {W} {H}" '
                         f'preserveAspectRatio="none" '
                         f'xmlns="http://www.w3.org/2000/svg">{tline}'
                         f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
-                        f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
+                        f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
+                        f'vector-effect="non-scaling-stroke"/>'
                         f'{dot}</svg>')
 
             def _series_sum(prefix):
@@ -4123,14 +4129,16 @@ if st.session_state.active_view == "campaigns":
                 if pd.notna(goal) and goal > 0 and pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
                     expected = float(goal) / total
-                W, H, PAD = 300, 70, 8
+                W, H, PAD = 300, 72, 10
                 # Scale Y axis to actuals only — keeps day-to-day shape visible.
                 vmax = max(non_null) * 1.2 if max(non_null) > 0 else 1
                 n = len(actuals)
+                base_y = H - PAD
                 def _x(i): return PAD + i / (n - 1) * (W - 2 * PAD) if n > 1 else W / 2
-                def _y(v): return H - PAD - v / vmax * (H - 2 * PAD)
-                pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}"
-                               for i, v in enumerate(actuals) if v is not None)
+                def _y(v): return base_y - v / vmax * (H - 2 * PAD)
+                idx_pts = [(i, v) for i, v in enumerate(actuals) if v is not None]
+                pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}" for i, v in idx_pts)
+                first_i, last_i = idx_pts[0][0], idx_pts[-1][0]
                 # Color: green when on track, amber when off — never red on
                 # data lines (state red is reserved for severity indicators,
                 # brand red for chrome). Tokens ride on style= because SVG
@@ -4141,6 +4149,18 @@ if st.session_state.active_view == "campaigns":
                     stroke = "var(--state-positive-muted)" if ratio >= 0.9 else "var(--state-warning)"
                 else:
                     stroke = "var(--state-positive-muted)"
+                # Faint area under the actual line, same muted state color. The
+                # drawer delivery chart is the one sanctioned state-colored line
+                # (a pace-health signal), so the low-opacity wash reinforces it
+                # without introducing a new loud element.
+                area_pts = (f"{pts} {_x(last_i):.1f},{base_y:.1f} "
+                            f"{_x(first_i):.1f},{base_y:.1f}")
+                area = (f'<polygon points="{area_pts}" style="fill:{stroke}" '
+                        f'fill-opacity="0.10" stroke="none"/>')
+                # Baseline hairline grounds the trend at the chart floor.
+                baseline = (f'<line x1="{PAD}" y1="{base_y:.1f}" x2="{W-PAD}" '
+                            f'y2="{base_y:.1f}" style="stroke:var(--border)" '
+                            f'stroke-width="1" vector-effect="non-scaling-stroke"/>')
                 # Expected reference line — clip to chart top if above vmax.
                 exp_line = ""
                 if expected and expected > 0:
@@ -4151,9 +4171,19 @@ if st.session_state.active_view == "campaigns":
                         f'style="stroke:var(--spark-ref)" stroke-width="1" '
                         f'stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>'
                     )
-                last_i = max(i for i, v in enumerate(actuals) if v is not None)
-                dot = (f'<circle cx="{_x(last_i):.1f}" cy="{_y(actuals[last_i]):.1f}" '
-                       f'r="2.5" style="fill:{stroke}"/>')
+                # End marker: paper halo + state dot, both zero-length round caps.
+                # A <circle> would smear into an ellipse because
+                # preserveAspectRatio="none" stretches the viewBox non-uniformly
+                # to fill the drawer; a non-scaling round cap stays a true dot.
+                dx, dy = _x(last_i), _y(actuals[last_i])
+                dot = (
+                    f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" '
+                    f'style="stroke:var(--surface-1)" stroke-width="7.5" '
+                    f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
+                    f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" style="stroke:{stroke}" '
+                    f'stroke-width="5" stroke-linecap="round" '
+                    f'vector-effect="non-scaling-stroke"/>'
+                )
 
                 def _fmt_per_day(v):
                     if v >= 1_000_000: return f"{v/1_000_000:.2f}M/day"
@@ -4172,9 +4202,9 @@ if st.session_state.active_view == "campaigns":
                     '</div>'
                     f'<svg width="100%" height="{H}" viewBox="0 0 {W} {H}" '
                     f'preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
-                    f'{exp_line}'
+                    f'{area}{baseline}{exp_line}'
                     f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
-                    f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
+                    f'stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" '
                     f'vector-effect="non-scaling-stroke"/>'
                     f'{dot}</svg>'
                     + _date_row_html(actuals, expected) +

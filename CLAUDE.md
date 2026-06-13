@@ -179,9 +179,18 @@ Rules that survive any future restyle:
   always loud — healthy recedes, exceptions own the page.
 - **Sparklines are neutral** (`--text-secondary`) — trend shape only;
   severity belongs to bands/banners. The drawer 7-day delivery chart is
-  the one state-colored line (it *is* a pace-health signal). Chart
-  series read the `--viz-*` palette; the OpenSincera peer charts render
+  the one state-colored line (it *is* a pace-health signal) and carries a
+  faint same-color area wash (`fill-opacity .10`) + a `--border` baseline.
+  Chart series read the `--viz-*` palette; the OpenSincera peer charts render
   Newsweek = ink vs peers = warm gray — never brand red on a series.
+- **Inline-SVG trend builders use `preserveAspectRatio="none"`** so the line
+  fills the width (a time series spreading across days is correct). That
+  stretches the viewBox non-uniformly, so: pin every stroke with
+  `vector-effect="non-scaling-stroke"`, and draw end-dots as a **zero-length
+  round-capped path** (`<path d="M{x} {y}h0" stroke-linecap="round" …>`),
+  never a `<circle>` — a circle smears into an ellipse at the drawer's
+  rendered width (the 2026-06-13 "distorted graph" bug). Both `_sparkline_svg`
+  and `_drawer_delivery_chart` follow this.
 - **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
   hash colors), never the state scale.
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
