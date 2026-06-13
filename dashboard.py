@@ -112,6 +112,50 @@ def _gam_creds_ready() -> bool:
                 and os.environ.get("GAM_NETWORK_ID"))
 
 
+def _gh_dispatch_ready() -> bool:
+    """Whether the dashboard can dispatch the archive GitHub Action — a token
+    and target repo are configured (bridged `st.secrets`→`os.environ`, like
+    the GAM path). Lets the stale-deals Archive button trigger
+    `archive_pli.yml` so GAM *write* creds stay in Actions, not on the
+    read-only dashboard."""
+    for _k in ("GH_DISPATCH_TOKEN", "GH_DISPATCH_REPO"):
+        if not os.environ.get(_k):
+            try:
+                _v = st.secrets[_k]
+            except Exception:
+                _v = None
+            if _v:
+                os.environ[_k] = str(_v)
+    return bool(os.environ.get("GH_DISPATCH_TOKEN") and os.environ.get("GH_DISPATCH_REPO"))
+
+
+def _dispatch_archive_workflow(pli_id: str, deal_name: str = "") -> None:
+    """POST a `workflow_dispatch` to `archive_pli.yml` for one proposal line
+    item. Raises (urllib HTTPError / RuntimeError) on a non-2xx so the caller
+    can surface the reason inline."""
+    import urllib.request
+    _repo = os.environ["GH_DISPATCH_REPO"]
+    _ref = os.environ.get("GH_DISPATCH_REF", "main")
+    _body = json.dumps({
+        "ref": _ref,
+        "inputs": {"pli_id": str(pli_id), "deal_name": str(deal_name)[:200]},
+    }).encode()
+    _req = urllib.request.Request(
+        f"https://api.github.com/repos/{_repo}/actions/workflows/archive_pli.yml/dispatches",
+        data=_body, method="POST",
+        headers={
+            "Authorization": f"Bearer {os.environ['GH_DISPATCH_TOKEN']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "newsweek-yield-dashboard",
+        },
+    )
+    with urllib.request.urlopen(_req, timeout=15) as _resp:
+        if _resp.status not in (201, 204):
+            raise RuntimeError(f"GitHub returned HTTP {_resp.status}")
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 _SETTINGS_PATH = Path(__file__).parent / "settings.json"
@@ -6287,7 +6331,9 @@ if st.session_state.active_view == "campaigns":
                     # "✓ Archived" — pmp_last_bid_date only drops the row on the
                     # next sweep.
                     _archived = st.session_state.setdefault("_pmp_archived_deals", set())
+                    _dispatched = st.session_state.setdefault("_pmp_dispatched_deals", set())
                     _gam_ready = _gam_creds_ready()
+                    _gh_ready = _gh_dispatch_ready()
                     for _, _sr in _stale.iterrows():
                         _deal_key = str(_sr["deal_key"])
                         _ssp = str(_sr["ssp"])
@@ -6314,6 +6360,9 @@ if st.session_state.active_view == "campaigns":
                             if _deal_key in _archived:
                                 _act_col.markdown('<div class="nw-stale-done">✓ Archived</div>',
                                                   unsafe_allow_html=True)
+                            elif _deal_key in _dispatched:
+                                _act_col.markdown('<div class="nw-stale-done">✓ Archive requested</div>',
+                                                  unsafe_allow_html=True)
                             elif _can_api and _gam_ready:
                                 if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
                                                    use_container_width=True):
@@ -6327,9 +6376,22 @@ if st.session_state.active_view == "campaigns":
                                     else:
                                         _archived.add(_deal_key)
                                         st.rerun()
+                            elif _can_api and _gh_ready:
+                                # No GAM creds on the dashboard → dispatch the
+                                # archive GitHub Action, which holds the creds.
+                                if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
+                                                   use_container_width=True):
+                                    try:
+                                        _dispatch_archive_workflow(str(_pli_ids[0]), _deal_key)
+                                    except Exception as _e:
+                                        st.error(f"Couldn't start archive for {_deal_key} — "
+                                                 f"{type(_e).__name__}: {_e}")
+                                    else:
+                                        _dispatched.add(_deal_key)
+                                        st.rerun()
                             elif _can_api:
-                                # GAM deal, but no GAM API creds in this deploy →
-                                # archiving must happen in the GAM UI.
+                                # GAM deal, but neither GAM creds nor an Actions
+                                # dispatch token here → archive in the GAM UI.
                                 _act_col.caption("Archive in GAM UI")
                             else:
                                 _act_col.caption(f"Manual · {_ssp} UI")

@@ -1,0 +1,44 @@
+name: Archive PMP deal (GAM proposal line item)
+
+# Dispatched by the dashboard's stale-deals "Archive" button so GAM write
+# credentials live here (repo secrets) instead of on the read-only Streamlit
+# deploy. The dashboard POSTs a workflow_dispatch with the proposal line-item
+# id; this archives it via SOAP ProposalLineItemService.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pli_id:
+        description: "GAM proposal line item id to archive"
+        required: true
+        type: string
+      deal_name:
+        description: "Deal name (log/label only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Archive proposal line item
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          # Inputs via env (not inline ${{ }} in run:) to avoid shell injection
+          # from the deal name.
+          PLI_ID: ${{ inputs.pli_id }}
+          DEAL_NAME: ${{ inputs.deal_name }}
+        run: python scripts/archive_pli.py "$PLI_ID" "$DEAL_NAME"
