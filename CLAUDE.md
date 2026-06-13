@@ -183,14 +183,24 @@ Rules that survive any future restyle:
   faint same-color area wash (`fill-opacity .10`) + a `--border` baseline.
   Chart series read the `--viz-*` palette; the OpenSincera peer charts render
   Newsweek = ink vs peers = warm gray — never brand red on a series.
-- **Inline-SVG trend builders use `preserveAspectRatio="none"`** so the line
-  fills the width (a time series spreading across days is correct). That
-  stretches the viewBox non-uniformly, so: pin every stroke with
-  `vector-effect="non-scaling-stroke"`, and draw end-dots as a **zero-length
-  round-capped path** (`<path d="M{x} {y}h0" stroke-linecap="round" …>`),
-  never a `<circle>` — a circle smears into an ellipse at the drawer's
-  rendered width (the 2026-06-13 "distorted graph" bug). Both `_sparkline_svg`
-  and `_drawer_delivery_chart` follow this.
+- **Inline-SVG geometry — two regimes (the 2026-06-13 "distorted graph"
+  bug, fixed in two parts):**
+  - `_sparkline_svg` (KPI tiles + drawer small multiples) are **compact
+    fixed-height sparklines** that *do* stretch to fill width
+    (`preserveAspectRatio="none"`). Under `layout="wide"` that stretch is
+    extreme, so every stroke is pinned with
+    `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
+    **zero-length round-capped `<path>`** (`d="M{x} {y}h0"`,
+    `stroke-linecap="round"`), never a `<circle>` — a circle smears into an
+    ellipse at the rendered width.
+  - `_drawer_delivery_chart` is a **real chart**, so it scales **uniformly**
+    (plain `viewBox` + CSS `width:100%; height:auto`, *no*
+    `preserveAspectRatio="none"`) — geometry is never warped. Its panel
+    (`.nw-drawer-chart`, and the sibling `.nw-sm-grid`) is capped at
+    `max-width:760px` so on the wide layout it stays a proportioned card
+    instead of a stretched-flat band; the date row sits inside the panel
+    and caps with it, staying aligned under the 7 points. Don't reintroduce
+    `preserveAspectRatio="none"` here.
 - **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
   hash colors), never the state scale.
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
