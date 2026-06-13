@@ -138,6 +138,27 @@ benchmarks settings; the #156 fix) while filtering as Video. Its
 thresholds live under the "Video Preroll >30s" row of the Benchmarks
 editor, which is the band's only user-facing surface.
 
+**Direct row display name = `<Advertiser> — <Campaign>`**
+(`dl.line_item_display_name`, advertiser = name token 7, campaign = token
+8). The **campaign** carries the placement/product
+(Newsmakers-Centerstage, Qx65-Homepage-Takeover, Apple-News,
+Custom-Audience-Pre-roll, MANV-Sponsorship, …), so it's what tells sibling
+LIs apart — the old name used **token 10 (format)** and collapsed a whole
+advertiser's book into one string (34 real Infiniti LIs → one
+"Infiniti - Display"). Format is intentionally **dropped from the name**:
+it's redundant with the canonical chip and the raw token-10 is often wrong
+(Apple-News and Centerstage lines both carry "Display" at token 10), so the
+chip (`derive_format`) is the single source of truth for format and the name
+is identity-only. Cleaning: strip the leading `#N` badge, drop the advertiser
+prefix the campaign token repeats (`Infiniti-Newsmakers-…` → `Newsmakers …`),
+dashes→spaces, and **preserve a trailing `(Article)`/`(copy N)` marker** — on
+the real Infiniti set that marker is the only thing separating a
+same-campaign/same-format pair (34 LIs → 31 distinct names; the 3 remaining
+repeats are one campaign run in two formats, which the chip separates). This
+is also the Direct table's A–Z **sort key**, so it must equal what the row
+renders; changing it regroups the table by advertiser→campaign. Pinned by
+`test_line_item_display_name` + `test_line_item_display_name_real_prod_names`.
+
 ## Dashboard design system (Newsweek "Paper", 2026-06)
 The dashboard is skinned to the Newsweek design system: **light warm-paper
 canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern
@@ -188,14 +209,19 @@ Rules that survive any future restyle:
   occupies, the less it may stretch.** Pixel-fixed-height SVGs that fill width
   under `layout="wide"` get crushed flat — so anything wider than a KPI tile
   scales uniformly.
-  - `_sparkline_svg` **default** (`uniform=False`, the KPI tiles only) are
-    **compact fixed-height sparklines** that *do* stretch to fill width
-    (`preserveAspectRatio="none"`). The tile is only ~130px, so the stretch is
-    mild; every stroke is still pinned with
-    `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
+  - `_sparkline_svg` **default** (`uniform=False`, the KPI tiles **and** the
+    Direct mobile graph-card delivery sparkline) are **compact fixed-height
+    sparklines** that *do* stretch to fill width (`preserveAspectRatio="none"`).
+    The tile is only ~130px, so the stretch is mild; every stroke is still
+    pinned with `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
     **zero-length round-capped `<path>`** (`d="M{x} {y}h0"`,
     `stroke-linecap="round"`), never a `<circle>` — a circle smears into an
-    ellipse at the rendered width.
+    ellipse at the rendered width. The stretch regime keeps the line **flush**
+    (`XPAD=0`, end dot at `x=W`), so the dot's 4px round cap pokes ~2px past the
+    viewBox edge; the svg carries **`style="overflow:visible"`** (stretch regime
+    only) so that cap renders into the adjacent margin instead of the viewport
+    clipping it to a half-dot (the 2026-06-13 "cut-off dot" on the mobile card).
+    Uniform mode insets with `XPAD` instead, so it needs no overflow.
   - `_sparkline_svg(uniform=True)` (the **drawer small multiples** —
     Viewability + CTR/VCR + Attention + SIVT + GIVT, the last three added
     2026-06-13; Attention targets 100, SIVT/GIVT target 1%, and their per-LI
@@ -283,7 +309,10 @@ Rules that survive any future restyle:
     delivery sparkline + revenue/pace. Pace bar reuses the row's pace
     banding (`_pacing_critical`/`_warn_low`/`_warn_high`); sparkline is
     `_sparkline_svg(_row_daily_imp_series(row), klass="")` (compact stretch
-    regime).
+    regime). Both visuals carry a tiny muted uppercase eyebrow
+    (`.m-pbar-l` "pace" / `.m-spark-l` "delivery 7d") so the bare bar
+    isn't ambiguous — the bar shipped unlabeled and read as a mystery on
+    the live card (2026-06-13).
   - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal + type pill + an
     **eCPM-vs-floor bar** (PMP deals have no daily series) + revenue / eCPM
     / impressions. The bar scales eCPM against `2 × floor` so the floor sits

@@ -339,14 +339,37 @@ def test_li_part_token_extraction():
 
 def test_line_item_display_name():
     from dashboard_logic import line_item_display_name as dn
+    # advertiser(7) — campaign(8); format(10) is NOT used (it's the chip's job).
     full = "NW_Direct_2026_Q2_US_Display_300x250_VGW_Camp_US_Interscroller_IO1_1_Team-USA_RH"
-    assert dn(full) == "VGW - Interscroller"             # client(7) - media(10)
-    assert dn("#2  " + full) == "VGW - Interscroller"    # strips the #N badge first
-    assert dn(full.replace("VGW", "Cartier-UK")) == "Cartier UK - Interscroller"  # hyphen→space
-    assert dn(full.replace("Interscroller", "NA")) == "VGW"   # NA media → client only
-    assert dn("a_b_c_d_e_f") == "c_d_e"                  # no client/media → mid tokens
-    assert dn("Hello") == "Hello"                        # <3 tokens → cleaned name
+    assert dn(full) == "VGW — Camp"
+    assert dn("#2  " + full) == "VGW — Camp"              # strips the #N badge first
+    assert dn(full.replace("VGW", "Cartier-UK")) == "Cartier UK — Camp"  # hyphen→space
+    # format token is irrelevant to the name now
+    assert dn(full.replace("Interscroller", "Display")) == "VGW — Camp"
+    assert dn("a_b_c_d_e_f") == "c_d_e"                   # no advertiser/campaign → mid tokens
+    assert dn("Hello") == "Hello"                         # <3 tokens → cleaned name
     assert dn(None) == ""
+
+
+def test_line_item_display_name_real_prod_names():
+    """Real prod Infiniti LIs that all rendered identical 'Infiniti - Display'
+    under the old format-based name — the campaign field separates them and
+    carries the placement/product."""
+    from dashboard_logic import line_item_display_name as dn
+    base = "Newsweek_Direct_Automotive_NA_NA_Omnicom_OMD_Infiniti_{}_US_{}_{}_Team-USA_THern"
+    # advertiser prefix on the campaign token is stripped; dashes → spaces
+    assert dn(base.format("Infiniti-Newsmakers-Centerstage-June", "Display", "IO1104-22")) \
+        == "Infiniti — Newsmakers Centerstage June"
+    assert dn(base.format("Infiniti-Qx65-2026-Apple-News-June", "Display", "IO1104-4")) \
+        == "Infiniti — Qx65 2026 Apple News June"
+    assert dn(base.format("Infiniti-Qx65-2026-Homepage-Takeover-May", "Centerstage", "IO1104-5")) \
+        == "Infiniti — Qx65 2026 Homepage Takeover May"
+    # trailing "(Article)" marker is preserved (disambiguates same-campaign LIs)
+    assert dn(base.format("Infiniti-Qx65-2026-MANV-Sponsorship-May", "Display", "IO1104-6") + " (Article)") \
+        == "Infiniti — Qx65 2026 MANV Sponsorship May (Article)"
+    # campaign token == bare product (Test LIs): no advertiser prefix to strip
+    assert dn("Newsweek_Test_AUTO_NA_NA_NA_NA_Infiniti_Centerstage_US_Display_NA_Team-USA_NA") \
+        == "Infiniti — Centerstage"
 
 
 def test_ae_and_team_token_regexes():

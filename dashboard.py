@@ -1256,8 +1256,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-row-m .m-name { font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.2; }
 .nw-row-m .m-name .li-ord { color: var(--text-muted); font-weight: 700; font-size: 10px; margin-right: 3px; }
 .nw-row-m .m-sub { color: var(--text-muted); font-size: 10px; margin-top: 1px; }
+.nw-row-m .m-pbar-l { font-size: 8px; color: var(--text-muted); letter-spacing: .03em;
+                      text-transform: uppercase; font-weight: 600; margin-top: 8px; }
 .nw-row-m .m-pbar { height: 7px; background: var(--border); border-radius: 4px;
-                    overflow: hidden; margin-top: 7px; max-width: 220px; }
+                    overflow: hidden; margin-top: 3px; max-width: 220px; }
 .nw-row-m .m-pbar > i { display: block; height: 100%; border-radius: 4px; }
 .nw-row-m .m-pbar > i.red     { background: var(--state-critical); }
 .nw-row-m .m-pbar > i.amber   { background: var(--state-warning); }
@@ -3411,7 +3413,14 @@ if st.session_state.active_view == "campaigns":
                        f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
                 class_attr = f' class="{klass}"' if klass else ""
                 par = "" if uniform else ' preserveAspectRatio="none"'
-                return (f'<svg{class_attr} viewBox="0 0 {W} {H}"{par} '
+                # Stretch regime pins the end dot at x=W (flush, XPAD=0), so its
+                # round cap (4px non-scaling) pokes ~2px past the viewBox edge and
+                # the SVG viewport clips it to a half-dot — the "cut-off dot" on the
+                # Direct mobile card. Keep the line flush (the tiles want edge-to-
+                # edge) but let the cap render into the adjacent margin. Uniform
+                # already insets with XPAD, so it needs no overflow.
+                ov = "" if uniform else ' style="overflow:visible"'
+                return (f'<svg{class_attr} viewBox="0 0 {W} {H}"{par}{ov} '
                         f'xmlns="http://www.w3.org/2000/svg">{tline}'
                         f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
                         f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
@@ -4855,16 +4864,17 @@ if st.session_state.active_view == "campaigns":
                                 else _esc(_seller))
                 _progress = row.get("progress_pct")
 
-                # Display name = "<Client> - <MediaType>" from the 14-field LI
-                # naming convention (Client = field 8 = token[7]; MediaType =
-                # field 11 = token[10]). This surfaces Newsweek-specific
-                # products like Uniscroller / Interscroller / CenterStage /
-                # FITO / Preroll (which GAM's `ad_format` collapses to
-                # "Banner"/"Video") paired with the advertiser, so each row
-                # reads like "Cartier UK - Uniscroller" instead of just
-                # the product alone. See `project_gam_line_item_naming
-                # _convention.md` for the full SOP. Either half may be
-                # missing — fall back gracefully.
+                # Display name = "<Advertiser> — <Campaign>" from the 14-field
+                # LI naming convention (advertiser = token[7]; campaign =
+                # token[8]). The campaign carries the placement/product
+                # (Newsmakers-Centerstage, Qx65-Homepage-Takeover, Apple-News,
+                # Custom-Audience-Pre-roll, …), so sibling LIs read distinctly
+                # instead of collapsing to one "Infiniti - Display" (the
+                # format, token[10], is redundant with — and often contradicts
+                # — the canonical chip below, so it's intentionally dropped from
+                # the name). See `project_gam_line_item_naming_convention.md`
+                # for the full SOP; dl.line_item_display_name falls back
+                # gracefully when the campaign token is missing.
                 _display_name = dl.line_item_display_name(_li_clean)
                 # DV Attention + SIVT + GIVT (current values + priors for
                 # the Δ row below each cell). Lookups built once at view
@@ -4944,6 +4954,7 @@ if st.session_state.active_view == "campaigns":
                     '<div class="nw-row-m">'
                     f'<div class="m-main"><div class="m-name">{_ord_html}{_esc(_display_name)}</div>'
                     f'<div class="m-sub">{_esc(_sub) or "—"}</div>'
+                    '<div class="m-pbar-l">pace</div>'
                     f'<div class="m-pbar"><i class="{_m_psev}" style="width:{_m_pw:.0f}%"></i></div></div>'
                     f'{_spark_block_m}'
                     f'<div class="m-right"><div class="m-rev">{_revenue_html(_rev)}</div>'
