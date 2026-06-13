@@ -4864,16 +4864,17 @@ if st.session_state.active_view == "campaigns":
                                 else _esc(_seller))
                 _progress = row.get("progress_pct")
 
-                # Display name = "<Client> - <MediaType>" from the 14-field LI
-                # naming convention (Client = field 8 = token[7]; MediaType =
-                # field 11 = token[10]). This surfaces Newsweek-specific
-                # products like Uniscroller / Interscroller / CenterStage /
-                # FITO / Preroll (which GAM's `ad_format` collapses to
-                # "Banner"/"Video") paired with the advertiser, so each row
-                # reads like "Cartier UK - Uniscroller" instead of just
-                # the product alone. See `project_gam_line_item_naming
-                # _convention.md` for the full SOP. Either half may be
-                # missing — fall back gracefully.
+                # Display name = "<Advertiser> — <Campaign>" from the 14-field
+                # LI naming convention (advertiser = token[7]; campaign =
+                # token[8]). The campaign carries the placement/product
+                # (Newsmakers-Centerstage, Qx65-Homepage-Takeover, Apple-News,
+                # Custom-Audience-Pre-roll, …), so sibling LIs read distinctly
+                # instead of collapsing to one "Infiniti - Display" (the
+                # format, token[10], is redundant with — and often contradicts
+                # — the canonical chip below, so it's intentionally dropped from
+                # the name). See `project_gam_line_item_naming_convention.md`
+                # for the full SOP; dl.line_item_display_name falls back
+                # gracefully when the campaign token is missing.
                 _display_name = dl.line_item_display_name(_li_clean)
                 # DV Attention + SIVT + GIVT (current values + priors for
                 # the Δ row below each cell). Lookups built once at view

@@ -367,32 +367,59 @@ def li_part(name, idx: int):
 
 
 def line_item_display_name(name) -> str:
-    """Friendly "<Client> - <MediaType>" label for a GAM line-item name
-    (14-field convention: client = token 7, media = token 10). Strips any
-    leading "#N " ordinal badge first. Surfaces house products (Uniscroller /
-    Interscroller / CenterStage / FITO / Preroll) paired with the advertiser.
-    Either half may be missing — fall back to mid-name tokens, then the
-    cleaned name. Also the alphabetical sort key for the Direct table, so it
-    must match exactly what the row renders."""
+    """Friendly "<Advertiser> — <Campaign>" label for a GAM line-item name
+    (14-field convention: advertiser = token 7, campaign = token 8).
+
+    The campaign token is where the *placement / product* lives
+    (Newsmakers-Centerstage, Qx65-Homepage-Takeover, Apple-News,
+    Custom-Audience-Pre-roll, MANV-Sponsorship, …), so it's the field that
+    actually tells sibling line items apart. Token 10 (format) is deliberately
+    NOT used here: it's redundant with the canonical-taxonomy chip that the row
+    already shows, and the raw token is frequently wrong (an Apple-News or a
+    Centerstage line both carry "Display" at token 10). Format belongs to the
+    chip; the name carries identity.
+
+    Cleaning: strips a leading "#N " ordinal badge; drops the advertiser prefix
+    the campaign token usually repeats ("Infiniti-Newsmakers-…" → "Newsmakers
+    …") so the name doesn't say "Infiniti — Infiniti…"; spaces out dashes; and
+    preserves any trailing "(Article)" / "(copy N)" marker, the only thing that
+    separates some same-campaign / same-format variants. Falls back to the
+    advertiser alone, then mid-name tokens, then the cleaned name when the
+    campaign token is missing. Also the alphabetical sort key for the Direct
+    table (so an advertiser's campaigns group together A–Z), so it must match
+    exactly what the row renders."""
     if name is None or (isinstance(name, float) and pd.isna(name)):
         return ""
-    clean = re.sub(r"^#\d+\s+", "", str(name))
+    raw = str(name)
+    # A trailing parenthetical ("(Article)", "(copy 1)") is the only
+    # disambiguator for some otherwise-identical campaign/format pairs — peel
+    # it off before tokenizing and re-append it to whatever name we build.
+    note = ""
+    m_note = re.search(r"\s*(\([^()]*\))\s*$", raw)
+    if m_note:
+        note = " " + m_note.group(1).strip()
+        raw = raw[:m_note.start()]
+    clean = re.sub(r"^#\d+\s+", "", raw)
     tokens = clean.split("_")
-    client_raw = tokens[7] if len(tokens) >= 8 else ""
-    media_raw = tokens[10] if len(tokens) >= 11 else ""
-    client = client_raw.replace("-", " ") if client_raw and client_raw not in ("NA", "N/A", "") else ""
-    media = media_raw.replace("-", " ") if media_raw and media_raw not in ("NA", "N/A", "") else ""
-    if client and media:
-        return f"{client} - {media}"
-    if media:
-        return media
-    if client:
-        return client
+    adv_raw = tokens[7] if len(tokens) >= 8 else ""
+    camp_raw = tokens[8] if len(tokens) >= 9 else ""
+    adv = adv_raw.strip() if adv_raw and adv_raw not in ("NA", "N/A", "") else ""
+    camp = camp_raw.strip() if camp_raw and camp_raw not in ("NA", "N/A", "") else ""
+    if adv and camp.lower().startswith(adv.lower() + "-"):
+        camp = camp[len(adv) + 1:]
+    adv_disp = adv.replace("-", " ")
+    camp_disp = camp.replace("-", " ").strip()
+    if adv_disp and camp_disp:
+        return f"{adv_disp} — {camp_disp}{note}"
+    if camp_disp:
+        return camp_disp + note
+    if adv_disp:
+        return adv_disp + note
     if len(tokens) >= 5:
-        return "_".join(tokens[2:5])
+        return "_".join(tokens[2:5]) + note
     if len(tokens) >= 3:
-        return "_".join(tokens[2:])
-    return clean
+        return "_".join(tokens[2:]) + note
+    return clean + note
 
 
 # ── Pacing ──────────────────────────────────────────────────────────────
