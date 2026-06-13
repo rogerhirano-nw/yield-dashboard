@@ -828,12 +828,14 @@ class GAMClient:
             logger.exception("get_preferred_deals (SOAP) failed")
             return pd.DataFrame(columns=_cols)
 
-    def archive_proposal_line_item(self, pli_id: str) -> bool:
+    def archive_proposal_line_item(self, pli_id: str, raise_on_error: bool = False) -> bool:
         """Archive a single Proposal Line Item (PD/PG/Sponsorship) by numeric ID via SOAP.
 
-        Returns True when GAM confirms at least one change was made. Logs and
-        returns False on any error so the caller can surface a per-deal failure
-        without aborting a batch.
+        Returns True when GAM confirms at least one change was made. By default
+        logs and returns False on any error so a batch can continue past a
+        per-deal failure. Pass raise_on_error=True (the dashboard does) to
+        re-raise instead — including a clear error when GAM applied no change —
+        so the real reason reaches the user instead of a swallowed False.
         """
         try:
             from googleads import ad_manager  # type: ignore
@@ -846,10 +848,17 @@ class GAMClient:
             )
             n = int(getattr(result, "numChanges", 0) or 0)
             logger.info("archive_proposal_line_item(%s): %d change(s)", pli_id, n)
-            return n > 0
         except Exception:
             logger.exception("archive_proposal_line_item(%s) failed", pli_id)
+            if raise_on_error:
+                raise
             return False
+        if n <= 0 and raise_on_error:
+            raise RuntimeError(
+                f"GAM applied no change to proposal line item {pli_id} — it may "
+                "already be archived, or not in an archivable state."
+            )
+        return n > 0
 
     def list_creatives_with_duration(
         self, creative_ids: list[str] | None = None
