@@ -899,6 +899,28 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
 .nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
                    color: var(--text-muted); font-weight: 400; margin-bottom: 3px; }
+/* Campaigns filter bar: a single "Filters" popover trigger + removable
+   active-filter chips (replaces the 6-up dropdown row that pushed the data
+   below the fold on mobile). .st-key-* hooks Streamlit's keyed container. */
+.st-key-nw_filter_bar { gap: 8px !important; align-items: center;
+                        flex-wrap: wrap !important; margin: 2px 0 14px; }
+.st-key-nw_filter_bar [data-testid="stPopover"] button {
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border-strong) !important;
+  background: var(--surface-1) !important; color: var(--text-primary) !important;
+  font-weight: 700 !important; padding: 6px 14px !important; min-height: 0 !important;
+}
+/* Active-filter chips: quiet paper pills that flush red on hover to signal a
+   click removes them. */
+.st-key-nw_filter_bar .stButton button {
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface-1) !important; color: var(--text-secondary) !important;
+  font-weight: 600 !important; padding: 4px 12px !important; min-height: 0 !important;
+}
+.st-key-nw_filter_bar .stButton button:hover {
+  border-color: var(--state-critical) !important; color: var(--state-critical) !important;
+}
 /* Exception banners — left severity bar, equal-height grid row. Tinted
    state surface + state-colored head; body text stays ink-secondary.
    margin-bottom gives breathing room before the KPI strip. */
@@ -2820,8 +2842,62 @@ if st.session_state.active_view == "campaigns":
         )
         am_opts = all_ams + (["Unassigned"] if _has_unmapped else [])
 
-        f1, f2, f3, f4, f5, f6 = st.columns(6)
-        with f1:
+        # ── Campaigns filters: one "Filters" popover trigger + removable
+        # active-filter chips, replacing the 6-column dropdown row that buried
+        # the data below the fold on mobile. The six controls live inside the
+        # popover; whatever is applied surfaces as a chip beside the trigger
+        # and clears on click. Widget keys are unchanged, so the filtering
+        # logic below is untouched.
+        advertiser_opts = sorted(gam_df["advertiser"].dropna().unique())
+        format_opts = sorted(gam_df["ad_format"].dropna().unique())
+        status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
+        team_opts = sorted(gam_df["team"].dropna().unique())
+        _cfg_defaults = _cfg.get("default_statuses", ["Delivering", "Upcoming"])
+        _status_defaults = [s for s in _cfg_defaults if s in status_opts]
+        _STATUS_VER = "2"
+        if st.session_state.get("_status_ver") != _STATUS_VER and _status_defaults:
+            st.session_state["gam_status_filter"] = _status_defaults
+            st.session_state["_status_ver"] = _STATUS_VER
+
+        # Read current selections from state so the chips + count reflect the
+        # latest run (defaults fill in on first load before the widgets exist).
+        def _ms_summary(vals):
+            return str(vals[0]) if len(vals) == 1 else f"{vals[0]} +{len(vals) - 1}"
+        _active_chips = []  # (state_key, empty_value, chip_text)
+        _sel_seller = st.session_state.get("seller_select", "All")
+        if _sel_seller and _sel_seller != "All":
+            _active_chips.append(("seller_select", "All", f"Seller: {_sel_seller}"))
+        for _key, _lbl in (("gam_advertiser_filter", "Advertiser"),
+                           ("gam_format_filter", "Format"),
+                           ("gam_status_filter", "Status"),
+                           ("gam_team_filter", "Team"),
+                           ("gam_am_filter", "Manager")):
+            _default = _status_defaults if _key == "gam_status_filter" else []
+            _vals = st.session_state.get(_key, _default)
+            if _vals:
+                _active_chips.append((_key, [], f"{_lbl}: {_ms_summary(_vals)}"))
+        _n_active = len(_active_chips)
+
+        def _clear_filter(state_key, empty_value):
+            st.session_state[state_key] = empty_value
+
+        def _clear_all_filters():
+            st.session_state["seller_select"] = "All"
+            for _k in ("gam_advertiser_filter", "gam_format_filter",
+                       "gam_status_filter", "gam_team_filter", "gam_am_filter"):
+                st.session_state[_k] = []
+
+        with st.container(horizontal=True, key="nw_filter_bar"):
+            _filters_pop = st.popover(
+                "Filters" if not _n_active else f"Filters · {_n_active}",
+                icon=":material/tune:",
+            )
+            for _ck, _empty, _txt in _active_chips:
+                st.button(_txt, key=f"nw_chip_{_ck}",
+                          icon=":material/close:", icon_position="right",
+                          on_click=_clear_filter, args=(_ck, _empty))
+
+        with _filters_pop:
             st.markdown('<div class="nw-filter-label">Seller</div>', unsafe_allow_html=True)
             selected_seller = st.selectbox(
                 "Seller",
@@ -2829,33 +2905,21 @@ if st.session_state.active_view == "campaigns":
                 key="seller_select",
                 label_visibility="collapsed",
             )
-        with f2:
             st.markdown('<div class="nw-filter-label">Advertiser</div>', unsafe_allow_html=True)
-            advertiser_opts = sorted(gam_df["advertiser"].dropna().unique())
             selected_advertisers = st.multiselect(
                 "Advertiser",
                 options=advertiser_opts,
                 key="gam_advertiser_filter",
                 label_visibility="collapsed",
             )
-        with f3:
             st.markdown('<div class="nw-filter-label">Format</div>', unsafe_allow_html=True)
-            format_opts = sorted(gam_df["ad_format"].dropna().unique())
             selected_formats = st.multiselect(
                 "Format",
                 options=format_opts,
                 key="gam_format_filter",
                 label_visibility="collapsed",
             )
-        with f4:
             st.markdown('<div class="nw-filter-label">Status</div>', unsafe_allow_html=True)
-            status_opts = sorted(gam_df["status"].dropna().unique()) if "status" in gam_df.columns else []
-            _cfg_defaults = _cfg.get("default_statuses", ["Delivering", "Upcoming"])
-            _status_defaults = [s for s in _cfg_defaults if s in status_opts]
-            _STATUS_VER = "2"
-            if st.session_state.get("_status_ver") != _STATUS_VER and _status_defaults:
-                st.session_state["gam_status_filter"] = _status_defaults
-                st.session_state["_status_ver"] = _STATUS_VER
             selected_statuses = st.multiselect(
                 "Status",
                 options=status_opts,
@@ -2863,16 +2927,13 @@ if st.session_state.active_view == "campaigns":
                 key="gam_status_filter",
                 label_visibility="collapsed",
             )
-        with f5:
             st.markdown('<div class="nw-filter-label">Team</div>', unsafe_allow_html=True)
-            team_opts = sorted(gam_df["team"].dropna().unique())
             selected_teams = st.multiselect(
                 "Team",
                 options=team_opts,
                 key="gam_team_filter",
                 label_visibility="collapsed",
             )
-        with f6:
             st.markdown('<div class="nw-filter-label">Account Manager</div>', unsafe_allow_html=True)
             selected_ams = st.multiselect(
                 "Account Manager",
@@ -2880,6 +2941,10 @@ if st.session_state.active_view == "campaigns":
                 key="gam_am_filter",
                 label_visibility="collapsed",
             )
+            if _n_active:
+                st.button("Clear all filters", key="nw_clear_all_filters",
+                          type="tertiary", icon=":material/close:",
+                          on_click=_clear_all_filters)
 
         view_gam = gam_df if selected_seller == "All" else gam_df[gam_df["seller_ae"] == selected_seller].copy()
         if selected_advertisers:
