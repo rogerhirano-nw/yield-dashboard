@@ -1434,6 +1434,45 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
              font-family: ui-monospace, Menlo, Consolas, monospace; }
 .cfg-canonical { font-size: 13px; font-weight: 600; color: var(--text-primary); padding: 4px 0; }
 .cfg-canonical.system { font-style: italic; color: var(--text-muted); }
+/* ════════════════════════════════════════════════════════════════════
+   RESPONSIVE / MOBILE. The dashboard is desktop-first; these overrides
+   keep it legible on phones + tablets without touching any desktop rule
+   (everything lives behind a media query, source-ordered last so equal-
+   specificity rules win). Filters already reflow for free — Streamlit
+   stacks st.columns on narrow viewports. Verified at 390px (iPhone) and
+   360px (Android).
+   ════════════════════════════════════════════════════════════════════ */
+/* Tablet + large phone: the fixed 9-up KPI grid crushes tiles until the
+   labels/values wrap one glyph per line. Switch to a fluid grid that
+   packs as many ≥96px tiles per row as fit and wraps the rest. At desktop
+   widths the base repeat(9,1fr) still applies (this only kicks in ≤1024). */
+@media (max-width: 1024px) {
+  .nw-kpi-row { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+}
+@media (max-width: 640px) {
+  /* Reclaim side padding on small screens. */
+  .stApp .main .block-container,
+  .stApp [data-testid="stMain"] .block-container,
+  .stApp [data-testid="stAppViewContainer"] .block-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  /* Exception banners: 3-up → stacked full-width (legible over cramped). */
+  .nw-banner-row { grid-template-columns: 1fr; }
+  /* Tab row: scroll horizontally instead of wrapping/clipping, so every
+     view stays reachable by swipe. */
+  .nw-tabrow { overflow-x: auto; flex-wrap: nowrap;
+               -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .nw-tabrow::-webkit-scrollbar { display: none; }
+  .nw-tab { white-space: nowrap; flex: 0 0 auto; }
+  /* Dense 12-column tables: hold the grid open at its desktop widths and
+     let the card itself scroll horizontally (swipe) rather than crushing
+     12 columns into ~320px and clipping more than half of them. */
+  .nw-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nw-rows, .nw-pmp-rows { min-width: 760px; }
+  /* Drawer metadata: 4-up → 2-up. */
+  .nw-meta-grid { grid-template-columns: 1fr 1fr; }
+}
 </style>
 """,
     unsafe_allow_html=True,
