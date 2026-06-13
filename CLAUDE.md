@@ -241,9 +241,18 @@ Rules that survive any future restyle:
 - **Stale-deals list = one native `st.container` card per deal** (PMP tab,
   inside the "⚠ N stale PMP deals" expander). Each card is deal name + a
   meta line (SSP · last bid · **days-idle severity pill**, `dl.idle_band`:
-  amber 90+, red 180+) + an action column: a **working Archive button** for
-  GAM deals whose PLI resolves (SOAP `archive_proposal_line_item`), else a
-  "Manual · `<SSP>` UI" note. Archived `deal_key`s are remembered in
+  amber 90+, red 180+) + an action column. The action is **creds-gated**:
+  `GAMClient` reads GAM creds from `os.environ`, but Streamlit Cloud keeps
+  secrets in `st.secrets` and is otherwise read-only (Supabase data, no GAM
+  creds), so `_gam_creds_ready()` bridges `GAM_SERVICE_ACCOUNT_JSON` /
+  `GAM_NETWORK_ID` from `st.secrets`→`os.environ` and returns whether
+  they're present. **Creds present + GAM deal with a resolvable PLI** → a
+  working **Archive** button (SOAP `archive_proposal_line_item`, called with
+  `raise_on_error=True` so the real reason surfaces inline instead of a
+  swallowed "check logs"). **GAM deal, no creds** → "Archive in GAM UI"
+  (the default deploy can't make GAM API calls — add the two secrets to
+  enable the button; note it's *write* access to GAM). **Other SSPs** →
+  "Manual · `<SSP>` UI". Archived `deal_key`s are remembered in
   `st.session_state["_pmp_archived_deals"]` so the button flips to
   "✓ Archived" (the row only drops on the next sweep, when
   `pmp_last_bid_date` updates). Native containers replaced the old HTML

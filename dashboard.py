@@ -93,6 +93,25 @@ def _engine() -> sqlalchemy.Engine:
     return sqlalchemy.create_engine(url, pool_size=2, max_overflow=1, pool_recycle=300)
 
 
+def _gam_creds_ready() -> bool:
+    """Whether GAM API creds are reachable for an in-dashboard archive.
+    `GAMClient` reads `os.environ`, so bridge the values from `st.secrets`
+    (where Streamlit Cloud keeps them) when they live only there. Returns
+    False when they're absent — the read-only deploy never needed GAM creds,
+    so the archive action falls back to "do it in the GAM UI" rather than
+    erroring with a swallowed KeyError."""
+    for _k in ("GAM_SERVICE_ACCOUNT_JSON", "GAM_NETWORK_ID"):
+        if not os.environ.get(_k):
+            try:
+                _v = st.secrets[_k]
+            except Exception:
+                _v = None
+            if _v:
+                os.environ[_k] = str(_v)
+    return bool(os.environ.get("GAM_SERVICE_ACCOUNT_JSON")
+                and os.environ.get("GAM_NETWORK_ID"))
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 _SETTINGS_PATH = Path(__file__).parent / "settings.json"
@@ -6268,6 +6287,7 @@ if st.session_state.active_view == "campaigns":
                     # "✓ Archived" — pmp_last_bid_date only drops the row on the
                     # next sweep.
                     _archived = st.session_state.setdefault("_pmp_archived_deals", set())
+                    _gam_ready = _gam_creds_ready()
                     for _, _sr in _stale.iterrows():
                         _deal_key = str(_sr["deal_key"])
                         _ssp = str(_sr["ssp"])
@@ -6294,19 +6314,23 @@ if st.session_state.active_view == "campaigns":
                             if _deal_key in _archived:
                                 _act_col.markdown('<div class="nw-stale-done">✓ Archived</div>',
                                                   unsafe_allow_html=True)
-                            elif _can_api:
+                            elif _can_api and _gam_ready:
                                 if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
                                                    use_container_width=True):
                                     from gam_client import GAMClient as _GAMClient  # lazy import
                                     try:
-                                        _ok = _GAMClient().archive_proposal_line_item(str(_pli_ids[0]))
-                                    except Exception:
-                                        _ok = False
-                                    if _ok:
+                                        _GAMClient().archive_proposal_line_item(
+                                            str(_pli_ids[0]), raise_on_error=True)
+                                    except Exception as _e:
+                                        st.error(f"Couldn't archive {_deal_key} — "
+                                                 f"{type(_e).__name__}: {_e}")
+                                    else:
                                         _archived.add(_deal_key)
                                         st.rerun()
-                                    else:
-                                        st.error(f"Couldn't archive {_deal_key} in GAM — check logs.")
+                            elif _can_api:
+                                # GAM deal, but no GAM API creds in this deploy →
+                                # archiving must happen in the GAM UI.
+                                _act_col.caption("Archive in GAM UI")
                             else:
                                 _act_col.caption(f"Manual · {_ssp} UI")
 
