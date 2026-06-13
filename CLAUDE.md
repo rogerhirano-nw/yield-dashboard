@@ -231,8 +231,24 @@ Rules that survive any future restyle:
   ≤640px: banners stack 1-up, the tab row and the dense 12-column
   Direct/PMP tables become horizontally swipeable (`overflow-x:auto` +
   row `min-width:760px` — they crushed/clipped otherwise), drawer
-  meta-grid 4→2. Filters reflow for free (Streamlit stacks `st.columns`).
-  When adding a fixed multi-column grid, add its mobile rule here too.
+  meta-grid 4→2. Most tab filters reflow for free (Streamlit stacks
+  `st.columns`). When adding a fixed multi-column grid, add its mobile
+  rule here too.
+- **Campaigns filters are a popover + active chips, not a dropdown row.**
+  The six Campaigns filters (Seller / Advertiser / Format / Status /
+  Team / Account Manager) live inside one `st.popover` whose trigger
+  reads "Filters · N"; whatever is applied renders as removable chips
+  beside the trigger, both inside a keyed horizontal container
+  (`st.container(horizontal=True, key="nw_filter_bar")` →
+  `.st-key-nw_filter_bar`, which the pill CSS hooks). Chips clear via
+  `on_click` callbacks that reset the widget's `st.session_state` key;
+  the six widget **keys are unchanged**, so the filtering logic below is
+  untouched. The active list/count is read from `st.session_state` at the
+  top of the run (Status seeds its default through the `_status_ver`
+  guard) so it reflects the latest selections. This replaced a
+  `st.columns(6)` row that stacked into six full-width dropdowns on
+  mobile and buried the data below the fold. The other tabs still use
+  plain `st.columns` filter rows.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
