@@ -1178,6 +1178,28 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-row > summary:hover { background: var(--surface-2); }
 .nw-row[open] > summary { background: var(--surface-2); }
 .nw-row[open] > summary .nw-chev { transform: rotate(90deg); }
+/* Solution-3 mobile row card: hidden on desktop. The ≤640 block below swaps
+   each Direct-table summary from its 12-column grid to this compact card
+   (name + pace bar + delivery sparkline + revenue/pace). Tapping it still
+   toggles the row's <details> drawer. */
+.nw-row-m { display: none; grid-template-columns: 1fr 92px auto; gap: 10px;
+            align-items: center; padding: 11px 12px; }
+.nw-row-m .m-name { font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.2; }
+.nw-row-m .m-name .li-ord { color: var(--text-muted); font-weight: 700; font-size: 10px; margin-right: 3px; }
+.nw-row-m .m-sub { color: var(--text-muted); font-size: 10px; margin-top: 1px; }
+.nw-row-m .m-pbar { height: 7px; background: var(--border); border-radius: 4px;
+                    overflow: hidden; margin-top: 7px; max-width: 220px; }
+.nw-row-m .m-pbar > i { display: block; height: 100%; border-radius: 4px; }
+.nw-row-m .m-pbar > i.red     { background: var(--state-critical); }
+.nw-row-m .m-pbar > i.amber   { background: var(--state-warning); }
+.nw-row-m .m-pbar > i.green   { background: var(--state-positive-muted); }
+.nw-row-m .m-pbar > i.neutral { background: var(--text-muted); }
+.nw-row-m .m-spark { min-width: 0; }
+.nw-row-m .m-spark svg { width: 100%; height: 30px; display: block; }
+.nw-row-m .m-spark-l { font-size: 8px; color: var(--text-muted); text-align: center;
+                       margin-top: 1px; letter-spacing: .03em; text-transform: uppercase; }
+.nw-row-m .m-right { text-align: right; }
+.nw-row-m .m-right .m-rev { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
 .nw-chev {
   display: inline-block; width: 10px;
   margin-right: 6px; color: var(--text-muted);
@@ -1568,7 +1590,17 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
      let the card itself scroll horizontally (swipe) rather than crushing
      12 columns into ~320px and clipping more than half of them. */
   .nw-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .nw-rows, .nw-pmp-rows { min-width: 760px; }
+  .nw-pmp-rows { min-width: 760px; }
+  /* Direct table → compact "graph card" rows (Solution 3): swap each row's
+     12-column summary for the .nw-row-m card (name + pace bar + delivery
+     sparkline + revenue/pace). No horizontal scroll. The PMP table keeps the
+     swipe above. */
+  .nw-tbl-wrap.nw-tbl-direct { overflow-x: visible; }
+  .nw-tbl-direct .nw-rows { min-width: 0; }
+  .nw-tbl-direct .nw-row-header { display: none; }
+  .nw-tbl-direct .nw-row > summary { display: block; padding: 0; }
+  .nw-tbl-direct .nw-row > summary > *:not(.nw-row-m) { display: none; }
+  .nw-tbl-direct .nw-row-m { display: grid; }
   /* Drawer metadata: 4-up → 2-up. */
   .nw-meta-grid { grid-template-columns: 1fr 1fr; }
   /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
@@ -4760,6 +4792,37 @@ if st.session_state.active_view == "campaigns":
                 _imp_delta = _delta_below_html(_imp_pct, lower_is_worse=True,
                                                 unit="%", new_line_threshold=None)
 
+                # Solution-3 mobile card (rendered into every summary; CSS shows
+                # it only ≤640px and hides the 12 grid cells). Reuses the row's
+                # pace banding and the 7-day delivery series.
+                _pace_num_m = pd.to_numeric(_pace, errors="coerce")
+                if pd.isna(_pace_num_m):
+                    _m_psev, _m_pw = "neutral", 0.0
+                else:
+                    _pn_m = float(_pace_num_m)
+                    if _pn_m < _pacing_critical:
+                        _m_psev = "red"
+                    elif _pn_m < _pacing_warn_low or _pn_m > _pacing_warn_high:
+                        _m_psev = "amber"
+                    else:
+                        _m_psev = "green"
+                    _m_pw = max(0.0, min(_pn_m, 100.0))
+                _deliv_series_m = _row_daily_imp_series(row)
+                _deliv_spark_m = _sparkline_svg(_deliv_series_m, klass="") if _deliv_series_m else ""
+                _spark_block_m = (f'<div class="m-spark">{_deliv_spark_m}'
+                                  '<div class="m-spark-l">delivery 7d</div></div>'
+                                  if _deliv_spark_m else '<div class="m-spark"></div>')
+                _row_m = (
+                    '<div class="nw-row-m">'
+                    f'<div class="m-main"><div class="m-name">{_ord_html}{_esc(_display_name)}</div>'
+                    f'<div class="m-sub">{_esc(_sub) or "—"}</div>'
+                    f'<div class="m-pbar"><i class="{_m_psev}" style="width:{_m_pw:.0f}%"></i></div></div>'
+                    f'{_spark_block_m}'
+                    f'<div class="m-right"><div class="m-rev">{_revenue_html(_rev)}</div>'
+                    f'{_pace_html(_pace, _pace_prior)}</div>'
+                    '</div>'
+                )
+
                 _rows_html.append(
                     '<details class="nw-row" name="cmprow">'
                     '<summary>'
@@ -4776,13 +4839,14 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num center">{_vcr_html(_vcr_val, _is_video, _fmt_str, p_prior=_vcr_prior)}</div>'
                     f'<div>{_seller_html}</div>'
                     f'<div>{_progress_html(_progress)}</div>'
+                    + _row_m +
                     '</summary>'
                     + _drawer_html(row) +
                     '</details>'
                 )
 
             _table_html = (
-                '<div class="nw-tbl-wrap">'
+                '<div class="nw-tbl-wrap nw-tbl-direct">'
                 '<div class="nw-tbl-head">'
                 '<div class="nw-tbl-title">Direct campaigns'
                 '<span class="nw-tbl-sub">· sorted by variance</span></div>'
