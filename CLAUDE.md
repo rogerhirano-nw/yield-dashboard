@@ -283,7 +283,10 @@ Rules that survive any future restyle:
     delivery sparkline + revenue/pace. Pace bar reuses the row's pace
     banding (`_pacing_critical`/`_warn_low`/`_warn_high`); sparkline is
     `_sparkline_svg(_row_daily_imp_series(row), klass="")` (compact stretch
-    regime).
+    regime). Both visuals carry a tiny muted uppercase eyebrow
+    (`.m-pbar-l` "pace" / `.m-spark-l` "delivery 7d") so the bare bar
+    isn't ambiguous — the bar shipped unlabeled and read as a mystery on
+    the live card (2026-06-13).
   - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal + type pill + an
     **eCPM-vs-floor bar** (PMP deals have no daily series) + revenue / eCPM
     / impressions. The bar scales eCPM against `2 × floor` so the floor sits

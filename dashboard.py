@@ -1256,8 +1256,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-row-m .m-name { font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.2; }
 .nw-row-m .m-name .li-ord { color: var(--text-muted); font-weight: 700; font-size: 10px; margin-right: 3px; }
 .nw-row-m .m-sub { color: var(--text-muted); font-size: 10px; margin-top: 1px; }
+.nw-row-m .m-pbar-l { font-size: 8px; color: var(--text-muted); letter-spacing: .03em;
+                      text-transform: uppercase; font-weight: 600; margin-top: 8px; }
 .nw-row-m .m-pbar { height: 7px; background: var(--border); border-radius: 4px;
-                    overflow: hidden; margin-top: 7px; max-width: 220px; }
+                    overflow: hidden; margin-top: 3px; max-width: 220px; }
 .nw-row-m .m-pbar > i { display: block; height: 100%; border-radius: 4px; }
 .nw-row-m .m-pbar > i.red     { background: var(--state-critical); }
 .nw-row-m .m-pbar > i.amber   { background: var(--state-warning); }
@@ -4944,6 +4946,7 @@ if st.session_state.active_view == "campaigns":
                     '<div class="nw-row-m">'
                     f'<div class="m-main"><div class="m-name">{_ord_html}{_esc(_display_name)}</div>'
                     f'<div class="m-sub">{_esc(_sub) or "—"}</div>'
+                    '<div class="m-pbar-l">pace</div>'
                     f'<div class="m-pbar"><i class="{_m_psev}" style="width:{_m_pw:.0f}%"></i></div></div>'
                     f'{_spark_block_m}'
                     f'<div class="m-right"><div class="m-rev">{_revenue_html(_rev)}</div>'
