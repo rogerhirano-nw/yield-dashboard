@@ -1188,6 +1188,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   background: var(--surface-1);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  /* Cap on the wide layout so the chart reads as a proportioned card,
+     not an edge-to-edge stretched band; the date row lives inside the
+     panel and caps with it, staying aligned under the 7 points. */
+  max-width: 760px;
 }
 .nw-drawer-chart-label {
   font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
@@ -1200,7 +1204,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   font-size: 10px; color: var(--text-muted); font-weight: 400;
   text-transform: none; letter-spacing: 0;
 }
-.nw-drawer-chart svg { display: block; }
+/* Fill the panel width and scale uniformly (height follows the viewBox
+   aspect) — true proportions at any drawer width, no horizontal warp. */
+.nw-drawer-chart svg { display: block; width: 100%; height: auto; }
 /* Day-of-week + date row under a 7-cell chart (drawer delivery chart). */
 .nw-date-row {
   display: grid; grid-template-columns: repeat(7, 1fr);
@@ -1226,6 +1232,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 /* Small multiples for viewability + CTR/VCR — compact, secondary weight. */
 .nw-sm-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+  /* Align under the delivery-chart card and keep the sparklines from
+     sprawling super-wide on the wide layout. */
+  max-width: 760px;
 }
 .nw-sm-panel {
   padding: 8px 10px;
@@ -4129,7 +4138,14 @@ if st.session_state.active_view == "campaigns":
                 if pd.notna(goal) and goal > 0 and pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
                     expected = float(goal) / total
-                W, H, PAD = 300, 72, 10
+                # viewBox sized to a ~5.4:1 chart aspect; the SVG scales
+                # UNIFORMLY (CSS width:100% + height:auto, no
+                # preserveAspectRatio="none") so the geometry is never warped.
+                # The panel caps at max-width so on the wide layout the chart
+                # stays a proportioned card instead of a stretched-flat band —
+                # and the date row (inside the panel) caps with it, staying
+                # aligned under the 7 points.
+                W, H, PAD = 600, 112, 16
                 # Scale Y axis to actuals only — keeps day-to-day shape visible.
                 vmax = max(non_null) * 1.2 if max(non_null) > 0 else 1
                 n = len(actuals)
@@ -4171,10 +4187,9 @@ if st.session_state.active_view == "campaigns":
                         f'style="stroke:var(--spark-ref)" stroke-width="1" '
                         f'stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>'
                     )
-                # End marker: paper halo + state dot, both zero-length round caps.
-                # A <circle> would smear into an ellipse because
-                # preserveAspectRatio="none" stretches the viewBox non-uniformly
-                # to fill the drawer; a non-scaling round cap stays a true dot.
+                # End marker: paper halo + state dot, both zero-length round
+                # caps with non-scaling stroke — a consistent few-px dot at any
+                # rendered width (the halo lifts it off the line + area wash).
                 dx, dy = _x(last_i), _y(actuals[last_i])
                 dot = (
                     f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" '
@@ -4200,8 +4215,7 @@ if st.session_state.active_view == "campaigns":
                     '<span>7-day daily delivery</span>'
                     f'<span class="legend-row">{"".join(legend_bits)}</span>'
                     '</div>'
-                    f'<svg width="100%" height="{H}" viewBox="0 0 {W} {H}" '
-                    f'preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
+                    f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg">'
                     f'{area}{baseline}{exp_line}'
                     f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
                     f'stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" '
