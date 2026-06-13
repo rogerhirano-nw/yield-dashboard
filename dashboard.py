@@ -938,6 +938,59 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-banner.sev-amber .nw-banner-head  { color: var(--state-warning); }
 .nw-banner.sev-ok     { background: var(--state-positive-surface-quiet); border-left-color: var(--state-positive-muted); }
 .nw-banner.sev-ok .nw-banner-head     { color: var(--state-positive-muted); }
+/* ── "Needs attention" panel (Campaigns tab): one card, a row per alert
+   category. Rows with offenders are native <details> accordions that reveal
+   the specific line items inline (browser-native toggle, no Streamlit rerun;
+   the HTML sanitizer passes <details>/<summary>). Clear categories render as a
+   static sev-ok row. Replaces the three stacked banners here; the PMP tab
+   keeps the simpler .nw-banner style above. */
+.nw-na { background: var(--surface-1); border: 1px solid var(--border);
+         border-radius: var(--radius-md); overflow: hidden; margin: 6px 0 1rem;
+         max-width: 760px; }
+.nw-na-head { padding: 9px 13px; font-size: 11px; letter-spacing: 0.06em;
+              text-transform: uppercase; font-weight: 600; color: var(--text-secondary);
+              border-bottom: 1px solid var(--border); display: flex;
+              justify-content: space-between; align-items: center; }
+.nw-na-head .cnt { color: var(--text-muted); font-weight: 600; }
+.nw-na-row { border-bottom: 1px solid var(--border); }
+.nw-na-row:last-child { border-bottom: none; }
+.nw-na-row > summary, .nw-na-static { list-style: none; display: flex;
+              align-items: center; gap: 11px; padding: 11px 13px; }
+.nw-na-row > summary { cursor: pointer; }
+.nw-na-row > summary::-webkit-details-marker { display: none; }
+.nw-na-row > summary::marker { content: ""; }
+.nw-na-row.sev-red[open]   > summary { background: var(--state-critical-surface); }
+.nw-na-row.sev-amber[open] > summary { background: var(--state-warning-surface); }
+.nw-na-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.nw-na-n { font-family: var(--font-display); font-weight: 700; font-size: 19px;
+           min-width: 16px; text-align: right; font-variant-numeric: tabular-nums; }
+.nw-na-l { font-weight: 700; font-size: 13px; color: var(--text-primary); }
+.nw-na-d { color: var(--text-muted); font-size: 11.5px; margin-left: auto;
+           text-align: right; max-width: 48%; overflow: hidden;
+           text-overflow: ellipsis; white-space: nowrap; }
+.nw-na-chev { color: var(--text-muted); font-size: 13px; margin-left: 8px;
+              transition: transform .15s ease; }
+.nw-na-row[open] .nw-na-chev { transform: rotate(90deg); }
+.nw-na-row.sev-red   .nw-na-dot { background: var(--state-critical); }
+.nw-na-row.sev-red   .nw-na-n   { color: var(--state-critical); }
+.nw-na-row.sev-amber .nw-na-dot { background: var(--state-warning); }
+.nw-na-row.sev-amber .nw-na-n   { color: var(--state-warning); }
+.nw-na-row.sev-ok    .nw-na-dot { background: var(--state-positive-muted); }
+.nw-na-row.sev-ok    .nw-na-n   { color: var(--state-positive-muted); font-size: 14px; }
+.nw-na-sub { padding: 2px 13px 9px 37px; background: var(--surface-2); }
+.nw-na-srow { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 11.5px; }
+.nw-na-srow .nm { width: 140px; flex: 0 0 auto; color: var(--text-primary);
+                  font-weight: 600; white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; }
+.nw-na-srow .bar { flex: 1; height: 5px; background: var(--border);
+                   border-radius: 3px; overflow: hidden; }
+.nw-na-srow .bar > i { display: block; height: 100%; }
+.nw-na-srow.sev-red   .bar > i { background: var(--state-critical); opacity: .5; }
+.nw-na-srow.sev-amber .bar > i { background: var(--state-warning); opacity: .55; }
+.nw-na-srow .pct { width: 40px; text-align: right; font-weight: 700;
+                   font-variant-numeric: tabular-nums; }
+.nw-na-srow.sev-red   .pct { color: var(--state-critical); }
+.nw-na-srow.sev-amber .pct { color: var(--state-warning); }
 /* KPI strip — single grid so all nine tiles render at exactly the same
    height. Tile = white card with a 2px ink top rule and a serif number;
    the sparkline runs full-width under the figures (neutral stroke —
@@ -1515,6 +1568,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   .nw-rows, .nw-pmp-rows { min-width: 760px; }
   /* Drawer metadata: 4-up → 2-up. */
   .nw-meta-grid { grid-template-columns: 1fr 1fr; }
+  /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
+  .nw-na-sub { padding-left: 26px; }
+  .nw-na-srow .nm { width: 108px; }
 }
 </style>
 """,
@@ -3077,25 +3133,63 @@ if st.session_state.active_view == "campaigns":
                 first = rows.iloc[0]
                 return f"{_short_advertiser(first['line_item_name'])} · {first['_v']:.1f}% viewable"
 
-            # Single HTML grid so all three banners stretch to equal height.
-            _u_n = len(_under_rows); _u_sev = "sev-red" if _u_n else "sev-ok"
-            _u_icon = "🚨" if _u_n else "✓"
-            _o_n = len(_over_rows); _o_sev = "sev-amber" if _o_n else "sev-ok"
-            _o_icon = "⚠" if _o_n else "✓"
-            _v_n = len(_vw_anom_rows); _v_sev = "sev-amber" if _v_n else "sev-ok"
-            _v_icon = "⚠" if _v_n else "✓"
+            # ── "Needs attention" panel: one card, a row per alert category.
+            # Categories with offenders render as a native <details> accordion
+            # — tap the row to reveal the specific line items inline (worst
+            # first, severity-tinted bar + value); browser-native toggle, no
+            # Streamlit rerun. Clear categories render as a static sev-ok row.
+            # Counts keep the existing head(4)/head(6) display cap.
+            def _na_esc(s):
+                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            def _na_subrows(rows, sev, metric_col, fmt, width_fn):
+                cells = []
+                for _, _r in rows.iterrows():
+                    _val = float(_r[metric_col])
+                    cells.append(
+                        f'<div class="nw-na-srow {sev}">'
+                        f'<span class="nm">{_na_esc(_short_advertiser(_r["line_item_name"]))}</span>'
+                        f'<span class="bar"><i style="width:{width_fn(_val):.0f}%"></i></span>'
+                        f'<span class="pct">{fmt(_val)}</span></div>'
+                    )
+                return "".join(cells)
+
+            def _na_row(n, sev, label, detail, subrows_html):
+                if not n:
+                    return ('<div class="nw-na-row sev-ok"><div class="nw-na-static">'
+                            '<span class="nw-na-dot"></span><span class="nw-na-n">✓</span>'
+                            f'<span class="nw-na-l">{label}</span>'
+                            f'<span class="nw-na-d">{detail}</span></div></div>')
+                return (f'<details class="nw-na-row {sev}">'
+                        '<summary><span class="nw-na-dot"></span>'
+                        f'<span class="nw-na-n">{n}</span>'
+                        f'<span class="nw-na-l">{label}</span>'
+                        f'<span class="nw-na-d">{detail}</span>'
+                        '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                        f'<div class="nw-na-sub">{subrows_html}</div></details>')
+
+            _u_n, _o_n, _v_n = len(_under_rows), len(_over_rows), len(_vw_anom_rows)
+            _na_total = _u_n + _o_n + _v_n
+            _under_sub = _na_subrows(
+                _under_rows.sort_values("pacing_pct"), "sev-red", "pacing_pct",
+                lambda v: f"{v:.0f}%", lambda v: min(max(v, 0.0), 100.0)) if _u_n else ""
+            # Overpacers exceed target, so scale the bar against a 200% ceiling.
+            _over_sub = _na_subrows(
+                _over_rows.sort_values("pacing_pct", ascending=False), "sev-amber", "pacing_pct",
+                lambda v: f"{v:.0f}%", lambda v: min(v, 200.0) / 2.0) if _o_n else ""
+            _view_sub = _na_subrows(
+                _vw_anom_rows.sort_values("_v"), "sev-amber", "_v",
+                lambda v: f"{v:.1f}%", lambda v: min(max(v, 0.0), 100.0)) if _v_n else ""
+
+            _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
             st.markdown(
-                '<div class="nw-banner-row">'
-                f'<div class="nw-banner {_u_sev}">'
-                f'<div class="nw-banner-head">{_u_icon} {_u_n} underpacing</div>'
-                f'<div>{_under_detail(_under_rows)}</div></div>'
-                f'<div class="nw-banner {_o_sev}">'
-                f'<div class="nw-banner-head">{_o_icon} {_o_n} overpacing</div>'
-                f'<div>{_over_detail(_over_rows)}</div></div>'
-                f'<div class="nw-banner {_v_sev}">'
-                f'<div class="nw-banner-head">{_v_icon} {_v_n} viewability anomaly</div>'
-                f'<div>{_vw_detail(_vw_anom_rows)}</div></div>'
-                '</div>',
+                '<div class="nw-na">'
+                '<div class="nw-na-head"><span>Needs attention</span>'
+                f'<span class="cnt">{_na_head_cnt}</span></div>'
+                + _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
+                + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
+                + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
+                + '</div>',
                 unsafe_allow_html=True,
             )
 

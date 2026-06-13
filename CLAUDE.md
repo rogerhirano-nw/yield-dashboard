@@ -249,6 +249,22 @@ Rules that survive any future restyle:
   `st.columns(6)` row that stacked into six full-width dropdowns on
   mobile and buried the data below the fold. The other tabs still use
   plain `st.columns` filter rows.
+- **Campaigns alerts are a "Needs attention" accordion, not three stacked
+  banners.** The pacing/viewability exceptions render as one `.nw-na`
+  card with a row per category. A category with offenders is a native
+  HTML `<details>`/`<summary>` row (browser-native expand/collapse, **no
+  Streamlit rerun** — the markdown sanitizer passes `<details>`), and
+  expanding it reveals that alert's line items inline (worst-first,
+  severity-tinted proportional bar + value, names via
+  `_short_advertiser`). Clear categories render as a static `sev-ok`
+  row; rows default collapsed. Counts keep the existing
+  `head(4)`/`head(6)` display cap (so the count matches the revealed
+  rows). Bars/dots/counts inherit the row's `sev-*` and obey the
+  two-reds rule (`--state-critical` / `--state-warning` only). The PMP
+  tab still uses the simpler `.nw-banner` strip. The builder
+  (`_na_row` / `_na_subrows`) is rendering, not decision logic — the
+  offender sets (`_under_rows` / `_over_rows` / `_vw_anom_rows`) are still
+  computed upstream from the configured benchmarks.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
