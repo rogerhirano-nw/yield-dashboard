@@ -163,6 +163,15 @@ def test_ivt_band_boundaries():
     assert ivt_band(3.0) == "red"
 
 
+def test_idle_band_boundaries():
+    from dashboard_logic import idle_band
+    assert idle_band(89) == ""        # below the 90-day staleness floor
+    assert idle_band(90) == "amber"
+    assert idle_band(179) == "amber"
+    assert idle_band(180) == "red"    # 6+ months gone
+    assert idle_band(365) == "red"
+
+
 # ── choose_join_col ────────────────────────────────────────────────────────
 
 def test_choose_join_col_prefers_ids_when_present():

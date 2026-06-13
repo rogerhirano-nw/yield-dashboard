@@ -1635,6 +1635,22 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
   .nw-na-sub { padding-left: 26px; }
   .nw-na-srow .nm { width: 108px; }
+  /* Stale-deals table → label/value cards (5 columns get cramped on a phone).
+     The deal name is the card title; the rest are label:value rows via
+     data-label. The days-idle pill keeps its severity color. */
+  .nw-stale-tbl thead { display: none; }
+  .nw-stale-tbl, .nw-stale-tbl tbody, .nw-stale-tbl tr, .nw-stale-tbl td { display: block; }
+  .nw-stale-tbl tr { border: 1px solid var(--border); border-radius: var(--radius-md);
+                     background: var(--surface-1); padding: 8px 12px 10px; margin-bottom: 8px; }
+  .nw-stale-tbl td { border-bottom: none; padding: 4px 0; display: flex;
+                     justify-content: space-between; align-items: baseline; gap: 12px; text-align: right; }
+  .nw-stale-tbl td::before { content: attr(data-label); font-size: 10px; letter-spacing: 0.05em;
+                             text-transform: uppercase; color: var(--text-secondary); font-weight: 600;
+                             text-align: left; flex: 0 0 auto; }
+  .nw-stale-tbl td[data-label="Deal"] { display: block; text-align: left; font-weight: 700;
+                                        font-size: 14px; border-bottom: 1px solid var(--border);
+                                        padding-bottom: 7px; margin-bottom: 4px; word-break: break-word; }
+  .nw-stale-tbl td[data-label="Deal"]::before { display: none; }
 }
 </style>
 """,
@@ -6266,17 +6282,22 @@ if st.session_state.active_view == "campaigns":
                             "GAM API" if _sr["ssp"] == "GAM" and len(_pli_id) > 0
                             else f"Manual ({_pmp_esc(str(_sr['ssp']))} UI)"
                         )
+                        _idle = int(_sr["days_idle"])
+                        _idle_band = dl.idle_band(_idle)
+                        _idle_html = (f'<span class="pill pill-{_idle_band}">{_idle}d</span>'
+                                      if _idle_band else f"{_idle}d")
+                        # data-label drives the ≤640px label/value card layout.
                         _stale_rows_html.append(
                             '<tr>'
-                            f'<td>{_pmp_esc(str(_sr["ssp"]))}</td>'
-                            f'<td>{_pmp_esc(str(_sr["deal_key"]))}</td>'
-                            f'<td>{_lbd_disp}</td>'
-                            f'<td class="num">{int(_sr["days_idle"])}d</td>'
-                            f'<td>{_archive_via}</td>'
+                            f'<td data-label="SSP">{_pmp_esc(str(_sr["ssp"]))}</td>'
+                            f'<td data-label="Deal">{_pmp_esc(str(_sr["deal_key"]))}</td>'
+                            f'<td data-label="Last bid">{_lbd_disp}</td>'
+                            f'<td class="num" data-label="Days idle">{_idle_html}</td>'
+                            f'<td data-label="Archive via">{_archive_via}</td>'
                             '</tr>'
                         )
                     st.markdown(
-                        '<table class="nw-tbl">'
+                        '<table class="nw-tbl nw-stale-tbl">'
                         '<thead><tr>'
                         '<th>SSP</th><th>Deal</th><th>Last Bid</th>'
                         '<th class="num">Days idle</th><th>Archive via</th>'

@@ -141,6 +141,16 @@ def ivt_band(pct) -> str:
     return "amber" if v >= 1 else "green"
 
 
+def idle_band(days) -> str:
+    """Band for a stale-deal idle age (days with no bid response): red ≥ 180
+    (6+ months gone), amber 90-179 (the staleness floor), "" below 90 (not
+    stale). Drives the colored 'days idle' pill in the stale-deals list."""
+    v = float(days)
+    if v >= 180:
+        return "red"
+    return "amber" if v >= 90 else ""
+
+
 # ── DV / IVT aggregation ───────────────────────────────────────────────
 
 

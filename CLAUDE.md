@@ -235,9 +235,14 @@ Rules that survive any future restyle:
   2-up.
   ≤640px: banners stack 1-up, the tab row stays horizontally swipeable
   (`overflow-x:auto`). Both the **Direct** and **PMP** 12-column tables
-  **collapse to graph cards** (see the next bullet). Drawer meta-grid
-  4→2. Most tab filters reflow for free (Streamlit stacks `st.columns`).
-  When adding a fixed multi-column grid, add its mobile rule here too.
+  **collapse to graph cards** (see the next bullet). The PMP tab's
+  **stale-deals** table collapses to label/value cards via the
+  `data-label` responsive-table pattern (`.nw-stale-tbl` — `thead` hidden,
+  each `<tr>` a card, the Deal cell its title); its **days-idle** value is
+  a severity pill (`dl.idle_band`: amber 90+, red 180+) on desktop too.
+  Drawer meta-grid 4→2. Most tab filters reflow for free (Streamlit stacks
+  `st.columns`). When adding a fixed multi-column grid, add its mobile rule
+  here too.
 - **Direct + PMP tables → "graph card" rows on mobile (Solution 3).** Each
   row is a `<details>` whose summary is the 12-column grid on desktop; the
   builder also emits a hidden mobile card. ≤640px a marker class on the
