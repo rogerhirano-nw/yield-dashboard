@@ -187,6 +187,15 @@ Rules that survive any future restyle:
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
   see its README; served via `enableStaticServing`); fallbacks Georgia /
   Helvetica apply while it's empty.
+- **Responsive: desktop-first + a mobile override block** at the bottom of
+  the style block (behind `@media` queries, source-ordered last so they
+  win). Desktop layout is untouched. ≤1024px: the 9-up KPI strip becomes
+  a fluid `auto-fit minmax(96px,1fr)` grid (wraps 9→3-up on phones).
+  ≤640px: banners stack 1-up, the tab row and the dense 12-column
+  Direct/PMP tables become horizontally swipeable (`overflow-x:auto` +
+  row `min-width:760px` — they crushed/clipped otherwise), drawer
+  meta-grid 4→2. Filters reflow for free (Streamlit stacks `st.columns`).
+  When adding a fixed multi-column grid, add its mobile rule here too.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
