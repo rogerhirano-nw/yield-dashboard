@@ -1088,6 +1088,12 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
         font-size: 12px; line-height: 1.4; font-feature-settings: var(--num-feature); }
 .pill-red    { background: var(--state-critical-surface); color: var(--state-critical); }
 .pill-amber  { background: var(--state-warning-surface);  color: var(--state-warning); }
+/* Stale-deals list — one native st.container card per deal (deal name + meta
+   line + an Archive button / Manual note). */
+.nw-stale-deal { font-weight: 700; font-size: 13px; color: var(--text-primary); word-break: break-word; }
+.nw-stale-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.nw-stale-meta .pill { font-size: 10px; padding: 1px 6px; }
+.nw-stale-done { font-size: 12px; font-weight: 600; color: var(--state-positive-muted); text-align: right; }
 /* inline-block forces the colored-text spans to shrink to their content
    width, so they right-align cleanly under a grid cell with `text-align:
    right` — same behavior as .pill.
@@ -1635,22 +1641,6 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
   .nw-na-sub { padding-left: 26px; }
   .nw-na-srow .nm { width: 108px; }
-  /* Stale-deals table → label/value cards (5 columns get cramped on a phone).
-     The deal name is the card title; the rest are label:value rows via
-     data-label. The days-idle pill keeps its severity color. */
-  .nw-stale-tbl thead { display: none; }
-  .nw-stale-tbl, .nw-stale-tbl tbody, .nw-stale-tbl tr, .nw-stale-tbl td { display: block; }
-  .nw-stale-tbl tr { border: 1px solid var(--border); border-radius: var(--radius-md);
-                     background: var(--surface-1); padding: 8px 12px 10px; margin-bottom: 8px; }
-  .nw-stale-tbl td { border-bottom: none; padding: 4px 0; display: flex;
-                     justify-content: space-between; align-items: baseline; gap: 12px; text-align: right; }
-  .nw-stale-tbl td::before { content: attr(data-label); font-size: 10px; letter-spacing: 0.05em;
-                             text-transform: uppercase; color: var(--text-secondary); font-weight: 600;
-                             text-align: left; flex: 0 0 auto; }
-  .nw-stale-tbl td[data-label="Deal"] { display: block; text-align: left; font-weight: 700;
-                                        font-size: 14px; border-bottom: 1px solid var(--border);
-                                        padding-bottom: 7px; margin-bottom: 4px; word-break: break-word; }
-  .nw-stale-tbl td[data-label="Deal"]::before { display: none; }
 }
 </style>
 """,
@@ -6271,86 +6261,54 @@ if st.session_state.active_view == "campaigns":
                     f"· no bid responses for 90+ days"
                 )
                 with st.expander(f"⚠ {_stale_label}"):
-                    _stale_rows_html = []
+                    # One card per stale deal; GAM deals with a resolvable PLI
+                    # get a working Archive button (SOAP ProposalLineItemService),
+                    # the rest a "manual in the SSP UI" note. Archived deal_keys
+                    # are remembered for the session so the button flips to
+                    # "✓ Archived" — pmp_last_bid_date only drops the row on the
+                    # next sweep.
+                    _archived = st.session_state.setdefault("_pmp_archived_deals", set())
                     for _, _sr in _stale.iterrows():
+                        _deal_key = str(_sr["deal_key"])
+                        _ssp = str(_sr["ssp"])
                         _lbd_disp = str(_sr.get("last_bid_date") or "")
-                        if not _lbd_disp or _lbd_disp in ("None", "nan"): _lbd_disp = "Never"
-                        _pli_id = _gam_archivable.loc[
-                            _gam_archivable["deal_key"] == _sr["deal_key"], "line_item_id"
-                        ].values
-                        _archive_via = (
-                            "GAM API" if _sr["ssp"] == "GAM" and len(_pli_id) > 0
-                            else f"Manual ({_pmp_esc(str(_sr['ssp']))} UI)"
-                        )
+                        if not _lbd_disp or _lbd_disp in ("None", "nan"):
+                            _lbd_disp = "Never"
                         _idle = int(_sr["days_idle"])
                         _idle_band = dl.idle_band(_idle)
-                        _idle_html = (f'<span class="pill pill-{_idle_band}">{_idle}d</span>'
-                                      if _idle_band else f"{_idle}d")
-                        # data-label drives the ≤640px label/value card layout.
-                        _stale_rows_html.append(
-                            '<tr>'
-                            f'<td data-label="SSP">{_pmp_esc(str(_sr["ssp"]))}</td>'
-                            f'<td data-label="Deal">{_pmp_esc(str(_sr["deal_key"]))}</td>'
-                            f'<td data-label="Last bid">{_lbd_disp}</td>'
-                            f'<td class="num" data-label="Days idle">{_idle_html}</td>'
-                            f'<td data-label="Archive via">{_archive_via}</td>'
-                            '</tr>'
-                        )
-                    st.markdown(
-                        '<table class="nw-tbl nw-stale-tbl">'
-                        '<thead><tr>'
-                        '<th>SSP</th><th>Deal</th><th>Last Bid</th>'
-                        '<th class="num">Days idle</th><th>Archive via</th>'
-                        '</tr></thead>'
-                        '<tbody>' + "".join(_stale_rows_html) + '</tbody>'
-                        '</table>',
-                        unsafe_allow_html=True,
-                    )
+                        _idle_html = (f'<span class="pill pill-{_idle_band}">{_idle}d idle</span>'
+                                      if _idle_band else f"{_idle}d idle")
+                        _pli_ids = _gam_archivable.loc[
+                            _gam_archivable["deal_key"] == _sr["deal_key"], "line_item_id"
+                        ].values
+                        _can_api = _ssp == "GAM" and len(_pli_ids) > 0
 
-                    if not _gam_archivable.empty:
-                        st.markdown("**Archive GAM deals via API**")
-                        _to_archive = st.multiselect(
-                            "Select deals to archive",
-                            options=_gam_archivable["deal_key"].tolist(),
-                            key="pmp_stale_archive_select",
-                        )
-                        if _to_archive:
-                            if st.button("Archive selected in GAM", key="pmp_stale_archive_btn",
-                                         type="primary"):
-                                from gam_client import GAMClient as _GAMClient  # lazy import
-                                _gam_arc = _GAMClient()
-                                _arc_ok, _arc_fail = [], []
-                                for _deal_name in _to_archive:
-                                    _pid = _gam_archivable.loc[
-                                        _gam_archivable["deal_key"] == _deal_name, "line_item_id"
-                                    ].iloc[0]
-                                    if _gam_arc.archive_proposal_line_item(str(_pid)):
-                                        _arc_ok.append(_deal_name)
+                        with st.container(border=True):
+                            _info_col, _act_col = st.columns([4, 1.4], vertical_alignment="center")
+                            _info_col.markdown(
+                                f'<div class="nw-stale-deal">{_pmp_esc(_deal_key)}</div>'
+                                f'<div class="nw-stale-meta">{_pmp_esc(_ssp)} · last bid '
+                                f'{_pmp_esc(_lbd_disp)} · {_idle_html}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if _deal_key in _archived:
+                                _act_col.markdown('<div class="nw-stale-done">✓ Archived</div>',
+                                                  unsafe_allow_html=True)
+                            elif _can_api:
+                                if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
+                                                   use_container_width=True):
+                                    from gam_client import GAMClient as _GAMClient  # lazy import
+                                    try:
+                                        _ok = _GAMClient().archive_proposal_line_item(str(_pli_ids[0]))
+                                    except Exception:
+                                        _ok = False
+                                    if _ok:
+                                        _archived.add(_deal_key)
+                                        st.rerun()
                                     else:
-                                        _arc_fail.append(_deal_name)
-                                if _arc_ok:
-                                    st.success(
-                                        f"Archived {len(_arc_ok)} deal(s) in GAM: "
-                                        + ", ".join(_arc_ok)
-                                    )
-                                if _arc_fail:
-                                    st.error(
-                                        f"Failed to archive {len(_arc_fail)} deal(s): "
-                                        + ", ".join(_arc_fail)
-                                        + " — check logs for details."
-                                    )
-
-                    _manual_ssps = sorted(
-                        _stale.loc[
-                            ~((_stale["ssp"] == "GAM") & _stale["deal_key"].isin(_gam_archivable["deal_key"])),
-                            "ssp",
-                        ].unique().tolist()
-                    )
-                    if _manual_ssps:
-                        st.info(
-                            f"Deals on {', '.join(_manual_ssps)} must be archived manually "
-                            "in their respective SSP UIs — no publisher-side archive API is available."
-                        )
+                                        st.error(f"Couldn't archive {_deal_key} in GAM — check logs.")
+                            else:
+                                _act_col.caption(f"Manual · {_ssp} UI")
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
