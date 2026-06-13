@@ -168,7 +168,21 @@ the same morning (run 27410237495). **Control retired:** once the A/B was
 banked, the un-mirrored original (138557481462) was deactivated on the
 Invesco LI (run 27411814804, reversible LICA deactivation via
 `retire_mobkoi_control.yml`) — all remaining Mobkoi delivery is
-mirrored. Clean full-day read: the 6/13 diagnose pull on all three LIs.
+mirrored.
+
+**Proven (full day 6/12, pulled 6/13).** GAM Active View viewable% on the
+first full mirrored day, vs the ~0.4% these LIs read for the prior month:
+Invesco interscroller **52.08%**, Cartier interscroller **56.58%**, Cartier
+uniscroller **34.38%** — all ~100% measurable. Same-LI A/B settles it:
+retired control creative 138557481462 = **0.51%** (85,325 imps) vs mirror
+138562143597 = **56.81%** (27,553 imps), ~110× lift. The uniscroller reads
+lower than the interscrollers (shorter ~585px well clears the bar on fewer
+impressions). Cartier *cumulative* still shows ~1.3–1.5% — the in-place
+edits blend a month of broken data with the good days; read the per-day
+rows, not lifetime, until the old impressions age out. Numbers are
+MRC-measured and agency-defensible. **This fixes our GAM/DV reporting; the
+durable fix is still Mobkoi's own iframe-resident render mode (§1) — now
+ask with the before/after in hand.**
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
