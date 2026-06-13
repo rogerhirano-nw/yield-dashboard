@@ -3413,7 +3413,14 @@ if st.session_state.active_view == "campaigns":
                        f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
                 class_attr = f' class="{klass}"' if klass else ""
                 par = "" if uniform else ' preserveAspectRatio="none"'
-                return (f'<svg{class_attr} viewBox="0 0 {W} {H}"{par} '
+                # Stretch regime pins the end dot at x=W (flush, XPAD=0), so its
+                # round cap (4px non-scaling) pokes ~2px past the viewBox edge and
+                # the SVG viewport clips it to a half-dot — the "cut-off dot" on the
+                # Direct mobile card. Keep the line flush (the tiles want edge-to-
+                # edge) but let the cap render into the adjacent margin. Uniform
+                # already insets with XPAD, so it needs no overflow.
+                ov = "" if uniform else ' style="overflow:visible"'
+                return (f'<svg{class_attr} viewBox="0 0 {W} {H}"{par}{ov} '
                         f'xmlns="http://www.w3.org/2000/svg">{tline}'
                         f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" '
                         f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '

@@ -188,14 +188,19 @@ Rules that survive any future restyle:
   occupies, the less it may stretch.** Pixel-fixed-height SVGs that fill width
   under `layout="wide"` get crushed flat — so anything wider than a KPI tile
   scales uniformly.
-  - `_sparkline_svg` **default** (`uniform=False`, the KPI tiles only) are
-    **compact fixed-height sparklines** that *do* stretch to fill width
-    (`preserveAspectRatio="none"`). The tile is only ~130px, so the stretch is
-    mild; every stroke is still pinned with
-    `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
+  - `_sparkline_svg` **default** (`uniform=False`, the KPI tiles **and** the
+    Direct mobile graph-card delivery sparkline) are **compact fixed-height
+    sparklines** that *do* stretch to fill width (`preserveAspectRatio="none"`).
+    The tile is only ~130px, so the stretch is mild; every stroke is still
+    pinned with `vector-effect="non-scaling-stroke"` and end-dots are drawn as a
     **zero-length round-capped `<path>`** (`d="M{x} {y}h0"`,
     `stroke-linecap="round"`), never a `<circle>` — a circle smears into an
-    ellipse at the rendered width.
+    ellipse at the rendered width. The stretch regime keeps the line **flush**
+    (`XPAD=0`, end dot at `x=W`), so the dot's 4px round cap pokes ~2px past the
+    viewBox edge; the svg carries **`style="overflow:visible"`** (stretch regime
+    only) so that cap renders into the adjacent margin instead of the viewport
+    clipping it to a half-dot (the 2026-06-13 "cut-off dot" on the mobile card).
+    Uniform mode insets with `XPAD` instead, so it needs no overflow.
   - `_sparkline_svg(uniform=True)` (the **drawer small multiples** —
     Viewability + CTR/VCR + Attention + SIVT + GIVT, the last three added
     2026-06-13; Attention targets 100, SIVT/GIVT target 1%, and their per-LI
