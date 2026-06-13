@@ -328,6 +328,18 @@ def test_li_part_token_extraction():
     assert li_part(None, 7) is None
 
 
+def test_line_item_display_name():
+    from dashboard_logic import line_item_display_name as dn
+    full = "NW_Direct_2026_Q2_US_Display_300x250_VGW_Camp_US_Interscroller_IO1_1_Team-USA_RH"
+    assert dn(full) == "VGW - Interscroller"             # client(7) - media(10)
+    assert dn("#2  " + full) == "VGW - Interscroller"    # strips the #N badge first
+    assert dn(full.replace("VGW", "Cartier-UK")) == "Cartier UK - Interscroller"  # hyphen→space
+    assert dn(full.replace("Interscroller", "NA")) == "VGW"   # NA media → client only
+    assert dn("a_b_c_d_e_f") == "c_d_e"                  # no client/media → mid tokens
+    assert dn("Hello") == "Hello"                        # <3 tokens → cleaned name
+    assert dn(None) == ""
+
+
 def test_ae_and_team_token_regexes():
     import re
     from dashboard_logic import AE_TOKEN_RE, TEAM_TOKEN_RE
