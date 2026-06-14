@@ -626,6 +626,22 @@ def prior_pacing(goal, lifetime, imp_1d, raw_start, raw_end, today):
         return None
 
 
+def is_new_line_item(lifetime, latest_day) -> bool:
+    """True when a line item's *first* delivery is the latest data day — it
+    delivered on the latest day (`latest_day` > 0) and had no impressions
+    before it (cumulative `lifetime` == that day). This is the existence-based
+    "new line item" flag for the pace cell: a line that didn't exist the prior
+    day has no real pace trend to compare against, so the pace Δ is meaningless.
+    Reads cumulative `lifetime_impressions_delivered` vs the latest day's
+    `impressions_1d`; it distinguishes a just-launched line (no prior delivery)
+    from an old one that merely stopped delivering (which keeps its prior
+    lifetime, so `lifetime > latest_day`)."""
+    lt, ld = _num(lifetime), _num(latest_day)
+    if math.isnan(lt) or math.isnan(ld):
+        return False
+    return bool(ld > 0 and (lt - ld) <= 0)
+
+
 # ── Stale PMP deals ─────────────────────────────────────────────────────
 
 

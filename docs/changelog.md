@@ -77,3 +77,9 @@ production redeploys from `main`.
   pill; on-pace stays one tier below the loud amber/red so healthy still
   recedes (green-overwhelm rule preserved). Scoped to pacing — the shared
   `.txt-green` (viewability, CTR/VCR) is untouched.
+- **#235** — "new line item" is now **existence-based** (`dl.is_new_line_item`):
+  shown when a line didn't exist the prior day (first delivery is the latest
+  day, `lifetime == impressions_1d`), not from a >100pp pace swing. So a genuine
+  >100pp jump on an established line shows the real Δ; only just-launched lines
+  read "new line item" (2 of 3,606 on current prod data). Pace delta passes
+  `new_line_threshold=None`.

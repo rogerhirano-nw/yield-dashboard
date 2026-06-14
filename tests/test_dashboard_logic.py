@@ -524,6 +524,22 @@ def test_prior_pacing_pro_rates_through_day_before_yesterday():
     assert ended == 100.0   # 10/10 days elapsed, full delivery
 
 
+def test_is_new_line_item():
+    from dashboard_logic import is_new_line_item as f
+    # First delivery is the latest day (all lifetime == latest day) → new.
+    assert f(500, 500) is True
+    assert f(200, 200) is True
+    # Delivered before the latest day (lifetime > latest) → not new.
+    assert f(500, 200) is False
+    # No latest-day delivery → not new (even with nothing before it).
+    assert f(200, 0) is False
+    assert f(0, 0) is False
+    # Missing / junk inputs → not new, never raises.
+    assert f(None, 100) is False
+    assert f(100, None) is False
+    assert f("x", 5) is False
+
+
 # ── stale_deal_mask / idle_days ────────────────────────────────────────────
 
 def test_stale_deal_mask_two_clauses():

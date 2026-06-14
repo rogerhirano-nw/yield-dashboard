@@ -4087,11 +4087,14 @@ if st.session_state.active_view == "campaigns":
                 bits = [b for b in (fmt, cpm_str) if b]
                 return " · ".join(bits)
 
-            def _pace_html(p, p_prior):
+            def _pace_html(p, p_prior, is_new=False):
                 """Pace cell: a banded pill in every state + variance below.
                 On-pace uses the quiet green tier (pill-green) so the cell is
-                boxed consistently while healthy still recedes. Banding + delta
-                decisions live in dashboard_logic."""
+                boxed consistently while healthy still recedes. "new line item"
+                is shown when the line didn't exist the prior day (`is_new`,
+                from `dl.is_new_line_item`) — not from a large pace swing — so
+                an established line with a real >100pp jump shows the actual Δ.
+                Banding + delta decisions live in dashboard_logic."""
                 p = pd.to_numeric(p, errors="coerce")
                 p_prior = pd.to_numeric(p_prior, errors="coerce")
                 if pd.isna(p):
@@ -4104,12 +4107,14 @@ if st.session_state.active_view == "campaigns":
                     cell = f'<div class="pill pill-green">{pct_int}%</div>'
                 else:  # "amber" (underpacing) and "over" (overpacing) render alike
                     cell = f'<div class="pill pill-amber">{pct_int}%</div>'
-                if pd.notna(p_prior):
+                if is_new:
+                    cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
+                elif pd.notna(p_prior):
                     d = p - p_prior
-                    verdict = dl.classify_delta(d)
-                    if verdict == "new":
-                        cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
-                    elif verdict is not None:
+                    # new_line_threshold=None — "new" is existence-based now, so
+                    # a big swing on an established line renders as a real Δ.
+                    verdict = dl.classify_delta(d, new_line_threshold=None)
+                    if verdict is not None:
                         arrow, is_improvement = verdict
                         cls = "pace-delta up" if is_improvement else "pace-delta"
                         cell += f'<div class="{cls}">{arrow} {abs(d):.1f}pp</div>'
@@ -4889,6 +4894,10 @@ if st.session_state.active_view == "campaigns":
                 _delivered = pd.to_numeric(row.get("lifetime_impressions_delivered"), errors="coerce") if "lifetime_impressions_delivered" in row else float("nan")
                 _pace = row.get("pacing_pct")
                 _pace_prior = row.get("pacing_prior_pct")
+                # "new line item" = no delivery before the latest day (didn't
+                # exist the prior day), so there's no real pace trend to show.
+                _pace_is_new = dl.is_new_line_item(
+                    row.get("lifetime_impressions_delivered"), row.get("impressions_1d"))
                 _vw = _vw_rate.iloc[view_gam.index.get_loc(row.name)] if _vw_rate is not None else None
                 _ctr = _ctr_rate.iloc[view_gam.index.get_loc(row.name)] if _ctr_rate is not None else None
                 _vcr_val = row.get("vcr")
@@ -4996,7 +5005,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="m-pbar"><i class="{_m_psev}" style="width:{_m_pw:.0f}%"></i></div></div>'
                     f'{_spark_block_m}'
                     f'<div class="m-right"><div class="m-rev">{_revenue_html(_rev)}</div>'
-                    f'{_pace_html(_pace, _pace_prior)}</div>'
+                    f'{_pace_html(_pace, _pace_prior, _pace_is_new)}</div>'
                     '</div>'
                 )
 
@@ -5007,7 +5016,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="li-sub">{_esc(_sub) or "—"}</div></div>'
                     f'<div class="num">{_revenue_html(_rev)}{_rev_delta}</div>'
                     f'<div class="num">{_delivered_html(_delivered)}{_imp_delta}</div>'
-                    f'<div class="num center">{_pace_html(_pace, _pace_prior)}</div>'
+                    f'<div class="num center">{_pace_html(_pace, _pace_prior, _pace_is_new)}</div>'
                     f'<div class="num">{_viewability_html(_vw, _fmt_str, p_prior=_vw_prior)}</div>'
                     f'<div class="num center">{_attention_html(_attn, prior=_attn_prior)}</div>'
                     f'<div class="num center">{_ivt_html(_sivt, prior=_sivt_prior)}</div>'
