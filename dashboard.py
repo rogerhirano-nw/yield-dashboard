@@ -3163,6 +3163,17 @@ if st.session_state.active_view == "campaigns":
             view_gam = view_gam[view_gam["team"].isin(selected_teams)]
         view_gam = _apply_am_filter(view_gam, "seller_ae")
 
+        # Reset Direct-table pagination whenever the filter set changes, so a
+        # narrower filter can't strand you on a now-out-of-range page (mirror
+        # of the PMP table's _pmp_filter_sig guard).
+        _direct_filter_sig = str((
+            selected_seller, sorted(selected_advertisers), sorted(selected_formats),
+            sorted(selected_statuses), sorted(selected_teams), sorted(selected_ams),
+        ))
+        if st.session_state.get("_direct_filter_sig") != _direct_filter_sig:
+            st.session_state["direct_page"] = 0
+            st.session_state["_direct_filter_sig"] = _direct_filter_sig
+
         if view_gam.empty:
             st.info("No campaigns found for the selected filters.")
         else:
@@ -4876,12 +4887,31 @@ if st.session_state.active_view == "campaigns":
                 _imp = pd.to_numeric(view_gam["lifetime_impressions_delivered"], errors="coerce")
                 _ctr_rate = (_clk / _imp * 100).where(_imp > 0, other=None)
 
-            # Iterate; view_gam is already sorted A–Z by display name.
-            # No row cap: ad-ops needs the whole Direct list visible (~35
-            # rows today). If row count grows past ~500 and the custom
-            # HTML grid starts feeling slow, reintroduce pagination here.
-            # Mirrors the same uncap decision made for the PMP table.
-            for _i, (_, row) in enumerate(view_gam.iterrows()):
+            # ── Pagination (mirrors the PMP table) ──────────────────────────
+            # The Direct list renders into a single custom HTML grid; at a few
+            # hundred filtered LIs that's a lot of DOM built per rerun. Page it
+            # at 25 like the PMP table, with the same ← Prev / Page X of N /
+            # Next → control above and below. view_gam is already sorted A–Z;
+            # slicing by position preserves the index labels, so the per-row
+            # _vw_rate / _ctr_rate lookups (by index.get_loc) still resolve.
+            _DIRECT_PAGE_SIZE = 25
+            _direct_count = len(view_gam)
+            _direct_total_pages = max(1, math.ceil(_direct_count / _DIRECT_PAGE_SIZE))
+            _direct_cur_page = max(0, min(int(st.session_state.get("direct_page", 0)),
+                                          _direct_total_pages - 1))
+
+            def _direct_go_prev():
+                st.session_state["direct_page"] = max(0, _direct_cur_page - 1)
+
+            def _direct_go_next():
+                st.session_state["direct_page"] = min(_direct_total_pages - 1, _direct_cur_page + 1)
+
+            _direct_page_slice = view_gam.iloc[
+                _direct_cur_page * _DIRECT_PAGE_SIZE : (_direct_cur_page + 1) * _DIRECT_PAGE_SIZE
+            ]
+
+            # Iterate the current page; view_gam is already sorted A–Z by name.
+            for _i, (_, row) in enumerate(_direct_page_slice.iterrows()):
                 _li_name = row.get("line_item_name") or "—"
                 _li_clean = re.sub(r"^#\d+\s+", "", str(_li_name))
                 _ord_match = re.match(r"^(#\d+)\s+", str(_li_name))
@@ -5031,11 +5061,16 @@ if st.session_state.active_view == "campaigns":
                     '</details>'
                 )
 
+            _direct_tbl_sub = (
+                f"· {_direct_count} line item{'s' if _direct_count != 1 else ''} · sorted A–Z"
+            )
+            if _direct_total_pages > 1:
+                _direct_tbl_sub += f" · page {_direct_cur_page + 1}/{_direct_total_pages}"
             _table_html = (
                 '<div class="nw-tbl-wrap nw-tbl-direct">'
                 '<div class="nw-tbl-head">'
                 '<div class="nw-tbl-title">Direct campaigns'
-                '<span class="nw-tbl-sub">· sorted A–Z</span></div>'
+                f'<span class="nw-tbl-sub">{_direct_tbl_sub}</span></div>'
                 '<div class="nw-legend">'
                 '<span><span class="nw-legend-dot" style="background:var(--state-critical)"></span>under</span>'
                 '<span><span class="nw-legend-dot" style="background:var(--state-warning)"></span>off-target</span>'
@@ -5062,11 +5097,36 @@ if st.session_state.active_view == "campaigns":
                 '</div>'
                 '</div>'
             )
+            # Top pager (Streamlit widgets, so emitted above the table card).
+            if _direct_total_pages > 1:
+                _dc1, _dc2, _dc3 = st.columns([1, 4, 1])
+                with _dc1:
+                    st.button("← Prev", key="direct_prev_top", on_click=_direct_go_prev,
+                              disabled=(_direct_cur_page == 0), use_container_width=True)
+                with _dc2:
+                    st.caption(
+                        f"Page {_direct_cur_page + 1} of {_direct_total_pages}"
+                        f" · {len(_direct_page_slice)} of {_direct_count} line items shown"
+                    )
+                with _dc3:
+                    st.button("Next →", key="direct_next_top", on_click=_direct_go_next,
+                              disabled=(_direct_cur_page == _direct_total_pages - 1),
+                              use_container_width=True)
+
             st.markdown(_table_html, unsafe_allow_html=True)
 
-            # No row cap on the Direct table; the section subtitle above
-            # already shows the sort key + count, so no separate caption
-            # needed. Removed alongside the .head(25) cap.
+            # Bottom pager (so you don't have to scroll back up to page).
+            if _direct_total_pages > 1:
+                _db1, _db2, _db3 = st.columns([1, 4, 1])
+                with _db1:
+                    st.button("← Prev", key="direct_prev_bot", on_click=_direct_go_prev,
+                              disabled=(_direct_cur_page == 0), use_container_width=True)
+                with _db2:
+                    st.caption(f"Page {_direct_cur_page + 1} of {_direct_total_pages}")
+                with _db3:
+                    st.button("Next →", key="direct_next_bot", on_click=_direct_go_next,
+                              disabled=(_direct_cur_page == _direct_total_pages - 1),
+                              use_container_width=True)
 
     # ── Spend momentum ───────────────────────────────────────────────────────
     # Three PMP sub-sections (GAM, Magnite, Pubmatic — PD + PA only) plus

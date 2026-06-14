@@ -38,6 +38,15 @@ squash-merged to `main` on green (119 tests).
   - **Memoize `dl.line_item_display_name`** (`@lru_cache`) — the Direct table
     derives each LI name twice (sort key + render); it now parses once,
     matching the `_parse_deal` convention from #236.
+- **#241** — **Paginate the Direct campaigns table** at 25 LIs/page with the
+  same `← Prev / Page X of N / Next →` control (top + bottom) the PMP table
+  already uses. The Direct table previously rendered *every* filtered line item
+  into one custom-HTML DOM per rerun (thousands in cache); it now builds 25 rows
+  per page. Positional `.iloc` slicing preserves index labels so the per-row
+  viewability / CTR lookups (`index.get_loc`) still resolve; the page resets to
+  0 on any filter change (`_direct_filter_sig`) and clamps to range. Mirrors the
+  PMP pager (`pmp_page` → `direct_page`); pinned by an in-isolation slice/clamp
+  simulation (every row tiles exactly once across 1…3,798 rows).
 
 ## 2026-06-13 → 2026-06-14 — PMP deals tab revamp + mobile polish
 
