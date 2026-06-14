@@ -1293,7 +1293,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-pmp-m .m-ecpm-lbl { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
 /* 7-day revenue sparkline on the PMP card (sits under the eCPM-vs-floor bar). */
 .nw-pmp-m .m-spark2 { margin-top: 8px; }
-.nw-pmp-m .m-spark2 svg { width: 100%; max-width: 200px; height: 22px; display: block; }
+/* Uniform scaling (height follows the viewBox aspect) — no preserveAspectRatio
+   warp, so the end dot stays a round dot (the 2026-06-14 smeared-dot fix). */
+.nw-pmp-m .m-spark2 svg { width: 100%; max-width: 220px; height: auto; display: block; }
 .nw-pmp-m .m-spark-l { font-size: 8px; color: var(--text-muted); text-transform: uppercase;
                        letter-spacing: .03em; margin-top: 1px; }
 .nw-pmp-m .m-right { text-align: right; min-width: 0; }
@@ -6009,29 +6011,33 @@ if st.session_state.active_view == "campaigns":
 
         def _pmp_spark_svg(values):
             """Compact 7-day revenue sparkline for the mobile PMP card. NEUTRAL
-            (trend shape only — the eCPM-vs-floor banding owns severity). Mirrors
-            _sparkline_svg's stretch regime (preserveAspectRatio=none +
-            overflow:visible so the round-cap end dot isn't clipped at x=W); kept
-            local because that helper sits behind the Direct `if gam_df.empty`
-            else-branch and isn't reachable from this scope."""
+            (trend shape only — the eCPM-vs-floor banding owns severity). Scales
+            **UNIFORMLY** (wide viewBox + CSS width:100%/height:auto, *no*
+            preserveAspectRatio="none") so the aspect ratio is always preserved
+            and the round-cap end dot can't smear into a bar. The card's spark
+            box is ~9:1 — far from a 56×20 viewBox — and under that anisotropic
+            stretch iOS Safari distorts a non-scaling round cap into a horizontal
+            blob (the 2026-06-14 "graphs look off" bug; the Direct card escapes
+            it only because its box is near-square). An XPAD inset keeps the end
+            dot off the edge. Mirrors the drawer small-multiples' uniform regime;
+            kept local because the Direct _sparkline_svg sits behind the
+            `if gam_df.empty` else-branch and isn't reachable here."""
             vals = [float(v) for v in values if v is not None] if values else []
             if len(vals) < 2:
                 return ""
-            W, H = 56, 20
+            W, H, XPAD, PAD = 300, 34, 6, 4
             vmin, vmax = min(vals), max(vals)
             if vmax == vmin:
                 vmax = vmin + 1
             n = len(vals)
-            pts = " ".join(
-                f"{i/(n-1)*W:.1f},{H-2-(v-vmin)/(vmax-vmin)*(H-4):.1f}"
-                for i, v in enumerate(vals))
-            ldx = W
-            ldy = H - 2 - (vals[-1] - vmin) / (vmax - vmin) * (H - 4)
-            dot = (f'<path d="M{ldx:.1f} {ldy:.1f}h0" fill="none" '
-                   f'style="stroke:var(--text-secondary)" stroke-width="4" '
+            def _x(i): return XPAD + i / (n - 1) * (W - 2 * XPAD)
+            def _y(v): return H - PAD - (v - vmin) / (vmax - vmin) * (H - 2 * PAD)
+            pts = " ".join(f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(vals))
+            li = n - 1
+            dot = (f'<path d="M{_x(li):.1f} {_y(vals[li]):.1f}h0" fill="none" '
+                   f'style="stroke:var(--text-secondary)" stroke-width="3.5" '
                    f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
-            return (f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" '
-                    f'style="overflow:visible" xmlns="http://www.w3.org/2000/svg">'
+            return (f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg">'
                     f'<polyline points="{pts}" fill="none" style="stroke:var(--text-secondary)" '
                     f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
                     f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
