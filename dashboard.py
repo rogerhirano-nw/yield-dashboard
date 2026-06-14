@@ -5134,7 +5134,7 @@ if st.session_state.active_view == "campaigns":
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
             axis=1,
         )
-        out = out.sort_values("_delta", ascending=False)
+        out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
         return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
 
     def _sp_momentum(df, name_col, recent_col_filter, prior_col_filter):
@@ -5152,7 +5152,7 @@ if st.session_state.active_view == "campaigns":
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
             axis=1,
         )
-        out = out.sort_values("_delta", ascending=False)
+        out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
         return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
 
     _PA_PD = {"Private Auction", "Preferred Deal", "PA", "PD"}
