@@ -1600,21 +1600,6 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-legend-pill { display: flex; gap: 14px; font-size: 11px;
                   color: var(--text-secondary); align-items: center; }
 .nw-legend-pill .pill-dt { font-size: 9px; padding: 1px 6px; }
-/* PA inventory expandable card */
-.nw-pa-inv { background: var(--surface-1);
-             border: 1px solid var(--border);
-             border-radius: var(--radius-md);
-             padding: 12px 16px; margin: 12px 0; }
-.nw-pa-inv > summary { display: flex; justify-content: space-between;
-                       align-items: center; cursor: pointer; list-style: none;
-                       font-size: 12px; color: var(--text-primary); }
-.nw-pa-inv > summary::-webkit-details-marker { display: none; }
-.nw-pa-inv > summary::marker { content: ""; }
-.nw-pa-inv-left { display: flex; align-items: center; gap: 8px; }
-.nw-pa-inv-chev { color: var(--text-muted); transition: transform 0.15s; }
-.nw-pa-inv[open] > summary .nw-pa-inv-chev { transform: rotate(90deg); }
-.nw-pa-inv-hint { font-size: 11px; color: var(--text-muted); }
-.nw-pa-inv-body { padding-top: 12px; }
 /* Deal-name primary + parenthetical + subtitle */
 .pmp-name-primary { font-weight: 600; color: var(--text-primary); }
 .pmp-name-paren { color: var(--text-secondary); font-weight: 400; margin-left: 4px; }
@@ -5217,32 +5202,25 @@ if st.session_state.active_view == "campaigns":
         if not _pmp_summ.empty:
             _pmp_mom_rows = _sp_rows_for(_pmp_summ, "deal")
 
-    if _pmp_mom_rows:
-        # Layout A: each row is a two-tier identifiable label (advertiser bold
-        # over muted campaign) + a "prior → recent" flow + the Δ as colored
-        # text. One combined PMP list; stacks the same on desktop and mobile.
-        _sp_css = (
-            '<style>'
-            '.sp-row{padding:8px 6px;border-bottom:1px solid var(--border)}'
-            '.sp-nm{font-size:13px;line-height:1.25}'
-            '.sp-adv{font-weight:700;color:var(--text-primary)}'
-            '.sp-camp{color:var(--text-muted)}'
-            '.sp-met{display:flex;justify-content:space-between;align-items:baseline;'
-            'gap:10px;margin-top:2px}'
-            '.sp-flow{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums}'
-            '.sp-dlt{font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums}'
-            '.sp-dlt.up{color:var(--state-positive-muted)}'
-            '.sp-dlt.down{color:var(--state-critical)}'
-            '.sp-dlt.flat{color:var(--text-muted)}'
-            '.sp-pct{opacity:.7;font-weight:400;font-size:11px}'
-            '</style>'
-        )
-        with st.expander(
-            f"Spend momentum — {_total_gaining} gaining, {_total_losing} losing"
-            f" (last 3d vs prior 3d)",
-            expanded=False,
-        ):
-            st.markdown(_sp_css + "".join(_pmp_mom_rows), unsafe_allow_html=True)
+    # Spend-momentum rows render inside the "PMP signals" accordion under the
+    # PMP section below (moved there 2026-06, Option 2). _sp_css is defined here
+    # next to the row builder and consumed by that accordion's momentum row.
+    _sp_css = (
+        '<style>'
+        '.sp-row{padding:8px 6px;border-bottom:1px solid var(--border)}'
+        '.sp-nm{font-size:13px;line-height:1.25}'
+        '.sp-adv{font-weight:700;color:var(--text-primary)}'
+        '.sp-camp{color:var(--text-muted)}'
+        '.sp-met{display:flex;justify-content:space-between;align-items:baseline;'
+        'gap:10px;margin-top:2px}'
+        '.sp-flow{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums}'
+        '.sp-dlt{font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums}'
+        '.sp-dlt.up{color:var(--state-positive-muted)}'
+        '.sp-dlt.down{color:var(--state-critical)}'
+        '.sp-dlt.flat{color:var(--text-muted)}'
+        '.sp-pct{opacity:.7;font-weight:400;font-size:11px}'
+        '</style>'
+    )
 
     # ── Section 2: PMP deals ─────────────────────────────────────────────
     # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
@@ -5872,13 +5850,7 @@ if st.session_state.active_view == "campaigns":
                 f'<div>{_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor</div>'
                 f'</div>'
             )
-        if _pa_no_delivery > 0:
-            _banners.append(
-                f'<div class="nw-banner sev-red">'
-                f'<div class="nw-banner-head">⚠ {_pa_no_delivery} deals — no delivery</div>'
-                f'<div>GAM private auction inventory · review buyer activity</div>'
-                f'</div>'
-            )
+        # No-delivery is folded into the "PMP signals" accordion below the KPIs.
         if _banners:
             st.markdown(
                 '<div class="nw-banner-row" style="grid-template-columns: repeat(' + str(len(_banners)) + ', 1fr);">'
@@ -5898,6 +5870,63 @@ if st.session_state.active_view == "campaigns":
             + '</div>',
             unsafe_allow_html=True,
         )
+
+        # ── PMP signals accordion (Option 2): one card, a row per signal —
+        # Spend momentum (moved here from above the section) + No delivery —
+        # each expands inline. Reuses the Needs-attention accordion CSS, so it
+        # collapses to one line on mobile and stays open on desktop. The
+        # interactive stale-deals card stays its own expander further down (its
+        # archive buttons can't live in static HTML).
+        _sig_rows = []
+        if _pmp_mom_rows:
+            _sig_rows.append(
+                '<details class="nw-na-row sev-info">'
+                '<summary><span class="nw-na-dot"></span>'
+                f'<span class="nw-na-n">{_total_gaining + _total_losing}</span>'
+                '<span class="nw-na-l">Spend momentum</span>'
+                f'<span class="nw-na-d">{_total_gaining} gaining · {_total_losing} losing</span>'
+                '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                f'<div class="nw-na-sub nw-sig-sub">{"".join(_pmp_mom_rows)}</div></details>'
+            )
+        if _pa_no_delivery > 0 and not _pa_inv.empty:
+            _pa_rows = []
+            for _, _ri in _pa_inv.iterrows():
+                _fv = _ri.get("floor_price_usd")
+                _fs = f"${float(_fv):.2f}" if pd.notna(_fv) else "—"
+                _pa_rows.append(
+                    f'<tr><td>{_pmp_esc(_ri.get("auction_name") or "—")}</td>'
+                    f'<td>{_pmp_esc(_ri.get("buyer_account_id") or "—")}</td>'
+                    f'<td class="num">{_fs}</td>'
+                    f'<td>{_pmp_esc(_ri.get("deal_status") or "—")}</td></tr>'
+                )
+            _pa_tbl = ('<div class="nw-sig-scroll"><table class="nw-tbl"><thead><tr>'
+                       '<th>Auction</th><th>Buyer</th><th class="num">Floor</th><th>Status</th>'
+                       '</tr></thead><tbody>' + "".join(_pa_rows) + '</tbody></table></div>')
+            _sig_rows.append(
+                '<details class="nw-na-row sev-red">'
+                '<summary><span class="nw-na-dot"></span>'
+                f'<span class="nw-na-n">{_pa_no_delivery}</span>'
+                '<span class="nw-na-l">No delivery</span>'
+                '<span class="nw-na-d">review buyer activity</span>'
+                '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                f'<div class="nw-na-sub">{_pa_tbl}</div></details>'
+            )
+        if _sig_rows:
+            st.markdown(
+                _sp_css +
+                '<style>'
+                '.nw-na-row.sev-info .nw-na-dot{background:var(--text-muted)}'
+                '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
+                '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
+                '.nw-sig-scroll{overflow-x:auto}'
+                '</style>'
+                '<details class="nw-na nw-pmp-sig">'
+                '<summary class="nw-na-head"><span>PMP signals</span>'
+                f'<span class="cnt">{len(_sig_rows)} signal{"s" if len(_sig_rows) != 1 else ""}</span>'
+                '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
+                '<div class="nw-na-body">' + "".join(_sig_rows) + '</div></details>',
+                unsafe_allow_html=True,
+            )
 
         # ── AirTable helpers (PMP scope — Direct scope has its own copies). ──
         _pmp_at_base = (_cfg.get("airtable_base_id") or "").strip()
@@ -6392,38 +6421,9 @@ if st.session_state.active_view == "campaigns":
                 st.button("Next →", key="pmp_next_bot", on_click=_pmp_go_next,
                           disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
 
-        # ── GAM Private Auction inventory — collapsible card matching dashboard style ──
-        if not _pa_inv.empty:
-            _pa_table_rows = []
-            for _, ri in _pa_inv.iterrows():
-                _floor_v = ri.get("floor_price_usd")
-                _floor_s = f"${float(_floor_v):.2f}" if pd.notna(_floor_v) else "—"
-                _pa_table_rows.append(
-                    '<tr>'
-                    f'<td>{_pmp_esc(ri.get("auction_name") or "—")}</td>'
-                    f'<td>{_pmp_esc(ri.get("external_deal_id") or "—")}</td>'
-                    f'<td>{_pmp_esc(ri.get("buyer_account_id") or "—")}</td>'
-                    f'<td class="num">{_floor_s}</td>'
-                    f'<td>{_pmp_esc(ri.get("deal_status") or "—")}</td>'
-                    '</tr>'
-                )
-            st.markdown(
-                '<details class="nw-pa-inv">'
-                '<summary>'
-                '<div class="nw-pa-inv-left">'
-                '<span class="nw-pa-inv-chev">›</span>'
-                f'<span>GAM private auction inventory · {_pa_no_delivery} deals · no delivery data</span>'
-                '</div>'
-                '<span class="nw-pa-inv-hint">Click to expand</span>'
-                '</summary>'
-                '<div class="nw-pa-inv-body">'
-                '<table class="nw-tbl"><thead><tr>'
-                '<th>Auction</th><th>External Deal ID</th><th>Buyer</th>'
-                '<th class="num">Floor CPM</th><th>Status</th>'
-                '</tr></thead><tbody>' + "".join(_pa_table_rows) + '</tbody></table>'
-                '</div></details>',
-                unsafe_allow_html=True,
-            )
+        # GAM Private Auction inventory (no-delivery deals) now renders inside
+        # the "PMP signals" accordion above (Option 2, 2026-06). The standalone
+        # card here was removed when it was folded in.
 
         # ── Stale deals — no bid responses for 90+ days ──────────────────────
         try:
