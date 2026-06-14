@@ -1811,6 +1811,69 @@ def _last_data_refresh_iso() -> str | None:
         return None
 
 
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
+def _dv_attention_aggregates():
+    """Per-LI / per-order Attention current+prior dicts + the per-LI daily
+    series, **memoized** so the groupbys over the ~24k-row `dv_attention` table
+    don't rerun on every interaction (only on a cold cache / TTL roll). Returns
+    ``(li_col, by_li, prior_by_li, series_by_li, by_order, prior_by_order)`` —
+    byte-identical to the inline logic the campaigns view used to run each
+    render. The raw `dv_attention` is still loaded separately for the drawer."""
+    try:
+        dv = load("dv_attention")
+    except Exception:
+        dv = pd.DataFrame()
+    if not dv.empty and "line_item_name" in dv.columns:
+        dv = dv.copy()
+        dv["line_item_name"] = dv["line_item_name"].str.replace(r"^#\d+\s+", "", regex=True)
+    li_col = "line_item_name"
+    by_li: dict = {}; prior_by_li: dict = {}; series_by_li: dict = {}
+    by_order: dict = {}; prior_by_order: dict = {}
+    if not dv.empty and "attention_index" in dv.columns:
+        li_col = dl.choose_join_col(dv)
+        if li_col in dv.columns:
+            by_li, prior_by_li = dl.attention_current_and_prior(dv, li_col)
+            series_by_li = dl.attention_daily_series_by_li(dv, li_col)
+        if "order_name" in dv.columns:
+            by_order, prior_by_order = dl.attention_current_and_prior(dv, "order_name")
+    return li_col, by_li, prior_by_li, series_by_li, by_order, prior_by_order
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
+def _dv_ivt_aggregates():
+    """Per-LI / per-order MRC impression-weighted SIVT%/GIVT% current+prior
+    dicts + per-LI daily series, **memoized** so the groupbys over the ~44k-row
+    `dv_ivt` table don't rerun on every interaction. Byte-identical to the old
+    inline logic; raw `dv_ivt` is still loaded separately for the drawer."""
+    try:
+        ivt = load("dv_ivt")
+    except Exception:
+        ivt = pd.DataFrame()
+    if not ivt.empty and "line_item_name" in ivt.columns:
+        ivt = ivt.copy()
+        ivt["line_item_name"] = ivt["line_item_name"].str.replace(r"^#\d+\s+", "", regex=True)
+    li_col = "line_item_name"
+    sivt_by_li: dict = {}; sivt_prior_by_li: dict = {}
+    givt_by_li: dict = {}; givt_prior_by_li: dict = {}
+    sivt_series_by_li: dict = {}; givt_series_by_li: dict = {}
+    sivt_by_order: dict = {}; sivt_prior_by_order: dict = {}
+    givt_by_order: dict = {}; givt_prior_by_order: dict = {}
+    if (not ivt.empty
+            and {"traffic_validity", "monitored_ads", "date"}.issubset(ivt.columns)):
+        li_col = dl.choose_join_col(ivt)
+        if li_col in ivt.columns:
+            sivt_by_li, sivt_prior_by_li = dl.ivt_share_with_prior(ivt, li_col, "Fraud/SIVT")
+            givt_by_li, givt_prior_by_li = dl.ivt_share_with_prior(ivt, li_col, "Fraud/GIVT")
+            sivt_series_by_li = dl.ivt_daily_series_by_li(ivt, li_col, "Fraud/SIVT")
+            givt_series_by_li = dl.ivt_daily_series_by_li(ivt, li_col, "Fraud/GIVT")
+        if "order_name" in ivt.columns:
+            sivt_by_order, sivt_prior_by_order = dl.ivt_share_with_prior(ivt, "order_name", "Fraud/SIVT")
+            givt_by_order, givt_prior_by_order = dl.ivt_share_with_prior(ivt, "order_name", "Fraud/GIVT")
+    return (li_col, sivt_by_li, sivt_prior_by_li, givt_by_li, givt_prior_by_li,
+            sivt_series_by_li, givt_series_by_li,
+            sivt_by_order, sivt_prior_by_order, givt_by_order, givt_prior_by_order)
+
+
 def _render_header_right(ts_html=None):
     """Fill the header right-side cluster: timestamp + inline gear icon.
     Default timestamp sources from gam_campaigns._pulled_at (when the data
@@ -2713,28 +2776,14 @@ if st.session_state.active_view == "campaigns":
         dv_df["line_item_name"] = dv_df["line_item_name"].str.replace(
             r"^#\d+\s+", "", regex=True
         )
-    _dv_by_li:       dict = {}
-    _dv_by_order:    dict = {}
-    _dv_prior_by_li: dict = {}   # latest-day-excluded mean (for the per-row delta)
-    _dv_prior_by_order: dict = {}
-    _attn_series_by_li: dict = {}   # per-LI daily Attention series (drawer sparkline)
-    # Default to the name join so the row builder (which reads _dv_li_col
-    # unconditionally) survives an empty dv_attention — e.g. local SQLite
-    # dev, or a DV outage on a fresh cache. Matches choose_join_col's
-    # fallback; the lookups stay empty so cells render "—" as designed.
-    _dv_li_col = "line_item_name"
-    if not dv_df.empty and "attention_index" in dv_df.columns:
-        # Aggregation + join-column choice live in dashboard_logic (tested).
-        # Prefer ID-based join (immune to name changes); fall back to name.
-        _dv_li_col = dl.choose_join_col(dv_df)
-        if _dv_li_col in dv_df.columns:
-            _dv_by_li, _dv_prior_by_li = dl.attention_current_and_prior(dv_df, _dv_li_col)
-            _attn_series_by_li = dl.attention_daily_series_by_li(dv_df, _dv_li_col)
-        if "order_name" in dv_df.columns:
-            # PMP deals (combined_pmp.Deal) join by order_name — DV emits
-            # the deal name in the Order column for PMP rows. Build the
-            # same current/prior pair so the PMP table can show a delta.
-            _dv_by_order, _dv_prior_by_order = dl.attention_current_and_prior(dv_df, "order_name")
+    # Aggregation + join-column choice live in dashboard_logic (tested) and are
+    # **memoized** in _dv_attention_aggregates() so the groupbys run once per
+    # cache period, not every interaction (#3). The dicts default empty (cells
+    # render "—") when dv_attention is absent — e.g. local SQLite dev or a DV
+    # outage. _dv_li_col defaults to the name join, matching choose_join_col's
+    # fallback. (dv_df above is still loaded for the drawer recompute.)
+    (_dv_li_col, _dv_by_li, _dv_prior_by_li, _attn_series_by_li,
+     _dv_by_order, _dv_prior_by_order) = _dv_attention_aggregates()
 
     # DV IVT — daily Pinnacle CSV emailed to newsweek@agentmail.to with
     # subject "Unified Analytics Report: IVT". Polled by refresh_dv_ivt()
@@ -2765,32 +2814,13 @@ if st.session_state.active_view == "campaigns":
         ivt_df["line_item_name"] = ivt_df["line_item_name"].str.replace(
             r"^#\d+\s+", "", regex=True
         )
-    _sivt_by_li:        dict = {}
-    _givt_by_li:        dict = {}
-    _sivt_by_order:     dict = {}
-    _givt_by_order:     dict = {}
-    _sivt_prior_by_li:    dict = {}
-    _givt_prior_by_li:    dict = {}
-    _sivt_prior_by_order: dict = {}
-    _givt_prior_by_order: dict = {}
-    _sivt_series_by_li:   dict = {}   # per-LI daily SIVT%/GIVT% series (drawer)
-    _givt_series_by_li:   dict = {}
-    # Same empty-frame default as _dv_li_col above — the row builder reads
-    # this unconditionally.
-    _ivt_li_col = "line_item_name"
-    if (not ivt_df.empty
-            and {"traffic_validity", "monitored_ads", "date"}.issubset(ivt_df.columns)):
-        # MRC impression-weighted share + join-column choice live in
-        # dashboard_logic (tested).
-        _ivt_li_col = dl.choose_join_col(ivt_df)
-        if _ivt_li_col in ivt_df.columns:
-            _sivt_by_li, _sivt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/SIVT")
-            _givt_by_li, _givt_prior_by_li = dl.ivt_share_with_prior(ivt_df, _ivt_li_col, "Fraud/GIVT")
-            _sivt_series_by_li = dl.ivt_daily_series_by_li(ivt_df, _ivt_li_col, "Fraud/SIVT")
-            _givt_series_by_li = dl.ivt_daily_series_by_li(ivt_df, _ivt_li_col, "Fraud/GIVT")
-        if "order_name" in ivt_df.columns:
-            _sivt_by_order, _sivt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/SIVT")
-            _givt_by_order, _givt_prior_by_order = dl.ivt_share_with_prior(ivt_df, "order_name", "Fraud/GIVT")
+    # MRC impression-weighted SIVT/GIVT share + join-column choice live in
+    # dashboard_logic (tested), **memoized** in _dv_ivt_aggregates() (#3). Dicts
+    # default empty (cells "—") when dv_ivt is absent. (ivt_df above is still
+    # loaded for the drawer recompute.)
+    (_ivt_li_col, _sivt_by_li, _sivt_prior_by_li, _givt_by_li, _givt_prior_by_li,
+     _sivt_series_by_li, _givt_series_by_li,
+     _sivt_by_order, _sivt_prior_by_order, _givt_by_order, _givt_prior_by_order) = _dv_ivt_aggregates()
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
