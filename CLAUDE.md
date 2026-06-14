@@ -226,7 +226,13 @@ Rules that survive any future restyle:
 - **Severity is tint, not shout**: banded cells/pills = `--state-*-surface`
   background + saturated `--state-*` text; in-range values stay plain
   colored text. Thresholds/banding logic untouched — lives in
-  `dashboard_logic.py`.
+  `dashboard_logic.py`. **Exception — the Direct pace cell** (`_pace_html`,
+  2026-06-14): on owner request it boxes *every* state for cell
+  consistency, but on-pace uses a **quiet** green pill (`.pill-green` =
+  `--state-positive-surface-quiet` + `--state-positive-muted`), one tier
+  below the loud amber/red exception pills, so healthy still recedes and
+  the exceptions keep the page (the green-overwhelm rule survives). The
+  other in-range cells (viewability, CTR/VCR) keep plain `.txt-green`.
 - **Green is asymmetric** (the green-overwhelm rule, 2026-05-25; muted
   tier added 2026-06-12 after the first themed deploy glowed green):
   high-frequency "fine/improving" signals — per-cell ▲ deltas, in-range
