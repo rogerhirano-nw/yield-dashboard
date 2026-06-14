@@ -396,6 +396,28 @@ def test_pmp_deal_display_name():
     assert dn(None) == ("—", "")
 
 
+def test_revenue_daily_series_by_deal():
+    import pandas as pd
+    from datetime import date
+    from dashboard_logic import revenue_daily_series_by_deal as f
+    df = pd.DataFrame({
+        "ssp":     ["GAM", "GAM", "GAM", "Magnite", "Magnite", "GAM"],
+        "deal":    ["A",   "A",   "A",   "B",       "B",       "A"],
+        "date":    ["2026-06-10", "2026-06-12", "2026-06-12",
+                    "2026-06-11", "2026-06-12", "2026-06-09"],
+        "revenue": [100,   50,    25,    200,       300,        999],
+    })
+    series, dates = f(df, n=3)
+    # window = last 3 days ending at the max date present (06-12); 06-09 excluded
+    assert dates == [date(2026, 6, 10), date(2026, 6, 11), date(2026, 6, 12)]
+    # 06-12 sums the two same-day rows (50+25); the missing 06-11 fills to 0.0
+    assert series[("GAM", "A")] == [100.0, 0.0, 75.0]
+    assert series[("Magnite", "B")] == [0.0, 200.0, 300.0]
+    # missing columns / empty / None → empty pair
+    assert f(pd.DataFrame(), n=3) == ({}, [])
+    assert f(None) == ({}, [])
+
+
 def test_ae_and_team_token_regexes():
     import re
     from dashboard_logic import AE_TOKEN_RE, TEAM_TOKEN_RE

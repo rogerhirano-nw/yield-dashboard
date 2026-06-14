@@ -261,6 +261,23 @@ Rules that survive any future restyle:
     instead of a stretched-flat band; the date row sits inside the panel
     and caps with it, staying aligned under the 7 points. Don't reintroduce
     `preserveAspectRatio="none"` here.
+  - `_pmp_drawer_revenue_chart` (the PMP deal drawer's **7-day revenue**
+    chart, 2026-06-14) is the delivery chart's twin — same `600×112` uniform
+    scaling + area-wash + baseline + end-dot — but **NEUTRAL** (`--text-secondary`):
+    a revenue trend is shape, not a pace-health signal, so the eCPM-vs-floor
+    banding keeps severity and the line stays neutral (the delivery chart is
+    the *only* state-colored line). Its per-deal series comes from
+    `dl.revenue_daily_series_by_deal`, which rebuilds a daily-revenue frame
+    from `gam_pmp_deals` / `magnite_deal_daily` / `pubmatic_deals` (the daily
+    rows the PMP summary aggregates away) keyed by **(SSP, Deal)** — match each
+    source's row key exactly (GAM `programmatic_deal_name`, Magnite `deal`,
+    Pubmatic `deal_label` = deal→publisher_deal_id→deal_meta_id) or the lookup
+    misses. The window is a contiguous last-7-days ending at the latest date
+    present (PMP lags ~2 days), 0-filled. The chart + the card sparkline
+    (`_pmp_spark_svg`) are **self-contained in the PMP scope** — the Direct
+    `_sparkline_svg` lives behind `if gam_df.empty: … else:` and is *not*
+    reachable from the PMP block, which always runs. Pinned by
+    `test_revenue_daily_series_by_deal`.
 - **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
   hash colors), never the state scale.
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
@@ -332,10 +349,12 @@ Rules that survive any future restyle:
     isn't ambiguous — the bar shipped unlabeled and read as a mystery on
     the live card (2026-06-13).
   - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal + type pill + an
-    **eCPM-vs-floor bar** (PMP deals have no daily series) + revenue / eCPM
+    **eCPM-vs-floor bar** + a **7-day revenue sparkline** + revenue / eCPM
     / impressions. The bar scales eCPM against `2 × floor` so the floor sits
     at the **50% tick**, and bands like `_ecpm_cell` (under floor amber,
-    ≥2× floor green, otherwise neutral).
+    ≥2× floor green, otherwise neutral). The sparkline (`_pmp_spark_svg`,
+    "revenue 7d" eyebrow) sits under the bar — both are kept (the bar is the
+    yield-health signal, the sparkline is the trend).
 - **Campaigns filters are a popover + active chips, not a dropdown row.**
   The six Campaigns filters (Seller / Advertiser / Format / Status /
   Team / Account Manager) live inside one `st.popover` whose trigger

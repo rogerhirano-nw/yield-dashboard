@@ -1291,6 +1291,11 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-pmp-m .m-floor-tick { position: absolute; top: 0; bottom: 0; left: 50%;
                           width: 2px; background: var(--text-primary); opacity: .55; }
 .nw-pmp-m .m-ecpm-lbl { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+/* 7-day revenue sparkline on the PMP card (sits under the eCPM-vs-floor bar). */
+.nw-pmp-m .m-spark2 { margin-top: 8px; }
+.nw-pmp-m .m-spark2 svg { width: 100%; max-width: 200px; height: 22px; display: block; }
+.nw-pmp-m .m-spark-l { font-size: 8px; color: var(--text-muted); text-transform: uppercase;
+                       letter-spacing: .03em; margin-top: 1px; }
 .nw-pmp-m .m-right { text-align: right; min-width: 0; }
 .nw-pmp-m .m-right .m-rev { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
 .nw-pmp-m .m-right .m-ecpm { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
@@ -5952,11 +5957,142 @@ if st.session_state.active_view == "campaigns":
             return f"https://airtable.com/{_pmp_at_base}/{_pmp_at_form}/form?{'&'.join(parts)}"
 
         # ── Per-row drawer helper. ───────────────────────────────────────
+        # ── 7-day per-deal revenue series (drawer chart + mobile-card spark).
+        # Rebuilt from the same daily source tables the summary aggregates away,
+        # keyed by (SSP, Deal) to match each combined_pmp row. Pubmatic's row key
+        # is deal_label (deal → publisher_deal_id → deal_meta_id), GAM's is
+        # programmatic_deal_name, Magnite's is deal — mirror each exactly so the
+        # lookup hits. Built once; looked up per row.
+        _pmp_daily_parts = []
+        try:
+            _gpd = load("gam_pmp_deals")
+            _gdc = (next((c for c in _gpd.columns if "deal_name" in c or c == "deal"), None)
+                    if not _gpd.empty else None)
+            if _gdc:
+                _pmp_daily_parts.append(pd.DataFrame({
+                    "ssp": "GAM", "deal": _gpd[_gdc].astype(str), "date": _gpd.get("date"),
+                    "revenue": pd.to_numeric(_gpd.get("ad_server_cpm_and_cpc_revenue"), errors="coerce"),
+                }))
+        except Exception:
+            pass
+        try:
+            _mdd = load("magnite_deal_daily")
+            if not _mdd.empty and "deal" in _mdd.columns:
+                _pmp_daily_parts.append(pd.DataFrame({
+                    "ssp": "Magnite", "deal": _mdd["deal"].astype(str), "date": _mdd.get("date"),
+                    "revenue": pd.to_numeric(_mdd.get("publisher_gross_revenue"), errors="coerce"),
+                }))
+        except Exception:
+            pass
+        try:
+            _pud = load("pubmatic_deals")
+            if not _pud.empty:
+                _plabel = _pud.get("deal")
+                if _plabel is None:
+                    _plabel = pd.Series([None] * len(_pud), index=_pud.index)
+                if "publisher_deal_id" in _pud.columns:
+                    _plabel = _plabel.fillna(_pud["publisher_deal_id"])
+                if "deal_meta_id" in _pud.columns:
+                    _plabel = _plabel.fillna(_pud["deal_meta_id"].astype(str))
+                _pmp_daily_parts.append(pd.DataFrame({
+                    "ssp": "Pubmatic", "deal": _plabel.astype(str), "date": _pud.get("date"),
+                    "revenue": pd.to_numeric(_pud.get("revenue"), errors="coerce"),
+                }))
+        except Exception:
+            pass
+        _pmp_daily = (pd.concat(_pmp_daily_parts, ignore_index=True)
+                      if _pmp_daily_parts else pd.DataFrame(columns=["ssp", "deal", "date", "revenue"]))
+        _pmp_rev_series_by_deal, _pmp_rev_dates = dl.revenue_daily_series_by_deal(_pmp_daily)
+
+        def _pmp_rev_series_for(row):
+            return _pmp_rev_series_by_deal.get((str(row.get("SSP")), str(row.get("Deal"))))
+
+        def _pmp_spark_svg(values):
+            """Compact 7-day revenue sparkline for the mobile PMP card. NEUTRAL
+            (trend shape only — the eCPM-vs-floor banding owns severity). Mirrors
+            _sparkline_svg's stretch regime (preserveAspectRatio=none +
+            overflow:visible so the round-cap end dot isn't clipped at x=W); kept
+            local because that helper sits behind the Direct `if gam_df.empty`
+            else-branch and isn't reachable from this scope."""
+            vals = [float(v) for v in values if v is not None] if values else []
+            if len(vals) < 2:
+                return ""
+            W, H = 56, 20
+            vmin, vmax = min(vals), max(vals)
+            if vmax == vmin:
+                vmax = vmin + 1
+            n = len(vals)
+            pts = " ".join(
+                f"{i/(n-1)*W:.1f},{H-2-(v-vmin)/(vmax-vmin)*(H-4):.1f}"
+                for i, v in enumerate(vals))
+            ldx = W
+            ldy = H - 2 - (vals[-1] - vmin) / (vmax - vmin) * (H - 4)
+            dot = (f'<path d="M{ldx:.1f} {ldy:.1f}h0" fill="none" '
+                   f'style="stroke:var(--text-secondary)" stroke-width="4" '
+                   f'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+            return (f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" '
+                    f'style="overflow:visible" xmlns="http://www.w3.org/2000/svg">'
+                    f'<polyline points="{pts}" fill="none" style="stroke:var(--text-secondary)" '
+                    f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
+                    f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
+
+        def _pmp_drawer_revenue_chart(series, dates):
+            """7-day daily revenue trend for the PMP deal drawer — same area-wash
+            + baseline + end-dot language as the Direct drawer delivery chart, but
+            NEUTRAL (a revenue trend is shape, not a pace-health signal; the
+            eCPM-vs-floor banding owns severity). Scales UNIFORMLY (plain viewBox
+            + CSS width:100%/height:auto) so geometry never warps. Skipped when
+            the deal has no positive revenue in the window."""
+            if not series:
+                return ""
+            nn = [v for v in series if v is not None]
+            if not nn or sum(nn) <= 0:
+                return ""
+            W, H, PAD = 600, 112, 16
+            mx = max(nn)
+            vmax = mx * 1.2 if mx > 0 else 1
+            n = len(series)
+            base_y = H - PAD
+            def _cx(i): return PAD + i / (n - 1) * (W - 2 * PAD) if n > 1 else W / 2
+            def _cy(v): return base_y - (v or 0) / vmax * (H - 2 * PAD)
+            pts = " ".join(f"{_cx(i):.1f},{_cy(v):.1f}" for i, v in enumerate(series))
+            li = n - 1
+            stroke = "var(--text-secondary)"
+            area = (f'<polygon points="{pts} {_cx(li):.1f},{base_y:.1f} {_cx(0):.1f},{base_y:.1f}" '
+                    f'style="fill:{stroke}" fill-opacity="0.10" stroke="none"/>')
+            baseline = (f'<line x1="{PAD}" y1="{base_y:.1f}" x2="{W-PAD}" y2="{base_y:.1f}" '
+                        f'style="stroke:var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>')
+            dx, dy = _cx(li), _cy(series[li])
+            dot = (f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" style="stroke:var(--surface-1)" '
+                   f'stroke-width="7.5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
+                   f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" style="stroke:{stroke}" '
+                   f'stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+            total = sum(nn)
+            _tot = f"${total/1000:.1f}K" if total >= 1000 else f"${total:,.0f}"
+            _last = series[li] or 0
+            _lat = f"${_last/1000:.1f}K" if _last >= 1000 else f"${_last:,.0f}"
+            _cells = ""
+            for i, d in enumerate(dates or []):
+                _lab = f"{d.strftime('%a')} {d.day}" if d else ""
+                _cls = "is-today" if i == len(dates) - 1 else ""
+                _cells += f'<span class="{_cls}">{_pmp_esc(_lab)}</span>'
+            _date_row = f'<div class="nw-date-row">{_cells}</div>' if _cells else ""
+            return (
+                '<div class="nw-drawer-chart">'
+                '<div class="nw-drawer-chart-label"><span>7-day revenue</span>'
+                f'<span class="legend-row"><span class="legend">{_tot} total · {_lat}/day latest</span></span></div>'
+                f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg">{area}{baseline}'
+                f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" stroke-width="1.75" '
+                f'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>{dot}</svg>'
+                f'{_date_row}</div>'
+            )
+
         def _pmp_drawer_html(row):
             _full = _pmp_esc(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
             _floor = _floors.get(_dt) if _dt else None
             _ecpm_v = pd.to_numeric(row.get("eCPM"), errors="coerce")
+            _rev_chart = _pmp_drawer_revenue_chart(_pmp_rev_series_for(row), _pmp_rev_dates)
 
             # Status banner: eCPM vs floor thesis.
             status_html = ""
@@ -6067,6 +6203,7 @@ if st.session_state.active_view == "campaigns":
                 f'<span class="nw-drawer-li">{_full or "—"}</span>'
                 '</div>'
                 f'{status_html}'
+                f'{_rev_chart}'
                 f'{bid_html}'
                 f'{meta_html}'
                 f'{_action_html}'
@@ -6166,12 +6303,20 @@ if st.session_state.active_view == "campaigns":
                     '<span class="m-floor-tick"></span></div>'
                     f'<span class="m-ecpm-lbl">floor ${_m_fl:.2f}</span></div>'
                 )
+            # 7-day revenue sparkline (Option 3: shown alongside the eCPM bar).
+            _rev_series_m = _pmp_rev_series_for(row)
+            _rev_spark_m = ""
+            if _rev_series_m and sum(v for v in _rev_series_m if v is not None) > 0:
+                _sv = _pmp_spark_svg(_rev_series_m)
+                if _sv:
+                    _rev_spark_m = (f'<div class="m-spark2">{_sv}'
+                                    '<div class="m-spark-l">revenue 7d</div></div>')
             _row_m_pmp = (
                 '<div class="nw-pmp-m"><div class="m-main">'
                 f'<div class="m-name">{_pmp_esc(_primary)}{_dt_pill(_dt)}</div>'
                 f'<div class="m-sub">{_pmp_esc(row.get("DSP") or "—")} · '
                 f'{_pmp_esc(row.get("SSP") or "—")} · {_pmp_esc(row.get("Format") or "—")}</div>'
-                f'{_m_ecpm_bar}</div>'
+                f'{_m_ecpm_bar}{_rev_spark_m}</div>'
                 '<div class="m-right">'
                 f'<div class="m-rev">{_rev_cell(row.get("Revenue"))}</div>'
                 f'<div class="m-ecpm">{_ecpm_cell(row.get("eCPM"), _floor_val)} eCPM</div>'
