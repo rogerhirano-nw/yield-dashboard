@@ -394,9 +394,12 @@ Rules that survive any future restyle:
   card with a row per category. A category with offenders is a native
   HTML `<details>`/`<summary>` row (browser-native expand/collapse, **no
   Streamlit rerun** — the markdown sanitizer passes `<details>`), and
-  expanding it reveals that alert's line items inline (worst-first,
-  severity-tinted proportional bar + value, names via
-  `_short_advertiser`). Clear categories render as a static `sev-ok`
+  expanding it reveals that alert's line items inline (worst-first, a
+  **two-tier label** — advertiser bold over the muted campaign
+  (`dl.line_item_display_name` split on ` — `), metric as colored text on
+  the right, **no bar** — so sibling LIs (3 Pateks differing only in the
+  campaign tail Male/Female/Added-value) are identifiable and match the
+  table; `_short_advertiser` alone collapsed them). Clear categories render as a static `sev-ok`
   row; rows default collapsed. Counts keep the existing
   `head(4)`/`head(6)` display cap (so the count matches the revealed
   rows). Bars/dots/counts inherit the row's `sev-*` and obey the
@@ -405,6 +408,15 @@ Rules that survive any future restyle:
   (`_na_row` / `_na_subrows`) is rendering, not decision logic — the
   offender sets (`_under_rows` / `_over_rows` / `_vw_anom_rows`) are still
   computed upstream from the configured benchmarks.
+  **The whole card is itself a `<details>`** (when there are flags): on
+  mobile it collapses to one compact header line — it was dominating the
+  first screen above the KPIs (2026-06-14) — and the category accordion is
+  one tap away. Desktop/tablet (`@media min-width:641px`) force
+  `.nw-na-body { display:block !important }` + hide the chevron, so the
+  always-expanded layout there is unchanged (CSS can't toggle the
+  `open` attribute responsively, so force the body open instead). The
+  all-clear state stays a plain `<div>` (three static ✓ rows, nothing to
+  collapse).
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
