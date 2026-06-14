@@ -5849,6 +5849,16 @@ if st.session_state.active_view == "campaigns":
                     _delivering = set()
                 if _delivering:
                     _pa_inv = _pa_inv[~_pa_inv["auction_name"].astype(str).isin(_delivering)]
+            # Canceled deals are dead by intent — not shown in the no-delivery list.
+            if not _pa_inv.empty and "deal_status" in _pa_inv.columns:
+                _pa_inv = _pa_inv[_pa_inv["deal_status"].astype(str).str.upper() != "CANCELED"]
+            # Open-auction backstop deals (AE token "OpenAuction" — Google
+            # demand facilitation, not AE-managed) are excluded; the list is
+            # seller-owned PA inventory only.
+            if not _pa_inv.empty and "auction_name" in _pa_inv.columns:
+                _pa_ae_tok = _pa_inv["auction_name"].astype(str).str.extract(
+                    r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                _pa_inv = _pa_inv[_pa_ae_tok != "OpenAuction"]
             _pa_no_delivery = len(_pa_inv) if not _pa_inv.empty else 0
         except Exception:
             _pa_inv = pd.DataFrame()
@@ -5909,20 +5919,43 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="nw-na-sub nw-sig-sub">{"".join(_pmp_mom_rows)}</div></details>'
             )
         if _pa_no_delivery > 0 and not _pa_inv.empty:
-            # Group non-delivering PA deals by status (Active / Pending /
-            # Canceled first, anything else after), readable Advertiser —
-            # Campaign names + floor. Canceled is muted — kept for visibility,
-            # not actionable.
+            # Group non-delivering PA deals by SELLER (the AE from the deal name,
+            # resolved through settings.json ae_names), busiest seller first.
+            # Each card: readable Advertiser — Campaign name, a deal-type pill
+            # (PA/PD) top-right, and a meta line of status · days-inactive
+            # (colored by idle age) + floor. "Inactive" = days since the deal
+            # last won a bid (pmp_last_bid_date.last_bid_date) or, for deals that
+            # never bid, since it was set up (create_time). Most-inactive first
+            # within each seller. Canceled / delivering / open-auction excluded
+            # upstream.
+            _today = datetime.now(timezone.utc).date()
+            try:
+                _lbd_t = load("pmp_last_bid_date")
+                _lastbid_map = (dict(zip(_lbd_t["deal_key"].astype(str),
+                                         _lbd_t["last_bid_date"].astype(str)))
+                                if not _lbd_t.empty and "deal_key" in _lbd_t.columns else {})
+            except Exception:
+                _lastbid_map = {}
+            _dt_full = {"PA": "Private Auction", "PD": "Preferred Deal",
+                        "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace"}
             _nd = _pa_inv.copy()
             _nd["_st"] = (_nd["deal_status"].astype(str).str.upper()
                           if "deal_status" in _nd.columns else "OTHER")
             _nd_active_ct = int((_nd["_st"] == "ACTIVE").sum())
-            _st_order = {"ACTIVE": 0, "PENDING": 1, "CANCELED": 2}
-            _st_label = {"ACTIVE": "Active", "PENDING": "Pending", "CANCELED": "Canceled"}
+            _nd_ae = _nd["auction_name"].astype(str).str.extract(
+                r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+            _nd["_seller"] = _nd_ae.map(AE_NAMES).fillna(_nd_ae).fillna("Unassigned")
+
+            def _nd_idle(_r):
+                # last bid when known (true inactivity); else days since set up.
+                _ct = _r.get("create_time")
+                _ctd = str(_ct)[:10] if pd.notna(_ct) else None
+                return dl.idle_days(_lastbid_map.get(str(_r.get("auction_name") or "")), _ctd, _today)
+            _nd["_idle"] = _nd.apply(_nd_idle, axis=1)
+            _seller_n = _nd["_seller"].value_counts()
             _nd_groups = []
-            for _st in sorted(_nd["_st"].unique(), key=lambda s: (_st_order.get(s, 99), s)):
-                _grp = _nd[_nd["_st"] == _st]
-                _gmuted = " nd-muted" if _st == "CANCELED" else ""
+            for _seller in sorted(_nd["_seller"].unique(), key=lambda s: (-int(_seller_n[s]), s)):
+                _grp = _nd[_nd["_seller"] == _seller].sort_values("_idle", ascending=False)
                 _drows = []
                 for _, _ri in _grp.iterrows():
                     _primary = dl.pmp_deal_display_name(_ri.get("auction_name") or "")[0]
@@ -5931,15 +5964,25 @@ if st.session_state.active_view == "campaigns":
                     _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
                     _fv = _ri.get("floor_price_usd")
                     _fs = f"${float(_fv):.2f} floor" if pd.notna(_fv) else "no floor"
+                    _st_cls = "nd-st nd-pending" if _ri["_st"] == "PENDING" else "nd-st"
+                    _tok = (str(_ri.get("auction_name") or "").split("_") + ["", ""])[1]
+                    _pill = _dt_pill(_dt_full.get(_tok, _tok))
+                    _idle = int(_ri["_idle"])
+                    _ib = dl.idle_band(_idle)
                     _drows.append(
                         '<div class="sp-row">'
+                        '<div class="nd-top">'
                         f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
-                        f'<div class="sp-met"><span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
+                        f'{_pill}</div>'
+                        '<div class="sp-met"><span>'
+                        f'<span class="{_st_cls}">{_pmp_esc(_ri["_st"].title())}</span>'
+                        f' · <span class="nd-idle idle-{_ib}">{_idle}d inactive</span></span>'
+                        f'<span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
                         '</div>'
                     )
                 _nd_groups.append(
-                    f'<div class="nd-group{_gmuted}">'
-                    f'<div class="nd-ghead">{_pmp_esc(_st_label.get(_st, _st.title()))} · {len(_grp)}</div>'
+                    '<div class="nd-group">'
+                    f'<div class="nd-ghead">{_pmp_esc(_seller)} · {len(_grp)}</div>'
                     + "".join(_drows) + '</div>'
                 )
             _sig_rows.append(
@@ -5959,14 +6002,22 @@ if st.session_state.active_view == "campaigns":
                 '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
                 '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
                 '.nw-sig-scroll{overflow-x:auto}'
-                # No-delivery status groups: small uppercase header per status,
-                # canceled muted (kept for visibility, not actionable).
+                # No-delivery seller groups: header = seller name · count; each
+                # card carries a small status label (pending in amber).
                 '.nd-ghead{font-size:10px;font-weight:700;letter-spacing:.05em;'
                 'text-transform:uppercase;color:var(--text-secondary);padding:9px 6px 3px}'
                 '.nd-group + .nd-group .nd-ghead{border-top:1px solid var(--border)}'
-                '.nd-group.nd-muted .nd-ghead,.nd-group.nd-muted .sp-adv{'
-                'color:var(--text-muted);font-weight:600}'
-                '.nd-group.nd-muted .sp-camp,.nd-group.nd-muted .sp-flow{opacity:.65}'
+                '.nd-st{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;'
+                'font-weight:700;color:var(--text-muted)}'
+                '.nd-st.nd-pending{color:var(--state-warning)}'
+                # Name + deal-type pill on one row (pill pinned top-right);
+                # days-inactive colored by idle age (amber 90+, red 180+).
+                '.nd-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}'
+                '.nd-top .sp-nm{flex:1 1 auto;min-width:0}'
+                '.nd-top .pill-dt{flex:0 0 auto}'
+                '.nd-idle{font-weight:700;color:var(--text-secondary)}'
+                '.nd-idle.idle-amber{color:var(--state-warning)}'
+                '.nd-idle.idle-red{color:var(--state-critical)}'
                 '</style>'
                 # Default-open (incl. on mobile) so the signals are visible on
                 # load; the per-row accordions inside still expand on tap. The
