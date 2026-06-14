@@ -278,6 +278,17 @@ Rules that survive any future restyle:
     `_sparkline_svg` lives behind `if gam_df.empty: … else:` and is *not*
     reachable from the PMP block, which always runs. Pinned by
     `test_revenue_daily_series_by_deal`.
+  - `_pmp_spark_svg` (the PMP card revenue sparkline) **scales UNIFORMLY**
+    (wide `300×34` viewBox, *no* `preserveAspectRatio="none"`, `XPAD` inset,
+    CSS `height:auto`) — **NOT** the Direct card's stretch regime. The PMP
+    card's spark box is ~9:1, far from a `56×20` viewBox, and under that
+    anisotropic `preserveAspectRatio="none"` stretch iOS Safari distorts the
+    non-scaling round end-cap into a smeared horizontal blob and thickens the
+    line unevenly (the 2026-06-14 "graphs look off" bug). The Direct card
+    survives the stretch only because its box is near-square (~3:1, close to
+    the viewBox). Rule: a stretch-regime sparkline is only safe when its
+    rendered box stays near the viewBox aspect; for a wide-and-short box, go
+    uniform.
 - **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
   hash colors), never the state scale.
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
