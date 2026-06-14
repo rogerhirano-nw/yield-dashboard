@@ -1168,6 +1168,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
         font-size: 12px; line-height: 1.4; font-feature-settings: var(--num-feature); }
 .pill-red    { background: var(--state-critical-surface); color: var(--state-critical); }
 .pill-amber  { background: var(--state-warning-surface);  color: var(--state-warning); }
+/* On-pace pill — boxed for cell consistency but kept in the QUIET green tier
+   (muted ink-green on a faint surface) so healthy rows still recede and the
+   louder amber/red exceptions own the page (green-overwhelm rule). */
+.pill-green  { background: var(--state-positive-surface-quiet); color: var(--state-positive-muted); }
 /* Stale-deals list — one native st.container card per deal (deal name + meta
    line + an Archive button / Manual note). */
 .nw-stale-deal { font-weight: 700; font-size: 13px; color: var(--text-primary); word-break: break-word; }
@@ -4084,8 +4088,10 @@ if st.session_state.active_view == "campaigns":
                 return " · ".join(bits)
 
             def _pace_html(p, p_prior):
-                """Pace cell: pill (or green text) + variance below.
-                Banding + delta decisions live in dashboard_logic."""
+                """Pace cell: a banded pill in every state + variance below.
+                On-pace uses the quiet green tier (pill-green) so the cell is
+                boxed consistently while healthy still recedes. Banding + delta
+                decisions live in dashboard_logic."""
                 p = pd.to_numeric(p, errors="coerce")
                 p_prior = pd.to_numeric(p_prior, errors="coerce")
                 if pd.isna(p):
@@ -4095,7 +4101,7 @@ if st.session_state.active_view == "campaigns":
                 if _b == "red":
                     cell = f'<div class="pill pill-red">{pct_int}%</div>'
                 elif _b == "green":
-                    cell = f'<div class="txt-green">{pct_int}%</div>'
+                    cell = f'<div class="pill pill-green">{pct_int}%</div>'
                 else:  # "amber" (underpacing) and "over" (overpacing) render alike
                     cell = f'<div class="pill pill-amber">{pct_int}%</div>'
                 if pd.notna(p_prior):
