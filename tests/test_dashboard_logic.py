@@ -418,6 +418,69 @@ def test_revenue_daily_series_by_deal():
     assert f(None) == ({}, [])
 
 
+def test_window_last_n_days():
+    import pandas as pd
+    from dashboard_logic import window_last_n_days
+    df = pd.DataFrame({
+        "date": ["2026-06-01", "2026-06-07", "2026-06-08", "2026-06-14"],
+        "rev":  [10, 20, 30, 40],
+    })
+    # n=7 anchored at the frame's max date (06-14) → window [06-08 … 06-14].
+    # The boundary day 06-08 (= 06-14 − 6) is kept (>=); 06-07 and 06-01 drop.
+    out = window_last_n_days(df, n=7)
+    assert out["date"].tolist() == ["2026-06-08", "2026-06-14"]
+    # No usable date column / empty frame → returned unchanged (never raises).
+    no_date = pd.DataFrame({"x": [1, 2]})
+    assert window_last_n_days(no_date, n=7).equals(no_date)
+    assert window_last_n_days(pd.DataFrame(), n=7).empty
+
+
+def test_spend_momentum_seven_vs_seven():
+    import pandas as pd
+    from dashboard_logic import spend_momentum
+    # 14 distinct dates → adaptive window w = min(7, 14//2) = 7.
+    # recent = 06-08…06-14, prior = 06-01…06-07.
+    rows = []
+    for di in range(1, 15):
+        d = f"2026-06-{di:02d}"
+        recent = di >= 8
+        rows.append({"deal": "GAIN",  "_date": d, "_rev": 40 if recent else 10})  # +$210
+        rows.append({"deal": "LOSE",  "_date": d, "_rev": 5  if recent else 50})  # −$315
+        rows.append({"deal": "FLAT",  "_date": d, "_rev": 25 if recent else 20})  # +$35 (≤100)
+        rows.append({"deal": "NOISE", "_date": d, "_rev": 0})                     # $0/$0
+    summ, gaining, losing = spend_momentum(pd.DataFrame(rows), "deal", "_rev")
+    # FLAT (|Δ| ≤ $100) and NOISE ($0 both windows) drop; sorted by recent rev.
+    assert summ["deal"].tolist() == ["GAIN", "LOSE"]
+    assert (gaining, losing) == (1, 1)
+    g = summ[summ["deal"] == "GAIN"].iloc[0]
+    assert (g["_recent_rev"], g["_prior_rev"], g["_delta"]) == (280, 70, 210)
+    assert round(g["_pct"]) == 300  # 210 / 70 × 100
+    l = summ[summ["deal"] == "LOSE"].iloc[0]
+    assert (l["_recent_rev"], l["_prior_rev"], l["_delta"]) == (35, 350, -315)
+
+
+def test_spend_momentum_degrades_to_3v3_on_seven_days():
+    import pandas as pd
+    from dashboard_logic import spend_momentum
+    # Only 7 distinct dates cached → w = min(7, 7//2) = 3 (behaviour-identical
+    # to the old inline 3-vs-3 split). recent = 06-12…06-14, prior = 06-09…06-11;
+    # the oldest day 06-08 falls OUTSIDE both windows and must be ignored.
+    rows = []
+    for di in range(8, 15):  # 06-08 … 06-14
+        d = f"2026-06-{di:02d}"
+        rev = 200 if di >= 12 else (1 if di >= 9 else 9999)  # 9999 only on 06-08
+        rows.append({"deal": "X", "_date": d, "_rev": rev})
+    summ, gaining, losing = spend_momentum(pd.DataFrame(rows), "deal", "_rev")
+    x = summ[summ["deal"] == "X"].iloc[0]
+    assert x["_recent_rev"] == 600  # 3 × 200
+    assert x["_prior_rev"] == 3     # 3 × 1  (proves 06-08's 9999 is excluded)
+    assert (gaining, losing) == (1, 0)
+    # Guards: missing column / None → empty result, never raises.
+    assert spend_momentum(pd.DataFrame({"deal": ["a"]}), "deal", "_rev")[0].empty
+    _none = spend_momentum(None, "deal", "_rev")
+    assert _none[0].empty and _none[1:] == (0, 0)
+
+
 def test_ae_and_team_token_regexes():
     import re
     from dashboard_logic import AE_TOKEN_RE, TEAM_TOKEN_RE

@@ -322,7 +322,13 @@ REPORTS = {
             "ecpm",
             "win_rate",
         ],
-        "date_range": "last_7",
+        # 14-day window powers the dashboard's week-vs-week spend momentum (the
+        # PMP summary windows itself back to 7 days). Explicit window via
+        # window_days; retention 15 = 14 + 1 keeps the replace duplicate-free.
+        # The other Magnite reports keep their last_7 preset + default-8
+        # retention, untouched by this report's wider window.
+        "window_days": 14,
+        "retention_days": 15,
     },
     # demand_type_ad_resp and revenue_source are "Demand Fields" — incompatible with auction
     # metrics (bid_requests, bid_responses, impressions). Pull separately with ad metrics only
@@ -343,9 +349,40 @@ REPORTS = {
 
 
 def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
-    """Pull a single report and write it to its own table. Returns row count."""
+    """Pull a single report and write it to its own table. Returns row count.
+
+    **Per-report retention.** Two optional, non-API config keys tune the date
+    window independently per report (popped before the API call):
+      - ``window_days``: pull an explicit N-day window via start/end instead of
+        a ``date_range`` preset (Magnite rejects bare YYYY-MM-DD, so the dates
+        are sent as ISO-8601 with timezone). Lets one report carry 14 days
+        without changing the others.
+      - ``retention_days``: the DELETE cutoff (default 8). The no-duplicate
+        invariant is ``retention_days == pull_window + 1`` — the DELETE must
+        clear yesterday's oldest row so the fresh pull replaces the window
+        cleanly. A 14-day pull therefore sets ``retention_days=15``. Widening
+        one report's window no longer risks duplicating rows in the others,
+        which keep the default 8 (7-day pull + 1)."""
     logger.info("Refreshing %s", table)
-    df = client.run_report(**config)
+    cfg = dict(config)  # copy — we pop non-API keys, leave the caller's dict intact
+    retention_days = cfg.pop("retention_days", 8)
+    window_days    = cfg.pop("window_days", None)
+
+    if window_days is not None:
+        # Explicit window via start/end (Magnite requires ISO-8601 + tz, not
+        # bare dates). date_range must be None when start/end are set.
+        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+        start     = yesterday - timedelta(days=window_days - 1)
+        cfg.pop("date_range", None)
+        df = client.run_report(
+            date_range=None,
+            start=f"{start.isoformat()}T00:00:00Z",
+            end=f"{yesterday.isoformat()}T23:59:59Z",
+            **cfg,
+        )
+    else:
+        df = client.run_report(**cfg)
+
     if df.empty:
         logger.warning("%s came back empty — nothing to write", table)
         return 0
@@ -361,7 +398,7 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 logger.info("Schema change detected for %s — dropping and recreating", table)
                 conn.execute(text(f'DROP TABLE "{table}"'))
             elif "date" in df.columns:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%d")
                 conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
             else:
                 # Lookup table with no date column — TRUNCATE is cheaper than
@@ -517,14 +554,19 @@ def refresh_gam_weekly() -> int:
 
 
 def refresh_gam_pmp_deals() -> int:
-    """Pull GAM PMP deal data (PA / PD / PG) by deal name and write to gam_pmp_deals."""
+    """Pull GAM PMP deal data (PA / PD / PG) by deal name and write to gam_pmp_deals.
+
+    Pulls a 14-day window so the dashboard can compute week-vs-week spend
+    momentum; the PMP summary windows itself back to 7 days. Written via
+    _safe_replace (full TRUNCATE+append), so the table holds exactly what the
+    report returns — widening the window can't duplicate rows."""
     logger.info("Refreshing gam_pmp_deals (GAM deals report)")
     gam = GAMClient()
 
-    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
-    seven_days_ago = yesterday - timedelta(days=6)
+    yesterday         = datetime.now(timezone.utc).date() - timedelta(days=1)
+    fourteen_days_ago = yesterday - timedelta(days=13)  # 14-day inclusive window
 
-    df = gam.run_deals_report(seven_days_ago, yesterday)
+    df = gam.run_deals_report(fourteen_days_ago, yesterday)
     if df.empty:
         logger.warning("GAM deals report came back empty — nothing to write")
         return 0
@@ -897,14 +939,18 @@ def refresh_pmp_last_bid_date() -> int:
 
 
 def refresh_pubmatic() -> int:
-    """Pull Pubmatic PMP deal data for the last 7 days and write to pubmatic_deals."""
+    """Pull Pubmatic PMP deal data for the last 14 days and write to pubmatic_deals.
+
+    14-day window powers the dashboard's week-vs-week spend momentum; the PMP
+    summary windows itself back to 7 days. Retention (DELETE cutoff) = pull
+    window + 1 day so the table replaces cleanly without duplicating rows."""
     logger.info("Refreshing pubmatic_deals (Pubmatic)")
     client = PubmaticClient()
 
-    yesterday      = datetime.now(timezone.utc).date() - timedelta(days=1)
-    seven_days_ago = yesterday - timedelta(days=6)
+    yesterday         = datetime.now(timezone.utc).date() - timedelta(days=1)
+    fourteen_days_ago = yesterday - timedelta(days=13)  # 14-day inclusive window
 
-    df = client.run_deal_report(seven_days_ago, yesterday)
+    df = client.run_deal_report(fourteen_days_ago, yesterday)
     if df.empty:
         logger.warning("Pubmatic report came back empty — nothing to write")
         return 0
@@ -912,7 +958,9 @@ def refresh_pubmatic() -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     table  = "pubmatic_deals"
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
+    # Retention = 14-day pull + 1 day = 15, so the DELETE clears yesterday's
+    # oldest row and the new pull replaces the window with no duplicates.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=15)).strftime("%Y-%m-%d")
 
     with _engine().begin() as conn:
         if table in sa_inspect(conn).get_table_names():

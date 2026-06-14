@@ -5093,38 +5093,10 @@ if st.session_state.active_view == "campaigns":
             )
         return rows
 
-    def _sp_date_momentum(df, name_col, rev_col):
-        """Split df by most-recent 3 dates vs prior 3 dates; return (summary, n_gaining, n_losing)."""
-        df = df.copy()
-        df["_date"] = pd.to_datetime(df["_date"], errors="coerce")
-        df[rev_col]  = pd.to_numeric(df[rev_col], errors="coerce").fillna(0)
-        df = df.dropna(subset=[name_col, "_date"])
-        if df.empty:
-            return pd.DataFrame(), 0, 0
-        sorted_dates = sorted(df["_date"].unique(), reverse=True)
-        recent_dates = sorted_dates[:3]
-        prior_dates  = sorted_dates[3:6]
-        if not recent_dates or not prior_dates:
-            return pd.DataFrame(), 0, 0
-        recent = df[df["_date"].isin(recent_dates)].groupby(name_col)[rev_col].sum()
-        prior  = df[df["_date"].isin(prior_dates)].groupby(name_col)[rev_col].sum()
-        out = pd.DataFrame({"_recent_rev": recent, "_prior_rev": prior}).fillna(0).reset_index()
-        # Hide deals with no visible revenue in either window ($0 → $0 noise):
-        # keep only rows where the recent or prior window shows ≥ $0.50.
-        out = out[(out["_recent_rev"].abs() >= 0.5) | (out["_prior_rev"].abs() >= 0.5)].copy()
-        if out.empty:
-            return pd.DataFrame(), 0, 0
-        out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
-        # Only meaningful movers — drop deals whose spend shifted by ≤ $100.
-        out = out[out["_delta"].abs() > 100].copy()
-        if out.empty:
-            return pd.DataFrame(), 0, 0
-        out["_pct"] = out.apply(
-            lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
-            axis=1,
-        )
-        out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
-        return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
+    # Spend-momentum windowing/aggregation is decision logic — it lives in
+    # dashboard_logic.spend_momentum (adaptive last-N-vs-prior-N, tested). It
+    # grades 7-vs-7 once the daily pulls carry 14 days and degrades to the old
+    # 3-vs-3 on the ~7-day cache. _sp_rows_for below is the render half.
 
     _PA_PD = {"Private Auction", "Preferred Deal", "PA", "PD"}
 
@@ -5198,7 +5170,7 @@ if st.session_state.active_view == "campaigns":
     _total_losing  = 0
     if _pmp_parts:
         _pmp_combined = pd.concat(_pmp_parts, ignore_index=True)
-        _pmp_summ, _total_gaining, _total_losing = _sp_date_momentum(_pmp_combined, "deal", "_rev")
+        _pmp_summ, _total_gaining, _total_losing = dl.spend_momentum(_pmp_combined, "deal", "_rev")
         if not _pmp_summ.empty:
             _pmp_mom_rows = _sp_rows_for(_pmp_summ, "deal")
 
@@ -5333,6 +5305,9 @@ if st.session_state.active_view == "campaigns":
     else:
         pmp_df = pmp_df.copy()
         pmp_df["date"] = pd.to_datetime(pmp_df["date"]).dt.date
+        # pubmatic_deals now retains 14 days (week-vs-week momentum), but the PMP
+        # summary stays a fixed 7-day view so its totals don't move.
+        pmp_df = dl.window_last_n_days(pmp_df, n=7)
         if "deal" not in pmp_df.columns:
             pmp_df["deal"] = None
         if "publisher_deal_id" not in pmp_df.columns:
@@ -5460,6 +5435,9 @@ if st.session_state.active_view == "campaigns":
                 _gam_deals = _apply_am_filter(_gam_deals, "seller_ae")
                 if sel_pmp_deal_types:
                     _gam_deals = _gam_deals[_gam_deals["deal_type_label"].isin(sel_pmp_deal_types)]
+                # gam_pmp_deals now retains 14 days (week-vs-week momentum); the
+                # summary totals stay a fixed 7-day view.
+                _gam_deals = dl.window_last_n_days(_gam_deals, n=7)
                 if not _gam_deals.empty:
                     _rev_col  = next((c for c in (_gam_col_map.get("Revenue", ""), "ad_server_cpm_and_cpc_revenue", "revenue") if c and c in _gam_deals.columns), None)
                     _imp_col  = next((c for c in (_gam_col_map.get("Paid Impressions", ""), "ad_server_impressions", "impressions") if c and c in _gam_deals.columns), None)
@@ -5551,6 +5529,9 @@ if st.session_state.active_view == "campaigns":
                     _mag_df = _mag_df[_mag_df["seller_ae"] == selected_seller]
                 _mag_df = _apply_am_filter(_mag_df, "seller_ae")
                 if not _mag_df.empty:
+                    # magnite_deal_daily now retains 14 days (week-vs-week
+                    # momentum); the summary totals stay a fixed 7-day view.
+                    _mag_df = dl.window_last_n_days(_mag_df, n=7)
                     _mag_grp = ["ssp", "deal", "deal_type_label", "ad_format", "partner", "seller_ae"]
                     if "revenue_source" in _mag_df.columns:
                         _mag_grp.append("revenue_source")
