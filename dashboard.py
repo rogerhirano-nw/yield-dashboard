@@ -5227,6 +5227,15 @@ if st.session_state.active_view == "campaigns":
         ("campaigns_pmp_deal_source_filter", "Deal source"),
         ("campaigns_pmp_team_filter",        "Team"),
     ]
+    # Deal Type defaults to PA / PD / PMP (Programmatic Guaranteed excluded) when
+    # the table first loads. Seeded once into the multiselect's session_state so
+    # it picks the default up without a default= arg; clearing the Deal type chip
+    # (or "Clear all filters") restores All, PG included.
+    if "campaigns_pmp_deal_type_filter" not in st.session_state:
+        st.session_state["campaigns_pmp_deal_type_filter"] = [
+            t for t in ("Private Auction", "Preferred Deal", "Private Marketplace")
+            if t in _pmp_deal_types_available
+        ]
     _pmp_chips = []
     for _pk, _plbl in _pmp_filter_specs:
         _pv = st.session_state.get(_pk, [])
@@ -5287,6 +5296,13 @@ if st.session_state.active_view == "campaigns":
             "Team", _pmp_teams_opts,
             key="campaigns_pmp_team_filter",
             label_visibility="collapsed", placeholder="All",
+        )
+        st.markdown('<div class="nw-filter-label">Options</div>', unsafe_allow_html=True)
+        # Default off — read later to filter the table view (_pmp_display).
+        _show_low_rev = st.checkbox(
+            "Show deals under $100/day",
+            value=False,
+            key="pmp_show_low_rev",
         )
         if _pmp_n_active:
             st.button("Clear all filters", key="nw_pmp_clear_all_filters",
@@ -5686,10 +5702,11 @@ if st.session_state.active_view == "campaigns":
     if sel_pmp_teams and "Team" in combined_pmp.columns:
         combined_pmp = combined_pmp[combined_pmp["Team"].isin(sel_pmp_teams)]
 
-    # Reset pagination when any filter changes.
+    # Reset pagination when any filter changes (incl. the low-rev toggle).
     _pmp_filter_sig = str((
         sorted(sel_pmp_deal_types), sorted(sel_pmp_ssps), sorted(sel_pmp_dsps),
         sorted(sel_pmp_formats), sorted(sel_pmp_deal_sources), sorted(sel_pmp_teams),
+        bool(_show_low_rev),
     ))
     if st.session_state.get("_pmp_filter_sig") != _pmp_filter_sig:
         st.session_state["pmp_page"] = 0
@@ -5901,7 +5918,11 @@ if st.session_state.active_view == "campaigns":
                 '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
                 '.nw-sig-scroll{overflow-x:auto}'
                 '</style>'
-                '<details class="nw-na nw-pmp-sig">'
+                # Default-open (incl. on mobile) so the signals are visible on
+                # load; the per-row accordions inside still expand on tap. The
+                # separate Needs-attention alerts card keeps its collapsed-on-
+                # mobile default (open is per-<details>).
+                '<details class="nw-na nw-pmp-sig" open>'
                 '<summary class="nw-na-head"><span>PMP signals</span>'
                 f'<span class="cnt">{len(_sig_rows)} signal{"s" if len(_sig_rows) != 1 else ""}</span>'
                 '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
@@ -6219,15 +6240,10 @@ if st.session_state.active_view == "campaigns":
             )
 
         # ── Revenue threshold + pagination ──
+        # "Show deals under $100/day" + "Exclude PG" now live in the Filters
+        # popover; _show_low_rev was captured there and page reset is handled by
+        # the filter signature above.
         _REV_MIN = 100.0 * 7           # $100/day × 7-day cache window
-        _show_low_rev = st.checkbox(
-            "Show deals under $100/day",
-            value=False,
-            key="pmp_show_low_rev",
-        )
-        if st.session_state.get("_pmp_prev_show_low_rev") != _show_low_rev:
-            st.session_state["pmp_page"] = 0
-        st.session_state["_pmp_prev_show_low_rev"] = _show_low_rev
 
         _pmp_display = combined_pmp.copy()
         if not _show_low_rev and "Revenue" in _pmp_display.columns:
