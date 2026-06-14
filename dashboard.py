@@ -5827,6 +5827,28 @@ if st.session_state.active_view == "campaigns":
         _pa_no_delivery = 0
         try:
             _pa_inv = load("gam_pa_metadata")
+            # "No delivery" = PA deals NOT winning impressions. Drop the few that
+            # are actually delivering (present in gam_pmp_deals with impressions),
+            # so the list is genuinely non-delivering inventory; the rest stay,
+            # grouped by status below.
+            if not _pa_inv.empty and "auction_name" in _pa_inv.columns:
+                try:
+                    _gpd_d = load("gam_pmp_deals")
+                    _dn_col = next((c for c in _gpd_d.columns if "deal_name" in c), None)
+                    _im_col = next((c for c in _gpd_d.columns if "impression" in c.lower()), None)
+                    if _dn_col and _im_col:
+                        _gd = _gpd_d[[_dn_col, _im_col]].copy()
+                        _gd[_im_col] = pd.to_numeric(_gd[_im_col], errors="coerce").fillna(0)
+                        _delivering = set(_gd.groupby(_dn_col)[_im_col].sum()
+                                          .loc[lambda s: s > 0].index.astype(str))
+                    elif _dn_col:
+                        _delivering = set(_gpd_d[_dn_col].dropna().astype(str))
+                    else:
+                        _delivering = set()
+                except Exception:
+                    _delivering = set()
+                if _delivering:
+                    _pa_inv = _pa_inv[~_pa_inv["auction_name"].astype(str).isin(_delivering)]
             _pa_no_delivery = len(_pa_inv) if not _pa_inv.empty else 0
         except Exception:
             _pa_inv = pd.DataFrame()
@@ -5887,27 +5909,47 @@ if st.session_state.active_view == "campaigns":
                 f'<div class="nw-na-sub nw-sig-sub">{"".join(_pmp_mom_rows)}</div></details>'
             )
         if _pa_no_delivery > 0 and not _pa_inv.empty:
-            _pa_rows = []
-            for _, _ri in _pa_inv.iterrows():
-                _fv = _ri.get("floor_price_usd")
-                _fs = f"${float(_fv):.2f}" if pd.notna(_fv) else "—"
-                _pa_rows.append(
-                    f'<tr><td>{_pmp_esc(_ri.get("auction_name") or "—")}</td>'
-                    f'<td>{_pmp_esc(_ri.get("buyer_account_id") or "—")}</td>'
-                    f'<td class="num">{_fs}</td>'
-                    f'<td>{_pmp_esc(_ri.get("deal_status") or "—")}</td></tr>'
+            # Group non-delivering PA deals by status (Active / Pending /
+            # Canceled first, anything else after), readable Advertiser —
+            # Campaign names + floor. Canceled is muted — kept for visibility,
+            # not actionable.
+            _nd = _pa_inv.copy()
+            _nd["_st"] = (_nd["deal_status"].astype(str).str.upper()
+                          if "deal_status" in _nd.columns else "OTHER")
+            _nd_active_ct = int((_nd["_st"] == "ACTIVE").sum())
+            _st_order = {"ACTIVE": 0, "PENDING": 1, "CANCELED": 2}
+            _st_label = {"ACTIVE": "Active", "PENDING": "Pending", "CANCELED": "Canceled"}
+            _nd_groups = []
+            for _st in sorted(_nd["_st"].unique(), key=lambda s: (_st_order.get(s, 99), s)):
+                _grp = _nd[_nd["_st"] == _st]
+                _gmuted = " nd-muted" if _st == "CANCELED" else ""
+                _drows = []
+                for _, _ri in _grp.iterrows():
+                    _primary = dl.pmp_deal_display_name(_ri.get("auction_name") or "")[0]
+                    _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
+                                   if " — " in _primary else (_primary, ""))
+                    _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
+                    _fv = _ri.get("floor_price_usd")
+                    _fs = f"${float(_fv):.2f} floor" if pd.notna(_fv) else "no floor"
+                    _drows.append(
+                        '<div class="sp-row">'
+                        f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
+                        f'<div class="sp-met"><span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
+                        '</div>'
+                    )
+                _nd_groups.append(
+                    f'<div class="nd-group{_gmuted}">'
+                    f'<div class="nd-ghead">{_pmp_esc(_st_label.get(_st, _st.title()))} · {len(_grp)}</div>'
+                    + "".join(_drows) + '</div>'
                 )
-            _pa_tbl = ('<div class="nw-sig-scroll"><table class="nw-tbl"><thead><tr>'
-                       '<th>Auction</th><th>Buyer</th><th class="num">Floor</th><th>Status</th>'
-                       '</tr></thead><tbody>' + "".join(_pa_rows) + '</tbody></table></div>')
             _sig_rows.append(
                 '<details class="nw-na-row sev-red">'
                 '<summary><span class="nw-na-dot"></span>'
                 f'<span class="nw-na-n">{_pa_no_delivery}</span>'
                 '<span class="nw-na-l">No delivery</span>'
-                '<span class="nw-na-d">review buyer activity</span>'
+                f'<span class="nw-na-d">{_nd_active_ct} active</span>'
                 '<span class="nw-na-chev">&rsaquo;</span></summary>'
-                f'<div class="nw-na-sub">{_pa_tbl}</div></details>'
+                f'<div class="nw-na-sub nw-sig-sub">{"".join(_nd_groups)}</div></details>'
             )
         if _sig_rows:
             st.markdown(
@@ -5917,6 +5959,14 @@ if st.session_state.active_view == "campaigns":
                 '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
                 '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
                 '.nw-sig-scroll{overflow-x:auto}'
+                # No-delivery status groups: small uppercase header per status,
+                # canceled muted (kept for visibility, not actionable).
+                '.nd-ghead{font-size:10px;font-weight:700;letter-spacing:.05em;'
+                'text-transform:uppercase;color:var(--text-secondary);padding:9px 6px 3px}'
+                '.nd-group + .nd-group .nd-ghead{border-top:1px solid var(--border)}'
+                '.nd-group.nd-muted .nd-ghead,.nd-group.nd-muted .sp-adv{'
+                'color:var(--text-muted);font-weight:600}'
+                '.nd-group.nd-muted .sp-camp,.nd-group.nd-muted .sp-flow{opacity:.65}'
                 '</style>'
                 # Default-open (incl. on mobile) so the signals are visible on
                 # load; the per-row accordions inside still expand on tap. The
