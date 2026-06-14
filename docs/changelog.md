@@ -43,6 +43,15 @@ production redeploys from `main`.
   two-tier identifiable labels (advertiser bold over muted campaign) so sibling
   LIs are distinguishable.
 
+### Stale deals
+- **#237** — Folded the standalone "⚠ N stale PMP deals" expander into the **PMP
+  signals** accordion as a read-only 3rd row (amber): `Advertiser — Campaign` +
+  SSP · last bid · days-idle. The **Archive action was removed** ("no longer
+  needed") along with its creds-gating helpers, the secret diagnostic, and the
+  `.nw-stale-*` CSS (~156 lines) — so the row is static HTML and fits the
+  accordion. Backend archive (`GAMClient.archive_proposal_line_item`,
+  `scripts/archive_pli.py`, `archive_pli.yml`) kept.
+
 ### Spend momentum → PMP signals
 - **#226 / #227** — Spend-momentum list: identifiable two-tier names + mobile
   layout; then one combined GAM+Magnite+Pubmatic PD+PA list (no SSP buckets,
