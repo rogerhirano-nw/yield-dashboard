@@ -392,6 +392,19 @@ Rules that survive any future restyle:
     yield-health signal, the sparkline is the trend). The type pill is pinned
     **top-right** rather than inline after the name: deal names vary in length
     (and wrap), which scattered the pill across the column (2026-06-14).
+- **Both big tables paginate at 25 rows/page** (`_DIRECT_PAGE_SIZE` / PMP
+  `_PAGE_SIZE`). The Direct (`direct_page`) and PMP (`pmp_page`) tables each
+  render only the current page's slice into the custom HTML grid, with the same
+  **← Prev / Page X of N / Next →** control above and below (`st.columns([1,4,1])`
+  + `st.button` callbacks; hidden when there's a single page). Slicing is
+  positional (`.iloc`) so it **preserves the index labels** — the Direct per-row
+  `_vw_rate`/`_ctr_rate` lookups (`view_gam.index.get_loc(row.name)`) still
+  resolve on a sliced page. **Page resets to 0 on any filter change** (a
+  filter-signature guard, `_direct_filter_sig` / `_pmp_filter_sig`) so a narrower
+  filter can't strand you on an out-of-range page; the index is also clamped to
+  `[0, N-1]` each run as a backstop. The Direct table was **un-paginated until
+  2026-06-14** — it built every filtered LI (thousands in cache) into one DOM per
+  rerun; the PMP table paginated earlier.
 - **Campaigns filters are a popover + active chips, not a dropdown row.**
   The six Campaigns filters (Seller / Advertiser / Format / Status /
   Team / Account Manager) live inside one `st.popover` whose trigger
