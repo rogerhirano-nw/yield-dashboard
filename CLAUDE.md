@@ -359,13 +359,16 @@ Rules that survive any future restyle:
     (`.m-pbar-l` "pace" / `.m-spark-l` "delivery 7d") so the bare bar
     isn't ambiguous — the bar shipped unlabeled and read as a mystery on
     the live card (2026-06-13).
-  - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal + type pill + an
-    **eCPM-vs-floor bar** + a **7-day revenue sparkline** + revenue / eCPM
-    / impressions. The bar scales eCPM against `2 × floor` so the floor sits
+  - **PMP** (`.nw-tbl-pmp` → `.nw-pmp-m`): deal name (left) + an
+    **eCPM-vs-floor bar** + a **7-day revenue sparkline**; the right column is
+    the **deal-type pill** (`.m-dt`, top, fixed spot) over revenue / eCPM /
+    impressions. The bar scales eCPM against `2 × floor` so the floor sits
     at the **50% tick**, and bands like `_ecpm_cell` (under floor amber,
     ≥2× floor green, otherwise neutral). The sparkline (`_pmp_spark_svg`,
     "revenue 7d" eyebrow) sits under the bar — both are kept (the bar is the
-    yield-health signal, the sparkline is the trend).
+    yield-health signal, the sparkline is the trend). The type pill is pinned
+    **top-right** rather than inline after the name: deal names vary in length
+    (and wrap), which scattered the pill across the column (2026-06-14).
 - **Campaigns filters are a popover + active chips, not a dropdown row.**
   The six Campaigns filters (Seller / Advertiser / Format / Status /
   Team / Account Manager) live inside one `st.popover` whose trigger
