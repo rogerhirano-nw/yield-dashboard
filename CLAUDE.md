@@ -159,6 +159,24 @@ is also the Direct table's A–Z **sort key**, so it must equal what the row
 renders; changing it regroups the table by advertiser→campaign. Pinned by
 `test_line_item_display_name` + `test_line_item_display_name_real_prod_names`.
 
+**PMP deal display name = `<Advertiser> — <Campaign>` + agency subline**
+(`dl.pmp_deal_display_name` → `(primary, sub)`). The Newsweek deal-name
+convention (`Newsweek_<PG|PD|PA|PMP>_<vertical>_<exchange>_<dsp>_<holding>_
+<agency>_<advertiser>_<campaign>_<geo>_<format>_<floor>_<team>_<ae>`) puts the
+advertiser at **token 7** and campaign at **token 8** — the *same positions as
+the Direct convention* — so deals read as `Advertiser — Campaign` with
+**agency · holding** (tokens 6 · 5, the buyer, not shown in any column) as the
+secondary line. The old `_parse_pmp_name` surfaced `vertical_exchange_dsp`
+(e.g. "Automotive_Adx_DV360") as the primary and buried the advertiser,
+collapsing distinct deals (two MD-Anderson intent tiers both read
+"Health_Magnite_AdTheorent"). DSP/SSP/Format/eCPM/Deal Type/Seller are already
+columns, so the name is identity-only. **SSP-native / non-convention names**
+(Pubmatic `3PS_Pubmatic_DE_Display_High CTR`, DSP-minted `Google_US_Always-On_…`)
+have no token-7 structure, so they're returned **whole, lightly cleaned**
+(underscores→spaces) — the buyer's string *is* the identity. `''`/`NA`/`N/A` →
+`("—", "")`. Used by both the desktop name cell and the mobile card primary
+(and the floor-breach banner's `[0]`). Pinned by `test_pmp_deal_display_name`.
+
 ## Dashboard design system (Newsweek "Paper", 2026-06)
 The dashboard is skinned to the Newsweek design system: **light warm-paper
 canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern
