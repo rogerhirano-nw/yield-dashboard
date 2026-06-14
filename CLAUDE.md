@@ -1,6 +1,7 @@
 # Claude Code notes for yield-dashboard
 
 See `README.md` for project overview, files, and quickstart.
+See `docs/changelog.md` for the dated "what changed when, and why" index (keyed by PR).
 
 ## Conventions
 - Python (Streamlit dashboard + per-source clients). Cache layer is SQLite locally, Postgres in prod (`DATABASE_URL` Supabase).
@@ -454,6 +455,40 @@ Rules that survive any future restyle:
   `open` attribute responsively, so force the body open instead). The
   all-clear state stays a plain `<div>` (three static ✓ rows, nothing to
   collapse).
+- **PMP signals accordion** (under the PMP KPI strip, 2026-06-14). One
+  `.nw-na` card (reuses the Needs-attention CSS, so it collapses to a
+  one-line header on mobile and is forced-open on desktop) titled "PMP
+  signals", **default-open** (`<details … open>` — per-element, so the
+  separate alerts card stays collapsed). One inline-expanding row per
+  signal:
+  - **Spend momentum** (neutral `sev-info`): the combined-PMP movers list.
+    Decision logic is `dl.spend_momentum(df, name_col, rev_col)` (tested) —
+    GAM + Magnite + Pubmatic PD+PA normalized to `(deal, _date, _rev)`,
+    concatenated into **one** list (no per-SSP buckets, **PMP-only**, no
+    Direct), split into an **adaptive** recent-vs-prior window
+    (`w = min(7, D//2)` distinct dates → 7-vs-7 once the pulls carry 14
+    days, behaviour-identical 3-vs-3 on a 7-day cache), filters deals to
+    ≥$0.50 in a window then `|Δ| > $100`, sorts by recent revenue. Rows
+    (`_sp_rows_for`, the `.sp-*` classes) are a two-tier advertiser/campaign
+    label (`dl.pmp_deal_display_name`) + `prior → recent` flow + colored Δ
+    (gaining `--state-positive-muted` / losing `--state-critical`). Header
+    count = gaining + losing.
+  - **No delivery** (`sev-red`): seller-owned PA inventory set up but not
+    winning impressions, from `gam_pa_metadata`. **Excludes** deals that
+    are actually delivering (present in `gam_pmp_deals` with impressions),
+    **canceled** (dead by intent), and **open-auction** backstop (AE token
+    `OpenAuction` — Google demand facilitation, not AE-managed). Grouped by
+    **seller** — the AE parsed from the deal name (`Team-(USA|INTL)_<AE>`)
+    resolved through **settings.json `ae_names`** (which carries the case
+    variants, so `ILee`/`Ilee` both → "Ivy Lee"), busiest seller first.
+    Each card: readable `dl.pmp_deal_display_name`, a **PA/PD deal-type
+    pill** (`_dt_pill`) pinned top-right (`.nd-top` flex), an Active/Pending
+    status label (pending amber), and **days-inactive** =
+    `dl.idle_days(last_bid_date, create_time[:10], today)` — last bid from
+    `pmp_last_bid_date` when tracked (true inactivity), else days since
+    `gam_pa_metadata.create_time` (set up but never bid) — colored by
+    `dl.idle_band` (amber 90+, red 180+); most-inactive first within each
+    seller. Header detail surfaces the actionable **active** count.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
