@@ -477,7 +477,12 @@ Rules that survive any future restyle:
     **seller** — the AE parsed from the deal name (`Team-(USA|INTL)_<AE>`)
     resolved through **settings.json `ae_names`** (which carries the case
     variants, so `ILee`/`Ilee` both → "Ivy Lee"), busiest seller first.
-    Each card: readable `dl.pmp_deal_display_name`, a **PA/PD deal-type
+    **Each seller is a collapsible row** (`.nd-sg` `<details>`, 2026-06-14):
+    an initials avatar (`.nd-av`) + name + `count · worst-Nd` summary, deals
+    nested inside, collapsed by default — so the seller overview is scannable
+    and a 18-deal seller doesn't bury the rest (the prior flat list with a
+    faint `.nd-ghead` header made "which deals belong to which seller" hard
+    to read). Each card: readable `dl.pmp_deal_display_name`, a **PA/PD deal-type
     pill** (`_dt_pill`) pinned top-right (`.nd-top` flex), an Active/Pending
     status label (pending amber), and **days-inactive** =
     `dl.idle_days(last_bid_date, create_time[:10], today)` — last bid from
