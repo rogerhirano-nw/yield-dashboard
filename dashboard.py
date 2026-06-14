@@ -5785,25 +5785,6 @@ if st.session_state.active_view == "campaigns":
                     f'{sub_html}'
                     f'</div>')
 
-        def _parse_pmp_name(name):
-            """Returns (primary, paren, subtitle) for a structured PMP deal name."""
-            if not isinstance(name, str) or not name:
-                return ("—", "", "")
-            n = re.sub(r"^Newsweek_(P[GDA]|PMP)_", "", name)
-            parts = n.split("_")
-            primary = "_".join(parts[:3]) if len(parts) >= 3 else n
-            paren = ""
-            if len(parts) >= 5:
-                bits = [x for x in (parts[3], parts[4]) if x and x not in ("NA", "N/A")]
-                if bits:
-                    paren = "(" + " ".join(bits) + ")"
-            sub_bits = []
-            if len(parts) >= 6 and parts[5] not in ("NA", "N/A", ""):
-                sub_bits.append(parts[5])
-            if len(parts) >= 7:
-                sub_bits.append("_".join(parts[6:]))
-            return (primary, paren, " · ".join(sub_bits))
-
         def _dt_pill(dt):
             code_map = {
                 "Programmatic Guaranteed": ("PG", "pill-dt-pg"),
@@ -5879,7 +5860,7 @@ if st.session_state.active_view == "campaigns":
         if not _breach_rows.empty:
             _n_breach = len(_breach_rows)
             _ex = _breach_rows.iloc[0]
-            _ex_primary = _parse_pmp_name(_ex.get("Deal") or "")[0]
+            _ex_primary = dl.pmp_deal_display_name(_ex.get("Deal") or "")[0]
             _ex_ecpm = float(_ex.get("eCPM")) if pd.notna(_ex.get("eCPM")) else 0.0
             _ex_floor = float(_ex.get("_floor")) if pd.notna(_ex.get("_floor")) else 0.0
             _ex_dt_code = {"Programmatic Guaranteed": "PG", "Preferred Deal": "PD",
@@ -6137,7 +6118,7 @@ if st.session_state.active_view == "campaigns":
         # ── Table — custom HTML grid matching Direct campaigns design. ──
         _pmp_rows_html = []
         for _, row in _pmp_page_slice.iterrows():
-            _primary, _paren, _sub = _parse_pmp_name(row.get("Deal") or "")
+            _primary, _sub = dl.pmp_deal_display_name(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
             _floor_val = _floors.get(_dt) if _dt else None
             _seller = row.get("Seller")
@@ -6150,8 +6131,6 @@ if st.session_state.active_view == "campaigns":
                 _seller_html = _pmp_esc(_seller_html)
 
             _name_html = f'<span class="pmp-name-primary">{_pmp_esc(_primary)}</span>'
-            if _paren:
-                _name_html += f'<span class="pmp-name-paren">{_pmp_esc(_paren)}</span>'
             if _sub:
                 _name_html += f'<div class="pmp-name-sub">{_pmp_esc(_sub)}</div>'
 

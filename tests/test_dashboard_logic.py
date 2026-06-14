@@ -372,6 +372,30 @@ def test_line_item_display_name_real_prod_names():
         == "Infiniti — Centerstage"
 
 
+def test_pmp_deal_display_name():
+    """PMP deal name → (primary, subline). Newsweek convention puts advertiser
+    at token 7 and campaign at token 8 (same as Direct); agency(6)·holding(5)
+    is the subline. SSP-native names have no such structure → shown whole."""
+    from dashboard_logic import pmp_deal_display_name as dn
+    # GAM Newsweek convention: Advertiser — Campaign · agency · holding
+    assert dn("Newsweek_PA_Automotive_Adx_DV360_WPP_Mindshare_Ford Motor Company_Ford-Always-On_US_Display_$3_Team-USA_THern") \
+        == ("Ford Motor Company — Ford Always On", "Mindshare · WPP")
+    # Magnite exchange variant — same token positions; distinguishes sibling tiers
+    assert dn("Newsweek_PA_Health_Magnite_AdTheorent_Omnicom_GSD&M_MD-Anderson_FY26-Brand-National-Intent-Tier2_US_Display_$7.48_Team-USA_BKaretny") \
+        == ("MD Anderson — FY26 Brand National Intent Tier2", "GSD&M · Omnicom")
+    # N/A agency + holding → empty subline; N/A campaign → advertiser only
+    assert dn("Newsweek_PD_Multi_Adx_RTB House_N/A_N/A_RTB-House-US_N/A_Global_Display_$10_Team-USA_BKaretny") \
+        == ("RTB House US", "")
+    # SSP-native / non-convention: whole name, underscores → spaces, no subline
+    assert dn("3PS_Pubmatic_DE_Display_High CTR") == ("3PS Pubmatic DE Display High CTR", "")
+    assert dn("ABS-CBN - PH - Display") == ("ABS-CBN - PH - Display", "")
+    assert dn(" PM_25_Q3_TTD_PowerDigital_US_Display_WebApp") == ("PM 25 Q3 TTD PowerDigital US Display WebApp", "")
+    # empties
+    assert dn("N/A") == ("—", "")
+    assert dn("") == ("—", "")
+    assert dn(None) == ("—", "")
+
+
 def test_ae_and_team_token_regexes():
     import re
     from dashboard_logic import AE_TOKEN_RE, TEAM_TOKEN_RE

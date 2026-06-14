@@ -422,6 +422,49 @@ def line_item_display_name(name) -> str:
     return clean + note
 
 
+_PMP_CONV_RE = re.compile(r"^Newsweek_(PG|PD|PA|PMP)_")
+_PMP_NA = ("", "NA", "N/A")
+
+
+def pmp_deal_display_name(name):
+    """(primary, sub) display label for a PMP deal name.
+
+    The Newsweek deal-name convention —
+    `Newsweek_<PG|PD|PA|PMP>_<vertical>_<exchange>_<dsp>_<holding>_<agency>_
+    <advertiser>_<campaign>_<geo>_<format>_<floor>_<team>_<ae>` — puts the
+    advertiser at token 7 and the campaign at token 8 (same positions as the
+    Direct line-item convention), so the deal reads as
+    **`<Advertiser> — <Campaign>`** with the buying **agency (· holding)** as
+    the secondary line. The old name surfaced `<vertical>_<exchange>_<dsp>`
+    (e.g. "Automotive_Adx_DV360") as the primary and buried the advertiser,
+    collapsing distinct deals together. DSP / SSP / Format / eCPM / Deal Type /
+    Seller are already their own columns, so the name carries identity only.
+
+    SSP-native / non-convention names (Pubmatic "3PS_Pubmatic_DE_Display_High
+    CTR", DSP-minted "Google_US_Always-On_…") have no such structure, so they're
+    returned cleaned but whole (underscores → spaces) — the buyer-defined
+    string *is* the identity. Empty / "NA" / "N/A" → ("—", "")."""
+    if not isinstance(name, str) or name.strip() in _PMP_NA:
+        return ("—", "")
+    raw = name.strip()
+    if _PMP_CONV_RE.match(raw):
+        t = raw.split("_")
+
+        def _tok(i):
+            return t[i].strip() if len(t) > i and t[i].strip() not in _PMP_NA else ""
+
+        adv, camp = _tok(7), _tok(8)
+        if adv and camp.lower().startswith(adv.lower() + "-"):
+            camp = camp[len(adv) + 1:]
+        if adv or camp:
+            primary = " — ".join(p.replace("-", " ") for p in (adv, camp) if p)
+            sub_bits = list(dict.fromkeys(
+                b.replace("-", " ") for b in (_tok(6), _tok(5)) if b))
+            return (primary, " · ".join(sub_bits))
+    # Non-convention SSP-native name: show it whole, lightly cleaned.
+    return (re.sub(r"\s+", " ", raw.replace("_", " ")).strip(), "")
+
+
 # ── Pacing ──────────────────────────────────────────────────────────────
 
 
