@@ -798,11 +798,24 @@ def refresh_pmp_last_bid_date() -> int:
                 ssp             TEXT NOT NULL,
                 deal_key        TEXT NOT NULL,
                 last_bid_date   TEXT,
+                last_seen_date  TEXT,
                 first_seen_date TEXT NOT NULL,
                 updated_at      TEXT NOT NULL,
                 PRIMARY KEY (ssp, deal_key)
             )
         """))
+        # last_seen_date (added 2026-06): the last day the deal appeared in ANY
+        # source row, bid or not. Lets the stale-deals list separate deals that
+        # stopped being reported entirely (paused/removed → hide) from deals
+        # still live but not winning bids (actionable → keep). Add the column on
+        # existing tables and seed it from each row's last activity so old rows
+        # aren't all treated as "never seen"; the upsert below then bumps any
+        # deal present in the current window up to today's data.
+        conn.execute(text(
+            "ALTER TABLE pmp_last_bid_date ADD COLUMN IF NOT EXISTS last_seen_date TEXT"))
+        conn.execute(text(
+            "UPDATE pmp_last_bid_date SET last_seen_date = "
+            "COALESCE(last_bid_date, first_seen_date) WHERE last_seen_date IS NULL"))
 
     parts: list[pd.DataFrame] = []
 
@@ -818,7 +831,8 @@ def refresh_pmp_last_bid_date() -> int:
     _query("""
         SELECT
             CAST(deal_meta_id AS TEXT) AS deal_key,
-            MAX(CASE WHEN non_zero_bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date
+            MAX(CASE WHEN non_zero_bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date,
+            MAX(date) AS new_last_seen_date
         FROM pubmatic_deals
         WHERE deal_meta_id IS NOT NULL
         GROUP BY deal_meta_id
@@ -827,7 +841,8 @@ def refresh_pmp_last_bid_date() -> int:
     _query("""
         SELECT
             CAST(deal_id AS TEXT) AS deal_key,
-            MAX(CASE WHEN bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date
+            MAX(CASE WHEN bid_responses > 0 THEN date ELSE NULL END) AS new_last_bid_date,
+            MAX(date) AS new_last_seen_date
         FROM magnite_deal_daily
         WHERE deal_id IS NOT NULL
         GROUP BY deal_id
@@ -836,7 +851,8 @@ def refresh_pmp_last_bid_date() -> int:
     _query("""
         SELECT
             programmatic_deal_name AS deal_key,
-            MAX(CASE WHEN deals_bids > 0 THEN date ELSE NULL END) AS new_last_bid_date
+            MAX(CASE WHEN deals_bids > 0 THEN date ELSE NULL END) AS new_last_bid_date,
+            MAX(date) AS new_last_seen_date
         FROM gam_deal_bid_daily
         WHERE programmatic_deal_name IS NOT NULL
         GROUP BY programmatic_deal_name
@@ -847,35 +863,31 @@ def refresh_pmp_last_bid_date() -> int:
         return 0
 
     new_df = pd.concat(parts, ignore_index=True)
-    # Normalise: SQL NULL / Python None / "None" / "nan" → pd.NA
-    new_df["new_last_bid_date"] = (
-        new_df["new_last_bid_date"]
-        .astype(object)
-        .where(new_df["new_last_bid_date"].notna(), other=pd.NA)
-    )
-
-    records = new_df.rename(columns={"new_last_bid_date": "last_bid_date"}).copy()
-    # Normalise pd.NA → None so SQLAlchemy passes SQL NULL to GREATEST().
-    records["last_bid_date"] = records["last_bid_date"].where(
-        records["last_bid_date"].notna(), other=None
-    )
+    records = new_df.rename(columns={"new_last_bid_date": "last_bid_date",
+                                     "new_last_seen_date": "last_seen_date"}).copy()
+    # Normalise SQL NULL / Python None / "None" / "nan" → None so SQLAlchemy
+    # passes SQL NULL to GREATEST() (GREATEST(NULL, x) = x).
+    for _c in ("last_bid_date", "last_seen_date"):
+        records[_c] = records[_c].astype(object)
+        records[_c] = records[_c].where(records[_c].notna(), other=None)
     records["first_seen_date"] = today_str
     records["updated_at"] = now_ts
 
-    # ON CONFLICT keeps last_bid_date monotonically non-decreasing (GREATEST handles
-    # NULLs correctly: GREATEST(NULL, x) = x). first_seen_date is excluded from
-    # DO UPDATE — it stays as set when the row was first inserted.
+    # ON CONFLICT keeps last_bid_date / last_seen_date monotonically
+    # non-decreasing (GREATEST handles NULLs: GREATEST(NULL, x) = x).
+    # first_seen_date is excluded from DO UPDATE — set once on first insert.
     upsert_sql = text("""
-        INSERT INTO pmp_last_bid_date (ssp, deal_key, last_bid_date, first_seen_date, updated_at)
-        VALUES (:ssp, :deal_key, :last_bid_date, :first_seen_date, :updated_at)
+        INSERT INTO pmp_last_bid_date (ssp, deal_key, last_bid_date, last_seen_date, first_seen_date, updated_at)
+        VALUES (:ssp, :deal_key, :last_bid_date, :last_seen_date, :first_seen_date, :updated_at)
         ON CONFLICT (ssp, deal_key) DO UPDATE SET
             last_bid_date = GREATEST(EXCLUDED.last_bid_date, pmp_last_bid_date.last_bid_date),
+            last_seen_date = GREATEST(EXCLUDED.last_seen_date, pmp_last_bid_date.last_seen_date),
             updated_at = EXCLUDED.updated_at
     """)
     with engine.begin() as conn:
         conn.execute(
             upsert_sql,
-            records[["ssp", "deal_key", "last_bid_date", "first_seen_date", "updated_at"]].to_dict("records"),
+            records[["ssp", "deal_key", "last_bid_date", "last_seen_date", "first_seen_date", "updated_at"]].to_dict("records"),
         )
 
     n_with_history = int(records["last_bid_date"].notna().sum())
