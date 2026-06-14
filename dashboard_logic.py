@@ -279,27 +279,27 @@ def ivt_daily_series_by_li(ivt_df, group_col: str, fraud_label: str,
     return out
 
 
-def revenue_daily_series_by_deal(daily_df, n: int = 7):
-    """Per-deal daily revenue over a *contiguous* last-`n`-day window, keyed by
-    ``(ssp, deal)`` and ordered oldest→newest. `daily_df` has columns
-    ``[ssp, deal, date, revenue]`` (one row per deal·day per source). One
-    groupby pass — precompute once, then look up per row (the PMP table builds
-    the drawer chart + card sparkline eagerly). Missing days inside the window
-    are filled 0.0, so a gap reads as a dip rather than a dropped point (unlike
-    the DV series, where a no-coverage day is genuinely absent). The window ends
-    at the latest date present (PMP data lags a couple days), not "today".
+def daily_series_by_deal(daily_df, value_col: str = "revenue", n: int = 7):
+    """Per-deal daily series of ``value_col`` over a *contiguous* last-`n`-day
+    window, keyed by ``(ssp, deal)`` and ordered oldest→newest. `daily_df` has
+    columns ``[ssp, deal, date, <value_col>]`` (one row per deal·day per
+    source). One groupby pass — precompute once, then look up per row (the PMP
+    drawer builds its charts eagerly). Missing days inside the window are filled
+    0.0, so a gap reads as a dip rather than a dropped point. The window ends at
+    the latest date present (PMP data lags a couple days), not "today".
 
     Returns ``(series_by_deal, window_dates)`` where window_dates is the list of
     `n` ``date`` objects (oldest→newest); both empty when there's no usable
-    daily data. Powers the PMP drawer's 7-day revenue chart and the mobile-card
-    revenue sparkline."""
+    daily data. Powers the PMP drawer's revenue / total-requests / bid-responses
+    7-day trend charts (and the mobile-card revenue sparkline via the wrapper
+    below)."""
     cols = getattr(daily_df, "columns", [])
-    if daily_df is None or not {"ssp", "deal", "date", "revenue"}.issubset(cols):
+    if daily_df is None or not {"ssp", "deal", "date", value_col}.issubset(cols):
         return {}, []
     sub = daily_df.dropna(subset=["deal", "date"]).copy()
     if sub.empty:
         return {}, []
-    sub["revenue"] = pd.to_numeric(sub["revenue"], errors="coerce").fillna(0.0)
+    sub[value_col] = pd.to_numeric(sub[value_col], errors="coerce").fillna(0.0)
     sub["date"] = pd.to_datetime(sub["date"], errors="coerce").dt.normalize()
     sub = sub.dropna(subset=["date"])
     if sub.empty:
@@ -309,12 +309,20 @@ def revenue_daily_series_by_deal(daily_df, n: int = 7):
     sub = sub[sub["date"].isin(window)]
     if sub.empty:
         return {}, []
-    daily = sub.groupby(["ssp", "deal", "date"])["revenue"].sum()
+    daily = sub.groupby(["ssp", "deal", "date"])[value_col].sum()
     out: dict = {}
     for ssp, deal in daily.index.droplevel(2).unique():
         s = daily.loc[(ssp, deal)]
         out[(str(ssp), str(deal))] = [float(s.get(d, 0.0)) for d in window]
     return out, [d.date() for d in window]
+
+
+def revenue_daily_series_by_deal(daily_df, n: int = 7):
+    """Per-deal daily **revenue** series — thin wrapper over
+    ``daily_series_by_deal`` for the revenue column (kept as the named entry
+    point the PMP table + its test use). See that function for the windowing
+    and 0-fill contract."""
+    return daily_series_by_deal(daily_df, "revenue", n)
 
 
 def window_last_n_days(frame, n: int = 7, date_col: str = "date"):

@@ -63,6 +63,17 @@ squash-merged to `main` on green (119 tests).
   built by a deferred `_render_pmp_signals()` called after `_pmp_drawer_html` is
   defined, so the deal rows can reuse the table's drawer without moving it;
   `_sp_rows_for` gained an optional `wrap` callback for the momentum rows.
+- **#245** — **Two more drawer charts: Total requests + Bid responses.** The
+  PMP deal drawer now shows the 7-day bid-funnel trend next to revenue.
+  `_pmp_drawer_revenue_chart` generalized to `_pmp_drawer_trend_chart(series,
+  dates, label, money)` (K/M formatting, `$` only when `money`); `_pmp_daily`
+  carries `total_requests` / `bid_responses` (Magnite `bid_requests` /
+  `bid_responses`, Pubmatic `total_requests` / `non_zero_bid_responses`), and
+  `dl.revenue_daily_series_by_deal` generalized to
+  `dl.daily_series_by_deal(df, value_col)` (revenue kept as a thin wrapper, test
+  unchanged). Each chart skips when its metric sums to ≤0, so GAM deals (no bid
+  funnel) show revenue only and Pubmatic shows revenue + responses (its
+  `total_requests` is empty upstream). Magnite carries the funnel for 179 deals.
 - **#243** — **Compact one-row pager** (`_compact_pager`) for both the Direct
   and PMP tables: `‹` · centered *Page X of N* (+ muted "N of M shown") · `›`.
   Replaces the `st.columns([1,4,1])` + full-width buttons, which **stacked into

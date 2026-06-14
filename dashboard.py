@@ -6359,6 +6359,10 @@ if st.session_state.active_view == "campaigns":
                 _pmp_daily_parts.append(pd.DataFrame({
                     "ssp": "Magnite", "deal": _mdd["deal"].astype(str), "date": _mdd.get("date"),
                     "revenue": pd.to_numeric(_mdd.get("publisher_gross_revenue"), errors="coerce"),
+                    "total_requests": (pd.to_numeric(_mdd["bid_requests"], errors="coerce")
+                                       if "bid_requests" in _mdd.columns else pd.NA),
+                    "bid_responses": (pd.to_numeric(_mdd["bid_responses"], errors="coerce")
+                                      if "bid_responses" in _mdd.columns else pd.NA),
                 }))
         except Exception:
             pass
@@ -6375,15 +6379,34 @@ if st.session_state.active_view == "campaigns":
                 _pmp_daily_parts.append(pd.DataFrame({
                     "ssp": "Pubmatic", "deal": _plabel.astype(str), "date": _pud.get("date"),
                     "revenue": pd.to_numeric(_pud.get("revenue"), errors="coerce"),
+                    "total_requests": (pd.to_numeric(_pud["total_requests"], errors="coerce")
+                                       if "total_requests" in _pud.columns else pd.NA),
+                    "bid_responses": (pd.to_numeric(_pud["non_zero_bid_responses"], errors="coerce")
+                                      if "non_zero_bid_responses" in _pud.columns else pd.NA),
                 }))
         except Exception:
             pass
         _pmp_daily = (pd.concat(_pmp_daily_parts, ignore_index=True)
-                      if _pmp_daily_parts else pd.DataFrame(columns=["ssp", "deal", "date", "revenue"]))
+                      if _pmp_daily_parts else pd.DataFrame(
+                          columns=["ssp", "deal", "date", "revenue",
+                                   "total_requests", "bid_responses"]))
+        # Per-deal 7-day trend series for the drawer charts. Revenue covers all
+        # three SSPs; total_requests / bid_responses are the bid funnel — only
+        # Magnite (bid_requests/bid_responses) and Pubmatic (total_requests/
+        # non_zero_bid_responses) report them, so GAM-only deals get an empty
+        # series and skip those two charts. Same (SSP, Deal) keying as revenue.
         _pmp_rev_series_by_deal, _pmp_rev_dates = dl.revenue_daily_series_by_deal(_pmp_daily)
+        _pmp_req_series_by_deal, _ = dl.daily_series_by_deal(_pmp_daily, "total_requests")
+        _pmp_resp_series_by_deal, _ = dl.daily_series_by_deal(_pmp_daily, "bid_responses")
 
         def _pmp_rev_series_for(row):
             return _pmp_rev_series_by_deal.get((str(row.get("SSP")), str(row.get("Deal"))))
+
+        def _pmp_req_series_for(row):
+            return _pmp_req_series_by_deal.get((str(row.get("SSP")), str(row.get("Deal"))))
+
+        def _pmp_resp_series_for(row):
+            return _pmp_resp_series_by_deal.get((str(row.get("SSP")), str(row.get("Deal"))))
 
         def _pmp_spark_svg(values):
             """Compact 7-day revenue sparkline for the mobile PMP card. NEUTRAL
@@ -6418,13 +6441,16 @@ if st.session_state.active_view == "campaigns":
                     f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" '
                     f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
 
-        def _pmp_drawer_revenue_chart(series, dates):
-            """7-day daily revenue trend for the PMP deal drawer — same area-wash
-            + baseline + end-dot language as the Direct drawer delivery chart, but
-            NEUTRAL (a revenue trend is shape, not a pace-health signal; the
-            eCPM-vs-floor banding owns severity). Scales UNIFORMLY (plain viewBox
-            + CSS width:100%/height:auto) so geometry never warps. Skipped when
-            the deal has no positive revenue in the window."""
+        def _pmp_drawer_trend_chart(series, dates, label="7-day revenue", money=True):
+            """7-day daily trend for a PMP deal drawer metric — revenue,
+            total ad requests, or bid responses. Same area-wash + baseline +
+            end-dot language as the Direct drawer delivery chart, but NEUTRAL (a
+            trend is shape, not a pace-health signal; the eCPM-vs-floor banding
+            owns severity). Scales UNIFORMLY (plain viewBox + CSS
+            width:100%/height:auto) so geometry never warps. `money` toggles the
+            `$` prefix on the total/latest legend (counts vs revenue). Skipped
+            when the metric has no positive value in the window — so a GAM deal
+            (no bid funnel) renders no requests/responses chart."""
             if not series:
                 return ""
             nn = [v for v in series if v is not None]
@@ -6449,10 +6475,15 @@ if st.session_state.active_view == "campaigns":
                    f'stroke-width="7.5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'
                    f'<path d="M{dx:.1f} {dy:.1f}h0" fill="none" style="stroke:{stroke}" '
                    f'stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+            def _fmt(v):
+                _p = "$" if money else ""
+                if v >= 1_000_000: return f"{_p}{v/1_000_000:.1f}M"
+                if v >= 1000:      return f"{_p}{v/1000:.1f}K"
+                return f"{_p}{v:,.0f}"
             total = sum(nn)
-            _tot = f"${total/1000:.1f}K" if total >= 1000 else f"${total:,.0f}"
+            _tot = _fmt(total)
             _last = series[li] or 0
-            _lat = f"${_last/1000:.1f}K" if _last >= 1000 else f"${_last:,.0f}"
+            _lat = _fmt(_last)
             _cells = ""
             for i, d in enumerate(dates or []):
                 _lab = f"{d.strftime('%a')} {d.day}" if d else ""
@@ -6461,7 +6492,7 @@ if st.session_state.active_view == "campaigns":
             _date_row = f'<div class="nw-date-row">{_cells}</div>' if _cells else ""
             return (
                 '<div class="nw-drawer-chart">'
-                '<div class="nw-drawer-chart-label"><span>7-day revenue</span>'
+                f'<div class="nw-drawer-chart-label"><span>{label}</span>'
                 f'<span class="legend-row"><span class="legend">{_tot} total · {_lat}/day latest</span></span></div>'
                 f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg">{area}{baseline}'
                 f'<polyline points="{pts}" fill="none" style="stroke:{stroke}" stroke-width="1.75" '
@@ -6474,7 +6505,13 @@ if st.session_state.active_view == "campaigns":
             _dt = row.get("Deal Type") or ""
             _floor = _floors.get(_dt) if _dt else None
             _ecpm_v = pd.to_numeric(row.get("eCPM"), errors="coerce")
-            _rev_chart = _pmp_drawer_revenue_chart(_pmp_rev_series_for(row), _pmp_rev_dates)
+            _rev_chart  = _pmp_drawer_trend_chart(_pmp_rev_series_for(row), _pmp_rev_dates,
+                                                  "7-day revenue", money=True)
+            # Bid-funnel trends (Magnite / Pubmatic only; GAM deals skip them).
+            _req_chart  = _pmp_drawer_trend_chart(_pmp_req_series_for(row), _pmp_rev_dates,
+                                                  "7-day total requests", money=False)
+            _resp_chart = _pmp_drawer_trend_chart(_pmp_resp_series_for(row), _pmp_rev_dates,
+                                                  "7-day bid responses", money=False)
 
             # Status banner: eCPM vs floor thesis.
             status_html = ""
@@ -6586,6 +6623,8 @@ if st.session_state.active_view == "campaigns":
                 '</div>'
                 f'{status_html}'
                 f'{_rev_chart}'
+                f'{_req_chart}'
+                f'{_resp_chart}'
                 f'{bid_html}'
                 f'{meta_html}'
                 f'{_action_html}'

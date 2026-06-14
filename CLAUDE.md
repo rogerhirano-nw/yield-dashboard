@@ -304,13 +304,22 @@ Rules that survive any future restyle:
     instead of a stretched-flat band; the date row sits inside the panel
     and caps with it, staying aligned under the 7 points. Don't reintroduce
     `preserveAspectRatio="none"` here.
-  - `_pmp_drawer_revenue_chart` (the PMP deal drawer's **7-day revenue**
-    chart, 2026-06-14) is the delivery chart's twin — same `600×112` uniform
-    scaling + area-wash + baseline + end-dot — but **NEUTRAL** (`--text-secondary`):
-    a revenue trend is shape, not a pace-health signal, so the eCPM-vs-floor
-    banding keeps severity and the line stays neutral (the delivery chart is
-    the *only* state-colored line). Its per-deal series comes from
-    `dl.revenue_daily_series_by_deal`, which rebuilds a daily-revenue frame
+  - `_pmp_drawer_trend_chart` (the PMP deal drawer's neutral 7-day trend
+    charts — **revenue · total requests · bid responses**; revenue-only until
+    the bid-funnel pair was added 2026-06-14) is the delivery chart's twin —
+    same `600×112` uniform scaling + area-wash + baseline + end-dot — but
+    **NEUTRAL** (`--text-secondary`): a trend is shape, not a pace-health
+    signal, so the eCPM-vs-floor banding keeps severity and the line stays
+    neutral (the delivery chart is the *only* state-colored line). `money=False`
+    drops the `$` for the count charts (K/M formatting), and **each chart skips
+    when its metric sums to ≤0** — so a GAM deal (no bid funnel) shows revenue
+    only, and Pubmatic (its `total_requests` is unpopulated upstream) shows
+    revenue + bid responses. The per-deal series come from
+    `dl.daily_series_by_deal(_pmp_daily, <col>)` (revenue via the
+    `revenue_daily_series_by_deal` wrapper, which the test still pins) —
+    total_requests from Magnite `bid_requests` / Pubmatic `total_requests`,
+    bid_responses from Magnite `bid_responses` / Pubmatic
+    `non_zero_bid_responses`. `_pmp_daily` rebuilds a daily frame
     from `gam_pmp_deals` / `magnite_deal_daily` / `pubmatic_deals` (the daily
     rows the PMP summary aggregates away) keyed by **(SSP, Deal)** — match each
     source's row key exactly (GAM `programmatic_deal_name`, Magnite `deal`,
