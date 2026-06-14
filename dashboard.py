@@ -5124,6 +5124,11 @@ if st.session_state.active_view == "campaigns":
         recent = df[df["_date"].isin(recent_dates)].groupby(name_col)[rev_col].sum()
         prior  = df[df["_date"].isin(prior_dates)].groupby(name_col)[rev_col].sum()
         out = pd.DataFrame({"_recent_rev": recent, "_prior_rev": prior}).fillna(0).reset_index()
+        # Hide deals with no visible revenue in either window ($0 → $0 noise):
+        # keep only rows where the recent or prior window shows ≥ $0.50.
+        out = out[(out["_recent_rev"].abs() >= 0.5) | (out["_prior_rev"].abs() >= 0.5)].copy()
+        if out.empty:
+            return pd.DataFrame(), 0, 0
         out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
         out["_pct"] = out.apply(
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
@@ -5138,6 +5143,10 @@ if st.session_state.active_view == "campaigns":
         df["_recent_rev"] = df[recent_col_filter].sum(axis=1)
         df["_prior_rev"]  = df[prior_col_filter].sum(axis=1)
         out = df.groupby(name_col, as_index=False)[["_recent_rev", "_prior_rev"]].sum()
+        # Hide deals/advertisers with no visible revenue in either window.
+        out = out[(out["_recent_rev"].abs() >= 0.5) | (out["_prior_rev"].abs() >= 0.5)].copy()
+        if out.empty:
+            return pd.DataFrame(), 0, 0
         out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
         out["_pct"] = out.apply(
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
