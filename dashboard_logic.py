@@ -316,6 +316,81 @@ def revenue_daily_series_by_deal(daily_df, n: int = 7):
     return out, [d.date() for d in window]
 
 
+def window_last_n_days(frame, n: int = 7, date_col: str = "date"):
+    """Keep only rows within the last `n` calendar days of the frame's *own*
+    latest date (the inclusive window ``[max_date - (n-1) … max_date]``).
+
+    The source daily tables now retain more than `n` days (the pulls were
+    widened to power week-vs-week spend momentum), but the PMP **summary** must
+    stay a fixed `n`-day view so its revenue / impression / eCPM totals don't
+    move when the retention grows. Anchored on the frame's max date, not
+    "today", so each source tracks its own lag (PMP data trails a couple days).
+    A frame with no usable `date_col` is returned unchanged."""
+    cols = getattr(frame, "columns", [])
+    if frame is None or date_col not in cols or len(frame) == 0:
+        return frame
+    d = pd.to_datetime(frame[date_col], errors="coerce")
+    if d.notna().sum() == 0:
+        return frame
+    cutoff = d.max().normalize() - pd.Timedelta(days=n - 1)
+    return frame[d >= cutoff]
+
+
+def spend_momentum(df, name_col, rev_col, window: int = 7,
+                   min_window_rev: float = 0.5, min_delta: float = 100.0):
+    """Rank PMP deals by recent-vs-prior spend. `df` is one row per deal·day
+    (sources pre-concatenated) with a deal-name column (`name_col`), a `_date`
+    column, and a revenue column (`rev_col`).
+
+    The comparison window is **adaptive**: with ``D`` distinct dates it uses
+    ``w = min(window, D // 2)`` days on each side, so it grades
+    **last-7-vs-prior-7** once the daily pulls carry 14 days, and degrades to a
+    smaller symmetric split (3-vs-3 on the current ~7-day cache) without ever
+    overlapping the two windows. At the 7-day regime this is behaviour-identical
+    to the old inline 3-vs-3 split (``min(7, 7//2) == 3``).
+
+    Returns ``(summary, n_gaining, n_losing)``; `summary` has one row per
+    surviving deal (``_recent_rev / _prior_rev / _delta / _pct``), sorted by
+    recent revenue — the top earner first, not by Δ. Filters, in order: drop
+    deals below `min_window_rev` in *both* windows ($0→$0 noise), then drop
+    ``|Δ| ≤ min_delta`` (not a meaningful move). This is the decision half of
+    the spend-momentum list; the HTML rows are built in dashboard.py."""
+    cols = getattr(df, "columns", [])
+    if df is None or name_col not in cols or "_date" not in cols or rev_col not in cols:
+        return pd.DataFrame(), 0, 0
+    d = df.copy()
+    d["_date"] = pd.to_datetime(d["_date"], errors="coerce")
+    d[rev_col] = pd.to_numeric(d[rev_col], errors="coerce").fillna(0)
+    d = d.dropna(subset=[name_col, "_date"])
+    if d.empty:
+        return pd.DataFrame(), 0, 0
+    sorted_dates = sorted(d["_date"].unique(), reverse=True)
+    w = min(window, len(sorted_dates) // 2)
+    if w < 1:
+        return pd.DataFrame(), 0, 0
+    recent_dates = sorted_dates[:w]
+    prior_dates  = sorted_dates[w:2 * w]
+    recent = d[d["_date"].isin(recent_dates)].groupby(name_col)[rev_col].sum()
+    prior  = d[d["_date"].isin(prior_dates)].groupby(name_col)[rev_col].sum()
+    out = pd.DataFrame({"_recent_rev": recent, "_prior_rev": prior}).fillna(0).reset_index()
+    # Hide deals with no visible revenue in either window ($0 → $0 noise).
+    out = out[(out["_recent_rev"].abs() >= min_window_rev)
+              | (out["_prior_rev"].abs() >= min_window_rev)].copy()
+    if out.empty:
+        return pd.DataFrame(), 0, 0
+    out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
+    # Only meaningful movers — drop deals whose spend shifted by ≤ min_delta.
+    out = out[out["_delta"].abs() > min_delta].copy()
+    if out.empty:
+        return pd.DataFrame(), 0, 0
+    out["_pct"] = out.apply(
+        lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
+        axis=1,
+    )
+    out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
+    return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
+
+
 # ── Delta / ratio math ─────────────────────────────────────────────────
 
 

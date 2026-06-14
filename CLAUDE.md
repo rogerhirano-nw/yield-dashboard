@@ -33,6 +33,26 @@ When auditing or adding data, the production sources are:
 
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
+**Per-report retention (the no-duplicate invariant).** The three PMP daily
+tables — `gam_pmp_deals`, `magnite_deal_daily`, `pubmatic_deals` — pull a
+**14-day** window so the dashboard can grade **week-vs-week spend momentum**
+(`dl.spend_momentum`, adaptive last-7-vs-prior-7; degrades to 3-vs-3 on a
+shorter cache). Everything else still reads 7 days: the PMP summary windows
+itself back via `dl.window_last_n_days(…, n=7)` so its Revenue/Impr/eCPM
+totals don't move, and `revenue_daily_series_by_deal` already takes the last
+7. The retention rule for any append-with-DELETE table (`refresh_one_report`,
+`refresh_pubmatic`) is **`retention_days == pull_window + 1`** — the
+`DELETE WHERE date >= cutoff` must clear *yesterday's oldest row* so the fresh
+pull replaces the window cleanly; mismatch duplicates the non-deleted tail
+(a 14-day pull on the old shared 8-day cutoff accumulated 33 days / 276 dup
+rows in a Supabase sim). So `magnite_deal_daily` carries `window_days=14` +
+`retention_days=15` while `magnite_site_daily`/`magnite_dsp_daily` keep their
+`last_7` preset + default-8 retention, untouched. `gam_pmp_deals` is
+`_safe_replace` (full TRUNCATE+append), so widening its window can't
+duplicate. The two raw SSP tabs (Magnite/Pubmatic) are date-picker windowed
+(default "Last 7 days"), so they just gain range. Verify any retention change
+with a temp-table sim of N consecutive daily runs before it touches the sweep.
+
 `pmp_last_bid_date` is a **cumulative** tracking table (not a 7-day rolling window). Upserted at the end of every full sweep by `refresh_pmp_last_bid_date()`. Schema: `(ssp, deal_key, last_bid_date, last_seen_date, first_seen_date, updated_at)`. `deal_key` is `deal_meta_id` (Pubmatic), `deal_id` (Magnite), or `programmatic_deal_name` (GAM). Powers the "Stale deals" expander on the PMP tab. **`last_seen_date`** (added 2026-06) is the last day the deal appeared in ANY source row (`MAX(date)`, bid or not) — distinct from `last_bid_date` (`MAX(date WHERE bids>0)`). Both move forward monotonically via `GREATEST` in the upsert. The expander shows deals stale by `dl.stale_deal_mask` (no bids 90+ days) **and** `dl.recently_seen_mask` (still seen within 90 days): a deal that stopped being reported entirely (paused/removed) drops off, while a deal still in the source but not winning bids stays (actionable). This is why **paused deals used to linger forever** — the table never prunes and the old logic only knew bid recency, so a paused deal went stale and never left; `last_seen_date` is the fix. The source tables only retain ~7–30 days, so a true 90-day "not seen" window can't be computed from them directly — it has to be *tracked* over time (hence the column). `recently_seen_mask` no-ops while the column is NA/absent (old cached frames), so behaviour is unchanged until the refresh populates it. (Migration: existing rows seeded `last_seen_date = COALESCE(last_bid_date, first_seen_date)`, then bumped from current source — done in `refresh_pmp_last_bid_date`'s startup and run once against prod 2026-06-14.) GAM PD/PG deals can be archived directly via `GAMClient.archive_proposal_line_item(pli_id)` (SOAP `ProposalLineItemService`). Pubmatic and Magnite require manual action in their SSP UIs (no publisher-side archive API).
 
 For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
