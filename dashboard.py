@@ -5089,18 +5089,22 @@ if st.session_state.active_view == "campaigns":
             _dlt_s = f"{_sign}${abs(_dlt):,.0f}" if abs(_dlt) >= 0.5 else "—"
             _pct_s = f" ({_sign}{_pct:.0f}%)" if pd.notna(_pct) else ""
             # Newsweek state tokens: gaining = positive, losing = critical,
-            # flat = muted ink (inline style → var() resolves fine here).
-            _clr   = ("var(--state-positive-muted)" if _dlt > 0
-                      else ("var(--state-critical)" if _dlt < -0.5 else "var(--text-muted)"))
+            # flat = muted ink.
+            _cls = ("up" if _dlt > 0 else ("down" if _dlt < -0.5 else "flat"))
+            # Identifiable two-tier label (advertiser bold over muted campaign)
+            # from the same Advertiser — Campaign name the PMP table shows, so
+            # the row isn't a clipped "N…". Direct's advertiser-only group key
+            # falls through pmp_deal_display_name as just the advertiser.
+            _full = dl.pmp_deal_display_name(_r[name_col] or "")[0]
+            _adv, _camp = (_full.split(" — ", 1) + [""])[:2] if " — " in _full else (_full, "")
+            _camp_html = f'<span class="sp-camp"> — {_sp_esc(_camp)}</span>' if _camp else ""
             rows.append(
-                f'<div class="sp-row">'
-                f'<div class="sp-adv">{_sp_esc(_r[name_col] or "—")}</div>'
-                f'<div class="sp-num">{_sp_dollar(_r["_recent_rev"])}</div>'
-                f'<div class="sp-num">{_sp_dollar(_r["_prior_rev"])}</div>'
-                f'<div class="sp-num" style="color:{_clr}">'
-                f'{_dlt_s}<span style="opacity:.65">{_pct_s}</span>'
-                f'</div>'
-                f'</div>'
+                '<div class="sp-row">'
+                f'<div class="sp-nm"><span class="sp-adv">{_sp_esc(_adv)}</span>{_camp_html}</div>'
+                '<div class="sp-met">'
+                f'<span class="sp-flow">${_r["_prior_rev"]:,.0f} → ${_r["_recent_rev"]:,.0f}</span>'
+                f'<span class="sp-dlt {_cls}">{_dlt_s}<span class="sp-pct">{_pct_s}</span></span>'
+                '</div></div>'
             )
         return rows
 
@@ -5251,27 +5255,28 @@ if st.session_state.active_view == "campaigns":
         _total_losing = (
             _gam_pmp_n_losing + _mag_n_losing + _pub_n_losing + _direct_n_losing
         )
+        # Layout A (chosen 2026-06): each row is a two-tier identifiable label
+        # (advertiser bold over muted campaign) with a "prior → recent" flow
+        # line and the Δ as colored text on the right. Stacks the same on
+        # desktop and mobile — replaces the old 4-column grid that crushed the
+        # deal name down to one letter ("N…") on a phone.
         _sp_css = (
             '<style>'
-            '.sp-row{display:grid;grid-template-columns:1fr 90px 90px 130px;'
-            'gap:0 12px;padding:5px 4px;'
-            'border-bottom:1px solid var(--border);'
-            'font-size:13px;align-items:center}'
+            '.sp-row{padding:8px 6px;border-bottom:1px solid var(--border)}'
             '.sp-section{font-size:11px;font-weight:700;color:var(--text-secondary);'
-            'text-transform:uppercase;letter-spacing:var(--track-eyebrow);padding:10px 4px 3px}'
-            '.sp-head{font-size:11px;font-weight:600;color:var(--text-muted);'
-            'text-transform:uppercase;letter-spacing:.04em}'
-            '.sp-adv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-            '.sp-num{text-align:right;font-variant-numeric:tabular-nums}'
+            'text-transform:uppercase;letter-spacing:var(--track-eyebrow);padding:10px 6px 3px}'
+            '.sp-nm{font-size:13px;line-height:1.25}'
+            '.sp-adv{font-weight:700;color:var(--text-primary)}'
+            '.sp-camp{color:var(--text-muted)}'
+            '.sp-met{display:flex;justify-content:space-between;align-items:baseline;'
+            'gap:10px;margin-top:2px}'
+            '.sp-flow{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums}'
+            '.sp-dlt{font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums}'
+            '.sp-dlt.up{color:var(--state-positive-muted)}'
+            '.sp-dlt.down{color:var(--state-critical)}'
+            '.sp-dlt.flat{color:var(--text-muted)}'
+            '.sp-pct{opacity:.7;font-weight:400;font-size:11px}'
             '</style>'
-        )
-        _sp_header = (
-            '<div class="sp-row sp-head">'
-            '<div>Deal / Advertiser</div>'
-            '<div class="sp-num">Recent 3d</div>'
-            '<div class="sp-num">Prior 3d</div>'
-            '<div class="sp-num">Δ</div>'
-            '</div>'
         )
         _sp_parts = [_sp_css]
         for _section_label, _section_rows in [
@@ -5282,7 +5287,6 @@ if st.session_state.active_view == "campaigns":
         ]:
             if _section_rows:
                 _sp_parts.append(f'<div class="sp-section">{_section_label}</div>')
-                _sp_parts.append(_sp_header)
                 _sp_parts.extend(_section_rows)
 
         with st.expander(
