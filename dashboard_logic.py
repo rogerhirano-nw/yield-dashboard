@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import date
+from functools import lru_cache
 
 import pandas as pd
 
@@ -479,6 +480,7 @@ def li_part(name, idx: int):
     return parts[idx].strip() if len(parts) > idx else None
 
 
+@lru_cache(maxsize=8192)
 def line_item_display_name(name) -> str:
     """Friendly "<Advertiser> — <Campaign>" label for a GAM line-item name
     (14-field convention: advertiser = token 7, campaign = token 8).
