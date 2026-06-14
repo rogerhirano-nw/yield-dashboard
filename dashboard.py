@@ -6354,6 +6354,23 @@ if st.session_state.active_view == "campaigns":
         except Exception:
             pass
         try:
+            # GAM's bid funnel per deal lives in a SEPARATE table from delivery
+            # (gam_pmp_deals has impressions/revenue only). Keyed by
+            # programmatic_deal_name = the same Deal key combined_pmp uses, so it
+            # merges with the GAM revenue rows above on (ssp, deal, date) in the
+            # per-column groupby-sum. deals_bid_requests = ad requests (callouts),
+            # deals_bids = bid responses.
+            _gbd = load("gam_deal_bid_daily")
+            if not _gbd.empty and "programmatic_deal_name" in _gbd.columns:
+                _pmp_daily_parts.append(pd.DataFrame({
+                    "ssp": "GAM", "deal": _gbd["programmatic_deal_name"].astype(str),
+                    "date": _gbd.get("date"),
+                    "total_requests": pd.to_numeric(_gbd.get("deals_bid_requests"), errors="coerce"),
+                    "bid_responses": pd.to_numeric(_gbd.get("deals_bids"), errors="coerce"),
+                }))
+        except Exception:
+            pass
+        try:
             _mdd = load("magnite_deal_daily")
             if not _mdd.empty and "deal" in _mdd.columns:
                 _pmp_daily_parts.append(pd.DataFrame({
@@ -6391,10 +6408,11 @@ if st.session_state.active_view == "campaigns":
                           columns=["ssp", "deal", "date", "revenue",
                                    "total_requests", "bid_responses"]))
         # Per-deal 7-day trend series for the drawer charts. Revenue covers all
-        # three SSPs; total_requests / bid_responses are the bid funnel — only
-        # Magnite (bid_requests/bid_responses) and Pubmatic (total_requests/
-        # non_zero_bid_responses) report them, so GAM-only deals get an empty
-        # series and skip those two charts. Same (SSP, Deal) keying as revenue.
+        # three SSPs; total_requests / bid_responses are the bid funnel, reported
+        # by all three: GAM (gam_deal_bid_daily: deals_bid_requests/deals_bids),
+        # Magnite (bid_requests/bid_responses), Pubmatic (total_requests/
+        # non_zero_bid_responses). Same (SSP, Deal) keying as revenue; a deal with
+        # no funnel rows gets an empty series and skips those two charts.
         _pmp_rev_series_by_deal, _pmp_rev_dates = dl.revenue_daily_series_by_deal(_pmp_daily)
         _pmp_req_series_by_deal, _ = dl.daily_series_by_deal(_pmp_daily, "total_requests")
         _pmp_resp_series_by_deal, _ = dl.daily_series_by_deal(_pmp_daily, "bid_responses")
