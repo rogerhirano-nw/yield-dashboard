@@ -94,69 +94,6 @@ def _engine() -> sqlalchemy.Engine:
     return sqlalchemy.create_engine(url, pool_size=2, max_overflow=1, pool_recycle=300)
 
 
-def _gam_creds_ready() -> bool:
-    """Whether GAM API creds are reachable for an in-dashboard archive.
-    `GAMClient` reads `os.environ`, so bridge the values from `st.secrets`
-    (where Streamlit Cloud keeps them) when they live only there. Returns
-    False when they're absent — the read-only deploy never needed GAM creds,
-    so the archive action falls back to "do it in the GAM UI" rather than
-    erroring with a swallowed KeyError."""
-    for _k in ("GAM_SERVICE_ACCOUNT_JSON", "GAM_NETWORK_ID"):
-        if not os.environ.get(_k):
-            try:
-                _v = st.secrets[_k]
-            except Exception:
-                _v = None
-            if _v:
-                os.environ[_k] = str(_v)
-    return bool(os.environ.get("GAM_SERVICE_ACCOUNT_JSON")
-                and os.environ.get("GAM_NETWORK_ID"))
-
-
-def _gh_dispatch_ready() -> bool:
-    """Whether the dashboard can dispatch the archive GitHub Action — a token
-    and target repo are configured (bridged `st.secrets`→`os.environ`, like
-    the GAM path). Lets the stale-deals Archive button trigger
-    `archive_pli.yml` so GAM *write* creds stay in Actions, not on the
-    read-only dashboard."""
-    for _k in ("GH_DISPATCH_TOKEN", "GH_DISPATCH_REPO"):
-        if not os.environ.get(_k):
-            try:
-                _v = st.secrets[_k]
-            except Exception:
-                _v = None
-            if _v:
-                os.environ[_k] = str(_v)
-    return bool(os.environ.get("GH_DISPATCH_TOKEN") and os.environ.get("GH_DISPATCH_REPO"))
-
-
-def _dispatch_archive_workflow(pli_id: str, deal_name: str = "") -> None:
-    """POST a `workflow_dispatch` to `archive_pli.yml` for one proposal line
-    item. Raises (urllib HTTPError / RuntimeError) on a non-2xx so the caller
-    can surface the reason inline."""
-    import urllib.request
-    _repo = os.environ["GH_DISPATCH_REPO"]
-    _ref = os.environ.get("GH_DISPATCH_REF", "main")
-    _body = json.dumps({
-        "ref": _ref,
-        "inputs": {"pli_id": str(pli_id), "deal_name": str(deal_name)[:200]},
-    }).encode()
-    _req = urllib.request.Request(
-        f"https://api.github.com/repos/{_repo}/actions/workflows/archive_pli.yml/dispatches",
-        data=_body, method="POST",
-        headers={
-            "Authorization": f"Bearer {os.environ['GH_DISPATCH_TOKEN']}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "Content-Type": "application/json",
-            "User-Agent": "newsweek-yield-dashboard",
-        },
-    )
-    with urllib.request.urlopen(_req, timeout=15) as _resp:
-        if _resp.status not in (201, 204):
-            raise RuntimeError(f"GitHub returned HTTP {_resp.status}")
-
-
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 _SETTINGS_PATH = Path(__file__).parent / "settings.json"
@@ -1180,12 +1117,6 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
    (muted ink-green on a faint surface) so healthy rows still recede and the
    louder amber/red exceptions own the page (green-overwhelm rule). */
 .pill-green  { background: var(--state-positive-surface-quiet); color: var(--state-positive-muted); }
-/* Stale-deals list — one native st.container card per deal (deal name + meta
-   line + an Archive button / Manual note). */
-.nw-stale-deal { font-weight: 700; font-size: 13px; color: var(--text-primary); word-break: break-word; }
-.nw-stale-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
-.nw-stale-meta .pill { font-size: 10px; padding: 1px 6px; }
-.nw-stale-done { font-size: 12px; font-weight: 600; color: var(--state-positive-muted); text-align: right; }
 /* inline-block forces the colored-text spans to shrink to their content
    width, so they right-align cleanly under a grid cell with `text-align:
    right` — same behavior as .pill.
@@ -5925,11 +5856,10 @@ if st.session_state.active_view == "campaigns":
         )
 
         # ── PMP signals accordion (Option 2): one card, a row per signal —
-        # Spend momentum (moved here from above the section) + No delivery —
-        # each expands inline. Reuses the Needs-attention accordion CSS, so it
-        # collapses to one line on mobile and stays open on desktop. The
-        # interactive stale-deals card stays its own expander further down (its
-        # archive buttons can't live in static HTML).
+        # Spend momentum + No delivery + Stale deals — each expands inline.
+        # Reuses the Needs-attention accordion CSS, so it collapses to one line
+        # on mobile and stays open on desktop. Stale deals folded in read-only
+        # 2026-06 (archive removed); all three rows are static HTML.
         _sig_rows = []
         if _pmp_mom_rows:
             _sig_rows.append(
@@ -6017,6 +5947,57 @@ if st.session_state.active_view == "campaigns":
                 '<span class="nw-na-chev">&rsaquo;</span></summary>'
                 f'<div class="nw-na-sub nw-sig-sub">{"".join(_nd_groups)}</div></details>'
             )
+
+        # ── Stale deals row — no bid responses for 90+ days, still seen in the
+        # source (paused/removed deals already dropped by recently_seen_mask).
+        # Read-only (archive removed 2026-06): deal · SSP · last bid · idle age.
+        try:
+            _lbd_stale = load("pmp_last_bid_date")
+        except Exception:
+            _lbd_stale = pd.DataFrame()
+        if not _lbd_stale.empty:
+            _stale_today = datetime.now(timezone.utc).date()
+            _stale_cut = (_stale_today - timedelta(days=90)).isoformat()
+            _lbd_stale = _lbd_stale.copy()
+            _lbd_stale["last_bid_date"]   = _lbd_stale["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            _lbd_stale["first_seen_date"] = _lbd_stale["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            if "last_seen_date" in _lbd_stale.columns:
+                _lbd_stale["last_seen_date"] = _lbd_stale["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            _stale = _lbd_stale[dl.stale_deal_mask(_lbd_stale, _stale_cut)
+                                & dl.recently_seen_mask(_lbd_stale, _stale_cut)].copy()
+            if not _stale.empty:
+                _stale["_idle"] = _stale.apply(
+                    lambda r: dl.idle_days(r.get("last_bid_date"),
+                                           r.get("first_seen_date"), _stale_today), axis=1)
+                _stale = _stale.sort_values("_idle", ascending=False)
+                _st_rows = []
+                for _, _sr in _stale.iterrows():
+                    _primary = dl.pmp_deal_display_name(str(_sr.get("deal_key") or ""))[0]
+                    _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
+                                   if " — " in _primary else (_primary, ""))
+                    _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
+                    _lbd_disp = str(_sr.get("last_bid_date") or "")
+                    if not _lbd_disp or _lbd_disp in ("None", "nan", "<NA>"):
+                        _lbd_disp = "never"
+                    _sidle = int(_sr["_idle"])
+                    _sib = dl.idle_band(_sidle)
+                    _idle_html = f'<span class="nd-idle idle-{_sib}">{_sidle}d idle</span>'
+                    _st_rows.append(
+                        '<div class="sp-row">'
+                        f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
+                        f'<div class="sp-met"><span class="sp-flow">{_pmp_esc(str(_sr.get("ssp") or ""))}'
+                        f' · last bid {_pmp_esc(_lbd_disp)} · {_idle_html}</span></div>'
+                        '</div>'
+                    )
+                _sig_rows.append(
+                    '<details class="nw-na-row sev-amber">'
+                    '<summary><span class="nw-na-dot"></span>'
+                    f'<span class="nw-na-n">{len(_stale)}</span>'
+                    '<span class="nw-na-l">Stale deals</span>'
+                    '<span class="nw-na-d">no bids 90+ days</span>'
+                    '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                    f'<div class="nw-na-sub nw-sig-sub">{"".join(_st_rows)}</div></details>'
+                )
         if _sig_rows:
             st.markdown(
                 _sp_css +
@@ -6542,162 +6523,9 @@ if st.session_state.active_view == "campaigns":
                 st.button("Next →", key="pmp_next_bot", on_click=_pmp_go_next,
                           disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
 
-        # GAM Private Auction inventory (no-delivery deals) now renders inside
-        # the "PMP signals" accordion above (Option 2, 2026-06). The standalone
-        # card here was removed when it was folded in.
-
-        # ── Stale deals — no bid responses for 90+ days ──────────────────────
-        try:
-            _lbd_tbl = load("pmp_last_bid_date")
-        except Exception:
-            _lbd_tbl = pd.DataFrame()
-
-        if not _lbd_tbl.empty:
-            # Staleness + idle-age decisions live in dashboard_logic (tested).
-            _today = datetime.now(timezone.utc).date()
-            _cutoff = (_today - timedelta(days=90)).isoformat()
-            _lbd_tbl["last_bid_date"]   = _lbd_tbl["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            _lbd_tbl["first_seen_date"] = _lbd_tbl["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            if "last_seen_date" in _lbd_tbl.columns:
-                _lbd_tbl["last_seen_date"] = _lbd_tbl["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            # Stale = no bids 90+ days. Then HIDE deals that also stopped
-            # appearing in the source data entirely for 90+ days (paused/
-            # removed) — only deals still seen but not winning bids are
-            # actionable. recently_seen_mask is a no-op until last_seen_date is
-            # populated (refresh backfills it), so the list is unchanged until then.
-            _stale = _lbd_tbl[dl.stale_deal_mask(_lbd_tbl, _cutoff)
-                              & dl.recently_seen_mask(_lbd_tbl, _cutoff)].copy()
-
-            if not _stale.empty:
-                _stale["days_idle"] = _stale.apply(
-                    lambda row: dl.idle_days(row.get("last_bid_date"),
-                                             row.get("first_seen_date"), _today),
-                    axis=1)
-                _stale = _stale.sort_values("days_idle", ascending=False)
-
-                try:
-                    _pd_meta   = load("gam_pd_metadata")
-                    _pli_by_name = dict(zip(_pd_meta["deal_name"], _pd_meta["line_item_id"]))
-                except Exception:
-                    _pli_by_name = {}
-
-                _gam_stale = _stale[_stale["ssp"] == "GAM"].copy()
-                _gam_stale["line_item_id"] = _gam_stale["deal_key"].map(_pli_by_name)
-                _gam_archivable = _gam_stale[_gam_stale["line_item_id"].notna()]
-
-                _stale_label = (
-                    f"{len(_stale)} stale PMP deal{'s' if len(_stale) != 1 else ''} "
-                    f"· no bid responses for 90+ days"
-                )
-                with st.expander(f"⚠ {_stale_label}"):
-                    # One card per stale deal; GAM deals with a resolvable PLI
-                    # get a working Archive button (SOAP ProposalLineItemService),
-                    # the rest a "manual in the SSP UI" note. Archived deal_keys
-                    # are remembered for the session so the button flips to
-                    # "✓ Archived" — pmp_last_bid_date only drops the row on the
-                    # next sweep.
-                    _archived = st.session_state.setdefault("_pmp_archived_deals", set())
-                    _dispatched = st.session_state.setdefault("_pmp_dispatched_deals", set())
-                    _gam_ready = _gam_creds_ready()
-                    _gh_ready = _gh_dispatch_ready()
-                    # Diagnostic: when neither archive path is wired, show exactly
-                    # which secret keys the app does/doesn't see, so a misnamed or
-                    # section-nested secret is obvious (key NAMES only, no values).
-                    if not (_gam_ready or _gh_ready):
-                        def _secret_seen(_k):
-                            if os.environ.get(_k):
-                                return True
-                            try:
-                                return bool(st.secrets[_k])
-                            except Exception:
-                                return False
-                        _expected = ["GH_DISPATCH_TOKEN", "GH_DISPATCH_REPO",
-                                     "GAM_SERVICE_ACCOUNT_JSON", "GAM_NETWORK_ID"]
-                        _status = "  ".join(("✓ " if _secret_seen(_k) else "✗ ") + _k
-                                            for _k in _expected)
-                        try:
-                            _seen_keys = ", ".join(sorted(st.secrets.keys())) or "(none)"
-                        except Exception:
-                            _seen_keys = "(st.secrets unavailable)"
-                        st.warning(
-                            "In-app archiving is **off** — the app sees no GAM creds or Actions "
-                            "dispatch token, so deals show *Archive in GAM UI* instead of a button. "
-                            "Add **top-level** `GH_DISPATCH_TOKEN` + `GH_DISPATCH_REPO` to the app "
-                            "Secrets (exact names, not inside a `[section]`); restart the app after "
-                            f"saving.\n\n- Expected: {_status}\n- Secret keys the app currently "
-                            f"sees: {_seen_keys}"
-                        )
-                    # GAM deep-link for the "Archive in GAM" fallback button —
-                    # the network code comes from settings (present even when
-                    # GAM creds aren't), so this link works with no secrets.
-                    _gam_net = (_cfg.get("gam_network_id")
-                                or os.environ.get("GAM_NETWORK_ID") or "").strip()
-                    _gam_url = (f"https://admanager.google.com/{_gam_net}#delivery"
-                                if _gam_net else "https://admanager.google.com/")
-                    for _, _sr in _stale.iterrows():
-                        _deal_key = str(_sr["deal_key"])
-                        _ssp = str(_sr["ssp"])
-                        _lbd_disp = str(_sr.get("last_bid_date") or "")
-                        if not _lbd_disp or _lbd_disp in ("None", "nan"):
-                            _lbd_disp = "Never"
-                        _idle = int(_sr["days_idle"])
-                        _idle_band = dl.idle_band(_idle)
-                        _idle_html = (f'<span class="pill pill-{_idle_band}">{_idle}d idle</span>'
-                                      if _idle_band else f"{_idle}d idle")
-                        _pli_ids = _gam_archivable.loc[
-                            _gam_archivable["deal_key"] == _sr["deal_key"], "line_item_id"
-                        ].values
-                        _can_api = _ssp == "GAM" and len(_pli_ids) > 0
-
-                        with st.container(border=True):
-                            _info_col, _act_col = st.columns([4, 1.4], vertical_alignment="center")
-                            _info_col.markdown(
-                                f'<div class="nw-stale-deal">{_pmp_esc(_deal_key)}</div>'
-                                f'<div class="nw-stale-meta">{_pmp_esc(_ssp)} · last bid '
-                                f'{_pmp_esc(_lbd_disp)} · {_idle_html}</div>',
-                                unsafe_allow_html=True,
-                            )
-                            if _deal_key in _archived:
-                                _act_col.markdown('<div class="nw-stale-done">✓ Archived</div>',
-                                                  unsafe_allow_html=True)
-                            elif _deal_key in _dispatched:
-                                _act_col.markdown('<div class="nw-stale-done">✓ Archive requested</div>',
-                                                  unsafe_allow_html=True)
-                            elif _can_api and _gam_ready:
-                                if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
-                                                   use_container_width=True):
-                                    from gam_client import GAMClient as _GAMClient  # lazy import
-                                    try:
-                                        _GAMClient().archive_proposal_line_item(
-                                            str(_pli_ids[0]), raise_on_error=True)
-                                    except Exception as _e:
-                                        st.error(f"Couldn't archive {_deal_key} — "
-                                                 f"{type(_e).__name__}: {_e}")
-                                    else:
-                                        _archived.add(_deal_key)
-                                        st.rerun()
-                            elif _can_api and _gh_ready:
-                                # No GAM creds on the dashboard → dispatch the
-                                # archive GitHub Action, which holds the creds.
-                                if _act_col.button("Archive", key=f"stale_arc_{_deal_key}",
-                                                   use_container_width=True):
-                                    try:
-                                        _dispatch_archive_workflow(str(_pli_ids[0]), _deal_key)
-                                    except Exception as _e:
-                                        st.error(f"Couldn't start archive for {_deal_key} — "
-                                                 f"{type(_e).__name__}: {_e}")
-                                    else:
-                                        _dispatched.add(_deal_key)
-                                        st.rerun()
-                            elif _can_api:
-                                # GAM deal, but neither GAM creds nor a dispatch
-                                # token here → a real button that opens GAM Ad
-                                # Manager (the deal name is on the card to find
-                                # it), no secrets needed.
-                                _act_col.link_button("Archive in GAM ↗", _gam_url,
-                                                     use_container_width=True)
-                            else:
-                                _act_col.caption(f"Manual · {_ssp} UI")
+        # GAM private-auction "No delivery" and "Stale deals" both render
+        # inside the "PMP signals" accordion above (folded in 2026-06); the
+        # standalone cards + the archive UI were removed when they moved up.
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 

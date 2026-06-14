@@ -353,40 +353,20 @@ Rules that survive any future restyle:
   **collapse to graph cards** (see the next bullet). Drawer meta-grid 4→2.
   Most tab filters reflow for free (Streamlit stacks `st.columns`). When
   adding a fixed multi-column grid, add its mobile rule here too.
-- **Stale-deals list = one native `st.container` card per deal** (PMP tab,
-  inside the "⚠ N stale PMP deals" expander). Each card is deal name + a
-  meta line (SSP · last bid · **days-idle severity pill**, `dl.idle_band`:
-  amber 90+, red 180+) + an action column. The action is **creds-gated**:
-  `GAMClient` reads GAM creds from `os.environ`, but Streamlit Cloud keeps
-  secrets in `st.secrets` and is otherwise read-only (Supabase data, no GAM
-  creds), so `_gam_creds_ready()` bridges `GAM_SERVICE_ACCOUNT_JSON` /
-  `GAM_NETWORK_ID` from `st.secrets`→`os.environ` and returns whether
-  they're present. The **Archive** action has three tiers (worst-case
-  first wins):
-  1. **GAM creds present** (`_gam_creds_ready()`) + GAM deal with a
-     resolvable PLI → a button that archives **in-process** (SOAP
-     `archive_proposal_line_item`, `raise_on_error=True` so the real reason
-     surfaces inline instead of a swallowed "check logs").
-  2. **No GAM creds but a dispatch token** (`_gh_dispatch_ready()` —
-     `GH_DISPATCH_TOKEN` + `GH_DISPATCH_REPO` in the app secrets) → a button
-     that POSTs a `workflow_dispatch` to **`.github/workflows/archive_pli.yml`**
-     (`_dispatch_archive_workflow`), which runs `scripts/archive_pli.py` with
-     the GAM creds held in *repo* secrets — so GAM write-creds never live on
-     the read-only dashboard. Flips to "✓ Archive requested"
-     (`_pmp_dispatched_deals`); the archive runs async in Actions.
-  3. **Neither** → an **"Archive in GAM ↗" `st.link_button`** that opens GAM
-     Ad Manager (`#delivery` for the network code from settings — works with
-     no secrets; the deal name is on the card to find it). Non-GAM SSPs →
-     "Manual · `<SSP>` UI". When neither archive path is wired, the expander
-     also shows a one-time **capability diagnostic** (which expected secret
-     keys are seen ✓/✗ + every top-level `st.secrets` key name, values
-     never shown) so a misnamed/`[section]`-nested secret is obvious.
-  Archived `deal_key`s are remembered in
-  `st.session_state["_pmp_archived_deals"]` so the button flips to
-  "✓ Archived" (the row only drops on the next sweep, when
-  `pmp_last_bid_date` updates). Native containers replaced the old HTML
-  table + separate archive multiselect — they stack fine on mobile, so no
-  custom responsive CSS is needed.
+- **Stale deals = a read-only row in the PMP signals accordion** (no bid
+  responses for 90+ days, still seen in the source — `dl.stale_deal_mask`
+  **AND** `dl.recently_seen_mask` over `pmp_last_bid_date`, so paused/removed
+  deals already drop off). Each sub-row is the `Advertiser — Campaign` name
+  (`dl.pmp_deal_display_name`) + a meta line (SSP · last bid · **days-idle**
+  colored by `dl.idle_band`, amber 90+ / red 180+, via `.nd-idle`), sorted
+  most-idle first. Folded up from a standalone `st.expander` 2026-06-14;
+  the **Archive action was removed** ("no longer needed", per Roger) along
+  with its creds-gating helpers (`_gam_creds_ready` / `_gh_dispatch_ready` /
+  `_dispatch_archive_workflow`), the secret-capability diagnostic, and the
+  `.nw-stale-*` CSS — so the row is plain static HTML and lives inside the
+  accordion (which can't host Streamlit buttons). The backend archive path
+  is untouched if ever wanted again: `GAMClient.archive_proposal_line_item`
+  (SOAP), `scripts/archive_pli.py`, `.github/workflows/archive_pli.yml`.
 - **Direct + PMP tables → "graph card" rows on mobile (Solution 3).** Each
   row is a `<details>` whose summary is the 12-column grid on desktop; the
   builder also emits a hidden mobile card. ≤640px a marker class on the
@@ -505,6 +485,11 @@ Rules that survive any future restyle:
     `gam_pa_metadata.create_time` (set up but never bid) — colored by
     `dl.idle_band` (amber 90+, red 180+); most-inactive first within each
     seller. Header detail surfaces the actionable **active** count.
+  - **Stale deals** (`sev-amber`): the read-only stale-deals row (full
+    detail in the "Stale deals" convention above) — no bid responses 90+
+    days, still seen. Same `.sp-row` layout: `Advertiser — Campaign` + a
+    meta line (SSP · last bid · `.nd-idle` days-idle). Folded in here
+    2026-06-14; the archive action was removed.
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
