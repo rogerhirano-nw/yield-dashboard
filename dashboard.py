@@ -1712,44 +1712,70 @@ _CACHE_TTL_SECONDS = 3600
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def load(table: str) -> pd.DataFrame:
+    # ── Column projection ────────────────────────────────────────────────
+    # The two big DV tables carry many columns no dashboard view reads:
+    # dv_attention has 8 sibling attention indices + 2 viewability-rate columns
+    # we never surface (only attention_index is used); dv_ivt ships precomputed
+    # fraud_sivt_rate / givt_rate / ivt_rate that the dashboard *recomputes*
+    # impression-weighted from monitored_ads, plus advertiser /
+    # eligible_impressions / total_calls. Selecting only the consumed columns
+    # roughly halves the cold-load wire bytes of these tables (the dominant
+    # cost of the Campaigns view's first paint). The projected set must cover
+    # every consumer — see _dv_attention_aggregates / _dv_ivt_aggregates and
+    # the publisher-wide drawer recompute. If the projected SELECT errors (a
+    # column renamed/dropped upstream), we fall back to SELECT * below, so the
+    # projection is a pure optimization, never a hard dependency.
+    _COL_PROJECT = {
+        "dv_attention": ["line_item_id", "line_item_name", "order_name",
+                         "attention_index", "date"],
+        "dv_ivt":       ["line_item_id", "line_item_name", "order_name",
+                         "traffic_validity", "monitored_ads", "date"],
+    }
+    # For time-series tables with a `date` column, cap to last N days.
+    # Dashboard views never look back more than ~7 days for these; full-table
+    # cold-loads of the big DV tables drove the 2026-06-06/07 disk-IO
+    # incidents. (Blamed on "Nano tier" at the time — the instance is actually
+    # Micro on Pro, so the budget is roomier than feared, but loading rows no
+    # view can render is waste at any size.)
+    #
+    # Add a table here only if (a) it has a `date` column and (b) the dashboard
+    # surfaces only recent rows. Metadata / lookup tables (gam_pmp_deals,
+    # gam_pa_metadata, opensincera_*, pmp_last_bid_date) stay full-table because
+    # they're either small or the dashboard needs the full set.
+    # Verified 2026-06-07 against live schema: only dv_attention and dv_ivt are
+    # large enough (now ~24k + ~44k rows over their 7-day window) for the date
+    # filter to meaningfully save IO. All other dashboard tables sit at <10k
+    # rows and don't justify the conditional. gam_campaigns specifically does
+    # NOT have a `date` column (its time cols are `start_date`, `end_date`,
+    # `report_start`) — including it here silently broke gam_campaigns loading
+    # in #108.
+    _DATE_CAPPED = {
+        "dv_attention": 30,
+        "dv_ivt":       30,
+    }
+    _where = ""
+    if table in _DATE_CAPPED:
+        _where = f"WHERE date >= CURRENT_DATE - INTERVAL '{_DATE_CAPPED[table]} days'"
+    _cols = "*"
+    if table in _COL_PROJECT:
+        _cols = ", ".join(f'"{c}"' for c in _COL_PROJECT[table])
     try:
         with _engine().connect() as conn:
-            # For time-series tables with a `date` column, cap to last N
-            # days. Dashboard views never look back more than ~7 days for
-            # these; full-table cold-loads of the big DV tables drove the
-            # 2026-06-06/07 disk-IO incidents. (Blamed on "Nano tier" at
-            # the time — the instance is actually Micro on Pro, so the
-            # budget is roomier than feared, but loading rows no view can
-            # render is waste at any size.)
-            #
-            # Add a table here only if (a) it has a `date` column and
-            # (b) the dashboard surfaces only recent rows. Metadata /
-            # lookup tables (gam_pmp_deals, gam_pa_metadata, opensincera_*,
-            # pmp_last_bid_date) stay full-table because they're either
-            # small or the dashboard needs the full set.
-            # Verified 2026-06-07 against live schema: only dv_attention and
-            # dv_ivt are large enough (160k + 291k rows) for the date filter
-            # to meaningfully save IO. All other dashboard tables sit at
-            # <10k rows and don't justify the conditional. gam_campaigns
-            # specifically does NOT have a `date` column (its time cols are
-            # `start_date`, `end_date`, `report_start`) — including it here
-            # silently broke gam_campaigns loading in #108.
-            _DATE_CAPPED = {
-                "dv_attention": 30,   # 160k rows
-                "dv_ivt":       30,   # 291k rows
-            }
-            if table in _DATE_CAPPED:
-                days = _DATE_CAPPED[table]
-                query = (
-                    f'SELECT * FROM "{table}" '
-                    f"WHERE date >= CURRENT_DATE - INTERVAL '{days} days'"
-                )
-            else:
-                query = f'SELECT * FROM "{table}"'
-            return pd.read_sql(query, conn)
-    except Exception as _e:
-        _load_errors[table] = str(_e)
-        return pd.DataFrame()
+            return pd.read_sql(f'SELECT {_cols} FROM "{table}" {_where}', conn)
+    except Exception as _proj_e:
+        if _cols == "*":
+            _load_errors[table] = str(_proj_e)
+            return pd.DataFrame()
+        # Projected SELECT failed (a column was renamed/dropped upstream?) —
+        # degrade to the full table on a fresh connection so the view still
+        # renders. Recorded under a distinct key for the debug panel.
+        _load_errors[f"{table}:projection"] = str(_proj_e)
+        try:
+            with _engine().connect() as conn:
+                return pd.read_sql(f'SELECT * FROM "{table}" {_where}', conn)
+        except Exception as _e:
+            _load_errors[table] = str(_e)
+            return pd.DataFrame()
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
@@ -3802,15 +3828,19 @@ if st.session_state.active_view == "campaigns":
                 return "▲" if d >= 0 else "▼"
 
             # Per-day viewability rate from the new viewable/measurable counts.
+            # Vectorized (column math, not a per-row apply) — mirrors the
+            # lifetime-rate pattern above. `.where(denom > 0, None)` yields NaN
+            # exactly where the old apply returned None; the only consumer
+            # (_fmt_pct_annot) guards both with pd.isna, so the rendered cell
+            # and its color band are behaviour-identical.
             for _suf in ("1d", "2d"):
                 _viewable  = f"viewable_imps_{_suf}"
                 _measurable = f"measurable_imps_{_suf}"
                 if _viewable in view_gam.columns and _measurable in view_gam.columns:
-                    view_gam[f"viewability_rate_{_suf}"] = view_gam.apply(
-                        lambda r, v=_viewable, m=_measurable: (
-                            r[v] / r[m] * 100 if pd.notna(r[v]) and pd.notna(r[m]) and r[m] > 0 else None
-                        ),
-                        axis=1,
+                    _v = pd.to_numeric(view_gam[_viewable], errors="coerce")
+                    _m = pd.to_numeric(view_gam[_measurable], errors="coerce")
+                    view_gam[f"viewability_rate_{_suf}"] = (
+                        (_v / _m).where(_m > 0, other=None) * 100
                     )
 
             # Prior-day pacing — re-compute from lifetime minus 1d-impressions over a
@@ -3890,15 +3920,16 @@ if st.session_state.active_view == "campaigns":
                 )
 
             # Per-day CTR (clicks / impressions) for the annotation delta.
+            # Vectorized (see the viewability note above — same NaN-vs-None
+            # equivalence through _fmt_pct_annot's pd.isna guard).
             for _suf in ("1d", "2d"):
                 _cl = f"clicks_{_suf}"
                 _im = f"impressions_{_suf}"
                 if _cl in view_gam.columns and _im in view_gam.columns:
-                    view_gam[f"ctr_rate_{_suf}"] = view_gam.apply(
-                        lambda r, c=_cl, i=_im: (
-                            r[c] / r[i] * 100 if pd.notna(r[c]) and pd.notna(r[i]) and r[i] > 0 else None
-                        ),
-                        axis=1,
+                    _c = pd.to_numeric(view_gam[_cl], errors="coerce")
+                    _i = pd.to_numeric(view_gam[_im], errors="coerce")
+                    view_gam[f"ctr_rate_{_suf}"] = (
+                        (_c / _i).where(_i > 0, other=None) * 100
                     )
             if "ad_server_ctr" in view_gam.columns:
                 # Primary stays = lifetime CTR (already 0-100 from the earlier
@@ -3913,15 +3944,15 @@ if st.session_state.active_view == "campaigns":
                 )
 
             # Per-day VCR (completes / starts) for the annotation delta.
+            # Vectorized (same NaN-vs-None equivalence as the rates above).
             for _suf in ("1d", "2d"):
                 _vs = f"video_starts_{_suf}"
                 _vc = f"video_completes_{_suf}"
                 if _vs in view_gam.columns and _vc in view_gam.columns:
-                    view_gam[f"vcr_rate_{_suf}"] = view_gam.apply(
-                        lambda r, s=_vs, c=_vc: (
-                            r[c] / r[s] * 100 if pd.notna(r[s]) and pd.notna(r[c]) and r[s] > 0 else None
-                        ),
-                        axis=1,
+                    _s = pd.to_numeric(view_gam[_vs], errors="coerce")
+                    _c = pd.to_numeric(view_gam[_vc], errors="coerce")
+                    view_gam[f"vcr_rate_{_suf}"] = (
+                        (_c / _s).where(_s > 0, other=None) * 100
                     )
             if "vcr" in view_gam.columns:
                 # Primary stays = lifetime VCR. Annotation = 1d - 2d pp delta.

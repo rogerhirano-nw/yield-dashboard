@@ -4,6 +4,41 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-14 — Dashboard load-time optimization
+
+A focused pass on the **Campaigns view's cold-load and interaction speed**,
+after diagnosing first paint as dominated by the two big DoubleVerify tables
+(~17 MB across `dv_attention` + `dv_ivt`) plus repeated per-render work. All
+squash-merged to `main` on green (119 tests).
+
+- **#239** — Memoize the DV aggregations: the per-LI / per-order Attention and
+  MRC SIVT/GIVT rollups moved into two `@st.cache_data` helpers
+  (`_dv_attention_aggregates` / `_dv_ivt_aggregates`), so the groupbys run
+  once per cache period instead of on every interaction. Byte-identical to the
+  old inline logic (same `dl.*` calls, dicts default empty when a table is
+  absent). Speeds clicking around, not the cold load.
+- **#240** — Three cold-load + render wins:
+  - **Column projection in `load()`** — `dv_attention` / `dv_ivt` now SELECT
+    only the consumed columns (5 of 15 / 6 of 14), dropping the 8 unused
+    attention indices, the precomputed IVT rates the dashboard recomputes from
+    `monitored_ads`, and metadata. Cuts cold-load wire bytes **~56–60%** on the
+    two tables that dominate first paint (measured 6.3→2.5 MB + 11→5.2 MB,
+    ~9.5 MB saved). A projected SELECT that errors (schema drift) falls back to
+    `SELECT *`, so it's a pure optimization; `_COL_PROJECT` must stay in sync
+    with every DV consumer (CLAUDE.md gotcha).
+  - **Vectorize the per-day rate columns** — the Direct table's
+    viewability / CTR / VCR `_1d`/`_2d` rates were six per-row `.apply(axis=1)`
+    passes (each builds a `pd.Series` per row); now column math
+    (`(_num/_den).where(_den>0, None)*100`), mirroring the lifetime-rate
+    pattern already in the function. The only consumer (`_fmt_pct_annot`)
+    guards with `pd.isna`, so the NaN-vs-None change is invisible. Proven
+    behaviour-identical: 0 mismatches on 5,010 synthetic edge-case rows and 0
+    divergent rows on live `gam_campaigns` (where 1,782 null + 21 zero
+    denominators actually occur).
+  - **Memoize `dl.line_item_display_name`** (`@lru_cache`) — the Direct table
+    derives each LI name twice (sort key + render); it now parses once,
+    matching the `_parse_deal` convention from #236.
+
 ## 2026-06-13 → 2026-06-14 — PMP deals tab revamp + mobile polish
 
 A two-day push reworking the **Campaigns → PMP deals** experience (readable

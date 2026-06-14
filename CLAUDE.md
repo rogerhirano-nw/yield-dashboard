@@ -511,6 +511,23 @@ rendering stale frames until TTL expiry; clear via the app menu
 `st.cache_data.clear()`). This bit us on 2026-06-10 after the DV
 `line_item_id` backfill.
 
+**`load()` column-projects the two big DV tables** (`_COL_PROJECT`, 2026-06-14).
+`dv_attention` and `dv_ivt` carry many columns no view reads — 8 sibling
+attention indices + 2 viewability-rate columns on Attention; the precomputed
+`fraud_sivt_rate`/`givt_rate`/`ivt_rate` (the dashboard recomputes
+impression-weighted from `monitored_ads`) + advertiser/eligible_impressions/
+total_calls on IVT. `load()` selects only the consumed set (Attention:
+`line_item_id, line_item_name, order_name, attention_index, date`; IVT: those
+4 ids/date + `traffic_validity, monitored_ads`), cutting the cold-load wire
+bytes **~56–60%** on the tables that dominate the Campaigns view's first paint
+(measured 6.3→2.5 MB + 11→5.2 MB). **Gotcha:** if you add a consumer that
+reads another DV column, add it to `_COL_PROJECT` or it won't be loaded — the
+union must cover `_dv_attention_aggregates` / `_dv_ivt_aggregates` **and** the
+publisher-wide drawer recompute. A projected SELECT that errors (column
+renamed/dropped upstream) falls back to `SELECT *`, so the projection is a
+pure optimization, never a hard dependency — but a silent always-fallback
+means it stopped saving anything, so keep the names in sync.
+
 ## Subsystems with their own docs
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
