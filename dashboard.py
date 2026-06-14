@@ -1016,8 +1016,23 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-na-head { padding: 9px 13px; font-size: 11px; letter-spacing: 0.06em;
               text-transform: uppercase; font-weight: 600; color: var(--text-secondary);
               border-bottom: 1px solid var(--border); display: flex;
-              justify-content: space-between; align-items: center; }
-.nw-na-head .cnt { color: var(--text-muted); font-weight: 600; }
+              align-items: center; }
+.nw-na-head .cnt { color: var(--text-muted); font-weight: 600; margin-left: auto; }
+/* The card is a <details> when there are flags: collapsed to one header line
+   on mobile (it was dominating the first screen), tap to reveal the category
+   accordion. Desktop/tablet force the body open below so layout is unchanged. */
+.nw-na > summary.nw-na-head { cursor: pointer; list-style: none; }
+.nw-na > summary.nw-na-head::-webkit-details-marker { display: none; }
+.nw-na > summary.nw-na-head::marker { content: ""; }
+.nw-na:not([open]) > .nw-na-head { border-bottom: none; }
+.nw-na-h-chev { color: var(--text-muted); font-size: 14px; margin-left: 8px;
+                display: inline-block; transition: transform .15s ease; }
+.nw-na[open] .nw-na-h-chev { transform: rotate(90deg); }
+@media (min-width: 641px) {
+  .nw-na .nw-na-body { display: block !important; }  /* always-expanded on desktop/tablet */
+  .nw-na-h-chev { display: none; }
+  .nw-na > summary.nw-na-head { cursor: default; }
+}
 .nw-na-row { border-bottom: 1px solid var(--border); }
 .nw-na-row:last-child { border-bottom: none; }
 .nw-na-row > summary, .nw-na-static { list-style: none; display: flex;
@@ -3332,16 +3347,33 @@ if st.session_state.active_view == "campaigns":
                 lambda v: f"{v:.1f}%", lambda v: min(max(v, 0.0), 100.0)) if _v_n else ""
 
             _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
-            st.markdown(
-                '<div class="nw-na">'
-                '<div class="nw-na-head"><span>Needs attention</span>'
-                f'<span class="cnt">{_na_head_cnt}</span></div>'
-                + _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
+            _na_cats = (
+                _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
                 + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
-                + '</div>',
-                unsafe_allow_html=True,
             )
+            if _na_total:
+                # Collapsible card: on mobile it's one compact header line (it
+                # was dominating the first screen above the KPIs) — tap to reveal
+                # the category accordion. Desktop/tablet force the body open via
+                # CSS, so the always-expanded layout there is unchanged.
+                st.markdown(
+                    '<details class="nw-na">'
+                    '<summary class="nw-na-head"><span>Needs attention</span>'
+                    f'<span class="cnt">{_na_head_cnt}</span>'
+                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
+                    f'<div class="nw-na-body">{_na_cats}</div></details>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                # All clear — three static ✓ rows; nothing to collapse.
+                st.markdown(
+                    '<div class="nw-na">'
+                    '<div class="nw-na-head"><span>Needs attention</span>'
+                    f'<span class="cnt">{_na_head_cnt}</span></div>'
+                    + _na_cats + '</div>',
+                    unsafe_allow_html=True,
+                )
 
             # ── KPI strip: nine tiles — serif number, target subtitle where
             # applicable, neutral full-width sparkline (Newsweek anatomy).

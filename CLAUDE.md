@@ -405,6 +405,15 @@ Rules that survive any future restyle:
   (`_na_row` / `_na_subrows`) is rendering, not decision logic — the
   offender sets (`_under_rows` / `_over_rows` / `_vw_anom_rows`) are still
   computed upstream from the configured benchmarks.
+  **The whole card is itself a `<details>`** (when there are flags): on
+  mobile it collapses to one compact header line — it was dominating the
+  first screen above the KPIs (2026-06-14) — and the category accordion is
+  one tap away. Desktop/tablet (`@media min-width:641px`) force
+  `.nw-na-body { display:block !important }` + hide the chevron, so the
+  always-expanded layout there is unchanged (CSS can't toggle the
+  `open` attribute responsively, so force the body open instead). The
+  all-clear state stays a plain `<div>` (three static ✓ rows, nothing to
+  collapse).
 
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
