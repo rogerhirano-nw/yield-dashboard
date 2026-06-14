@@ -404,11 +404,22 @@ Rules that survive any future restyle:
   `st.columns(6)` row that stacked into six full-width dropdowns on
   mobile and buried the data below the fold. The **PMP deals** section
   lower on the same page got the identical treatment — a second keyed
-  container (`nw_pmp_filter_bar`) for its six controls (Deal Type / SSP /
-  DSP / Format / Deal Source / Team), sharing the pill CSS (both
-  `.st-key-*` keys are listed in the same rules). The other tabs (By
-  site / size, By DSP, Pubmatic, Magnite) still use plain `st.columns`
-  filter rows.
+  container (`nw_pmp_filter_bar`) for its six multiselects (Deal Type / SSP /
+  DSP / Format / Deal Source / Team) plus one **option toggle** in the same
+  popover: **Show deals under $100/day** (`pmp_show_low_rev`, default off —
+  was a standalone checkbox above the table, moved into the popover; filters
+  only the table view `_pmp_display`). The **Deal Type** multiselect
+  **defaults to `Private Auction` / `Preferred Deal` / `Private Marketplace`**
+  (Programmatic Guaranteed excluded on load) — seeded once into
+  `st.session_state["campaigns_pmp_deal_type_filter"]` (intersected with the
+  configured types) so the multiselect picks it up with no `default=` arg, and
+  it shows/clears through the existing Deal-type chip (clearing it restores
+  All, PG included). This replaced a brief standalone "Exclude PG" checkbox
+  (reverted — the Deal Type filter already covers it). The PMP-signals
+  accordion is `<details … open>` (default-open even on mobile; the separate
+  Needs-attention card keeps its collapsed-on-mobile default since `open` is
+  per-element). The other tabs (By site / size, By DSP, Pubmatic, Magnite)
+  still use plain `st.columns` filter rows.
 - **Campaigns alerts are a "Needs attention" accordion, not three stacked
   banners.** The pacing/viewability exceptions render as one `.nw-na`
   card with a row per category. A category with offenders is a native
