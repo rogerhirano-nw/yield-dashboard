@@ -5141,147 +5141,89 @@ if st.session_state.active_view == "campaigns":
         out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
         return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
 
-    def _sp_momentum(df, name_col, recent_col_filter, prior_col_filter):
-        """Wide-format (revenue_Nd columns) momentum. Returns (summary, n_gaining, n_losing)."""
-        df = df.copy()
-        df["_recent_rev"] = df[recent_col_filter].sum(axis=1)
-        df["_prior_rev"]  = df[prior_col_filter].sum(axis=1)
-        out = df.groupby(name_col, as_index=False)[["_recent_rev", "_prior_rev"]].sum()
-        # Hide deals/advertisers with no visible revenue in either window.
-        out = out[(out["_recent_rev"].abs() >= 0.5) | (out["_prior_rev"].abs() >= 0.5)].copy()
-        if out.empty:
-            return pd.DataFrame(), 0, 0
-        out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
-        # Only meaningful movers — drop deals whose spend shifted by ≤ $100.
-        out = out[out["_delta"].abs() > 100].copy()
-        if out.empty:
-            return pd.DataFrame(), 0, 0
-        out["_pct"] = out.apply(
-            lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
-            axis=1,
-        )
-        out = out.sort_values("_recent_rev", ascending=False)  # top revenue first, not by Δ
-        return out, int((out["_delta"] > 0).sum()), int((out["_delta"] < -0.5).sum())
-
     _PA_PD = {"Private Auction", "Preferred Deal", "PA", "PD"}
 
-    # ── GAM PD + PA ───────────────────────────────────────────────────────────
-    _gam_pmp_mom_rows  = []
-    _gam_pmp_n_gaining = 0
-    _gam_pmp_n_losing  = 0
+    # ── PMP spend momentum (PD + PA only) ─────────────────────────────────────
+    # GAM + Magnite + Pubmatic in ONE combined list — no per-SSP buckets, no
+    # Direct campaigns (PMP-only, per Roger 2026-06). Each source is normalized
+    # to (deal, _date, _rev), concatenated, then run through one momentum pass.
+    _pmp_parts = []
+
     try:
         _gam_pmp_mom = load("gam_pmp_deals").copy()
     except Exception:
         _gam_pmp_mom = pd.DataFrame()
-    if (not _gam_pmp_mom.empty
-            and "date" in _gam_pmp_mom.columns
+    if (not _gam_pmp_mom.empty and "date" in _gam_pmp_mom.columns
             and "ad_server_cpm_and_cpc_revenue" in _gam_pmp_mom.columns):
         _gam_ch = next((c for c in _gam_pmp_mom.columns if "channel" in c.lower()), None)
         if _gam_ch:
             _gam_pmp_mom = _gam_pmp_mom[_gam_pmp_mom[_gam_ch].isin(_PA_PD)]
         _gam_dcol = next((c for c in _gam_pmp_mom.columns if "deal_name" in c), "order_name")
-        _gam_pmp_mom = _gam_pmp_mom.dropna(subset=[_gam_dcol]).rename(columns={"date": "_date"})
-        _gam_pmp_summ, _gam_pmp_n_gaining, _gam_pmp_n_losing = _sp_date_momentum(
-            _gam_pmp_mom, _gam_dcol, "ad_server_cpm_and_cpc_revenue"
-        )
-        if not _gam_pmp_summ.empty:
-            _gam_pmp_mom_rows = _sp_rows_for(_gam_pmp_summ, _gam_dcol)
+        _gam_pmp_mom = _gam_pmp_mom.dropna(subset=[_gam_dcol])
+        if not _gam_pmp_mom.empty:
+            _pmp_parts.append(pd.DataFrame({
+                "deal":  _gam_pmp_mom[_gam_dcol].astype(str),
+                "_date": _gam_pmp_mom["date"],
+                "_rev":  pd.to_numeric(_gam_pmp_mom["ad_server_cpm_and_cpc_revenue"], errors="coerce"),
+            }))
 
-    # ── Magnite PD + PA ───────────────────────────────────────────────────────
-    _mag_mom_rows  = []
-    _mag_n_gaining = 0
-    _mag_n_losing  = 0
     try:
         _mag_mom = load("magnite_deal_daily").copy()
     except Exception:
         _mag_mom = pd.DataFrame()
-    if (not _mag_mom.empty
-            and "date" in _mag_mom.columns
-            and "deal" in _mag_mom.columns
+    if (not _mag_mom.empty and "date" in _mag_mom.columns and "deal" in _mag_mom.columns
             and "publisher_gross_revenue" in _mag_mom.columns):
         _mag_mom["_deal_type"] = _mag_mom["deal"].apply(
-            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-        )
-        _mag_mom = _mag_mom[_mag_mom["_deal_type"].isin(_PA_PD)]
-        _mag_mom = _mag_mom.dropna(subset=["deal"]).rename(columns={"date": "_date"})
-        _mag_summ, _mag_n_gaining, _mag_n_losing = _sp_date_momentum(
-            _mag_mom, "deal", "publisher_gross_revenue"
-        )
-        if not _mag_summ.empty:
-            _mag_mom_rows = _sp_rows_for(_mag_summ, "deal")
+            lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"])
+        _mag_mom = _mag_mom[_mag_mom["_deal_type"].isin(_PA_PD)].dropna(subset=["deal"])
+        if not _mag_mom.empty:
+            _pmp_parts.append(pd.DataFrame({
+                "deal":  _mag_mom["deal"].astype(str),
+                "_date": _mag_mom["date"],
+                "_rev":  pd.to_numeric(_mag_mom["publisher_gross_revenue"], errors="coerce"),
+            }))
 
-    # ── Pubmatic PD + PA ──────────────────────────────────────────────────────
-    _pub_mom_rows  = []
-    _pub_n_gaining = 0
-    _pub_n_losing  = 0
     try:
         _pub_mom = load("pubmatic_deals").copy()
     except Exception:
         _pub_mom = pd.DataFrame()
-    if (not _pub_mom.empty
-            and "date" in _pub_mom.columns
-            and "revenue" in _pub_mom.columns):
+    if not _pub_mom.empty and "date" in _pub_mom.columns and "revenue" in _pub_mom.columns:
         _pub_mom["deal_label"] = (
             _pub_mom["deal"].fillna(_pub_mom.get("publisher_deal_id"))
-            if "deal" in _pub_mom.columns else _pub_mom.get("publisher_deal_id")
-        )
-        # Deal type: prefer deal_type column, fall back to _parse_deal
+            if "deal" in _pub_mom.columns else _pub_mom.get("publisher_deal_id"))
         if "deal_type" in _pub_mom.columns:
             _pub_mom["_deal_type"] = _pub_mom["deal_type"].map(
-                lambda v: _cfg.get("deal_type_aliases", {}).get(v, v) if pd.notna(v) else None
-            )
+                lambda v: _cfg.get("deal_type_aliases", {}).get(v, v) if pd.notna(v) else None)
             _fb = _pub_mom["_deal_type"].isna() | ~_pub_mom["_deal_type"].isin(_PA_PD)
             _pub_mom.loc[_fb, "_deal_type"] = _pub_mom.loc[_fb, "deal"].apply(
-                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-            )
+                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"])
         else:
             _pub_mom["_deal_type"] = _pub_mom["deal"].apply(
-                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"]
-            )
-        _pub_mom = _pub_mom[_pub_mom["_deal_type"].isin(_PA_PD)]
-        _pub_mom = _pub_mom.dropna(subset=["deal_label"]).rename(columns={"date": "_date"})
-        _pub_summ, _pub_n_gaining, _pub_n_losing = _sp_date_momentum(
-            _pub_mom, "deal_label", "revenue"
-        )
-        if not _pub_summ.empty:
-            _pub_mom_rows = _sp_rows_for(_pub_summ, "deal_label")
+                lambda d: _parse_deal(str(d) if pd.notna(d) else "")["deal_type_label"])
+        _pub_mom = _pub_mom[_pub_mom["_deal_type"].isin(_PA_PD)].dropna(subset=["deal_label"])
+        if not _pub_mom.empty:
+            _pmp_parts.append(pd.DataFrame({
+                "deal":  _pub_mom["deal_label"].astype(str),
+                "_date": _pub_mom["date"],
+                "_rev":  pd.to_numeric(_pub_mom["revenue"], errors="coerce"),
+            }))
 
-    # ── Direct campaigns ──────────────────────────────────────────────────────
-    _direct_mom_rows  = []
-    _direct_n_gaining = 0
-    _direct_n_losing  = 0
-    if not gam_df.empty:
-        _rev_recent_cols = [c for c in ["revenue_1d", "revenue_2d", "revenue_3d"] if c in gam_df.columns]
-        _rev_prior_cols  = [c for c in ["revenue_4d", "revenue_5d", "revenue_6d"] if c in gam_df.columns]
-        if _rev_recent_cols and _rev_prior_cols:
-            _dir_df = gam_df.copy()
-            for _c in _rev_recent_cols + _rev_prior_cols:
-                _dir_df[_c] = pd.to_numeric(_dir_df[_c], errors="coerce").fillna(0)
-            _dir_grp = "advertiser" if "advertiser" in _dir_df.columns else "order_name"
-            _dir_df  = _dir_df.dropna(subset=[_dir_grp])
-            _dir_summ, _direct_n_gaining, _direct_n_losing = _sp_momentum(
-                _dir_df, _dir_grp, _rev_recent_cols, _rev_prior_cols
-            )
-            _direct_mom_rows = _sp_rows_for(_dir_summ, _dir_grp)
+    _pmp_mom_rows = []
+    _total_gaining = 0
+    _total_losing  = 0
+    if _pmp_parts:
+        _pmp_combined = pd.concat(_pmp_parts, ignore_index=True)
+        _pmp_summ, _total_gaining, _total_losing = _sp_date_momentum(_pmp_combined, "deal", "_rev")
+        if not _pmp_summ.empty:
+            _pmp_mom_rows = _sp_rows_for(_pmp_summ, "deal")
 
-    _any_pmp = _gam_pmp_mom_rows or _mag_mom_rows or _pub_mom_rows
-    if _any_pmp or _direct_mom_rows:
-        _total_gaining = (
-            _gam_pmp_n_gaining + _mag_n_gaining + _pub_n_gaining + _direct_n_gaining
-        )
-        _total_losing = (
-            _gam_pmp_n_losing + _mag_n_losing + _pub_n_losing + _direct_n_losing
-        )
-        # Layout A (chosen 2026-06): each row is a two-tier identifiable label
-        # (advertiser bold over muted campaign) with a "prior → recent" flow
-        # line and the Δ as colored text on the right. Stacks the same on
-        # desktop and mobile — replaces the old 4-column grid that crushed the
-        # deal name down to one letter ("N…") on a phone.
+    if _pmp_mom_rows:
+        # Layout A: each row is a two-tier identifiable label (advertiser bold
+        # over muted campaign) + a "prior → recent" flow + the Δ as colored
+        # text. One combined PMP list; stacks the same on desktop and mobile.
         _sp_css = (
             '<style>'
             '.sp-row{padding:8px 6px;border-bottom:1px solid var(--border)}'
-            '.sp-section{font-size:11px;font-weight:700;color:var(--text-secondary);'
-            'text-transform:uppercase;letter-spacing:var(--track-eyebrow);padding:10px 6px 3px}'
             '.sp-nm{font-size:13px;line-height:1.25}'
             '.sp-adv{font-weight:700;color:var(--text-primary)}'
             '.sp-camp{color:var(--text-muted)}'
@@ -5295,23 +5237,12 @@ if st.session_state.active_view == "campaigns":
             '.sp-pct{opacity:.7;font-weight:400;font-size:11px}'
             '</style>'
         )
-        _sp_parts = [_sp_css]
-        for _section_label, _section_rows in [
-            ("GAM · PD + PA", _gam_pmp_mom_rows),
-            ("Magnite · PD + PA", _mag_mom_rows),
-            ("Pubmatic · PD + PA", _pub_mom_rows),
-            ("Direct campaigns", _direct_mom_rows),
-        ]:
-            if _section_rows:
-                _sp_parts.append(f'<div class="sp-section">{_section_label}</div>')
-                _sp_parts.extend(_section_rows)
-
         with st.expander(
             f"Spend momentum — {_total_gaining} gaining, {_total_losing} losing"
             f" (last 3d vs prior 3d)",
             expanded=False,
         ):
-            st.markdown("".join(_sp_parts), unsafe_allow_html=True)
+            st.markdown(_sp_css + "".join(_pmp_mom_rows), unsafe_allow_html=True)
 
     # ── Section 2: PMP deals ─────────────────────────────────────────────
     # Small section header (eyebrow + 18px h3 — never bigger than the page H1).
