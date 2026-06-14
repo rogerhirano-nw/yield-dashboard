@@ -312,19 +312,25 @@ Rules that survive any future restyle:
     signal, so the eCPM-vs-floor banding keeps severity and the line stays
     neutral (the delivery chart is the *only* state-colored line). `money=False`
     drops the `$` for the count charts (K/M formatting), and **each chart skips
-    when its metric sums to ≤0** — so a GAM deal (no bid funnel) shows revenue
-    only, and Pubmatic (its `total_requests` is unpopulated upstream) shows
-    revenue + bid responses. The per-deal series come from
+    when its metric sums to ≤0** — so Pubmatic (its `total_requests` is
+    unpopulated upstream) shows revenue + bid responses, and any deal without
+    funnel rows shows revenue only. **All three SSPs report the bid funnel** —
+    the earlier "GAM has no funnel" assumption was wrong: GAM's per-deal funnel
+    lives in a *separate* table, `gam_deal_bid_daily` (`deals_bid_requests` =
+    ad requests, `deals_bids` = bid responses), keyed by `programmatic_deal_name`
+    — the same Deal key, so it merges with the GAM revenue rows on
+    `(ssp, deal, date)` in the per-column groupby-sum (45 delivering GAM deals
+    carry it). The per-deal series come from
     `dl.daily_series_by_deal(_pmp_daily, <col>)` (revenue via the
     `revenue_daily_series_by_deal` wrapper, which the test still pins) —
-    total_requests from Magnite `bid_requests` / Pubmatic `total_requests`,
-    bid_responses from Magnite `bid_responses` / Pubmatic
-    `non_zero_bid_responses`. `_pmp_daily` rebuilds a daily frame
-    from `gam_pmp_deals` / `magnite_deal_daily` / `pubmatic_deals` (the daily
-    rows the PMP summary aggregates away) keyed by **(SSP, Deal)** — match each
-    source's row key exactly (GAM `programmatic_deal_name`, Magnite `deal`,
-    Pubmatic `deal_label` = deal→publisher_deal_id→deal_meta_id) or the lookup
-    misses. The window is a contiguous last-7-days ending at the latest date
+    total_requests from GAM `deals_bid_requests` / Magnite `bid_requests` /
+    Pubmatic `total_requests`, bid_responses from GAM `deals_bids` / Magnite
+    `bid_responses` / Pubmatic `non_zero_bid_responses`. `_pmp_daily` rebuilds a
+    daily frame from `gam_pmp_deals` (revenue) + `gam_deal_bid_daily` (funnel) /
+    `magnite_deal_daily` / `pubmatic_deals` (the daily rows the PMP summary
+    aggregates away) keyed by **(SSP, Deal)** — match each source's row key
+    exactly (GAM `programmatic_deal_name`, Magnite `deal`, Pubmatic `deal_label`
+    = deal→publisher_deal_id→deal_meta_id) or the lookup misses. The window is a contiguous last-7-days ending at the latest date
     present (PMP lags ~2 days), 0-filled. The chart + the card sparkline
     (`_pmp_spark_svg`) are **self-contained in the PMP scope** — the Direct
     `_sparkline_svg` lives behind `if gam_df.empty: … else:` and is *not*

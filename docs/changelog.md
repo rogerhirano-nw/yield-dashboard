@@ -74,6 +74,14 @@ squash-merged to `main` on green (119 tests).
   unchanged). Each chart skips when its metric sums to ≤0, so GAM deals (no bid
   funnel) show revenue only and Pubmatic shows revenue + responses (its
   `total_requests` is empty upstream). Magnite carries the funnel for 179 deals.
+- **#246** — **GAM bid funnel was wrong in #245 — corrected.** The assumption
+  that GAM has no per-deal request/response data was false: it lives in a
+  separate table, `gam_deal_bid_daily` (`deals_bid_requests` / `deals_bids`),
+  keyed by `programmatic_deal_name` — the same Deal key, so it merges with the
+  GAM revenue rows on `(ssp, deal, date)`. #245 only sourced GAM from
+  `gam_pmp_deals` (impressions/revenue), so GAM deals wrongly showed revenue
+  only. Now **45 delivering GAM deals** also show the Total requests + Bid
+  responses charts. All three SSPs report the funnel.
 - **#243** — **Compact one-row pager** (`_compact_pager`) for both the Direct
   and PMP tables: `‹` · centered *Page X of N* (+ muted "N of M shown") · `›`.
   Replaces the `st.columns([1,4,1])` + full-width buttons, which **stacked into
