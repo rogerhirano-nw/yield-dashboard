@@ -234,6 +234,15 @@ Rules that survive any future restyle:
   below the loud amber/red exception pills, so healthy still recedes and
   the exceptions keep the page (the green-overwhelm rule survives). The
   other in-range cells (viewability, CTR/VCR) keep plain `.txt-green`.
+  The pace cell's **"new line item"** sub-label is **existence-based**
+  (`dl.is_new_line_item`, 2026-06-14): it shows when a line didn't exist
+  the prior day — its first delivery is the latest day
+  (`lifetime_impressions_delivered == impressions_1d`, latest-day > 0) —
+  not from a large pace swing. So a brand-new line (no real pace trend to
+  compare) reads "new line item", while an established line with a genuine
+  >100pp jump now shows the actual Δ (the pace delta passes
+  `new_line_threshold=None`). Rate metrics never triggered the old swing
+  flag anyway (bounded ≤100).
 - **Green is asymmetric** (the green-overwhelm rule, 2026-05-25; muted
   tier added 2026-06-12 after the first themed deploy glowed green):
   high-frequency "fine/improving" signals — per-cell ▲ deltas, in-range
