@@ -72,6 +72,15 @@ production redeploys from `main`.
   colored by `dl.idle_band`); **PA/PD pill** top-right; exclude canceled +
   open-auction backstop deals.
 
+### Performance
+- **#236** — PMP table load: `_parse_deal` returned a **`pd.Series`** (~280µs/call,
+  377× a dict) and ran per row across ~14 `.apply` sites (3× per row in the
+  Magnite block), un-memoized — so the same deal name re-parsed on every one of
+  its ~14 daily rows. The 14-day widening (#229) doubled the row counts and
+  exposed it. Fix: return a **dict** + **`@lru_cache`**. Proven behaviour-identical
+  on all 1,590 prod deal names (0 field mismatches); the per-row parse pattern
+  (22k calls) drops **6,197 ms → 8 ms (767×)**.
+
 ### Direct pace cell
 - **#233** — Box on-pace too (new quiet `.pill-green`), so every pace state is a
   pill; on-pace stays one tier below the loud amber/red so healthy still

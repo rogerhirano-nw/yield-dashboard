@@ -7,6 +7,13 @@ See `docs/changelog.md` for the dated "what changed when, and why" index (keyed 
 - Python (Streamlit dashboard + per-source clients). Cache layer is SQLite locally, Postgres in prod (`DATABASE_URL` Supabase).
 - One client module per data source (`*_client.py`), one `refresh_<source>` function in `refresh_cache.py`, called from `main()`.
 - Pull yesterday's data, not today's — same-day data has latency.
+- **Hot per-row helpers return dicts, not `pd.Series`, and memoize.**
+  `_parse_deal` (dashboard.py) runs per row across ~14 `.apply` sites in the
+  PMP path. A `pd.Series` return cost ~280µs/call vs ~1µs for a dict (377×);
+  it's now a **dict** + **`@lru_cache`** (the same deal name repeats across its
+  ~14 daily rows — parse once). **Don't revert it to a Series.** The 14-day
+  source widening (#229) doubled the row counts and made this the PMP table's
+  dominant load cost (6.2s → 8ms for the parse pass; #236).
 - **Never push directly to `main`.** Branch protection enforces PRs for everyone including admins. Always work on a branch and open a PR — even for docs-only changes. README/CLAUDE.md updates go in the same PR as the code they describe.
 - **Dashboard testability rule: dashboard.py renders, `dashboard_logic.py`
   decides.** Decision logic — format classification, benchmark thresholds
