@@ -53,6 +53,15 @@ squash-merged to `main` on green (119 tests).
   reads `N of M shown · K under $100/day hidden`. The whole gap *is* that one
   revenue threshold — it's the only row filter between `_pmp_count` and
   `_pmp_display` — so the label is always exact.
+- **#243** — **Compact one-row pager** (`_compact_pager`) for both the Direct
+  and PMP tables: `‹` · centered *Page X of N* (+ muted "N of M shown") · `›`.
+  Replaces the `st.columns([1,4,1])` + full-width buttons, which **stacked into
+  three full-width blocks on mobile** (Roger flagged it as bulky — shown a 4-way
+  mockup, picked the compact bar). One shared helper wraps the arrows + caption
+  in a keyed `st.container(horizontal=True)` (inline on mobile, same trick as the
+  filter bars); `.st-key-nwpgrwrap_*` CSS pins the arrows to the edges of a
+  430px-capped centered bar. Page logic/state untouched; desktop also gets the
+  tighter bar. Verified by rendering the real CSS against a Streamlit-shaped DOM.
 
 ## 2026-06-13 → 2026-06-14 — PMP deals tab revamp + mobile polish
 
