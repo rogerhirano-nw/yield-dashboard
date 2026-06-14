@@ -628,6 +628,28 @@ DEAL_TYPE_NAMES = _cfg["deal_type_codes"]
 KNOWN_FORMATS = {"Display", "Native", "Video", "CTV", "OLV", "Banner"}
 
 
+def _compact_pager(name, cur_page, total_pages, on_prev, on_next, main_txt, sub_txt=""):
+    """One-row table pager: ``‹  centered page label  ›`` on a single inline
+    row. Replaces the ``st.columns([1, 4, 1])`` pager that stacked into three
+    full-width blocks on mobile (the thing Roger didn't like). Shared by the
+    Direct and PMP tables; renders nothing for a single page.
+
+    The keyed ``st.container(horizontal=True)`` keeps the row inline on mobile
+    (same pattern as the filter bars); arrows are small fixed squares and the
+    label fills the middle — styled via the ``.st-key-nwpgrwrap_*`` hook in the
+    style block. ``name`` must be unique per pager instance (e.g. ``direct_top``)."""
+    if total_pages <= 1:
+        return
+    with st.container(horizontal=True, key=f"nwpgrwrap_{name}"):
+        st.button("‹", key=f"nwpgrbtn_{name}_prev", on_click=on_prev,
+                  disabled=(cur_page == 0), help="Previous page")
+        _sub = f'<span>{sub_txt}</span>' if sub_txt else ""
+        st.markdown(f'<div class="nw-pager-cap"><b>{main_txt}</b>{_sub}</div>',
+                    unsafe_allow_html=True)
+        st.button("›", key=f"nwpgrbtn_{name}_next", on_click=on_next,
+                  disabled=(cur_page == total_pages - 1), help="Next page")
+
+
 @lru_cache(maxsize=8192)
 def _parse_deal(deal: str) -> dict:
     """Extract fields from a Newsweek structured deal name.
@@ -932,6 +954,28 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .st-key-nw_pmp_filter_bar .stButton button:hover {
   border-color: var(--state-critical) !important; color: var(--state-critical) !important;
 }
+/* Compact one-row table pager (Direct + PMP): ‹ small arrow · centered page
+   label · arrow › on a single inline row, replacing the st.columns([1,4,1])
+   that stacked into three full-width blocks on mobile. .st-key-nwpgrwrap_*
+   hooks the keyed horizontal containers; space-between pins the arrows to the
+   edges of a capped-width bar with the label centered between. */
+[class*="st-key-nwpgrwrap_"] { gap: 8px !important; align-items: center !important;
+  justify-content: space-between !important; flex-wrap: nowrap !important;
+  max-width: 430px; margin: 6px auto; }
+[class*="st-key-nwpgrwrap_"] [data-testid="stMarkdown"] { flex: 1 1 auto; }
+[class*="st-key-nwpgrwrap_"] .stButton { flex: 0 0 auto; width: auto !important; }
+[class*="st-key-nwpgrwrap_"] .stButton button {
+  min-width: 46px !important; width: 46px !important; height: 44px !important;
+  padding: 0 !important; font-size: 20px !important; font-weight: 600 !important;
+  line-height: 1 !important; border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-strong) !important; min-height: 0 !important;
+  background: var(--surface-1) !important; color: var(--text-primary) !important;
+}
+[class*="st-key-nwpgrwrap_"] .stButton button:disabled { opacity: .4 !important; }
+.nw-pager-cap { text-align: center; line-height: 1.15; }
+.nw-pager-cap b { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.nw-pager-cap span { display: block; font-size: 10.5px; color: var(--text-secondary);
+  margin-top: 1px; font-variant-numeric: tabular-nums; }
 /* Exception banners — left severity bar, equal-height grid row. Tinted
    state surface + state-colored head; body text stays ink-secondary.
    margin-bottom gives breathing room before the KPI strip. */
@@ -5097,36 +5141,16 @@ if st.session_state.active_view == "campaigns":
                 '</div>'
                 '</div>'
             )
-            # Top pager (Streamlit widgets, so emitted above the table card).
-            if _direct_total_pages > 1:
-                _dc1, _dc2, _dc3 = st.columns([1, 4, 1])
-                with _dc1:
-                    st.button("← Prev", key="direct_prev_top", on_click=_direct_go_prev,
-                              disabled=(_direct_cur_page == 0), use_container_width=True)
-                with _dc2:
-                    st.caption(
-                        f"Page {_direct_cur_page + 1} of {_direct_total_pages}"
-                        f" · {len(_direct_page_slice)} of {_direct_count} line items shown"
-                    )
-                with _dc3:
-                    st.button("Next →", key="direct_next_top", on_click=_direct_go_next,
-                              disabled=(_direct_cur_page == _direct_total_pages - 1),
-                              use_container_width=True)
+            # Compact one-row pager above + below the table (see _compact_pager).
+            _direct_pg_main = f"Page {_direct_cur_page + 1} of {_direct_total_pages}"
+            _direct_pg_sub = f"{len(_direct_page_slice)} of {_direct_count} shown"
+            _compact_pager("direct_top", _direct_cur_page, _direct_total_pages,
+                           _direct_go_prev, _direct_go_next, _direct_pg_main, _direct_pg_sub)
 
             st.markdown(_table_html, unsafe_allow_html=True)
 
-            # Bottom pager (so you don't have to scroll back up to page).
-            if _direct_total_pages > 1:
-                _db1, _db2, _db3 = st.columns([1, 4, 1])
-                with _db1:
-                    st.button("← Prev", key="direct_prev_bot", on_click=_direct_go_prev,
-                              disabled=(_direct_cur_page == 0), use_container_width=True)
-                with _db2:
-                    st.caption(f"Page {_direct_cur_page + 1} of {_direct_total_pages}")
-                with _db3:
-                    st.button("Next →", key="direct_next_bot", on_click=_direct_go_next,
-                              disabled=(_direct_cur_page == _direct_total_pages - 1),
-                              use_container_width=True)
+            _compact_pager("direct_bot", _direct_cur_page, _direct_total_pages,
+                           _direct_go_prev, _direct_go_next, _direct_pg_main)
 
     # ── Spend momentum ───────────────────────────────────────────────────────
     # Three PMP sub-sections (GAM, Magnite, Pubmatic — PD + PA only) plus
@@ -6504,19 +6528,11 @@ if st.session_state.active_view == "campaigns":
 
         _pmp_page_slice = _pmp_display.iloc[_cur_page * _PAGE_SIZE : (_cur_page + 1) * _PAGE_SIZE]
 
-        if _pmp_total_pages > 1:
-            _nc1, _nc2, _nc3 = st.columns([1, 4, 1])
-            with _nc1:
-                st.button("← Prev", key="pmp_prev_top", on_click=_pmp_go_prev,
-                          disabled=(_cur_page == 0), use_container_width=True)
-            with _nc2:
-                _pg_label = f"Page {_cur_page + 1} of {_pmp_total_pages}"
-                if _pmp_display_count < _pmp_count:
-                    _pg_label += f" · {_pmp_display_count} of {_pmp_count} deals shown"
-                st.caption(_pg_label)
-            with _nc3:
-                st.button("Next →", key="pmp_next_top", on_click=_pmp_go_next,
-                          disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
+        _pmp_pg_main = f"Page {_cur_page + 1} of {_pmp_total_pages}"
+        _pmp_pg_sub = (f"{_pmp_display_count} of {_pmp_count} deals shown"
+                       if _pmp_display_count < _pmp_count else "")
+        _compact_pager("pmp_top", _cur_page, _pmp_total_pages,
+                       _pmp_go_prev, _pmp_go_next, _pmp_pg_main, _pmp_pg_sub)
 
         # ── Table — custom HTML grid matching Direct campaigns design. ──
         _pmp_rows_html = []
@@ -6651,16 +6667,9 @@ if st.session_state.active_view == "campaigns":
             unsafe_allow_html=True,
         )
 
-        if _pmp_total_pages > 1:
-            _nb1, _nb2, _nb3 = st.columns([1, 4, 1])
-            with _nb1:
-                st.button("← Prev", key="pmp_prev_bot", on_click=_pmp_go_prev,
-                          disabled=(_cur_page == 0), use_container_width=True)
-            with _nb2:
-                st.caption(f"Page {_cur_page + 1} of {_pmp_total_pages}")
-            with _nb3:
-                st.button("Next →", key="pmp_next_bot", on_click=_pmp_go_next,
-                          disabled=(_cur_page == _pmp_total_pages - 1), use_container_width=True)
+        _compact_pager("pmp_bot", _cur_page, _pmp_total_pages,
+                       _pmp_go_prev, _pmp_go_next,
+                       f"Page {_cur_page + 1} of {_pmp_total_pages}")
 
         # GAM private-auction "No delivery" and "Stale deals" both render
         # inside the "PMP signals" accordion above (folded in 2026-06); the
