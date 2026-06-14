@@ -5130,6 +5130,10 @@ if st.session_state.active_view == "campaigns":
         if out.empty:
             return pd.DataFrame(), 0, 0
         out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
+        # Only meaningful movers — drop deals whose spend shifted by ≤ $100.
+        out = out[out["_delta"].abs() > 100].copy()
+        if out.empty:
+            return pd.DataFrame(), 0, 0
         out["_pct"] = out.apply(
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
             axis=1,
@@ -5148,6 +5152,10 @@ if st.session_state.active_view == "campaigns":
         if out.empty:
             return pd.DataFrame(), 0, 0
         out["_delta"] = out["_recent_rev"] - out["_prior_rev"]
+        # Only meaningful movers — drop deals whose spend shifted by ≤ $100.
+        out = out[out["_delta"].abs() > 100].copy()
+        if out.empty:
+            return pd.DataFrame(), 0, 0
         out["_pct"] = out.apply(
             lambda r: r["_delta"] / r["_prior_rev"] * 100 if r["_prior_rev"] > 0 else float("nan"),
             axis=1,
