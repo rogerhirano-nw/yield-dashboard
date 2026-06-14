@@ -1278,8 +1278,7 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-pmp-m { display: none; grid-template-columns: 1fr auto; gap: 12px;
             align-items: start; padding: 11px 12px; }
 .nw-pmp-m .m-main { min-width: 0; }
-.nw-pmp-m .m-name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-                    font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.25; }
+.nw-pmp-m .m-name { font-weight: 700; font-size: 13px; color: var(--text-primary); line-height: 1.25; }
 .nw-pmp-m .m-sub { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
 .nw-pmp-m .m-ecpm-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .nw-pmp-m .m-ecpm-bar { position: relative; flex: 1; max-width: 200px; height: 7px;
@@ -1299,6 +1298,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .nw-pmp-m .m-spark-l { font-size: 8px; color: var(--text-muted); text-transform: uppercase;
                        letter-spacing: .03em; margin-top: 1px; }
 .nw-pmp-m .m-right { text-align: right; min-width: 0; }
+/* Deal-type pill pinned top-right (fixed spot) — not inline after the
+   variable-length name, which scattered it across the column. */
+.nw-pmp-m .m-right .m-dt { margin-bottom: 5px; }
 .nw-pmp-m .m-right .m-rev { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
 .nw-pmp-m .m-right .m-ecpm { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 .nw-pmp-m .m-right .m-impr { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
@@ -6317,13 +6319,17 @@ if st.session_state.active_view == "campaigns":
                 if _sv:
                     _rev_spark_m = (f'<div class="m-spark2">{_sv}'
                                     '<div class="m-spark-l">revenue 7d</div></div>')
+            # Deal-type pill lives at a fixed spot (top-right, above revenue),
+            # NOT inline after the name — name lengths vary (and wrap), which
+            # scattered the pill all over the column.
             _row_m_pmp = (
                 '<div class="nw-pmp-m"><div class="m-main">'
-                f'<div class="m-name">{_pmp_esc(_primary)}{_dt_pill(_dt)}</div>'
+                f'<div class="m-name">{_pmp_esc(_primary)}</div>'
                 f'<div class="m-sub">{_pmp_esc(row.get("DSP") or "—")} · '
                 f'{_pmp_esc(row.get("SSP") or "—")} · {_pmp_esc(row.get("Format") or "—")}</div>'
                 f'{_m_ecpm_bar}{_rev_spark_m}</div>'
                 '<div class="m-right">'
+                f'<div class="m-dt">{_dt_pill(_dt)}</div>'
                 f'<div class="m-rev">{_rev_cell(row.get("Revenue"))}</div>'
                 f'<div class="m-ecpm">{_ecpm_cell(row.get("eCPM"), _floor_val)} eCPM</div>'
                 f'<div class="m-impr">{_impr_cell(row.get("Paid Impressions"))} impr</div>'
