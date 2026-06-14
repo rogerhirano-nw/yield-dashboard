@@ -6614,8 +6614,10 @@ if st.session_state.active_view == "campaigns":
                 '</details>'
             )
 
+        _pmp_hidden = _pmp_count - _pmp_display_count
         _pmp_tbl_sub = (
-            f"· {_pmp_display_count} of {_pmp_count} shown · sorted by revenue"
+            f"· {_pmp_display_count} of {_pmp_count} shown · "
+            f"{_pmp_hidden} under $100/day hidden · sorted by revenue"
             if _pmp_display_count < _pmp_count
             else f"· {_pmp_count} active · sorted by revenue"
         )

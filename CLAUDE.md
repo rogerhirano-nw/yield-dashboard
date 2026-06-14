@@ -424,7 +424,9 @@ Rules that survive any future restyle:
   DSP / Format / Deal Source / Team) plus one **option toggle** in the same
   popover: **Show deals under $100/day** (`pmp_show_low_rev`, default off —
   was a standalone checkbox above the table, moved into the popover; filters
-  only the table view `_pmp_display`). The **Deal Type** multiselect
+  only the table view `_pmp_display`; when it hides deals the table subtitle
+  spells out the gap — `N of M shown · K under $100/day hidden` — so the
+  difference doesn't read as missing data). The **Deal Type** multiselect
   **defaults to `Private Auction` / `Preferred Deal` / `Private Marketplace`**
   (Programmatic Guaranteed excluded on load) — seeded once into
   `st.session_state["campaigns_pmp_deal_type_filter"]` (intersected with the

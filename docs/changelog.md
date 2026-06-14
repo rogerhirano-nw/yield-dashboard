@@ -47,6 +47,12 @@ squash-merged to `main` on green (119 tests).
   0 on any filter change (`_direct_filter_sig`) and clamps to range. Mirrors the
   PMP pager (`pmp_page` → `direct_page`); pinned by an in-isolation slice/clamp
   simulation (every row tiles exactly once across 1…3,798 rows).
+- **#242** — PMP table subtitle now explains the hidden-deal gap. With the
+  default "Show deals under $100/day" filter off, the header read a bare
+  `N of M shown` (e.g. "10 of 277"), which looked like missing data; it now
+  reads `N of M shown · K under $100/day hidden`. The whole gap *is* that one
+  revenue threshold — it's the only row filter between `_pmp_count` and
+  `_pmp_display` — so the label is always exact.
 
 ## 2026-06-13 → 2026-06-14 — PMP deals tab revamp + mobile polish
 
