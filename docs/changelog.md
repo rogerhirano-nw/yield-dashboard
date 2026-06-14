@@ -80,6 +80,10 @@ production redeploys from `main`.
   **days-inactive** (last bid from `pmp_last_bid_date`, else `create_time`;
   colored by `dl.idle_band`); **PA/PD pill** top-right; exclude canceled +
   open-auction backstop deals.
+- **#238** — Seller grouping was hard to read (a faint header, then a 18-deal
+  seller buried the rest). Each seller is now a **collapsible row** (`.nd-sg`)
+  — initials avatar + name + `count · worst-Nd` — deals nested inside,
+  collapsed by default. Scan the sellers, drill into one.
 
 ### Performance
 - **#236** — PMP table load: `_parse_deal` returned a **`pd.Series`** (~280µs/call,

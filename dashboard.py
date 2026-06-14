@@ -5933,10 +5933,16 @@ if st.session_state.active_view == "campaigns":
                         f'<span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
                         '</div>'
                     )
+                _worst = int(_grp["_idle"].max())
+                _sp = _seller.split()
+                _init = (_sp[0][0] + _sp[-1][0]).upper() if len(_sp) >= 2 else _seller[:2].upper()
                 _nd_groups.append(
-                    '<div class="nd-group">'
-                    f'<div class="nd-ghead">{_pmp_esc(_seller)} · {len(_grp)}</div>'
-                    + "".join(_drows) + '</div>'
+                    '<details class="nd-sg"><summary>'
+                    f'<span class="nd-av">{_pmp_esc(_init)}</span>'
+                    f'<span class="nd-sname">{_pmp_esc(_seller)}</span>'
+                    f'<span class="nd-scount">{len(_grp)} · worst {_worst}d</span>'
+                    '<span class="nd-schev">&rsaquo;</span></summary>'
+                    + "".join(_drows) + '</details>'
                 )
             _sig_rows.append(
                 '<details class="nw-na-row sev-red">'
@@ -6006,11 +6012,21 @@ if st.session_state.active_view == "campaigns":
                 '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
                 '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
                 '.nw-sig-scroll{overflow-x:auto}'
-                # No-delivery seller groups: header = seller name · count; each
-                # card carries a small status label (pending in amber).
-                '.nd-ghead{font-size:10px;font-weight:700;letter-spacing:.05em;'
-                'text-transform:uppercase;color:var(--text-secondary);padding:9px 6px 3px}'
-                '.nd-group + .nd-group .nd-ghead{border-top:1px solid var(--border)}'
+                # No-delivery: each seller is a collapsible row (initials avatar
+                # + name + count · worst-idle); deals nest inside, expand on tap.
+                '.nd-sg{border-top:1px solid var(--border)}'
+                '.nd-sg:first-child{border-top:none}'
+                '.nd-sg>summary{list-style:none;display:flex;align-items:center;gap:10px;'
+                'padding:10px 12px;cursor:pointer;background:var(--surface-1)}'
+                '.nd-sg>summary::-webkit-details-marker{display:none}'
+                '.nd-sg>summary::marker{content:""}'
+                '.nd-av{width:26px;height:26px;border-radius:50%;background:var(--text-primary);'
+                'color:var(--surface-1);font-size:10px;font-weight:700;display:flex;'
+                'align-items:center;justify-content:center;flex:0 0 auto}'
+                '.nd-sname{font-weight:700;font-size:14px;color:var(--text-primary)}'
+                '.nd-scount{margin-left:auto;font-size:11px;color:var(--text-muted)}'
+                '.nd-schev{color:var(--text-muted);font-size:13px;transition:transform .15s ease}'
+                '.nd-sg[open]>summary .nd-schev{transform:rotate(90deg)}'
                 '.nd-st{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;'
                 'font-weight:700;color:var(--text-muted)}'
                 '.nd-st.nd-pending{color:var(--state-warning)}'
