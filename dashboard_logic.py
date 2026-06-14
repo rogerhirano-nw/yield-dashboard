@@ -564,6 +564,23 @@ def stale_deal_mask(lbd_df, cutoff_iso: str):
     return (lb.notna() & (lb < cutoff_iso)) | (lb.isna() & fs.notna() & (fs < cutoff_iso))
 
 
+def recently_seen_mask(lbd_df, seen_cutoff_iso: str):
+    """Boolean mask over a pmp_last_bid_date frame: True = keep (still live),
+    False = hide (gone). A deal is "gone" when `last_seen_date` — the last day
+    it appeared in ANY source row (bid or not) — is strictly before the cutoff,
+    i.e. it stopped being reported (paused/removed). Deals with no
+    `last_seen_date` (NA: pre-tracking rows) are kept, so the filter only ever
+    hides deals we positively know went silent. Pairs with `stale_deal_mask`:
+    *stale AND recently-seen* = active but not winning bids (actionable, keep);
+    *stale AND not seen* = paused/removed (hide). When the column is absent
+    (old cached frame) every row is kept — behaviour is unchanged until the
+    refresh starts populating it."""
+    if "last_seen_date" not in getattr(lbd_df, "columns", []):
+        return pd.Series(True, index=lbd_df.index)
+    ls = lbd_df["last_seen_date"]
+    return ls.isna() | (ls >= seen_cutoff_iso)
+
+
 def idle_days(last_bid_date, first_seen_date, today: date) -> int:
     """Days since the deal last showed life: last bid date when known,
     first-seen date for deals that never bid, 0 when neither parses."""

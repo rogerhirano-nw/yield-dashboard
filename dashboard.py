@@ -6485,7 +6485,15 @@ if st.session_state.active_view == "campaigns":
             _cutoff = (_today - timedelta(days=90)).isoformat()
             _lbd_tbl["last_bid_date"]   = _lbd_tbl["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
             _lbd_tbl["first_seen_date"] = _lbd_tbl["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            _stale = _lbd_tbl[dl.stale_deal_mask(_lbd_tbl, _cutoff)].copy()
+            if "last_seen_date" in _lbd_tbl.columns:
+                _lbd_tbl["last_seen_date"] = _lbd_tbl["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+            # Stale = no bids 90+ days. Then HIDE deals that also stopped
+            # appearing in the source data entirely for 90+ days (paused/
+            # removed) — only deals still seen but not winning bids are
+            # actionable. recently_seen_mask is a no-op until last_seen_date is
+            # populated (refresh backfills it), so the list is unchanged until then.
+            _stale = _lbd_tbl[dl.stale_deal_mask(_lbd_tbl, _cutoff)
+                              & dl.recently_seen_mask(_lbd_tbl, _cutoff)].copy()
 
             if not _stale.empty:
                 _stale["days_idle"] = _stale.apply(

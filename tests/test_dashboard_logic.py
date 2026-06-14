@@ -477,6 +477,21 @@ def test_stale_deal_mask_two_clauses():
     assert mask.tolist() == [True, False, True, False, False]
 
 
+def test_recently_seen_mask():
+    import pandas as pd
+    from dashboard_logic import recently_seen_mask
+    df = pd.DataFrame({
+        "last_seen_date": ["2026-06-10", "2026-01-01", pd.NA, "2026-03-14"],
+    })
+    mask = recently_seen_mask(df, "2026-03-14")  # 90d "seen" cutoff
+    # seen recently → keep; not seen 90d → hide; unknown (NA) → keep;
+    # seen exactly on the cutoff → keep (>=).
+    assert mask.tolist() == [True, False, True, True]
+    # column absent (old cached frame) → keep everything (no-op)
+    no_col = pd.DataFrame({"deal_key": ["a", "b"]})
+    assert recently_seen_mask(no_col, "2026-03-14").tolist() == [True, True]
+
+
 def test_idle_days_prefers_last_bid_then_first_seen():
     from datetime import date as d
     from dashboard_logic import idle_days
