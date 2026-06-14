@@ -5164,7 +5164,7 @@ if st.session_state.active_view == "campaigns":
     def _sp_dollar(v):
         return f"${v:,.0f}" if pd.notna(v) and abs(v) >= 0.5 else "—"
 
-    def _sp_rows_for(summary_df, name_col):
+    def _sp_rows_for(summary_df, name_col, wrap=None):
         rows = []
         for _, _r in summary_df.iterrows():
             _dlt  = _r["_delta"]
@@ -5182,7 +5182,7 @@ if st.session_state.active_view == "campaigns":
             _full = dl.pmp_deal_display_name(_r[name_col] or "")[0]
             _adv, _camp = (_full.split(" — ", 1) + [""])[:2] if " — " in _full else (_full, "")
             _camp_html = f'<span class="sp-camp"> — {_sp_esc(_camp)}</span>' if _camp else ""
-            rows.append(
+            _sp_html = (
                 '<div class="sp-row">'
                 f'<div class="sp-nm"><span class="sp-adv">{_sp_esc(_adv)}</span>{_camp_html}</div>'
                 '<div class="sp-met">'
@@ -5190,6 +5190,7 @@ if st.session_state.active_view == "campaigns":
                 f'<span class="sp-dlt {_cls}">{_dlt_s}<span class="sp-pct">{_pct_s}</span></span>'
                 '</div></div>'
             )
+            rows.append(wrap(_sp_html, _r[name_col]) if wrap else _sp_html)
         return rows
 
     # Spend-momentum windowing/aggregation is decision logic — it lives in
@@ -5265,6 +5266,7 @@ if st.session_state.active_view == "campaigns":
             }))
 
     _pmp_mom_rows = []
+    _pmp_summ = pd.DataFrame()
     _total_gaining = 0
     _total_losing  = 0
     if _pmp_parts:
@@ -6004,197 +6006,282 @@ if st.session_state.active_view == "campaigns":
         # Spend momentum + No delivery + Stale deals — each expands inline.
         # Reuses the Needs-attention accordion CSS, so it collapses to one line
         # on mobile and stays open on desktop. Stale deals folded in read-only
-        # 2026-06 (archive removed); all three rows are static HTML.
-        _sig_rows = []
-        if _pmp_mom_rows:
-            _sig_rows.append(
-                '<details class="nw-na-row sev-info">'
-                '<summary><span class="nw-na-dot"></span>'
-                f'<span class="nw-na-n">{_total_gaining + _total_losing}</span>'
-                '<span class="nw-na-l">Spend momentum</span>'
-                f'<span class="nw-na-d">{_total_gaining} gaining · {_total_losing} losing</span>'
-                '<span class="nw-na-chev">&rsaquo;</span></summary>'
-                f'<div class="nw-na-sub nw-sig-sub">{"".join(_pmp_mom_rows)}</div></details>'
-            )
-        if _pa_no_delivery > 0 and not _pa_inv.empty:
-            # Group non-delivering PA deals by SELLER (the AE from the deal name,
-            # resolved through settings.json ae_names), busiest seller first.
-            # Each card: readable Advertiser — Campaign name, a deal-type pill
-            # (PA/PD) top-right, and a meta line of status · days-inactive
-            # (colored by idle age) + floor. "Inactive" = days since the deal
-            # last won a bid (pmp_last_bid_date.last_bid_date) or, for deals that
-            # never bid, since it was set up (create_time). Most-inactive first
-            # within each seller. Canceled / delivering / open-auction excluded
-            # upstream.
-            _today = datetime.now(timezone.utc).date()
-            try:
-                _lbd_t = load("pmp_last_bid_date")
-                _lastbid_map = (dict(zip(_lbd_t["deal_key"].astype(str),
-                                         _lbd_t["last_bid_date"].astype(str)))
-                                if not _lbd_t.empty and "deal_key" in _lbd_t.columns else {})
-            except Exception:
-                _lastbid_map = {}
-            _dt_full = {"PA": "Private Auction", "PD": "Preferred Deal",
-                        "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace"}
-            _nd = _pa_inv.copy()
-            _nd["_st"] = (_nd["deal_status"].astype(str).str.upper()
-                          if "deal_status" in _nd.columns else "OTHER")
-            _nd_active_ct = int((_nd["_st"] == "ACTIVE").sum())
-            _nd_ae = _nd["auction_name"].astype(str).str.extract(
-                r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
-            _nd["_seller"] = _nd_ae.map(AE_NAMES).fillna(_nd_ae).fillna("Unassigned")
+        # 2026-06 (archive removed).
+        #
+        # Renders into this st.empty() SLOT (visually under the PMP KPI strip)
+        # but is BUILT by _render_pmp_signals() — called AFTER the drawer
+        # machinery is defined below — so each flagged deal can **expand to the
+        # SAME _pmp_drawer_html the main table row opens** (Roger 2026-06-14:
+        # "see the PMP details on the signals card"). Deals present in the
+        # delivery frame get the full performance drawer (revenue · eCPM ·
+        # 7-day trend · metadata); no-delivery / long-stale deals (no delivery
+        # data) expand to a name-only note.
+        _pmp_sig_slot = st.empty()
 
-            def _nd_idle(_r):
-                # last bid when known (true inactivity); else days since set up.
-                _ct = _r.get("create_time")
-                _ctd = str(_ct)[:10] if pd.notna(_ct) else None
-                return dl.idle_days(_lastbid_map.get(str(_r.get("auction_name") or "")), _ctd, _today)
-            _nd["_idle"] = _nd.apply(_nd_idle, axis=1)
-            _seller_n = _nd["_seller"].value_counts()
-            _nd_groups = []
-            for _seller in sorted(_nd["_seller"].unique(), key=lambda s: (-int(_seller_n[s]), s)):
-                _grp = _nd[_nd["_seller"] == _seller].sort_values("_idle", ascending=False)
-                _drows = []
-                for _, _ri in _grp.iterrows():
-                    _primary = dl.pmp_deal_display_name(_ri.get("auction_name") or "")[0]
-                    _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
-                                   if " — " in _primary else (_primary, ""))
-                    _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
-                    _fv = _ri.get("floor_price_usd")
-                    _fs = f"${float(_fv):.2f} floor" if pd.notna(_fv) else "no floor"
-                    _st_cls = "nd-st nd-pending" if _ri["_st"] == "PENDING" else "nd-st"
-                    _tok = (str(_ri.get("auction_name") or "").split("_") + ["", ""])[1]
-                    _pill = _dt_pill(_dt_full.get(_tok, _tok))
-                    _idle = int(_ri["_idle"])
-                    _ib = dl.idle_band(_idle)
-                    _drows.append(
-                        '<div class="sp-row">'
-                        '<div class="nd-top">'
-                        f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
-                        f'{_pill}</div>'
-                        '<div class="sp-met"><span>'
-                        f'<span class="{_st_cls}">{_pmp_esc(_ri["_st"].title())}</span>'
-                        f' · <span class="nd-idle idle-{_ib}">{_idle}d inactive</span></span>'
-                        f'<span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
-                        '</div>'
-                    )
-                _worst = int(_grp["_idle"].max())
-                _sp = _seller.split()
-                _init = (_sp[0][0] + _sp[-1][0]).upper() if len(_sp) >= 2 else _seller[:2].upper()
-                _nd_groups.append(
-                    '<details class="nd-sg"><summary>'
-                    f'<span class="nd-av">{_pmp_esc(_init)}</span>'
-                    f'<span class="nd-sname">{_pmp_esc(_seller)}</span>'
-                    f'<span class="nd-scount">{len(_grp)} · worst {_worst}d</span>'
-                    '<span class="nd-schev">&rsaquo;</span></summary>'
-                    + "".join(_drows) + '</details>'
+        def _render_pmp_signals():
+            # Deal name → its row in the UNFILTERED combined frame, so a flagged
+            # deal shows its full drawer regardless of the table's active
+            # filters. First (highest-revenue) row wins if a name spans SSPs.
+            _pmp_rowlut = {}
+            if not _combined_prefilter.empty:
+                for _, _cr in _combined_prefilter.iterrows():
+                    _pmp_rowlut.setdefault(str(_cr.get("Deal")), _cr)
+
+            def _sig_deal_details(_deal_name, _setup_html=""):
+                # Full drawer when the deal is delivering (in the frame); else
+                # the deal's setup details (no-delivery / long-stale have no
+                # performance data, so there's no revenue / eCPM / trend).
+                _mr = _pmp_rowlut.get(str(_deal_name))
+                if _mr is not None:
+                    return _pmp_drawer_html(_mr)
+                return (
+                    '<div class="nw-pmp-drawer">'
+                    '<div class="nw-drawer-head">'
+                    f'<span class="nw-drawer-li">{_pmp_esc(str(_deal_name) or "—")}</span>'
+                    '</div>'
+                    + (_setup_html or '<div class="nw-sig-nodata">No recent '
+                       'delivery — nothing to chart.</div>')
+                    + '</div>'
                 )
-            _sig_rows.append(
-                '<details class="nw-na-row sev-red">'
-                '<summary><span class="nw-na-dot"></span>'
-                f'<span class="nw-na-n">{_pa_no_delivery}</span>'
-                '<span class="nw-na-l">No delivery</span>'
-                f'<span class="nw-na-d">{_nd_active_ct} active</span>'
-                '<span class="nw-na-chev">&rsaquo;</span></summary>'
-                f'<div class="nw-na-sub nw-sig-sub">{"".join(_nd_groups)}</div></details>'
-            )
 
-        # ── Stale deals row — no bid responses for 90+ days, still seen in the
-        # source (paused/removed deals already dropped by recently_seen_mask).
-        # Read-only (archive removed 2026-06): deal · SSP · last bid · idle age.
-        try:
-            _lbd_stale = load("pmp_last_bid_date")
-        except Exception:
-            _lbd_stale = pd.DataFrame()
-        if not _lbd_stale.empty:
-            _stale_today = datetime.now(timezone.utc).date()
-            _stale_cut = (_stale_today - timedelta(days=90)).isoformat()
-            _lbd_stale = _lbd_stale.copy()
-            _lbd_stale["last_bid_date"]   = _lbd_stale["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            _lbd_stale["first_seen_date"] = _lbd_stale["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            if "last_seen_date" in _lbd_stale.columns:
-                _lbd_stale["last_seen_date"] = _lbd_stale["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
-            _stale = _lbd_stale[dl.stale_deal_mask(_lbd_stale, _stale_cut)
-                                & dl.recently_seen_mask(_lbd_stale, _stale_cut)].copy()
-            if not _stale.empty:
-                _stale["_idle"] = _stale.apply(
-                    lambda r: dl.idle_days(r.get("last_bid_date"),
-                                           r.get("first_seen_date"), _stale_today), axis=1)
-                _stale = _stale.sort_values("_idle", ascending=False)
-                _st_rows = []
-                for _, _sr in _stale.iterrows():
-                    _primary = dl.pmp_deal_display_name(str(_sr.get("deal_key") or ""))[0]
-                    _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
-                                   if " — " in _primary else (_primary, ""))
-                    _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
-                    _lbd_disp = str(_sr.get("last_bid_date") or "")
-                    if not _lbd_disp or _lbd_disp in ("None", "nan", "<NA>"):
-                        _lbd_disp = "never"
-                    _sidle = int(_sr["_idle"])
-                    _sib = dl.idle_band(_sidle)
-                    _idle_html = f'<span class="nd-idle idle-{_sib}">{_sidle}d idle</span>'
-                    _st_rows.append(
-                        '<div class="sp-row">'
-                        f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
-                        f'<div class="sp-met"><span class="sp-flow">{_pmp_esc(str(_sr.get("ssp") or ""))}'
-                        f' · last bid {_pmp_esc(_lbd_disp)} · {_idle_html}</span></div>'
-                        '</div>'
+            def _sig_deal_wrap(_html, _deal_name, _setup_html=""):
+                # Wrap a signal deal row as a <details> that expands to its
+                # drawer. Plain row when there's no deal identity to look up.
+                if not _deal_name:
+                    return _html
+                return ('<details class="nw-sig-deal"><summary>' + _html
+                        + '</summary>' + _sig_deal_details(_deal_name, _setup_html)
+                        + '</details>')
+
+            _sig_rows = []
+            if _pmp_mom_rows and not _pmp_summ.empty:
+                _mom_wrapped = _sp_rows_for(_pmp_summ, "deal", wrap=_sig_deal_wrap)
+                _sig_rows.append(
+                    '<details class="nw-na-row sev-info">'
+                    '<summary><span class="nw-na-dot"></span>'
+                    f'<span class="nw-na-n">{_total_gaining + _total_losing}</span>'
+                    '<span class="nw-na-l">Spend momentum</span>'
+                    f'<span class="nw-na-d">{_total_gaining} gaining · {_total_losing} losing</span>'
+                    '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                    f'<div class="nw-na-sub nw-sig-sub">{"".join(_mom_wrapped)}</div></details>'
+                )
+            if _pa_no_delivery > 0 and not _pa_inv.empty:
+                # Group non-delivering PA deals by SELLER (the AE from the deal name,
+                # resolved through settings.json ae_names), busiest seller first.
+                # Each card: readable Advertiser — Campaign name, a deal-type pill
+                # (PA/PD) top-right, and a meta line of status · days-inactive
+                # (colored by idle age) + floor. "Inactive" = days since the deal
+                # last won a bid (pmp_last_bid_date.last_bid_date) or, for deals that
+                # never bid, since it was set up (create_time). Most-inactive first
+                # within each seller. Canceled / delivering / open-auction excluded
+                # upstream.
+                _today = datetime.now(timezone.utc).date()
+                try:
+                    _lbd_t = load("pmp_last_bid_date")
+                    _lastbid_map = (dict(zip(_lbd_t["deal_key"].astype(str),
+                                             _lbd_t["last_bid_date"].astype(str)))
+                                    if not _lbd_t.empty and "deal_key" in _lbd_t.columns else {})
+                except Exception:
+                    _lastbid_map = {}
+                _dt_full = {"PA": "Private Auction", "PD": "Preferred Deal",
+                            "PG": "Programmatic Guaranteed", "PMP": "Private Marketplace"}
+                _nd = _pa_inv.copy()
+                _nd["_st"] = (_nd["deal_status"].astype(str).str.upper()
+                              if "deal_status" in _nd.columns else "OTHER")
+                _nd_active_ct = int((_nd["_st"] == "ACTIVE").sum())
+                _nd_ae = _nd["auction_name"].astype(str).str.extract(
+                    r"Team-(?:USA|INTL)_([A-Za-z]+)", expand=False)
+                _nd["_seller"] = _nd_ae.map(AE_NAMES).fillna(_nd_ae).fillna("Unassigned")
+
+                def _nd_idle(_r):
+                    # last bid when known (true inactivity); else days since set up.
+                    _ct = _r.get("create_time")
+                    _ctd = str(_ct)[:10] if pd.notna(_ct) else None
+                    return dl.idle_days(_lastbid_map.get(str(_r.get("auction_name") or "")), _ctd, _today)
+                _nd["_idle"] = _nd.apply(_nd_idle, axis=1)
+                _seller_n = _nd["_seller"].value_counts()
+                _nd_groups = []
+                for _seller in sorted(_nd["_seller"].unique(), key=lambda s: (-int(_seller_n[s]), s)):
+                    _grp = _nd[_nd["_seller"] == _seller].sort_values("_idle", ascending=False)
+                    _drows = []
+                    for _, _ri in _grp.iterrows():
+                        _primary = dl.pmp_deal_display_name(_ri.get("auction_name") or "")[0]
+                        _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
+                                       if " — " in _primary else (_primary, ""))
+                        _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
+                        _fv = _ri.get("floor_price_usd")
+                        _fs = f"${float(_fv):.2f} floor" if pd.notna(_fv) else "no floor"
+                        _st_cls = "nd-st nd-pending" if _ri["_st"] == "PENDING" else "nd-st"
+                        _tok = (str(_ri.get("auction_name") or "").split("_") + ["", ""])[1]
+                        _pill = _dt_pill(_dt_full.get(_tok, _tok))
+                        _idle = int(_ri["_idle"])
+                        _ib = dl.idle_band(_idle)
+                        _nd_html = (
+                            '<div class="sp-row">'
+                            '<div class="nd-top">'
+                            f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
+                            f'{_pill}</div>'
+                            '<div class="sp-met"><span>'
+                            f'<span class="{_st_cls}">{_pmp_esc(_ri["_st"].title())}</span>'
+                            f' · <span class="nd-idle idle-{_ib}">{_idle}d inactive</span></span>'
+                            f'<span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
+                            '</div>'
+                        )
+                        _fval = f"${float(_fv):.2f}" if pd.notna(_fv) else "—"
+                        _ct_disp = str(_ri.get("create_time"))[:10] if pd.notna(_ri.get("create_time")) else "—"
+                        _nd_setup = (
+                            '<div class="nw-sig-nodata" style="margin-bottom:8px">'
+                            'Set up but not winning impressions — no delivery to chart.</div>'
+                            '<div class="nw-meta-grid">'
+                            f'<div><span class="lbl">Status</span><span class="val">{_pmp_esc(_ri["_st"].title())}</span></div>'
+                            f'<div><span class="lbl">Deal type</span><span class="val">{_pmp_esc(_dt_full.get(_tok, _tok))}</span></div>'
+                            f'<div><span class="lbl">Floor</span><span class="val">{_fval}</span></div>'
+                            f'<div><span class="lbl">Days inactive</span><span class="val">{_idle}d</span></div>'
+                            f'<div><span class="lbl">Set up</span><span class="val">{_pmp_esc(_ct_disp)}</span></div>'
+                            '</div>'
+                        )
+                        _drows.append(_sig_deal_wrap(_nd_html, _ri.get("auction_name"), _nd_setup))
+                    _worst = int(_grp["_idle"].max())
+                    _sp = _seller.split()
+                    _init = (_sp[0][0] + _sp[-1][0]).upper() if len(_sp) >= 2 else _seller[:2].upper()
+                    _nd_groups.append(
+                        '<details class="nd-sg"><summary>'
+                        f'<span class="nd-av">{_pmp_esc(_init)}</span>'
+                        f'<span class="nd-sname">{_pmp_esc(_seller)}</span>'
+                        f'<span class="nd-scount">{len(_grp)} · worst {_worst}d</span>'
+                        '<span class="nd-schev">&rsaquo;</span></summary>'
+                        + "".join(_drows) + '</details>'
                     )
                 _sig_rows.append(
-                    '<details class="nw-na-row sev-amber">'
+                    '<details class="nw-na-row sev-red">'
                     '<summary><span class="nw-na-dot"></span>'
-                    f'<span class="nw-na-n">{len(_stale)}</span>'
-                    '<span class="nw-na-l">Stale deals</span>'
-                    '<span class="nw-na-d">no bids 90+ days</span>'
+                    f'<span class="nw-na-n">{_pa_no_delivery}</span>'
+                    '<span class="nw-na-l">No delivery</span>'
+                    f'<span class="nw-na-d">{_nd_active_ct} active</span>'
                     '<span class="nw-na-chev">&rsaquo;</span></summary>'
-                    f'<div class="nw-na-sub nw-sig-sub">{"".join(_st_rows)}</div></details>'
+                    f'<div class="nw-na-sub nw-sig-sub">{"".join(_nd_groups)}</div></details>'
                 )
-        if _sig_rows:
-            st.markdown(
-                _sp_css +
-                '<style>'
-                '.nw-na-row.sev-info .nw-na-dot{background:var(--text-muted)}'
-                '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
-                '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
-                '.nw-sig-scroll{overflow-x:auto}'
-                # No-delivery: each seller is a collapsible row (initials avatar
-                # + name + count · worst-idle); deals nest inside, expand on tap.
-                '.nd-sg{border-top:1px solid var(--border)}'
-                '.nd-sg:first-child{border-top:none}'
-                '.nd-sg>summary{list-style:none;display:flex;align-items:center;gap:10px;'
-                'padding:10px 12px;cursor:pointer;background:var(--surface-1)}'
-                '.nd-sg>summary::-webkit-details-marker{display:none}'
-                '.nd-sg>summary::marker{content:""}'
-                '.nd-av{width:26px;height:26px;border-radius:50%;background:var(--text-primary);'
-                'color:var(--surface-1);font-size:10px;font-weight:700;display:flex;'
-                'align-items:center;justify-content:center;flex:0 0 auto}'
-                '.nd-sname{font-weight:700;font-size:14px;color:var(--text-primary)}'
-                '.nd-scount{margin-left:auto;font-size:11px;color:var(--text-muted)}'
-                '.nd-schev{color:var(--text-muted);font-size:13px;transition:transform .15s ease}'
-                '.nd-sg[open]>summary .nd-schev{transform:rotate(90deg)}'
-                '.nd-st{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;'
-                'font-weight:700;color:var(--text-muted)}'
-                '.nd-st.nd-pending{color:var(--state-warning)}'
-                # Name + deal-type pill on one row (pill pinned top-right);
-                # days-inactive colored by idle age (amber 90+, red 180+).
-                '.nd-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}'
-                '.nd-top .sp-nm{flex:1 1 auto;min-width:0}'
-                '.nd-top .pill-dt{flex:0 0 auto}'
-                '.nd-idle{font-weight:700;color:var(--text-secondary)}'
-                '.nd-idle.idle-amber{color:var(--state-warning)}'
-                '.nd-idle.idle-red{color:var(--state-critical)}'
-                '</style>'
-                # Default-open (incl. on mobile) so the signals are visible on
-                # load; the per-row accordions inside still expand on tap. The
-                # separate Needs-attention alerts card keeps its collapsed-on-
-                # mobile default (open is per-<details>).
-                '<details class="nw-na nw-pmp-sig" open>'
-                '<summary class="nw-na-head"><span>PMP signals</span>'
-                f'<span class="cnt">{len(_sig_rows)} signal{"s" if len(_sig_rows) != 1 else ""}</span>'
-                '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
-                '<div class="nw-na-body">' + "".join(_sig_rows) + '</div></details>',
-                unsafe_allow_html=True,
-            )
+
+            # ── Stale deals row — no bid responses for 90+ days, still seen in the
+            # source (paused/removed deals already dropped by recently_seen_mask).
+            # Read-only (archive removed 2026-06): deal · SSP · last bid · idle age.
+            try:
+                _lbd_stale = load("pmp_last_bid_date")
+            except Exception:
+                _lbd_stale = pd.DataFrame()
+            if not _lbd_stale.empty:
+                _stale_today = datetime.now(timezone.utc).date()
+                _stale_cut = (_stale_today - timedelta(days=90)).isoformat()
+                _lbd_stale = _lbd_stale.copy()
+                _lbd_stale["last_bid_date"]   = _lbd_stale["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+                _lbd_stale["first_seen_date"] = _lbd_stale["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+                if "last_seen_date" in _lbd_stale.columns:
+                    _lbd_stale["last_seen_date"] = _lbd_stale["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
+                _stale = _lbd_stale[dl.stale_deal_mask(_lbd_stale, _stale_cut)
+                                    & dl.recently_seen_mask(_lbd_stale, _stale_cut)].copy()
+                if not _stale.empty:
+                    _stale["_idle"] = _stale.apply(
+                        lambda r: dl.idle_days(r.get("last_bid_date"),
+                                               r.get("first_seen_date"), _stale_today), axis=1)
+                    _stale = _stale.sort_values("_idle", ascending=False)
+                    _st_rows = []
+                    for _, _sr in _stale.iterrows():
+                        _primary = dl.pmp_deal_display_name(str(_sr.get("deal_key") or ""))[0]
+                        _adv, _camp = ((_primary.split(" — ", 1) + [""])[:2]
+                                       if " — " in _primary else (_primary, ""))
+                        _camp_html = f'<span class="sp-camp"> — {_pmp_esc(_camp)}</span>' if _camp else ""
+                        _lbd_disp = str(_sr.get("last_bid_date") or "")
+                        if not _lbd_disp or _lbd_disp in ("None", "nan", "<NA>"):
+                            _lbd_disp = "never"
+                        _sidle = int(_sr["_idle"])
+                        _sib = dl.idle_band(_sidle)
+                        _idle_html = f'<span class="nd-idle idle-{_sib}">{_sidle}d idle</span>'
+                        _st_html = (
+                            '<div class="sp-row">'
+                            f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
+                            f'<div class="sp-met"><span class="sp-flow">{_pmp_esc(str(_sr.get("ssp") or ""))}'
+                            f' · last bid {_pmp_esc(_lbd_disp)} · {_idle_html}</span></div>'
+                            '</div>'
+                        )
+                        _fsd = str(_sr.get("first_seen_date") or "")
+                        if not _fsd or _fsd in ("None", "nan", "<NA>"):
+                            _fsd = "—"
+                        _st_setup = (
+                            '<div class="nw-sig-nodata" style="margin-bottom:8px">'
+                            'No bid responses in 90+ days — no recent delivery to chart.</div>'
+                            '<div class="nw-meta-grid">'
+                            f'<div><span class="lbl">SSP</span><span class="val">{_pmp_esc(str(_sr.get("ssp") or "—"))}</span></div>'
+                            f'<div><span class="lbl">Last bid</span><span class="val">{_pmp_esc(_lbd_disp)}</span></div>'
+                            f'<div><span class="lbl">First seen</span><span class="val">{_pmp_esc(_fsd)}</span></div>'
+                            f'<div><span class="lbl">Idle</span><span class="val">{_sidle}d</span></div>'
+                            '</div>'
+                        )
+                        _st_rows.append(_sig_deal_wrap(_st_html, _sr.get("deal_key"), _st_setup))
+                    _sig_rows.append(
+                        '<details class="nw-na-row sev-amber">'
+                        '<summary><span class="nw-na-dot"></span>'
+                        f'<span class="nw-na-n">{len(_stale)}</span>'
+                        '<span class="nw-na-l">Stale deals</span>'
+                        '<span class="nw-na-d">no bids 90+ days</span>'
+                        '<span class="nw-na-chev">&rsaquo;</span></summary>'
+                        f'<div class="nw-na-sub nw-sig-sub">{"".join(_st_rows)}</div></details>'
+                    )
+            if _sig_rows:
+                _pmp_sig_slot.markdown(
+                    _sp_css +
+                    '<style>'
+                    '.nw-na-row.sev-info .nw-na-dot{background:var(--text-muted)}'
+                    '.nw-na-row.sev-info .nw-na-n{color:var(--text-secondary);font-size:14px}'
+                    '.nw-sig-sub .sp-row:last-child{border-bottom:none}'
+                    '.nw-sig-scroll{overflow-x:auto}'
+                    # No-delivery: each seller is a collapsible row (initials avatar
+                    # + name + count · worst-idle); deals nest inside, expand on tap.
+                    '.nd-sg{border-top:1px solid var(--border)}'
+                    '.nd-sg:first-child{border-top:none}'
+                    '.nd-sg>summary{list-style:none;display:flex;align-items:center;gap:10px;'
+                    'padding:10px 12px;cursor:pointer;background:var(--surface-1)}'
+                    '.nd-sg>summary::-webkit-details-marker{display:none}'
+                    '.nd-sg>summary::marker{content:""}'
+                    '.nd-av{width:26px;height:26px;border-radius:50%;background:var(--text-primary);'
+                    'color:var(--surface-1);font-size:10px;font-weight:700;display:flex;'
+                    'align-items:center;justify-content:center;flex:0 0 auto}'
+                    '.nd-sname{font-weight:700;font-size:14px;color:var(--text-primary)}'
+                    '.nd-scount{margin-left:auto;font-size:11px;color:var(--text-muted)}'
+                    '.nd-schev{color:var(--text-muted);font-size:13px;transition:transform .15s ease}'
+                    '.nd-sg[open]>summary .nd-schev{transform:rotate(90deg)}'
+                    '.nd-st{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;'
+                    'font-weight:700;color:var(--text-muted)}'
+                    '.nd-st.nd-pending{color:var(--state-warning)}'
+                    # Name + deal-type pill on one row (pill pinned top-right);
+                    # days-inactive colored by idle age (amber 90+, red 180+).
+                    '.nd-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}'
+                    '.nd-top .sp-nm{flex:1 1 auto;min-width:0}'
+                    '.nd-top .pill-dt{flex:0 0 auto}'
+                    '.nd-idle{font-weight:700;color:var(--text-secondary)}'
+                    '.nd-idle.idle-amber{color:var(--state-warning)}'
+                    '.nd-idle.idle-red{color:var(--state-critical)}'
+                    # Expandable signal deal: the row stays as the <summary>;
+                    # tapping reveals the same drawer the main PMP table opens.
+                    '.nw-sig-deal>summary{list-style:none;cursor:pointer}'
+                    '.nw-sig-deal>summary::-webkit-details-marker{display:none}'
+                    '.nw-sig-deal>summary::marker{content:""}'
+                    '.nw-sig-deal>summary:hover{background:var(--surface-2)}'
+                    '.nw-sig-deal[open]>summary{background:var(--surface-2)}'
+                    '.nw-sig-deal .nw-pmp-drawer{margin:0 2px 8px;background:var(--surface-1);'
+                    'border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px}'
+                    '.nw-sig-nodata{font-size:11.5px;color:var(--text-muted);line-height:1.45}'
+                    '</style>'
+                    # Default-open (incl. on mobile) so the signals are visible on
+                    # load; the per-row accordions inside still expand on tap. The
+                    # separate Needs-attention alerts card keeps its collapsed-on-
+                    # mobile default (open is per-<details>).
+                    '<details class="nw-na nw-pmp-sig" open>'
+                    '<summary class="nw-na-head"><span>PMP signals</span>'
+                    f'<span class="cnt">{len(_sig_rows)} signal{"s" if len(_sig_rows) != 1 else ""}</span>'
+                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
+                    '<div class="nw-na-body">' + "".join(_sig_rows) + '</div></details>',
+                    unsafe_allow_html=True,
+                )
 
         # ── AirTable helpers (PMP scope — Direct scope has its own copies). ──
         _pmp_at_base = (_cfg.get("airtable_base_id") or "").strip()
@@ -6504,6 +6591,11 @@ if st.session_state.active_view == "campaigns":
                 f'{_action_html}'
                 '</div>'
             )
+
+        # The PMP signals card (placeholder created under the KPI strip above)
+        # renders now — _pmp_drawer_html and the revenue series it needs are
+        # defined, so each flagged deal can expand to its full drawer.
+        _render_pmp_signals()
 
         # ── Revenue threshold + pagination ──
         # "Show deals under $100/day" + "Exclude PG" now live in the Filters

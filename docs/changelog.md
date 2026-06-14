@@ -53,6 +53,16 @@ squash-merged to `main` on green (119 tests).
   reads `N of M shown · K under $100/day hidden`. The whole gap *is* that one
   revenue threshold — it's the only row filter between `_pmp_count` and
   `_pmp_display` — so the label is always exact.
+- **#244** — **PMP signals deals → tap for the full drawer.** Each deal inside
+  Spend momentum / No delivery / Stale deals now expands to the same detail
+  panel the main PMP table row opens — yield banner, 7-day revenue chart, bid
+  metrics, metadata grid — for delivering deals (matched in the unfiltered
+  combined frame by `Deal` name); no-delivery / long-stale deals (no perf data)
+  expand to a setup grid (status/floor/dates or SSP/last-bid/first-seen). The
+  signals card now renders into an `st.empty()` slot under the KPI strip but is
+  built by a deferred `_render_pmp_signals()` called after `_pmp_drawer_html` is
+  defined, so the deal rows can reuse the table's drawer without moving it;
+  `_sp_rows_for` gained an optional `wrap` callback for the momentum rows.
 - **#243** — **Compact one-row pager** (`_compact_pager`) for both the Direct
   and PMP tables: `‹` · centered *Page X of N* (+ muted "N of M shown") · `›`.
   Replaces the `st.columns([1,4,1])` + full-width buttons, which **stacked into

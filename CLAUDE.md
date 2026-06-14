@@ -484,7 +484,20 @@ Rules that survive any future restyle:
   one-line header on mobile and is forced-open on desktop) titled "PMP
   signals", **default-open** (`<details … open>` — per-element, so the
   separate alerts card stays collapsed). One inline-expanding row per
-  signal:
+  signal.
+  **Each deal inside a signal is tap-to-expand to the same drawer the main PMP
+  table row opens** (`_render_pmp_signals` / `_sig_deal_wrap`, 2026-06-14):
+  delivering deals (matched in `_combined_prefilter` by `Deal` name — momentum
+  deal keys equal `combined_pmp["Deal"]` per SSP, so they hit) get the full
+  `_pmp_drawer_html` (yield banner · 7-day revenue chart · bid metrics ·
+  metadata grid); no-delivery / long-stale deals (no delivery data) expand to a
+  **setup grid** instead (status/floor/dates, or SSP/last-bid/first-seen).
+  **Render-ordering gotcha:** the card draws into an `st.empty()` slot placed
+  under the KPI strip, but is *built* by `_render_pmp_signals()` called
+  **after** `_pmp_drawer_html` + the revenue series are defined further down —
+  the slot keeps the visual position while letting the deal rows reuse the
+  table's drawer (defined later in the script). `_sp_rows_for` grew an optional
+  `wrap` callback so momentum rows wrap the same way. The per-signal rows:
   - **Spend momentum** (neutral `sev-info`): the combined-PMP movers list.
     Decision logic is `dl.spend_momentum(df, name_col, rev_col)` (tested) —
     GAM + Magnite + Pubmatic PD+PA normalized to `(deal, _date, _rev)`,
