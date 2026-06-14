@@ -394,9 +394,12 @@ Rules that survive any future restyle:
   card with a row per category. A category with offenders is a native
   HTML `<details>`/`<summary>` row (browser-native expand/collapse, **no
   Streamlit rerun** — the markdown sanitizer passes `<details>`), and
-  expanding it reveals that alert's line items inline (worst-first,
-  severity-tinted proportional bar + value, names via
-  `_short_advertiser`). Clear categories render as a static `sev-ok`
+  expanding it reveals that alert's line items inline (worst-first, a
+  **two-tier label** — advertiser bold over the muted campaign
+  (`dl.line_item_display_name` split on ` — `), metric as colored text on
+  the right, **no bar** — so sibling LIs (3 Pateks differing only in the
+  campaign tail Male/Female/Added-value) are identifiable and match the
+  table; `_short_advertiser` alone collapsed them). Clear categories render as a static `sev-ok`
   row; rows default collapsed. Counts keep the existing
   `head(4)`/`head(6)` display cap (so the count matches the revealed
   rows). Bars/dots/counts inherit the row's `sev-*` and obey the

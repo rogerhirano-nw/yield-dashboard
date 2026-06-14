@@ -1059,16 +1059,18 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-na-row.sev-ok    .nw-na-dot { background: var(--state-positive-muted); }
 .nw-na-row.sev-ok    .nw-na-n   { color: var(--state-positive-muted); font-size: 14px; }
 .nw-na-sub { padding: 2px 13px 9px 37px; background: var(--surface-2); }
-.nw-na-srow { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 11.5px; }
-.nw-na-srow .nm { width: 140px; flex: 0 0 auto; color: var(--text-primary);
-                  font-weight: 600; white-space: nowrap; overflow: hidden;
-                  text-overflow: ellipsis; }
-.nw-na-srow .bar { flex: 1; height: 5px; background: var(--border);
-                   border-radius: 3px; overflow: hidden; }
-.nw-na-srow .bar > i { display: block; height: 100%; }
-.nw-na-srow.sev-red   .bar > i { background: var(--state-critical); opacity: .5; }
-.nw-na-srow.sev-amber .bar > i { background: var(--state-warning); opacity: .55; }
-.nw-na-srow .pct { width: 40px; text-align: right; font-weight: 700;
+/* Flagged line-item row: two-tier identifiable label (advertiser bold over
+   muted campaign) + the metric as colored text on the right. No proportional
+   bar — the metric value + category tint carry severity. */
+.nw-na-srow { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0;
+              font-size: 11.5px; border-top: 1px solid var(--border); }
+.nw-na-srow:first-child { border-top: none; }
+.nw-na-srow .nm { flex: 1 1 auto; min-width: 0; }
+.nw-na-srow .nm .adv { display: block; font-weight: 700; color: var(--text-primary);
+                       line-height: 1.3; }
+.nw-na-srow .nm .camp { display: block; font-size: 10px; color: var(--text-muted);
+                        line-height: 1.25; margin-top: 1px; }
+.nw-na-srow .pct { flex: 0 0 auto; text-align: right; font-weight: 700;
                    font-variant-numeric: tabular-nums; }
 .nw-na-srow.sev-red   .pct { color: var(--state-critical); }
 .nw-na-srow.sev-amber .pct { color: var(--state-warning); }
@@ -1727,9 +1729,8 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   .nw-tbl-pmp .nw-pmp-m { display: grid; }
   /* Drawer metadata: 4-up → 2-up. */
   .nw-meta-grid { grid-template-columns: 1fr 1fr; }
-  /* Needs-attention accordion: tighten the reveal so the bars stay legible. */
+  /* Needs-attention accordion: tighten the reveal on mobile. */
   .nw-na-sub { padding-left: 26px; }
-  .nw-na-srow .nm { width: 108px; }
 }
 </style>
 """,
@@ -3307,14 +3308,20 @@ if st.session_state.active_view == "campaigns":
             def _na_esc(s):
                 return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-            def _na_subrows(rows, sev, metric_col, fmt, width_fn):
+            def _na_subrows(rows, sev, metric_col, fmt):
+                # Two-tier identifiable label: advertiser (bold) over the muted
+                # campaign — the same `Advertiser — Campaign` name the table
+                # shows, split so sibling LIs (3 Pateks, 4 GMCs) read distinctly
+                # and you can find the exact row. Metric is colored text, right.
                 cells = []
                 for _, _r in rows.iterrows():
                     _val = float(_r[metric_col])
+                    _full = dl.line_item_display_name(_r["line_item_name"])
+                    _adv, _camp = (_full.split(" — ", 1) + [""])[:2] if " — " in _full else (_full, "")
+                    _camp_html = f'<span class="camp">{_na_esc(_camp)}</span>' if _camp else ""
                     cells.append(
                         f'<div class="nw-na-srow {sev}">'
-                        f'<span class="nm">{_na_esc(_short_advertiser(_r["line_item_name"]))}</span>'
-                        f'<span class="bar"><i style="width:{width_fn(_val):.0f}%"></i></span>'
+                        f'<span class="nm"><span class="adv">{_na_esc(_adv)}</span>{_camp_html}</span>'
                         f'<span class="pct">{fmt(_val)}</span></div>'
                     )
                 return "".join(cells)
@@ -3337,14 +3344,13 @@ if st.session_state.active_view == "campaigns":
             _na_total = _u_n + _o_n + _v_n
             _under_sub = _na_subrows(
                 _under_rows.sort_values("pacing_pct"), "sev-red", "pacing_pct",
-                lambda v: f"{v:.0f}%", lambda v: min(max(v, 0.0), 100.0)) if _u_n else ""
-            # Overpacers exceed target, so scale the bar against a 200% ceiling.
+                lambda v: f"{v:.0f}%") if _u_n else ""
             _over_sub = _na_subrows(
                 _over_rows.sort_values("pacing_pct", ascending=False), "sev-amber", "pacing_pct",
-                lambda v: f"{v:.0f}%", lambda v: min(v, 200.0) / 2.0) if _o_n else ""
+                lambda v: f"{v:.0f}%") if _o_n else ""
             _view_sub = _na_subrows(
                 _vw_anom_rows.sort_values("_v"), "sev-amber", "_v",
-                lambda v: f"{v:.1f}%", lambda v: min(max(v, 0.0), 100.0)) if _v_n else ""
+                lambda v: f"{v:.1f}%") if _v_n else ""
 
             _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
             _na_cats = (
