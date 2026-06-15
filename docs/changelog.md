@@ -6,6 +6,18 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#258** — Direct drawer: **video lines now show a CTR card alongside VCR**
+  (Roger flagged the CTR card "missing" for video). The drawer's second
+  small-multiple used to be VCR *instead of* CTR for video (`second_label =
+  "VCR" if is_video else "CTR"`), so video lines never showed CTR. Now CTR is
+  always shown and VCR is added for video, so a **video line shows 6 cards**
+  (Viewability · VCR · CTR · Attention · SIVT · GIVT) and non-video shows 5. A
+  new `.nw-sm-grid--6` modifier widens the desktop row from `repeat(5,1fr)` to
+  `repeat(6,1fr)` so the 6 cards stay in one aligned row; mobile keeps the
+  2-col default (3 rows). Each panel still skips when its series is empty (a
+  video line with no daily completion data simply shows no VCR card). Render
+  code only; 119/119 tests pass; verified with desktop (row of 6) + 390px
+  (2-col) renders.
 - **#257** — Direct drawer: **the LI-name title is now a `<div>`, not an
   `<h3>`** (mobile font-size fix). Streamlit styles markdown headings via
   container-scoped selectors that outrank a bare class, so the

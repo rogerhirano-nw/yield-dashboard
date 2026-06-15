@@ -300,8 +300,9 @@ Rules that survive any future restyle:
     clipping it to a half-dot (the 2026-06-13 "cut-off dot" on the mobile card).
     Uniform mode insets with `XPAD` instead, so it needs no overflow.
   - `_sparkline_svg(uniform=True)` (the **drawer small multiples** —
-    Viewability + CTR/VCR + Attention + SIVT + GIVT, the last three added
-    2026-06-13; Attention targets 100, SIVT/GIVT target 1%, and their per-LI
+    Viewability + (VCR, video only) + CTR + Attention + SIVT + GIVT, the DV
+    three added 2026-06-13; Attention targets 100, SIVT/GIVT target 1%, and
+    their per-LI
     daily series come from the precomputed `dl.attention_daily_series_by_li` /
     `dl.ivt_daily_series_by_li` dicts — one groupby pass, not a per-row scan of
     the 290k-row IVT table; a panel is skipped when the line has <2 days of DV
@@ -312,6 +313,16 @@ Rules that survive any future restyle:
     distorted" follow-up). The wide viewBox keeps the rendered height compact
     while scaling proportionally; an `XPAD` x-inset keeps the end dot off the
     panel edge. **Don't pass these through the default stretch path.**
+    **CTR is always shown; VCR is added only for video lines** (`is_video`),
+    so a **video line shows 6 cards** (Viewability · VCR · CTR · Attention ·
+    SIVT · GIVT) and non-video shows 5 (Roger 2026-06-15 — video used to show
+    VCR *instead of* CTR, so the CTR card was "missing"; now it shows both).
+    The 6-card grid carries a **`.nw-sm-grid--6`** modifier that widens the
+    desktop row from `repeat(5,1fr)` to `repeat(6,1fr)` so the cards stay in
+    one aligned row; ≤1024px / mobile is the 2-col default (3 rows of 2).
+    VCR/Viewability format 1dp, CTR 2dp; each panel still skips when its
+    series is `None` (e.g. a video line with no daily completion data shows
+    no VCR card).
   - `_drawer_delivery_chart` is a **real chart**, so it scales **uniformly**
     (plain `viewBox` `600×112` + CSS `width:100%; height:auto`, *no*
     `preserveAspectRatio="none"`) — geometry is never warped. Its panel
