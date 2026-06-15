@@ -192,6 +192,18 @@ def main() -> int:
                   _html.unescape(blob[max(0, i - 300):i + 30]).replace("\n", " ")[-320:])
             break
 
+    # nearest wrapping background around each ad slot (Roger: logo bg looks off)
+    print("-- wrapping bg per ad slot (nearest declaration before the tag) --")
+    for szk in ("600x80", "600x720", "600x560", "300x250"):
+        m = re.search("sz=" + re.escape(szk), blob)
+        if not m:
+            continue
+        pre = blob[max(0, m.start() - 900):m.start()]
+        flat = re.findall(
+            r'(?:bgcolor=["\']?|background(?:-color)?:\s*)(#[0-9a-fA-F]{3,6})', pre)
+        print(f"  {szk}: nearest bg = {flat[-5:] if flat else '(none in 900c)'}")
+        print(f"     ctx: {_html.unescape(pre[-180:]).strip()[:200]}")
+
     if not html_body:
         print("\n-- text/extracted_text (first 3000 chars) --")
         print(text_body[:3000])
