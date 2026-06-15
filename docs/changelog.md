@@ -6,6 +6,11 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#259** — Direct drawer: **Creative duration cell shows on video lines only**
+  (Roger). A creative's duration is only meaningful for video, so the
+  `.nw-li-grid` "Creative duration" cell is now gated on `_is_video` (format
+  contains "video"); non-video LIs drop it and show 6 detail cells instead of 7.
+  Render code only; 119/119 tests pass.
 - **#258** — Direct drawer: **video lines now show a CTR card alongside VCR**
   (Roger flagged the CTR card "missing" for video). The drawer's second
   small-multiple used to be VCR *instead of* CTR for video (`second_label =

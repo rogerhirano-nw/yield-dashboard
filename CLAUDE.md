@@ -415,10 +415,11 @@ Rules that survive any future restyle:
   (pill, deep-links to GAM), then **3 hero pacing
   tiles** (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining,
   compact `_kmb` K/M figures in serif) over a **tinted detail grid**
-  (`.nw-li-grid` auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller ·
-  Creative duration). It **adds Delivered + Revenue** (weren't in the old grid)
-  so the card is self-contained, and the orphaned "Creative duration —" now sits
-  in the grid. Only **one name** is shown (no friendly-name title + raw-string
+  (`.nw-li-grid` auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller,
+  **+ Creative duration on video lines only** — `_is_video`, since a duration is
+  only meaningful for video; non-video lines show 6 cells, Roger 2026-06-15). It
+  **adds Delivered + Revenue** (weren't in the old grid)
+  so the card is self-contained. Only **one name** is shown (no friendly-name title + raw-string
   caption stacked — that read as "two names", redundant; Roger 2026-06-15) — the
   full GAM name is it, and the friendly name's useful parts (Format / CPM /
   Seller) are decoded into the grid.

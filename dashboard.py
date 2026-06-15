@@ -4943,6 +4943,15 @@ if st.session_state.active_view == "campaigns":
                         _cdur_str = f"{float(_cdur):.0f}s"
                     except (TypeError, ValueError):
                         _cdur_str = "—"
+                # Creative duration is only meaningful for video — show the cell
+                # on video lines only (Roger 2026-06-15).
+                _fmt_dur = row.get("_bench_format") or row.get("ad_format")
+                _is_video = isinstance(_fmt_dur, str) and "video" in _fmt_dur.lower()
+                _cdur_cell = (
+                    f'<div class="cell"><span class="k">Creative duration</span>'
+                    f'<span class="v">{_cdur_str}</span></div>'
+                    if _is_video else ""
+                )
 
                 warn_html = ""
                 for w in _warnings_for(row):
@@ -5095,7 +5104,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="cell"><span class="k">Revenue</span><span class="v">{_rev_s}</span></div>'
                     f'<div class="cell"><span class="k">Clicks</span><span class="v">{_fmt_int_cell(clicks_raw)}</span></div>'
                     f'<div class="cell"><span class="k">Seller</span><span class="v">{_seller_s}</span></div>'
-                    f'<div class="cell"><span class="k">Creative duration</span><span class="v">{_cdur_str}</span></div>'
+                    f'{_cdur_cell}'
                     '</div>'
                     '</div>'
                     f'{actions}'
