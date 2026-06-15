@@ -320,12 +320,16 @@ Rules that survive any future restyle:
     instead of a stretched-flat band; the date row sits inside the panel
     and caps with it, staying aligned under the 7 points. Don't reintroduce
     `preserveAspectRatio="none"` here. **On desktop (≥1025px) the delivery
-    chart + the `.nw-sm-grid` small-multiples are wrapped in a
-    `.nw-drawer-charts` flex row** (Roger 2026-06-15): the chart holds ~760px on
-    the **left** and the grid lifts up to **fill the right half** (its 760 cap
-    is overridden to `max-width:none` there) — they used to stack, leaving the
-    drawer's right side empty. ≤1024px the wrapper is a plain block, so they
-    stack exactly as before.
+    chart spans the full drawer width and the `.nw-sm-grid` small-multiples sit
+    in ONE aligned row of 5 directly below it** (`.nw-drawer-charts` wrapper;
+    both children's `max-width:760px` cap is overridden to `none` and the grid's
+    `grid-template-columns` becomes `repeat(5,1fr)` — Roger 2026-06-15). So the
+    chart's left edge and the row of 5 line up, full-bleed. A first cut tried a
+    **flex side-by-side** (chart ~760 left, grid lifted to the right) but the
+    short chart sat next to a 3-row 2-col grid and read ragged / unaligned — the
+    full-width-on-top layout is the fix. ≤1024px / mobile the wrapper is a plain
+    block (no media-query override), so the chart keeps its 760 cap and the grid
+    stays 2-col, stacked exactly as before.
   - `_pmp_drawer_trend_chart` (the PMP deal drawer's neutral 7-day trend
     charts — **revenue · total requests · bid responses**; revenue-only until
     the bid-funnel pair was added 2026-06-14) is the delivery chart's twin —
