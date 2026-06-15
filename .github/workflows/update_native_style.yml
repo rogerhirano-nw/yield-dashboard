@@ -70,9 +70,10 @@ jobs:
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
           # write; reset to "" between writes so a stray marker push is a no-op.
-          # Revert: the max-height:52px logo bump distorted the logo, so strip the
-          # nw-logoheight block from 972438 (back to the known-good 44px original).
-          PUSH_APPLY_ARGS: "--remove-marker logoheight --style-ids 972438 --apply"
+          # Candidate: a TALLER 600x100 logo frame (clone of 972438) so the logo
+          # can grow (max-height 56) WITHOUT crowding "Presented by" — preview via
+          # an sz=600x100 render before repointing the Beehiv tag.
+          PUSH_APPLY_ARGS: "--create-from 972438 --new-width 600 --new-height 100 --append-css-b64 LnBiIGltZ3ttYXgtaGVpZ2h0OjU2cHghaW1wb3J0YW50fQ== --marker logo100 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
