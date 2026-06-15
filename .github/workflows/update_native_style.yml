@@ -69,10 +69,10 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. Correct the canvas: the newsletter content
-          # bg is the cream #f5eee5 (the original style was #f5f0e8) — the earlier
-          # #fefcf6 was too white. Re-point all four native styles to #f5eee5.
-          PUSH_APPLY_ARGS: "--set-background f5eee5 --style-ids 972438,972441,972672,977578 --apply"
+          # write; reset to "" after. The DOM scan shows the ads sit on a
+          # <td background-color:#FFFCF2>, so that is the exact newsletter canvas.
+          # Re-point all four native styles to #FFFCF2.
+          PUSH_APPLY_ARGS: "--set-background fffcf2 --style-ids 972438,972441,972672,977578 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
