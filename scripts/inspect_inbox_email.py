@@ -150,6 +150,18 @@ def main() -> int:
     flag("clkk", r"clkk=[^\"'&\s]{0,80}")
     if re.search(r"\{\{[^}]+\}\}", blob):
         print("note: literal {{merge_tags}} still present (unresolved)")
+
+    # newsletter background colors — to match the native-style backgrounds to
+    from collections import Counter
+    print("-- background colors in the email (to match the ad styles to) --")
+    bm = re.search(r"<body[^>]*>", blob, re.I)
+    if bm:
+        print("  <body> tag:", _html.unescape(bm.group(0))[:240])
+    bgcolor = Counter(re.findall(r'bgcolor=["\']?(#[0-9a-fA-F]{3,6})', blob))
+    bgstyle = Counter(re.findall(r'background(?:-color)?:\s*(#[0-9a-fA-F]{3,6})', blob))
+    print("  bgcolor= values (most common):", bgcolor.most_common(8))
+    print("  background[-color]: hex (most common):", bgstyle.most_common(8))
+
     if not html_body:
         print("\n-- text/extracted_text (first 3000 chars) --")
         print(text_body[:3000])
