@@ -6,6 +6,21 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#260** — PMP **Configured floor now comes from the deal name**, not just the
+  per-deal-type settings floor (Roger: "are you not able to bring the configured
+  floor from the SSPs?"). The SSP delivery feeds don't carry a per-deal floor
+  (Pubmatic/Magnite none; GAM only for PA deals, unjoinable to revenue) — but
+  Newsweek embeds it in the deal name as token 11 (`…_$14_…`), the same way
+  DSP / advertiser / campaign / format are already derived. New
+  `dl.pmp_deal_floor(name)` parses the `$<floor>` token; a `_deal_floor(row)`
+  helper resolves **name floor first, settings per-type floor as fallback**.
+  Wired into all four floor surfaces: the drawer's Configured-floor cell, the
+  eCPM-vs-floor status banner, the floor-breach exception banner (vectorized),
+  and the mobile card's eCPM-vs-floor bar — so the banding works **per-deal**
+  instead of per-type. The Google Evergreen PD deal that read "—" now shows
+  `$14.00`. Prod coverage: 229/271 (~85%) of distinct deals carry a parseable
+  floor token; the rest fall back. New `test_pmp_deal_floor` (real prod-shaped
+  names); 120/120 tests pass.
 - **#259** — Direct drawer: **Creative duration cell shows on video lines only**
   (Roger). A creative's duration is only meaningful for video, so the
   `.nw-li-grid` "Creative duration" cell is now gated on `_is_video` (format
