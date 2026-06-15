@@ -6,6 +6,22 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#255** — Direct drawer: **consolidated the LI name + metadata into one spec
+  card after the graphs** (`_drawer_html` → `.nw-li-card`). The drawer used to
+  open with the raw LI name in a mono box at the top, then dump a flat 9-cell
+  meta grid at the bottom whose `Order` field repeated that same raw name — the
+  name appeared twice and the metadata read as an afterthought ("thrown in after
+  all the graphs", Roger's screenshot). Now one card below the charts leads with
+  the friendly `<Advertiser> — <Campaign>` title (serif) + a GAM-ID pill, the
+  raw convention string as a mono caption (replacing the duplicate `Order`
+  field), then 3 hero pacing tiles (Goal / Delivered + progress bar / Remaining,
+  compact K/M serif figures) over a tinted detail grid (Flight · Status ·
+  Format · CPM · Revenue · Clicks · Seller · Creative duration). Adds Delivered
+  + Revenue (weren't shown) so the card is self-contained; the orphaned
+  "Creative duration —" now lives in the grid. Chosen from a 3-option visual
+  mock (spec sheet / definition list / **hero tiles** — Roger picked hero
+  tiles). PMP drawer unchanged. CSS + `_drawer_html` only; 119/119 tests pass;
+  verified with real-CSS renders at 1280px + 390px.
 - **#254** — PMP deal drawer: on **desktop** the 3 trend charts now read as a
   **headline + funnel row** — revenue spans the **full drawer width** on top,
   with **total requests + bid responses paired in a row directly below it** —

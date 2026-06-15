@@ -383,6 +383,28 @@ Rules that survive any future restyle:
     the viewBox). Rule: a stretch-regime sparkline is only safe when its
     rendered box stays near the viewBox aspect; for a wide-and-short box, go
     uniform.
+- **Direct drawer identity = one consolidated spec card *after* the charts**
+  (`_drawer_html` → `.nw-li-card`, 2026-06-15). The drawer used to open with the
+  raw LI name in a monospace box at the **top**, then dump a flat 9-cell
+  `.nw-meta-grid` at the **bottom** whose **`Order` field repeated that same raw
+  name** — the name appeared twice and the metadata read as an afterthought
+  ("thrown in after all the graphs", Roger). Now the name + info are
+  consolidated into one card below the status banner + charts: a `.nw-li-head`
+  leads with the friendly **`<Advertiser> — <Campaign>`** title
+  (`dl.line_item_display_name`, serif `--font-display`) + a **GAM-ID chip**
+  (pill, deep-links to GAM), the raw convention string sits below as a
+  **mono `.nw-li-raw` caption** (it carries the full naming convention — it's
+  what `Order` duplicated, so `Order` is dropped), then **3 hero pacing tiles**
+  (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining, compact
+  `_kmb` K/M figures in serif) over a **tinted detail grid** (`.nw-li-grid`
+  auto-fit: Flight · Status · Format · CPM · Revenue · Clicks · Seller ·
+  Creative duration). It **adds Delivered + Revenue** (weren't in the old grid)
+  so the card is self-contained, and the orphaned "Creative duration —" now sits
+  in the grid. Status reads quiet-green (`.v.ok`) only when "Delivering". This
+  is the Direct drawer only — the **PMP** drawer keeps `.nw-drawer-head` +
+  `.nw-meta-grid` (still used there and by the bid-metrics strip). Chosen from a
+  3-option visual mock (sectioned spec sheet / definition list / **hero tiles**,
+  Roger picked hero tiles).
 - **Categorical chips read from `--viz-1…6`** (deal-type pills, seller
   hash colors), never the state scale.
 - Fonts: licensed binaries go in `static/fonts/` (drop-in, gitignored;
