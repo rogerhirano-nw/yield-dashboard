@@ -4,24 +4,32 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-06-15 — Newsletter native style tooling + 600x560 Sponsored Content
+## 2026-06-15 — Bulletin newsletter native build-out + tooling
 
-- **#261** — Tooling to read/patch GAM newsletter **native styles** via SOAP
-  `NativeStyleService` (`GAMClient.list_native_styles` / `update_native_style` /
-  `create_native_style_from` / `get_creative_detail`), driven by
-  `scripts/update_native_style.py` through
-  `.github/workflows/update_native_style.yml` (branch push = read-only dump to
-  the PR; `workflow_dispatch` / a `[native-style-apply]` commit marker = the
-  write — cloud sessions hold no GAM creds, same pattern as `archive_pli`).
-  Resolves the 600×314 "Sponsored Content" newsletter native **overflow** (the
-  image fills the 314 frame, so the headline/body/CTA are clipped when GAM
-  rasterizes the style to the email image) by adding a **600×560** native style
-  (`972672`, cloned from `977473` — same creative template `12544547` +
-  targeting). The newsletter creative (`138562096121`) is **fluid (1×1,
-  native-eligible)**, so it renders at whatever size the email tag requests using
-  the matching native style — no new creative or LICA. Beehiv tag moves
-  `sz=600x314` → `sz=600x560`. (Roger picked the taller-slot option over
-  fitting/cropping the design into 314.)
+- **#261** — GAM newsletter **native-style** tooling + a full visual build-out of
+  the Bulletin "Sponsored Content" unit (Infiniti Newsmakers). **Tooling:** SOAP
+  `NativeStyleService` read/patch/clone in `GAMClient` (`list_native_styles` /
+  `update_native_style` / `create_native_style_from` / `get_creative_detail`)
+  driven by `scripts/update_native_style.py` (`--list` / `--create-from` /
+  `--set-background` / `--sc-text-color` / `--cta-color` / `--append-css-b64` /
+  `--inspect-creative`; CSS overrides are idempotent marker blocks), plus a
+  forwarded-email diagnostic `scripts/inspect_inbox_email.py` (ad markup +
+  DOM-ancestry background scan over `newsweek@agentmail.to`) — both through
+  Actions (`update_native_style.yml` / `inspect_inbox.yml`) since cloud sessions
+  hold no creds (branch push = read-only dump to the PR; `[native-style-apply]`
+  marker / `workflow_dispatch` = the write). **The build, in order:** fixed the
+  **blank ad** (Beehiv tag pointed at the wrong ad unit `/22541732127/the-bulletin`
+  vs `…/newsletter.newsweek/the-bulletin`; also: Beehiv serves its own generated
+  tags, so the delivered email is the source of truth); rebuilt the **un-clipped**
+  design at **600×720** (`977578`, fluid creative `138562096121` — no new
+  creative/LICA; 600×314 `977473` / 600×560 `972672` superseded); **enlarged the
+  fonts ~1.6×** (headline 36 / body 26) because the rasterized 600px image scales
+  down on mobile while the page's live text doesn't; styled to the article (**red
+  title + red rule**, black body, blue underlined CTA); and matched the
+  background to the newsletter canvas **`#FFFCF2`** (found by DOM ancestry — the
+  ad `<td>`'s `background-color` — after colour-frequency guesses missed). Beehiv
+  tag → `sz=600x720`. Durable debrief: `docs/newsletter_native_ads.md` (+ CLAUDE.md
+  GAM facts). NB style changes take ~6–9 min to propagate to the rendered image.
 
 ## 2026-06-15 — Direct table badge/sort fix
 

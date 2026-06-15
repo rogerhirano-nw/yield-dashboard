@@ -69,10 +69,10 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. The DOM scan shows the ads sit on a
-          # <td background-color:#FFFCF2>, so that is the exact newsletter canvas.
-          # Re-point all four native styles to #FFFCF2.
-          PUSH_APPLY_ARGS: "--set-background fffcf2 --style-ids 972438,972441,972672,977578 --apply"
+          # write; reset to "" between writes so a stray marker push is a no-op.
+          # The Bulletin Sponsored Content build-out (#261) is complete: live
+          # style is 977578 (600x720), background #FFFCF2.
+          PUSH_APPLY_ARGS: ""
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
