@@ -6,12 +6,25 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#253** — Direct drawer alignment fix, **superseding #252's side-by-side**.
+  On **desktop** the 7-day delivery chart now spans the **full drawer width**
+  and the Viewability / CTR / Attention / SIVT / GIVT small-multiples sit in
+  **one aligned row of 5 directly below it** (`.nw-drawer-charts > .nw-drawer-chart`
+  and `> .nw-sm-grid` both drop their 760 cap to `max-width:none`, and the grid's
+  `grid-template-columns` becomes `repeat(5,1fr)` at ≥1025px). #252's flex
+  side-by-side left the short chart next to a 3-row 2-col grid, which read ragged
+  / unaligned (Roger: "the graphs not aligned"). Now both edges line up,
+  full-bleed. Mobile (≤1024px) is unchanged — capped chart + 2-col grid, stacked.
+  CSS-only; verified with a real-CSS render at 1400px (aligned row of 5) + 390px
+  (still 2-col stacked). 119/119 tests pass.
 - **#252** — Direct drawer: on **desktop**, the Viewability / CTR / Attention /
   SIVT / GIVT small-multiples lift up **beside the 7-day delivery chart** (a
   new `.nw-drawer-charts` flex row, ≥1025px) instead of stacking below it and
   leaving the drawer's right half empty (Roger's screenshot). The chart holds
   ~760px on the left; the grid fills the right. Mobile (≤1024px) still stacks.
-  CSS-only; verified with a real-CSS render at 1400px + 390px.
+  CSS-only; verified with a real-CSS render at 1400px + 390px. **Superseded by
+  #253** — the side-by-side read ragged; replaced with full-width chart + a row
+  of 5 below.
 - **#250** — Badge numbering reverted to **per GAM order** (from #248's
   per-displayed-campaign-group, which left unique campaigns badge-free — most
   Infiniti/Jeep lines lost their `#`, which Roger flagged). Now every line of a
