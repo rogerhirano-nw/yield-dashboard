@@ -4122,37 +4122,34 @@ if st.session_state.active_view == "campaigns":
                     axis=1,
                 )
 
-            # ── Ordinal badge: within each campaign (order_name), assign
-            # #1, #2, ... by ascending line_item_id. Prepended to the Line Item
-            # cell so multi-LI orders are disambiguated at a glance.
-            if "line_item_id" in view_gam.columns and "order_name" in view_gam.columns:
-                view_gam = view_gam.sort_values(
-                    ["order_name", "line_item_id"], na_position="last"
-                )
-                view_gam["_ordinal"] = (
-                    view_gam.groupby("order_name", dropna=False).cumcount() + 1
-                )
-                _ord_max = view_gam.groupby("order_name", dropna=False)["_ordinal"].transform("max")
-                # Only show #N when the campaign actually has >1 LI.
-                view_gam["line_item_name"] = view_gam.apply(
-                    lambda r: (f"#{int(r['_ordinal'])}  {r['line_item_name']}"
-                               if pd.notna(r['line_item_name']) and r.get("_ordinal") and _ord_max.loc[r.name] > 1
-                               else r['line_item_name']),
-                    axis=1,
-                )
-
-            # ── Default sort: alphabetical (A–Z) by the displayed line-item
-            # name — the same derivation each row renders, so the order matches
-            # what you read. Case-insensitive; stable so same-named LIs keep
-            # their ordinal order. (Previously |pacing - target| descending —
-            # variance-first; changed per request 2026-06-13.)
+            # ── Alphabetical sort + ordinal badge. Sort A–Z by the displayed
+            # Advertiser — Campaign name (the same derivation each row renders),
+            # with line_item_id as the tiebreak. Then number **#1, #2, … by
+            # ascending line_item_id within each DISPLAYED campaign group** — so
+            # the badges read low→high down each group and a single-LI campaign
+            # shows no badge. (Per Roger 2026-06-15. Was numbered per GAM
+            # order_name, which scattered one order's 1..N across its different
+            # campaign names — e.g. #6 sitting above #3/#4/#5.)
             if "line_item_name" in view_gam.columns:
-                _name_key = (view_gam["line_item_name"]
-                             .map(dl.line_item_display_name)
-                             .str.casefold())
-                view_gam = view_gam.assign(_name_key=_name_key)
-                view_gam = view_gam.sort_values("_name_key", kind="stable", na_position="last")
-                view_gam = view_gam.drop(columns=["_name_key"])
+                _disp = view_gam["line_item_name"].map(dl.line_item_display_name)
+                view_gam = view_gam.assign(_disp_key=_disp.str.casefold())
+                _sort_cols = ["_disp_key"]
+                if "line_item_id" in view_gam.columns:
+                    _sort_cols.append("line_item_id")
+                view_gam = view_gam.sort_values(_sort_cols, kind="stable", na_position="last")
+                if "line_item_id" in view_gam.columns:
+                    view_gam["_ordinal"] = (
+                        view_gam.groupby("_disp_key", dropna=False).cumcount() + 1
+                    )
+                    _ord_max = view_gam.groupby("_disp_key", dropna=False)["_ordinal"].transform("max")
+                    # Only show #N when the displayed campaign has >1 LI.
+                    view_gam["line_item_name"] = view_gam.apply(
+                        lambda r: (f"#{int(r['_ordinal'])}  {r['line_item_name']}"
+                                   if pd.notna(r['line_item_name']) and _ord_max.loc[r.name] > 1
+                                   else r['line_item_name']),
+                        axis=1,
+                    )
+                view_gam = view_gam.drop(columns=["_disp_key"])
 
             # (The pre-redesign st.dataframe path — table_df + pandas-Styler
             # color maps — was built here but never rendered after the custom

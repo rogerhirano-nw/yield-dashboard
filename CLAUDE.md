@@ -186,6 +186,12 @@ repeats are one campaign run in two formats, which the chip separates). This
 is also the Direct table's A–Z **sort key**, so it must equal what the row
 renders; changing it regroups the table by advertiser→campaign. Pinned by
 `test_line_item_display_name` + `test_line_item_display_name_real_prod_names`.
+The leading **`#N` badge** numbers LIs **#1, #2, … by ascending `line_item_id`
+within each displayed campaign group** (2026-06-15; *not* the GAM `order_name`,
+which scattered one order's 1..N across its different campaign names — `#6` sat
+above `#3/#4/#5`). It shows only when a displayed name has >1 LI, so a single-LI
+campaign is badge-free; the table sorts A–Z by the display name with
+`line_item_id` as the tiebreak, so the badges read low→high down each group.
 
 **PMP deal display name = `<Advertiser> — <Campaign>` + agency subline**
 (`dl.pmp_deal_display_name` → `(primary, sub)`). The Newsweek deal-name

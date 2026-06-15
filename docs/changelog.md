@@ -4,6 +4,19 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-15 — Direct table badge/sort fix
+
+- **#248** — Direct line-item **`#N` badges now number per displayed campaign
+  group** (ascending by `line_item_id`) instead of per GAM `order_name`. The
+  per-order numbering scattered one order's 1..N across its different campaign
+  names once the table sorted A–Z by display name — `#6` sat above `#3/#4/#5`,
+  and single distinct campaigns showed high numbers (Roger's screenshot). Now
+  each campaign group reads `#1, #2, #3…` low→high and a single-LI campaign
+  shows no badge; the table sorts A–Z by display name with `line_item_id` as
+  the tiebreak. Folded the ordinal + sort blocks into one (single display-name
+  derivation). 119/119 tests pass; new numbering simulated on screenshot-shaped
+  data.
+
 ## 2026-06-14 — Dashboard load-time optimization
 
 A focused pass on the **Campaigns view's cold-load and interaction speed**,
