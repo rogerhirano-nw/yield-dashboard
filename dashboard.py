@@ -5071,7 +5071,7 @@ if st.session_state.active_view == "campaigns":
                     '<div class="nw-li-card">'
                     '<div class="nw-li-head">'
                     '<div><div class="nw-li-eyebrow">Line item</div>'
-                    f'<h3 class="nw-li-name">{full_li or "—"}</h3></div>'
+                    f'<div class="nw-li-name">{full_li or "—"}</div></div>'
                     f'{_gam_chip}'
                     '</div>'
                     '<div class="nw-li-hero">'
