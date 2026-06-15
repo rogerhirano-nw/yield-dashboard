@@ -177,6 +177,21 @@ def main() -> int:
     for a in inline_a:
         print("   inline <a>:", _html.unescape(a)[:160])
 
+    # newsletter article typography + red accents, to match the native to
+    print("-- newsletter typography + red accents --")
+    fs = Counter(re.findall(r"font-size:\s*(\d+(?:\.\d+)?)px", blob, re.I))
+    print("  font-size px (most common):", fs.most_common(14))
+    red_any = re.findall(r"((?:color|border[-a-z]*|background[-a-z]*)\s*:\s*#e91d0c)", blob, re.I)
+    print(f"  #e91d0c usages: {len(red_any)} ->", list(dict.fromkeys(r.lower() for r in red_any))[:8])
+    red_rule = re.findall(r"border[-a-z]*\s*:[^;\"{}]*#e91d0c[^;\"{}]*", blob, re.I)
+    print("  red border/rule:", list(dict.fromkeys(red_rule))[:6] or "(none)")
+    for kw in ("Mamdani", "Nightmare", "rundown", "Politics"):
+        i = blob.find(kw)
+        if i != -1:
+            print(f"  ctx around {kw!r}:",
+                  _html.unescape(blob[max(0, i - 300):i + 30]).replace("\n", " ")[-320:])
+            break
+
     if not html_body:
         print("\n-- text/extracted_text (first 3000 chars) --")
         print(text_body[:3000])
