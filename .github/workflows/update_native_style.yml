@@ -69,10 +69,10 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. Style the Sponsored Content CTA (last
-          # .sc-body link) as the newsletter's blue underlined link while the
-          # headline/body stay black.
-          PUSH_APPLY_ARGS: "--cta-color 4B62E0 --style-ids 972672 --apply"
+          # write; reset to "" after. Match the Sponsored Content to the
+          # newsletter article style: red title (#e91d0c), a red rule beneath it,
+          # and a 22px headline (down from 28) — base64 CSS block, marker=article.
+          PUSH_APPLY_ARGS: "--append-css-b64 LnNjLWhlYWRsaW5le2ZvbnQtc2l6ZToyMnB4IWltcG9ydGFudDtib3JkZXItYm90dG9tOjJweCBzb2xpZCAjZTkxZDBjIWltcG9ydGFudDtwYWRkaW5nLWJvdHRvbToxMnB4IWltcG9ydGFudDttYXJnaW46MCAwIDE0cHghaW1wb3J0YW50fS5zYy1oZWFkbGluZSBhe2NvbG9yOiNlOTFkMGMhaW1wb3J0YW50fQ== --marker article --style-ids 972672 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then

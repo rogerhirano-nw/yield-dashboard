@@ -153,6 +153,21 @@ def apply_cta_color(css: str | None, color: str) -> str:
     return f"{css}{sep}\n{block}\n"
 
 
+def apply_css_block(css: str | None, block: str, marker: str) -> str:
+    """Append (or replace) an arbitrary CSS block under a named marker. The
+    block is passed base64-encoded on the CLI so braces/#/; survive the shell.
+    Idempotent per marker."""
+    start = f"/* nw-{marker}:start */"
+    end = f"/* nw-{marker}:end */"
+    full = f"{start}\n{block.strip()}\n{end}"
+    css = css or ""
+    if start in css and end in css:
+        return re.sub(re.escape(start) + r".*?" + re.escape(end),
+                      lambda _m: full, css, flags=re.S)
+    sep = "" if (not css or css.endswith("\n")) else "\n"
+    return f"{css}{sep}\n{full}\n"
+
+
 def _dump(s: dict) -> None:
     print("-" * 72)
     aspect = " (aspect-ratio)" if s.get("is_aspect_ratio") else ""
@@ -210,6 +225,9 @@ def main() -> int:
                     help="override .sc-link text color on --style-ids ('inherit' or hex)")
     ap.add_argument("--cta-color",
                     help="style the Sponsored Content CTA link as blue/underline (hex) on --style-ids")
+    ap.add_argument("--append-css-b64",
+                    help="base64 of an arbitrary CSS block to append on --style-ids (under --marker)")
+    ap.add_argument("--marker", default="custom", help="marker name for --append-css-b64")
     ap.add_argument("--style-ids", help="comma-separated native style ids for the bulk modes")
     args = ap.parse_args()
 
@@ -228,16 +246,21 @@ def main() -> int:
 
     styles = gam.list_native_styles()
 
-    if args.set_background or args.sc_text_color or args.cta_color:
+    if args.set_background or args.sc_text_color or args.cta_color or args.append_css_b64:
         if args.set_background:
             label = f"background {args.set_background}"
             transform = lambda css: apply_background(css, args.set_background)  # noqa: E731
         elif args.sc_text_color:
             label = f"sc-link color {args.sc_text_color}"
             transform = lambda css: apply_sc_text(css, args.sc_text_color)  # noqa: E731
-        else:
+        elif args.cta_color:
             label = f"cta link color {args.cta_color}"
             transform = lambda css: apply_cta_color(css, args.cta_color)  # noqa: E731
+        else:
+            import base64
+            _blk = base64.b64decode(args.append_css_b64).decode("utf-8")
+            label = f"append css [{args.marker}] ({len(_blk)} chars)"
+            transform = lambda css: apply_css_block(css, _blk, args.marker)  # noqa: E731
         by_id = {s["id"]: s for s in styles}
         ids = [s.strip() for s in (args.style_ids or "").split(",") if s.strip()]
         if not ids:
