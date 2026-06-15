@@ -127,6 +127,18 @@ def main() -> int:
     ap.add_argument(
         "--inspect-li", help="dump line-item <-> creative associations for an LI (read-only)"
     )
+    ap.add_argument(
+        "--create-from", help="clone this native style id into a new size (Option 3)"
+    )
+    ap.add_argument("--new-width", type=int, default=600)
+    ap.add_argument("--new-height", type=int, help="height for the cloned style")
+    ap.add_argument(
+        "--new-name", help="name for the new style (default: source name, size swapped)"
+    )
+    ap.add_argument(
+        "--paper-bg", action="store_true",
+        help="append an html,body paper background so the taller frame fills cleanly",
+    )
     args = ap.parse_args()
 
     gam = GAMClient()
@@ -143,6 +155,45 @@ def main() -> int:
         return 0
 
     styles = gam.list_native_styles()
+
+    if args.create_from:
+        by_id = {s["id"]: s for s in styles}
+        src = by_id.get(str(args.create_from))
+        if not src:
+            print(f"::error::source native style {args.create_from} not found", file=sys.stderr)
+            return 1
+        if not args.new_height:
+            print("::error::--new-height is required with --create-from", file=sys.stderr)
+            return 1
+        w, h = args.new_width, args.new_height
+        name = args.new_name
+        if not name:
+            base = src.get("name") or "Native Style"
+            if re.search(r"\(\d+x\d+\)", base):
+                name = re.sub(r"\(\d+x\d+\)", f"({w}x{h})", base)
+            else:
+                name = f"{base} ({w}x{h})"
+        new_html = src.get("html_snippet")
+        new_css = (src.get("css_snippet") or "")
+        if args.paper_bg:
+            new_css = new_css.rstrip() + "\nhtml,body{margin:0;padding:0;background:#f5f0e8}\n"
+        print("=" * 72)
+        print(f"CREATE native style: name={name!r}  size={w}x{h}  "
+              f"template={src.get('creative_template_id')}  (cloned from {args.create_from})")
+        print("--- htmlSnippet ---")
+        print((new_html or "").rstrip())
+        print("--- cssSnippet ---")
+        print(new_css.rstrip())
+        if not args.apply:
+            print("::notice::dry-run — nothing created. Add --apply (or dispatch) to create.")
+            return 0
+        res = gam.create_native_style_from(
+            args.create_from, width=w, height=h, name=name,
+            html_snippet=new_html, css_snippet=new_css,
+        )
+        print(f"::notice::created native style {res['id']} ({res['width']}x{res['height']}) "
+              f"name={res['name']!r} status={res['status']} template={res['creative_template_id']}")
+        return 0
 
     if args.list or not args.style_id:
         print(f"== {len(styles)} native style(s) ==")

@@ -68,9 +68,11 @@ jobs:
           IN_IMAGE_HEIGHT: ${{ inputs.image_height }}
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
-          # Filled in (with the [native-style-apply] commit marker) when the
-          # branch push should perform the write. Empty => push is read-only.
-          PUSH_APPLY_ARGS: ""
+          # Run on a push whose commit message contains [native-style-apply].
+          # Option 3: clone the 600x314 Sponsored Content style (977473) into a
+          # 600x560 style so the fluid newsletter creative serves the full,
+          # un-clipped design at sz=600x540 -> 560.
+          PUSH_APPLY_ARGS: "--create-from 977473 --new-width 600 --new-height 560 --paper-bg --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
@@ -79,10 +81,7 @@ jobs:
           elif printf '%s' "$HEAD_MSG" | grep -q '\[native-style-apply\]' && [ -n "$PUSH_APPLY_ARGS" ]; then
             ARGS="$PUSH_APPLY_ARGS"
           else
-            # TEMP (Option 3 investigation): inspect the 600x314 newsletter
-            # creative + its LI before building the 600x540 set. Restore to
-            # "--list" before finalizing the PR.
-            ARGS="--inspect-creative 138562096121 --inspect-li 7335266347"
+            ARGS="--list"
           fi
           echo "args: $ARGS"
           python scripts/update_native_style.py $ARGS 2>&1 | tee /tmp/output.txt

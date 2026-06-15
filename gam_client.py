@@ -1068,6 +1068,64 @@ class GAMClient:
             "css_snippet":  getattr(u, "cssSnippet", None),
         }
 
+    def create_native_style_from(
+        self,
+        source_id: str,
+        *,
+        width: int,
+        height: int,
+        name: str,
+        html_snippet: Optional[str] = None,
+        css_snippet: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> dict:
+        """Create a native style by cloning an existing one — preserves
+        creativeTemplateId + targeting, overrides size/name and optionally
+        html/css/status. Used to add a taller (e.g. 600x560) Sponsored
+        Content style that the fluid newsletter creative renders at."""
+        client = self._get_soap_client()
+        from googleads import ad_manager  # type: ignore
+        svc = client.GetService("NativeStyleService", version=self._SOAP_API_VERSION)
+        sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+        sb.Where("id = :id").WithBindVariable("id", int(source_id)).Limit(1)
+        resp = _soap_retry(
+            lambda: svc.getNativeStylesByStatement(sb.ToStatement()),
+            "getNativeStylesByStatement",
+        )
+        results = getattr(resp, "results", None) or []
+        if not results:
+            raise RuntimeError(f"source native style {source_id} not found")
+        src = results[0]
+        src.id = None  # unset so create assigns a fresh id
+        src.name = name
+        if html_snippet is not None:
+            src.htmlSnippet = html_snippet
+        if css_snippet is not None:
+            src.cssSnippet = css_snippet
+        if status is not None:
+            src.status = status
+        if getattr(src, "size", None) is not None:
+            src.size.width = int(width)
+            src.size.height = int(height)
+            src.size.isAspectRatio = False
+        else:
+            src.size = {"width": int(width), "height": int(height), "isAspectRatio": False}
+        created = _soap_retry(
+            lambda: svc.createNativeStyles([src]),
+            "createNativeStyles",
+        )
+        c = (created or [src])[0]
+        size = getattr(c, "size", None)
+        logger.info("created native style %s (%sx%s)", getattr(c, "id", "?"), width, height)
+        return {
+            "id":                   str(getattr(c, "id", "") or ""),
+            "name":                 getattr(c, "name", None),
+            "width":                getattr(size, "width", None) if size else None,
+            "height":               getattr(size, "height", None) if size else None,
+            "creative_template_id": getattr(c, "creativeTemplateId", None),
+            "status":               getattr(c, "status", None),
+        }
+
     def get_creative_detail(self, creative_id: str) -> dict:
         """Read one creative's size + native template variable values via the
         SOAP CreativeService. Used to inspect the newsletter native creatives
