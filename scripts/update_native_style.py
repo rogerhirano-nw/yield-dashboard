@@ -301,6 +301,10 @@ def main() -> int:
         new_css = (src.get("css_snippet") or "")
         if args.paper_bg:
             new_css = new_css.rstrip() + "\nhtml,body{margin:0;padding:0;background:#f5f0e8}\n"
+        if args.append_css_b64:
+            import base64
+            new_css = apply_css_block(
+                new_css, base64.b64decode(args.append_css_b64).decode("utf-8"), args.marker)
         print("=" * 72)
         print(f"CREATE native style: name={name!r}  size={w}x{h}  "
               f"template={src.get('creative_template_id')}  (cloned from {args.create_from})")

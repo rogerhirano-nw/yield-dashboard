@@ -69,10 +69,11 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. Match the Sponsored Content to the
-          # newsletter article style: red title (#e91d0c), a red rule beneath it,
-          # and a 22px headline (down from 28) — base64 CSS block, marker=article.
-          PUSH_APPLY_ARGS: "--append-css-b64 LnNjLWhlYWRsaW5le2ZvbnQtc2l6ZToyMnB4IWltcG9ydGFudDtib3JkZXItYm90dG9tOjJweCBzb2xpZCAjZTkxZDBjIWltcG9ydGFudDtwYWRkaW5nLWJvdHRvbToxMnB4IWltcG9ydGFudDttYXJnaW46MCAwIDE0cHghaW1wb3J0YW50fS5zYy1oZWFkbGluZSBhe2NvbG9yOiNlOTFkMGMhaW1wb3J0YW50fQ== --marker article --style-ids 972672 --apply"
+          # write; reset to "" after. Option A: clone 972672 into a 600x720
+          # Sponsored Content style (keeps red title/rule, blue CTA, warm bg) and
+          # bump fonts ~1.6x (headline 36 / body 26 / label 14) so the ad matches
+          # the newsletter once the phone scales the 600px image down.
+          PUSH_APPLY_ARGS: "--create-from 972672 --new-width 600 --new-height 720 --append-css-b64 LnNjLWhlYWRsaW5le2ZvbnQtc2l6ZTozNnB4IWltcG9ydGFudH0uc2MtYm9keXtmb250LXNpemU6MjZweCFpbXBvcnRhbnR9LnNjLWxhYmVse2ZvbnQtc2l6ZToxNHB4IWltcG9ydGFudH0= --marker bigfont --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
