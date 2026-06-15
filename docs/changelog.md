@@ -6,6 +6,13 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table badge/sort fix
 
+- **#250** — Badge numbering reverted to **per GAM order** (from #248's
+  per-displayed-campaign-group, which left unique campaigns badge-free — most
+  Infiniti/Jeep lines lost their `#`, which Roger flagged). Now every line of a
+  multi-line order is numbered `#1..#N`, but the `cumcount` runs **after** the
+  A–Z sort so it follows campaign-alphabetical order, **not** `line_item_id` —
+  keeping the low→high reading #248 was after without dropping any badges.
+  Proven on the real 29-LI Infiniti order: `#1..#29`, monotonic, no scatter.
 - **#249** — **Exclude two test/QA GAM orders from the Direct view**
   (`_EXCLUDED_ORDER_IDS`): `3648897741` (GMC "Terrain Diverse Owned TEST PAGE" /
   CITIQ3 — 386 LIs, no `order_name`) and `4082002976` ("Newsweek_Test-2" — the

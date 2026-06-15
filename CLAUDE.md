@@ -186,12 +186,17 @@ repeats are one campaign run in two formats, which the chip separates). This
 is also the Direct table's A–Z **sort key**, so it must equal what the row
 renders; changing it regroups the table by advertiser→campaign. Pinned by
 `test_line_item_display_name` + `test_line_item_display_name_real_prod_names`.
-The leading **`#N` badge** numbers LIs **#1, #2, … by ascending `line_item_id`
-within each displayed campaign group** (2026-06-15; *not* the GAM `order_name`,
-which scattered one order's 1..N across its different campaign names — `#6` sat
-above `#3/#4/#5`). It shows only when a displayed name has >1 LI, so a single-LI
-campaign is badge-free; the table sorts A–Z by the display name with
-`line_item_id` as the tiebreak, so the badges read low→high down each group.
+The leading **`#N` badge** numbers LIs **#1, #2, … per GAM order, assigned in
+the displayed (A–Z) order** — so every line of a multi-line order is badged and
+they read low→high down the order's block (a single-line order shows none). The
+table sorts A–Z by the display name (`line_item_id` tiebreak), and the per-order
+`cumcount` runs **after** that sort, so it follows campaign-alphabetical order,
+**not** `line_item_id` — which is what kills the old scatter (per-order-by-id
+put `#6` above `#3/#4/#5`). An order is one advertiser, so its lines sit
+together in the A–Z view and the badges are contiguous. (History: 2026-06-15
+first tried per-displayed-campaign-group, but that dropped badges from unique
+campaigns — most Infiniti/Jeep lines went bare — so reverted to per-order on
+Roger's call, just numbered in display order instead of by id.)
 **Two internal test/QA orders are hidden from the Direct view** —
 `_EXCLUDED_ORDER_IDS` (`3648897741` = GMC "Terrain Diverse Owned TEST PAGE" /
 CITIQ3, and `4082002976` = "Newsweek_Test-2", ~416 LIs combined). `gam_df` is
