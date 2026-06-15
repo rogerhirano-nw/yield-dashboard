@@ -4135,12 +4135,14 @@ if st.session_state.active_view == "campaigns":
 
             # ── Alphabetical sort + ordinal badge. Sort A–Z by the displayed
             # Advertiser — Campaign name (the same derivation each row renders),
-            # with line_item_id as the tiebreak. Then number **#1, #2, … by
-            # ascending line_item_id within each DISPLAYED campaign group** — so
-            # the badges read low→high down each group and a single-LI campaign
-            # shows no badge. (Per Roger 2026-06-15. Was numbered per GAM
-            # order_name, which scattered one order's 1..N across its different
-            # campaign names — e.g. #6 sitting above #3/#4/#5.)
+            # with line_item_id as the tiebreak. Then number **#1, #2, … per GAM
+            # order, assigned in the displayed (alphabetical) order** — so every
+            # line of a multi-line order carries a badge and they read low→high
+            # down the order's block (single-line orders show none). (Per Roger
+            # 2026-06-15: restart per order.) An order is one advertiser, so its
+            # lines sit together in the A–Z display; the cumcount runs AFTER the
+            # sort, so it follows campaign-alphabetical order — *not*
+            # line_item_id — which is what fixes the old #6-above-#3 scatter.
             if "line_item_name" in view_gam.columns:
                 _disp = view_gam["line_item_name"].map(dl.line_item_display_name)
                 view_gam = view_gam.assign(_disp_key=_disp.str.casefold())
@@ -4148,12 +4150,12 @@ if st.session_state.active_view == "campaigns":
                 if "line_item_id" in view_gam.columns:
                     _sort_cols.append("line_item_id")
                 view_gam = view_gam.sort_values(_sort_cols, kind="stable", na_position="last")
-                if "line_item_id" in view_gam.columns:
-                    view_gam["_ordinal"] = (
-                        view_gam.groupby("_disp_key", dropna=False).cumcount() + 1
-                    )
-                    _ord_max = view_gam.groupby("_disp_key", dropna=False)["_ordinal"].transform("max")
-                    # Only show #N when the displayed campaign has >1 LI.
+                _ord_col = ("order_id" if "order_id" in view_gam.columns
+                            else "order_name" if "order_name" in view_gam.columns else None)
+                if _ord_col is not None:
+                    view_gam["_ordinal"] = view_gam.groupby(_ord_col, dropna=False).cumcount() + 1
+                    _ord_max = view_gam.groupby(_ord_col, dropna=False)["_ordinal"].transform("max")
+                    # Only show #N when the order has >1 LI.
                     view_gam["line_item_name"] = view_gam.apply(
                         lambda r: (f"#{int(r['_ordinal'])}  {r['line_item_name']}"
                                    if pd.notna(r['line_item_name']) and _ord_max.loc[r.name] > 1
