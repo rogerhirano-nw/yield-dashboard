@@ -68,11 +68,11 @@ jobs:
           IN_IMAGE_HEIGHT: ${{ inputs.image_height }}
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
-          # Filled in (with the [native-style-apply] commit marker) when a branch
-          # push should perform a write; empty => push stays read-only. Reset to
-          # "" after each one-off apply (600x560 create #261, then the #fefcf6
-          # background match) so a stray marker push stays a no-op.
-          PUSH_APPLY_ARGS: ""
+          # Filled in (with the [native-style-apply] commit marker) for a one-off
+          # write; reset to "" after. Restore the Sponsored Content text to the
+          # design colors (the .sc-link wrapper rendered headline/body/CTA as
+          # blue underlined links instead of black).
+          PUSH_APPLY_ARGS: "--sc-text-color inherit --style-ids 972672 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then

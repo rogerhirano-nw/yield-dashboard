@@ -109,6 +109,28 @@ def apply_background(css: str | None, color: str) -> str:
     return f"{css}{sep}\n{block}\n"
 
 
+_SCTEXT_START = "/* nw-sctext:start */"
+_SCTEXT_END = "/* nw-sctext:end */"
+
+
+def apply_sc_text(css: str | None, color: str) -> str:
+    """Override the Sponsored Content `.sc-link` color (which makes the
+    headline/body/CTA render as blue underlined links over the design's black
+    text). Pass 'inherit' to restore the per-section colors (black headline /
+    dark body), or a hex. Drops the underline. Idempotent."""
+    if re.fullmatch(r"[0-9a-fA-F]{3,6}", color or ""):
+        color = "#" + color
+    block = (f"{_SCTEXT_START}\n"
+             f".sc-link{{color:{color}!important;text-decoration:none!important}}\n"
+             f"{_SCTEXT_END}")
+    css = css or ""
+    if _SCTEXT_START in css and _SCTEXT_END in css:
+        return re.sub(re.escape(_SCTEXT_START) + r".*?" + re.escape(_SCTEXT_END),
+                      lambda _m: block, css, flags=re.S)
+    sep = "" if (not css or css.endswith("\n")) else "\n"
+    return f"{css}{sep}\n{block}\n"
+
+
 def _dump(s: dict) -> None:
     print("-" * 72)
     aspect = " (aspect-ratio)" if s.get("is_aspect_ratio") else ""
@@ -162,7 +184,9 @@ def main() -> int:
         help="append an html,body paper background so the taller frame fills cleanly",
     )
     ap.add_argument("--set-background", help="set background color (hex) on --style-ids")
-    ap.add_argument("--style-ids", help="comma-separated native style ids for --set-background")
+    ap.add_argument("--sc-text-color",
+                    help="override .sc-link text color on --style-ids ('inherit' or hex)")
+    ap.add_argument("--style-ids", help="comma-separated native style ids for the bulk modes")
     args = ap.parse_args()
 
     gam = GAMClient()
@@ -180,25 +204,30 @@ def main() -> int:
 
     styles = gam.list_native_styles()
 
-    if args.set_background:
+    if args.set_background or args.sc_text_color:
+        if args.set_background:
+            label = f"background {args.set_background}"
+            transform = lambda css: apply_background(css, args.set_background)  # noqa: E731
+        else:
+            label = f"sc-link color {args.sc_text_color}"
+            transform = lambda css: apply_sc_text(css, args.sc_text_color)  # noqa: E731
         by_id = {s["id"]: s for s in styles}
         ids = [s.strip() for s in (args.style_ids or "").split(",") if s.strip()]
         if not ids:
-            print("::error::--style-ids is required with --set-background", file=sys.stderr)
+            print("::error::--style-ids is required", file=sys.stderr)
             return 1
         for sid in ids:
             cur = by_id.get(sid)
             if not cur:
                 print(f"::error::native style {sid} not found", file=sys.stderr)
                 continue
-            new_css = apply_background(cur.get("css_snippet"), args.set_background)
-            print(f"== {sid} {cur['name']!r} ({cur['width']}x{cur['height']}) "
-                  f"-> background {args.set_background} ==")
+            new_css = transform(cur.get("css_snippet"))
+            print(f"== {sid} {cur['name']!r} ({cur['width']}x{cur['height']}) -> {label} ==")
             if not args.apply:
                 print("(dry-run — add --apply to write)")
                 continue
             gam.update_native_style(sid, css_snippet=new_css)
-            print(f"::notice::set background {args.set_background} on native style {sid}")
+            print(f"::notice::applied {label} on native style {sid}")
         return 0
 
     if args.create_from:
