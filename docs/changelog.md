@@ -37,14 +37,19 @@ and why" index, keyed by PR. Newest first.
   `.bt img{margin:0 auto}`, carrying the `#FFFCF2` background) — image not
   stretched, just centered, like the Top Logo's `margin:0 auto`. Beehiv tag →
   `sz=600x250`. New gotcha 8 in the debrief.
-- **#261** — **Top Logo enlarged in place** (Roger: "increase the height for the
-  logo a little bit"). The 600×80 frame was fully packed (logo cap 44px + label +
-  padding ≈ 80px), so rather than grow the frame (which would force a Beehiv `sz`
-  change), tightened the chrome (`.pb` padding 10→5, `.pb-label` margin 6→3) to
-  free vertical space and raised the logo cap **`max-height:44px → 52px`** —
-  idempotent `nw-logoheight` block on `972438`, **same 600×80 size so the Beehiv
-  tag is unchanged**. Growing the frame (e.g. 600×96) remains the option if a
-  bigger bump is wanted.
+- **#261** — **Top Logo made taller via a 600×100 frame** (Roger: "increase the
+  height for the logo a little bit"). First tried enlarging **in place** within
+  the 600×80 frame (logo cap 44→52px + tightened chrome) — but the strip was
+  already packed (label + 44px logo + padding ≈ 80px), so it **crammed the tall
+  INFINITI lockup against "Presented by" and read as distorted**; reverted (added
+  a `--remove-marker` mode to `update_native_style.py` that strips a named
+  `nw-<marker>` block — the inverse of `--append-css-b64`, restoring `972438`
+  byte-for-byte). The clean fix is a **taller frame**: new **`978385` 600×100**
+  (clone of `972438`, logo cap 56px, original generous spacing) so the logo grows
+  ~27% with breathing room. **Render-verified** by fetching the `sz=600x100` ad
+  URL directly (crisp, not upscaled — see the new render-pixels recipe in the
+  debrief). Adopt by repointing the Beehiv logo tag to `sz=600x100`; `972438`
+  600×80 stays as the prior size.
 
 ## 2026-06-15 — Direct table polish
 

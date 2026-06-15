@@ -79,11 +79,20 @@ Cloud sessions hold no GAM/agentmail creds and have no browser, so:
   `scripts/inspect_inbox_email.py` (via `inspect_inbox.yml`) pulls it and dumps
   the ad `<a>/<img>` blocks, the resolved `sz`/`clkk`/`url`, whether the ad is
   `<img>` vs live HTML, and the **DOM ancestor background chain** behind each ad.
-- **Rendered ad pixels:** fetch the live `gampad/ad?iu=…&sz=WxH&c=<cachebuster>`
-  URL directly (it's public) — GAM returns the PNG. Open it / sample pixels to
-  confirm colour and that a style change propagated. (Used throughout #261 to
-  prove black-vs-blue text and exact background, e.g. corner pixel `(255,252,242)`
-  == `#FFFCF2`.)
+- **Rendered ad pixels (the reliable recipe).** A *bare*
+  `gampad/ad?iu=…&sz=WxH` request from a datacenter IP **no-fills** (returns a
+  1×1 GIF). What works: take the **full ad URL from a delivered/forwarded email**
+  (the inspector prints it) — it carries `clkk`/`ptt`/`clkp`/`url` — and **follow
+  the redirect** (`curl -sSL`). It 302s to
+  `https://tpc.googlesyndication.com/simgad/<id>`, the **real rasterized PNG** at
+  the requested size, which you can save and **view with the Read tool** (or
+  parse the PNG/GIF header for `WxH`). This is how #261's logo/banner were
+  actually seen: the **600×80 logo** (INFINITI lockup), the **600×250 centered
+  banner**, and the **600×100 logo preview** were all pulled this way — and it
+  doubles as a render-test for a brand-new size *before* touching the Beehiv tag
+  (request `sz=600x100`; a new native style serves it ~5–10 min after creation,
+  no-fill until then). Sampling pixels also proved exact background (corner pixel
+  `(255,252,242)` == `#FFFCF2`).
 
 ## Tooling
 
@@ -118,13 +127,15 @@ Cloud sessions hold no GAM/agentmail creds and have no browser, so:
 **Resize the content vs. resize the frame.** The native-style **size is the
 `sz=WxH` the Beehiv tag requests** — GAM rasterizes at exactly that, and only a
 style of that size+template serves it. So *growing the frame* (e.g. the Top Logo
-600×80 → 600×96) **requires repointing the Beehiv tag**. To make an element
-bigger *without* a tag change, enlarge it **inside the existing frame**: e.g. the
-Top Logo's 600×80 was fully packed (logo `max-height:44px` + "Presented by" label
-+ padding ≈ 80px), so to render the logo taller we tightened the chrome (`.pb`
-padding 10→5, label margin 6→3) and raised the cap to `max-height:52px`
-in place (`--append-css-b64 … --marker logoheight --style-ids 972438`) — same
-600×80, tag untouched. Headroom is limited by the frame, so a bigger bump still
-means growing the frame + the tag. (Aspect note: a wide logo capped by
-`max-width:560px` in the 600 frame is width-bound — raising `max-height` only
-enlarges a height-bound logo, which a small-looking 44px-in-80px logo is.)
+600×80 → 600×100) **requires repointing the Beehiv tag**. It's tempting to dodge
+the tag change by enlarging the content **inside the existing frame**, but that
+only works if the frame has slack: the Top Logo's 600×80 was already packed
+(label + 44px logo + padding ≈ 80px), so an in-place cap bump to 52px + tightened
+spacing **crammed the tall INFINITI lockup against "Presented by" and read as
+distorted** — reverted (the `--remove-marker` mode strips a named block). **The
+clean enlarge is a taller frame:** `978385` 600×100 (clone of `972438`, logo cap
+56px, *original* spacing), adopted by repointing the Beehiv tag to `sz=600x100`.
+**Lesson: if a frame is already full, grow the frame (a tag change) — don't cram
+the content in place.** (Aspect note: a wide logo capped by `max-width:560px` in
+the 600 frame is width-bound — raising `max-height` only enlarges a height-bound
+logo, which the stacked INFINITI emblem+wordmark is.)

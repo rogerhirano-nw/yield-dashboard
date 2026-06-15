@@ -70,10 +70,9 @@ jobs:
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
           # write; reset to "" between writes so a stray marker push is a no-op.
-          # Candidate: a TALLER 600x100 logo frame (clone of 972438) so the logo
-          # can grow (max-height 56) WITHOUT crowding "Presented by" — preview via
-          # an sz=600x100 render before repointing the Beehiv tag.
-          PUSH_APPLY_ARGS: "--create-from 972438 --new-width 600 --new-height 100 --append-css-b64 LnBiIGltZ3ttYXgtaGVpZ2h0OjU2cHghaW1wb3J0YW50fQ== --marker logo100 --apply"
+          # Top Logo: taller 600x100 style 978385 built + render-verified (logo
+          # cap 56px). Adopt by repointing the Beehiv logo tag to sz=600x100.
+          PUSH_APPLY_ARGS: ""
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
