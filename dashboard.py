@@ -627,6 +627,13 @@ DEAL_TYPE_NAMES = _cfg["deal_type_codes"]
 
 KNOWN_FORMATS = {"Display", "Native", "Video", "CTV", "OLV", "Banner"}
 
+# GAM orders to exclude from the Direct campaigns view entirely (table + KPIs).
+# Internal test / QA orders per Roger (2026-06-15):
+#   3648897741 — GMC "Terrain Diverse Owned TEST PAGE" / CITIQ3 test setups.
+#   4082002976 — "Newsweek_Test-2" ([TEST] Newsletter / Apple-FITO / Sponsor-Logo).
+# order_id is text in gam_campaigns; matched as strings.
+_EXCLUDED_ORDER_IDS = {"3648897741", "4082002976"}
+
 
 def _compact_pager(name, cur_page, total_pages, on_prev, on_next, main_txt, sub_txt=""):
     """One-row table pager: ``‹  centered page label  ›`` on a single inline
@@ -2893,6 +2900,10 @@ if st.session_state.active_view == "campaigns":
     except Exception:
         gam_df = pd.DataFrame()
         st.info("No GAM data yet. The gam_campaigns table will be created on the next scheduled refresh.")
+    # Drop excluded test/QA orders at the source so nothing from them reaches
+    # the Direct table, the KPI rollups, or the DV joins (per Roger 2026-06-15).
+    if not gam_df.empty and "order_id" in gam_df.columns:
+        gam_df = gam_df[~gam_df["order_id"].astype(str).isin(_EXCLUDED_ORDER_IDS)]
 
     # DV Attention — daily Pinnacle CSV emailed to newsweek@agentmail.to,
     # parsed by refresh_dv_attention() into the dv_attention table. We

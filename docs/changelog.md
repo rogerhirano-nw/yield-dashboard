@@ -6,6 +6,13 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table badge/sort fix
 
+- **#249** — **Exclude two test/QA GAM orders from the Direct view**
+  (`_EXCLUDED_ORDER_IDS`): `3648897741` (GMC "Terrain Diverse Owned TEST PAGE" /
+  CITIQ3 — 386 LIs, no `order_name`) and `4082002976` ("Newsweek_Test-2" — the
+  `[TEST]` Newsletter / Apple-FITO / Sponsor-Logo batch, 30 LIs). Filtered on
+  `order_id` right after `gam_df` loads, so all 416 test LIs drop out of the
+  table, KPIs, and DV joins. (Roger first gave `3648897841` — a transposed
+  digit that matched no rows; corrected to `…741` after confirming.)
 - **#248** — Direct line-item **`#N` badges now number per displayed campaign
   group** (ascending by `line_item_id`) instead of per GAM `order_name`. The
   per-order numbering scattered one order's 1..N across its different campaign

@@ -192,6 +192,11 @@ which scattered one order's 1..N across its different campaign names — `#6` sa
 above `#3/#4/#5`). It shows only when a displayed name has >1 LI, so a single-LI
 campaign is badge-free; the table sorts A–Z by the display name with
 `line_item_id` as the tiebreak, so the badges read low→high down each group.
+**Two internal test/QA orders are hidden from the Direct view** —
+`_EXCLUDED_ORDER_IDS` (`3648897741` = GMC "Terrain Diverse Owned TEST PAGE" /
+CITIQ3, and `4082002976` = "Newsweek_Test-2", ~416 LIs combined). `gam_df` is
+filtered on `order_id` right after load, so nothing from them reaches the
+table, the KPI rollups, or the DV joins. Add an order id here to hide it.
 
 **PMP deal display name = `<Advertiser> — <Campaign>` + agency subline**
 (`dl.pmp_deal_display_name` → `(primary, sub)`). The Newsweek deal-name
