@@ -6111,10 +6111,26 @@ if st.session_state.active_view == "campaigns":
 
         # ── Exception banners ──
         _floors = _cfg.get("pmp_floors_by_deal_type", {}) or {}
+
+        def _deal_floor(row):
+            # Per-deal configured floor: the $<floor> token Newsweek embeds in
+            # the deal name (cross-SSP — the SSP delivery feeds carry no floor),
+            # falling back to the per-deal-type floor from settings when a deal
+            # isn't convention-named.
+            _f = dl.pmp_deal_floor(row.get("Deal"))
+            if _f is None:
+                _dt = row.get("Deal Type") or ""
+                _f = _floors.get(_dt) if _dt else None
+            return _f
+
         _breach_rows = pd.DataFrame()
-        if _floors and "eCPM" in combined_pmp.columns and "Deal Type" in combined_pmp.columns:
+        if "eCPM" in combined_pmp.columns and "Deal" in combined_pmp.columns:
             _df_b = combined_pmp.copy()
-            _df_b["_floor"] = _df_b["Deal Type"].map(_floors)
+            # Per-deal floor from the name; per-type settings floor as fallback.
+            _df_b["_floor"] = _df_b["Deal"].map(dl.pmp_deal_floor)
+            if _floors and "Deal Type" in _df_b.columns:
+                _df_b["_floor"] = _df_b["_floor"].fillna(_df_b["Deal Type"].map(_floors))
+            _df_b["_floor"] = pd.to_numeric(_df_b["_floor"], errors="coerce")
             _ecpm_num = pd.to_numeric(_df_b["eCPM"], errors="coerce")
             _breach_rows = _df_b[_df_b["_floor"].notna() & _ecpm_num.notna() & (_ecpm_num < _df_b["_floor"])]
 
@@ -6493,8 +6509,7 @@ if st.session_state.active_view == "campaigns":
             rt = _pmp_at_routes.get("PMP deal · any issue", "PMP - Adjust")
             # Severity from eCPM vs floor.
             _ecpm = pd.to_numeric(row.get("eCPM"), errors="coerce")
-            _dt = row.get("Deal Type") or ""
-            _floor = _floors.get(_dt) if _dt else None
+            _floor = _deal_floor(row)
             severity = "Info"
             if pd.notna(_ecpm) and _floor:
                 if _ecpm < _floor * 0.8: severity = "Critical"
@@ -6714,7 +6729,7 @@ if st.session_state.active_view == "campaigns":
         def _pmp_drawer_html(row):
             _full = _pmp_esc(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
-            _floor = _floors.get(_dt) if _dt else None
+            _floor = _deal_floor(row)
             _ecpm_v = pd.to_numeric(row.get("eCPM"), errors="coerce")
             _rev_chart  = _pmp_drawer_trend_chart(_pmp_rev_series_for(row), _pmp_rev_dates,
                                                   "7-day revenue", money=True)
@@ -6879,7 +6894,7 @@ if st.session_state.active_view == "campaigns":
         for _, row in _pmp_page_slice.iterrows():
             _primary, _sub = dl.pmp_deal_display_name(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
-            _floor_val = _floors.get(_dt) if _dt else None
+            _floor_val = _deal_floor(row)
             _seller = row.get("Seller")
             if not isinstance(_seller, str) or not _seller.strip():
                 _seller_html = '<span class="seller-prog">—</span>'

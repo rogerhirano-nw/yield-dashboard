@@ -221,6 +221,21 @@ have no token-7 structure, so they're returned **whole, lightly cleaned**
 `("—", "")`. Used by both the desktop name cell and the mobile card primary
 (and the floor-breach banner's `[0]`). Pinned by `test_pmp_deal_display_name`.
 
+**PMP deal floor = the `$<floor>` token from the deal name**
+(`dl.pmp_deal_floor`, token 11 of the convention above → `$14` → `14.0`). The
+SSP delivery feeds **don't carry a per-deal floor** — Pubmatic/Magnite report
+none, and GAM exposes `floor_price` only for **PA** deals (`gam_pa_metadata`)
+and not joinable to the revenue rows — but Newsweek embeds the configured floor
+in the deal name, the same way DSP/advertiser/campaign/format are derived from
+it. So the drawer's **Configured floor**, the eCPM-vs-floor **status banner**,
+the **floor-breach** exception banner, and the mobile card's **eCPM-vs-floor
+bar** all resolve the floor via `_deal_floor(row)` = **name floor first,
+`pmp_floors_by_deal_type[deal_type]` (settings) as fallback** when a deal isn't
+convention-named. This replaced a per-deal-**type**-only floor that read "—"
+whenever the type had no settings entry. On prod, **229 of 271** distinct PMP
+deals (~85%) carry a parseable `$`-floor at token 11; the rest fall back.
+Pinned by `test_pmp_deal_floor` (real prod-shaped names).
+
 ## Dashboard design system (Newsweek "Paper", 2026-06)
 The dashboard is skinned to the Newsweek design system: **light warm-paper
 canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern

@@ -396,6 +396,28 @@ def test_pmp_deal_display_name():
     assert dn(None) == ("—", "")
 
 
+def test_pmp_deal_floor():
+    """Configured floor parsed from the deal-name `$<floor>` token (token 11).
+    The SSP delivery feeds carry no per-deal floor, but Newsweek's convention
+    embeds it in the name (same names as the display-name test)."""
+    from dashboard_logic import pmp_deal_floor as f
+    assert f("Newsweek_PA_Automotive_Adx_DV360_WPP_Mindshare_Ford Motor Company_Ford-Always-On_US_Display_$3_Team-USA_THern") == 3.0
+    assert f("Newsweek_PA_Health_Magnite_AdTheorent_Omnicom_GSD&M_MD-Anderson_FY26-Brand-National-Intent-Tier2_US_Display_$7.48_Team-USA_BKaretny") == 7.48
+    assert f("Newsweek_PD_Multi_Adx_RTB House_N/A_N/A_RTB-House-US_N/A_Global_Display_$10_Team-USA_BKaretny") == 10.0
+    # the Google Evergreen PD deal from the drawer
+    assert f("Newsweek_PD_Tech_Adx_DV360_WPP_Media-Futures-Group_Google_Evergreen_US_Video_$14_Team-USA_ILee") == 14.0
+    # SSP-native / non-convention names carry no floor token
+    assert f("3PS_Pubmatic_DE_Display_High CTR") is None
+    assert f("ABS-CBN - PH - Display") is None
+    # NA floor token / empties / None / truncated convention name
+    assert f("Newsweek_PA_Auto_Adx_DV360_WPP_Agency_Adv_Camp_US_Display_NA_Team-USA_THern") is None
+    assert f("Newsweek_PD_Multi_Adx_RTB House_N/A_N/A_RTB-House-US_N/A_Global_Display_N/A_Team-USA_BKaretny") is None
+    assert f("N/A") is None
+    assert f("") is None
+    assert f(None) is None
+    assert f("Newsweek_PD_Tech_Adx") is None
+
+
 def test_revenue_daily_series_by_deal():
     import pandas as pd
     from datetime import date
