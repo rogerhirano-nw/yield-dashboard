@@ -1352,6 +1352,47 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   color: var(--text-primary); font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+/* Consolidated LI identity + spec card (Direct drawer, 2026-06-15). Replaces
+   the top raw-name box AND the old flat 9-cell meta grid — both of which
+   duplicated the name (the grid's `Order` field WAS the raw name). It leads
+   with the friendly "<Advertiser> — <Campaign>" title (serif), a GAM-ID chip,
+   and the raw convention string as a mono caption, then hero pacing tiles
+   (Goal / Delivered+progress / Remaining) over a tinted detail grid. */
+.nw-li-card { margin-top: 18px; }
+.nw-li-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; }
+.nw-li-eyebrow { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
+.nw-li-name { font-family: var(--font-display); font-size: 20px; font-weight: 600;
+  color: var(--text-primary); line-height: 1.15; margin: 0; }
+.nw-li-gam { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  white-space: nowrap; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 3px 11px; }
+.nw-li-gam a { color: var(--text-primary); font-weight: 600; text-decoration: none; }
+.nw-li-gam a:hover { text-decoration: underline; }
+.nw-li-raw { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  color: var(--text-secondary); overflow-wrap: anywhere; margin-top: 8px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 9px; }
+.nw-li-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.nw-li-hero .tile { background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 13px; min-width: 0; }
+.nw-li-hero .k { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); display: block; margin-bottom: 4px; }
+.nw-li-hero .big { font-family: var(--font-display); font-size: 20px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums; line-height: 1; }
+.nw-li-bar { height: 6px; border-radius: 3px; background: var(--surface-2);
+  overflow: hidden; margin-top: 9px; border: 1px solid var(--border); }
+.nw-li-bar > i { display: block; height: 100%; background: var(--state-positive-muted); }
+.nw-li-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px; margin-top: 10px; }
+.nw-li-grid .cell { background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 8px 12px; min-width: 0; }
+.nw-li-grid .k { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); display: block; margin-bottom: 2px; }
+.nw-li-grid .v { color: var(--text-primary); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
+.nw-li-grid .v.ok { color: var(--state-positive); font-weight: 600; }
 .nw-warn {
   margin-top: 14px; padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -4511,11 +4552,29 @@ if st.session_state.active_view == "campaigns":
                 v = pd.to_numeric(v, errors="coerce")
                 return "—" if pd.isna(v) else f"{int(v):,}"
 
+            def _kmb(v):
+                # Compact K/M for the drawer hero tiles — matches the table's
+                # DELIVERED formatting (`_delivered_html`): 1,875,000 → "1.88M".
+                v = pd.to_numeric(v, errors="coerce")
+                if pd.isna(v):
+                    return "—"
+                a = abs(v)
+                if a >= 1_000_000:
+                    return f"{v/1_000_000:.2f}M"
+                if a >= 1_000:
+                    return f"{v/1_000:.1f}K"
+                return f"{int(v):,}"
+
             def _fmt_date_cell(v):
                 if v is None or (isinstance(v, float) and pd.isna(v)):
                     return "—"
                 s = str(v)
                 return s.split(" ")[0] if " " in s else s
+
+            def _pretty_date_cell(v):
+                # "Jun 3" — friendlier than ISO for the spec card's Flight field.
+                d = pd.to_datetime(v, errors="coerce")
+                return d.strftime("%b %d").replace(" 0", " ") if pd.notna(d) else "—"
 
             def _drawer_status_banner(row):
                 """Rule-based thesis statement (severity-colored). Flight ref
@@ -4844,7 +4903,11 @@ if st.session_state.active_view == "campaigns":
                 return '<div class="nw-sm-grid">' + "".join(panels) + '</div>'
 
             def _drawer_html(row):
-                full_li = _esc(re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or "")))
+                _raw_unesc = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
+                full_li = _esc(_raw_unesc)
+                # Friendly "<Advertiser> — <Campaign>" title for the spec card —
+                # same memoized derivation as the table row's display name.
+                disp_name = _esc(dl.line_item_display_name(_raw_unesc)) or "—"
                 li_id = row.get("line_item_id")
                 li_id_str = ""
                 if li_id is not None and not (isinstance(li_id, float) and pd.isna(li_id)):
@@ -4962,45 +5025,81 @@ if st.session_state.active_view == "campaigns":
                 actions = (f'<div class="nw-actions">{"".join(action_buttons)}</div>'
                            if action_buttons else "")
 
-                # GAM ID is a right-clickable link (Copy Link Address gets the
-                # full deep-link URL — Streamlit blocks JS so navigator.clipboard
+                # GAM ID chip — a right-clickable deep link (Copy Link Address
+                # gets the full URL; Streamlit blocks JS so navigator.clipboard
                 # isn't available, but the browser's native context menu is).
                 if li_id_str:
                     if gam_link:
-                        id_chip = (
-                            f'<span class="nw-drawer-id">GAM ID · '
-                            f'<a class="nw-drawer-id-link" href="{gam_link}" '
-                            f'target="_blank" rel="noopener noreferrer" '
+                        _gam_chip = (
+                            f'<span class="nw-li-gam">GAM ID · '
+                            f'<a href="{gam_link}" target="_blank" rel="noopener noreferrer" '
                             f'title="Click to open in GAM · right-click to copy link">'
-                            f'{_esc(li_id_str)}</a></span>'
+                            f'{_esc(li_id_str)} ↗</a></span>'
                         )
                     else:
-                        id_chip = f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
+                        _gam_chip = f'<span class="nw-li-gam">GAM ID · {_esc(li_id_str)}</span>'
                 else:
-                    id_chip = ''
+                    _gam_chip = ''
+
+                # Spec-card values.
+                _rev_v = pd.to_numeric(row.get("lifetime_revenue"), errors="coerce")
+                if pd.isna(_rev_v):
+                    _rev_v = pd.to_numeric(row.get("ad_server_cpm_and_cpc_revenue"), errors="coerce")
+                _rev_s = f"${_rev_v:,.0f}" if pd.notna(_rev_v) else "—"
+                _prog = pd.to_numeric(row.get("progress_pct"), errors="coerce")
+                _bar_html = ""
+                if pd.notna(_prog):
+                    _bar_html = (f'<div class="nw-li-bar"><i style="width:'
+                                 f'{max(0.0, min(100.0, float(_prog))):.0f}%"></i></div>')
+                _status_v = row.get("status")
+                _status_ok = (isinstance(_status_v, str)
+                              and _status_v.strip().lower() == "delivering")
+                _seller_v = row.get("seller_ae")
+                _seller_s = (_esc(_seller_v) if isinstance(_seller_v, str) and _seller_v.strip()
+                             else "Programmatic")
+                _flight_s = (f'{_pretty_date_cell(row.get("start_date"))} → '
+                             f'{_pretty_date_cell(row.get("end_date"))}')
+
                 status_html = _drawer_status_banner(row)
                 chart_html = _drawer_delivery_chart(row)
                 sm_html = _drawer_small_multiples(row)
+                # Consolidated identity + spec card (Option C) — leads with the
+                # friendly name, GAM-ID chip, and the raw convention string, then
+                # hero pacing tiles + a tinted detail grid. The name + raw string
+                # used to sit in a box at the *top*; the metadata was a flat grid
+                # dumped at the bottom whose `Order` field repeated the raw name.
                 return (
                     '<div class="nw-drawer">'
-                    '<div class="nw-drawer-head">'
-                    f'<span class="nw-drawer-li">{full_li or "—"}</span>'
-                    f'{id_chip}'
-                    '</div>'
                     f'{status_html}'
                     f'{warn_html}'
                     f'<div class="nw-drawer-charts">{chart_html}{sm_html}</div>'
-                    '<div class="nw-meta-grid">'
-                    f'<div><span class="lbl">Goal</span><span class="val">{_fmt_int_cell(row.get("impressions_goal"))}</span></div>'
-                    f'<div><span class="lbl">Remaining</span><span class="val">{_fmt_int_cell(row.get("remaining_impressions"))}</span></div>'
-                    f'<div><span class="lbl">Flight</span><span class="val">{_fmt_date_cell(row.get("start_date"))} → {_fmt_date_cell(row.get("end_date"))}</span></div>'
-                    f'<div><span class="lbl">Status</span><span class="val">{_esc(row.get("status") or "—")}</span></div>'
-                    f'<div><span class="lbl">Format</span><span class="val">{_esc(row.get("ad_format") or "—")}</span></div>'
-                    f'<div><span class="lbl">CPM</span><span class="val">{cpm_s}</span></div>'
-                    f'<div><span class="lbl">Clicks</span><span class="val">{_fmt_int_cell(clicks_raw)}</span></div>'
-                    f'<div><span class="lbl">Order</span><span class="val">{_esc(row.get("order_name") or "—")}</span></div>'
-                    f'<div><span class="lbl">Creative duration</span>'
-                    f'<span class="val">{_cdur_str}</span></div>'
+                    '<div class="nw-li-card">'
+                    '<div class="nw-li-head">'
+                    '<div><div class="nw-li-eyebrow">Line item</div>'
+                    f'<h3 class="nw-li-name">{disp_name}</h3></div>'
+                    f'{_gam_chip}'
+                    '</div>'
+                    f'<div class="nw-li-raw">{full_li or "—"}</div>'
+                    '<div class="nw-li-hero">'
+                    f'<div class="tile"><span class="k">Goal</span>'
+                    f'<span class="big">{_kmb(row.get("impressions_goal"))}</span></div>'
+                    f'<div class="tile"><span class="k">Delivered</span>'
+                    f'<span class="big">{_kmb(row.get("lifetime_impressions_delivered"))}</span>'
+                    f'{_bar_html}</div>'
+                    f'<div class="tile"><span class="k">Remaining</span>'
+                    f'<span class="big">{_kmb(row.get("remaining_impressions"))}</span></div>'
+                    '</div>'
+                    '<div class="nw-li-grid">'
+                    f'<div class="cell"><span class="k">Flight</span><span class="v">{_flight_s}</span></div>'
+                    f'<div class="cell"><span class="k">Status</span>'
+                    f'<span class="v{" ok" if _status_ok else ""}">{_esc(_status_v or "—")}</span></div>'
+                    f'<div class="cell"><span class="k">Format</span><span class="v">{_esc(row.get("ad_format") or "—")}</span></div>'
+                    f'<div class="cell"><span class="k">CPM</span><span class="v">{cpm_s}</span></div>'
+                    f'<div class="cell"><span class="k">Revenue</span><span class="v">{_rev_s}</span></div>'
+                    f'<div class="cell"><span class="k">Clicks</span><span class="v">{_fmt_int_cell(clicks_raw)}</span></div>'
+                    f'<div class="cell"><span class="k">Seller</span><span class="v">{_seller_s}</span></div>'
+                    f'<div class="cell"><span class="k">Creative duration</span><span class="v">{_cdur_str}</span></div>'
+                    '</div>'
                     '</div>'
                     f'{actions}'
                     '</div>'
