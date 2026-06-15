@@ -6,6 +6,16 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#257** — Direct drawer: **the LI-name title is now a `<div>`, not an
+  `<h3>`** (mobile font-size fix). Streamlit styles markdown headings via
+  container-scoped selectors that outrank a bare class, so the
+  `<h3 class="nw-li-name">` rendered at Streamlit's heading size (~24px) instead
+  of the 13px set in #256 — and the long full GAM name wrapped to ~8 lines,
+  dominating the mobile screen (Roger's screenshot). The standalone render mocks
+  missed it (no Streamlit CSS). Switching the title to a `<div>` means the
+  heading selectors no longer match, so `.nw-li-name` (13px mono) applies.
+  Proven with a mock that simulates Streamlit's `h3` rule (h3 → huge, div →
+  13px). One-line HTML change; 119/119 tests pass.
 - **#256** — Direct drawer spec-card cleanup (from #255):
   - **One name, and it's the full GAM line-item name.** The friendly serif
     title + the raw mono string stacked read as "two names for the LI" (Roger's

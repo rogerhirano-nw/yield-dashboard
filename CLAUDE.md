@@ -395,7 +395,13 @@ Rules that survive any future restyle:
   Roger's call, NOT the friendly `<Advertiser> — <Campaign>` derivation — the
   detail view shows the real complete GAM name, while the **table ROWS keep the
   friendly `dl.line_item_display_name`** since it's scannable + the A–Z sort
-  key) + a **GAM-ID chip** (pill, deep-links to GAM), then **3 hero pacing
+  key). **The title is a `<div>`, NOT an `<h…>`** — Streamlit's framework CSS
+  styles markdown headings via container-scoped selectors that outrank a bare
+  class, so an `<h3 class="nw-li-name">` rendered at Streamlit's heading size
+  (~24px), not the 13px set here; the long name then wrapped to ~8 lines on
+  mobile (Roger 2026-06-15). A `<div>` dodges the heading selectors so
+  `.nw-li-name` wins. Don't make it a heading tag again. + a **GAM-ID chip**
+  (pill, deep-links to GAM), then **3 hero pacing
   tiles** (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining,
   compact `_kmb` K/M figures in serif) over a **tinted detail grid**
   (`.nw-li-grid` auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller ·
