@@ -192,17 +192,64 @@ def main() -> int:
                   _html.unescape(blob[max(0, i - 300):i + 30]).replace("\n", " ")[-320:])
             break
 
-    # nearest wrapping background around each ad slot (Roger: logo bg looks off)
-    print("-- wrapping bg per ad slot (nearest declaration before the tag) --")
-    for szk in ("600x80", "600x720", "600x560", "300x250"):
-        m = re.search("sz=" + re.escape(szk), blob)
-        if not m:
-            continue
-        pre = blob[max(0, m.start() - 900):m.start()]
-        flat = re.findall(
-            r'(?:bgcolor=["\']?|background(?:-color)?:\s*)(#[0-9a-fA-F]{3,6})', pre)
-        print(f"  {szk}: nearest bg = {flat[-5:] if flat else '(none in 900c)'}")
-        print(f"     ctx: {_html.unescape(pre[-180:]).strip()[:200]}")
+    # Parse the DOM and climb each ad's ancestor chain to the first element that
+    # actually sets a background — that's the real color the ad inherits (color
+    # frequency can't tell the page canvas from accent tones).
+    from html.parser import HTMLParser
+
+    def _to_hex(c):
+        c = (c or "").strip()
+        mm = re.match(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", c, re.I)
+        if mm:
+            return "#%02x%02x%02x" % tuple(int(x) for x in mm.groups())
+        return c
+
+    class _BgDOM(HTMLParser):
+        VOID = {"img", "br", "hr", "input", "meta", "link", "area", "col", "source"}
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack = []
+            self.hits = {}
+
+        def _bg(self, d):
+            if d.get("bgcolor"):
+                return d["bgcolor"]
+            mm = re.search(r"background(?:-color)?:\s*(#[0-9a-fA-F]{3,6}|rgb\([^)]+\))",
+                           d.get("style", "") or "", re.I)
+            return mm.group(1) if mm else None
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            self.stack.append((tag, self._bg(d)))
+            src = (d.get("src") or "") + " " + (d.get("href") or "")
+            mm = re.search(r"sz=(\d+x\d+)", src)
+            if mm and "gampad/ad" in src and mm.group(1) not in self.hits:
+                self.hits[mm.group(1)] = [(t, b) for t, b in self.stack if b]
+            if tag in self.VOID:
+                self.stack.pop()
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag(tag, attrs)
+            if tag not in self.VOID and self.stack and self.stack[-1][0] == tag:
+                self.stack.pop()
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    break
+
+    print("-- ad ancestor bg chain (innermost = real background behind the ad) --")
+    dom = _BgDOM()
+    try:
+        dom.feed(html_body or "")
+    except Exception as e:  # noqa: BLE001
+        print("  parse error:", e)
+    for sz, chain in sorted(dom.hits.items()):
+        pretty = [(t, _to_hex(b)) for t, b in chain]
+        inner = pretty[-1][1] if pretty else "(no ancestor bg)"
+        print(f"  {sz}: behind-ad bg = {inner}   chain={pretty[-5:]}")
 
     if not html_body:
         print("\n-- text/extracted_text (first 3000 chars) --")
