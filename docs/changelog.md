@@ -4,8 +4,14 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-06-15 — Direct table badge/sort fix
+## 2026-06-15 — Direct table polish
 
+- **#252** — Direct drawer: on **desktop**, the Viewability / CTR / Attention /
+  SIVT / GIVT small-multiples lift up **beside the 7-day delivery chart** (a
+  new `.nw-drawer-charts` flex row, ≥1025px) instead of stacking below it and
+  leaving the drawer's right half empty (Roger's screenshot). The chart holds
+  ~760px on the left; the grid fills the right. Mobile (≤1024px) still stacks.
+  CSS-only; verified with a real-CSS render at 1400px + 390px.
 - **#250** — Badge numbering reverted to **per GAM order** (from #248's
   per-displayed-campaign-group, which left unique campaigns badge-free — most
   Infiniti/Jeep lines lost their `#`, which Roger flagged). Now every line of a

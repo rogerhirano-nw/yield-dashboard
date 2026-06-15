@@ -319,7 +319,13 @@ Rules that survive any future restyle:
     `max-width:760px` so on the wide layout it stays a proportioned card
     instead of a stretched-flat band; the date row sits inside the panel
     and caps with it, staying aligned under the 7 points. Don't reintroduce
-    `preserveAspectRatio="none"` here.
+    `preserveAspectRatio="none"` here. **On desktop (≥1025px) the delivery
+    chart + the `.nw-sm-grid` small-multiples are wrapped in a
+    `.nw-drawer-charts` flex row** (Roger 2026-06-15): the chart holds ~760px on
+    the **left** and the grid lifts up to **fill the right half** (its 760 cap
+    is overridden to `max-width:none` there) — they used to stack, leaving the
+    drawer's right side empty. ≤1024px the wrapper is a plain block, so they
+    stack exactly as before.
   - `_pmp_drawer_trend_chart` (the PMP deal drawer's neutral 7-day trend
     charts — **revenue · total requests · bid responses**; revenue-only until
     the bid-funnel pair was added 2026-06-14) is the delivery chart's twin —

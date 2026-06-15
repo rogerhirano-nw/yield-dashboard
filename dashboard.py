@@ -1475,6 +1475,18 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
    preserveAspectRatio="none") — height:auto keeps geometry true at any
    panel width instead of crushing the trend flat on the wide layout. */
 .nw-sm-panel svg { width: 100%; height: auto; display: block; }
+/* Desktop: lift the Viewability/CTR/Attention/SIVT/GIVT small-multiples up to
+   the RIGHT of the 7-day delivery chart — they used to sit below it, leaving
+   the drawer's right half empty (Roger 2026-06-15). The chart shrinks toward
+   480px before the grid does, so on a wide drawer it holds ~760 and the grid
+   fills the rest. ≤1024px / mobile: the wrapper is a plain block, so they stack
+   exactly as before. */
+@media (min-width: 1025px) {
+  .nw-drawer-charts { display: flex; flex-wrap: wrap; gap: 14px;
+    align-items: flex-start; margin-top: 12px; }
+  .nw-drawer-charts > .nw-drawer-chart { flex: 1 1 480px; max-width: 760px; margin-top: 0; }
+  .nw-drawer-charts > .nw-sm-grid { flex: 1 1 420px; max-width: none; margin-top: 0; }
+}
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -4963,8 +4975,7 @@ if st.session_state.active_view == "campaigns":
                     '</div>'
                     f'{status_html}'
                     f'{warn_html}'
-                    f'{chart_html}'
-                    f'{sm_html}'
+                    f'<div class="nw-drawer-charts">{chart_html}{sm_html}</div>'
                     '<div class="nw-meta-grid">'
                     f'<div><span class="lbl">Goal</span><span class="val">{_fmt_int_cell(row.get("impressions_goal"))}</span></div>'
                     f'<div><span class="lbl">Remaining</span><span class="val">{_fmt_int_cell(row.get("remaining_impressions"))}</span></div>'
