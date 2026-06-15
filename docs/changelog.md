@@ -6,6 +6,15 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#261** — **Hotfix: `NameError` in `_pmp_airtable_url`** (crashed the PMP tab,
+  Roger's screenshot). #260's floor refactor removed the `_dt = row.get("Deal
+  Type")` line from `_pmp_airtable_url` when swapping in `_deal_floor(row)`, but
+  `_dt` is still used two lines down in the eCPM-vs-floor `notes` string —
+  undefined-name at runtime. Restored the line. (The crash is render-code only,
+  so `py_compile` + the logic tests passed; it also surfaced *more* after #260
+  because the per-deal floors populate ~85% of deals, so far more rows now reach
+  the floor-thesis branch.) Verified `pyflakes` reports 0 undefined names across
+  `dashboard.py`; 120/120 tests pass.
 - **#260** — PMP **Configured floor now comes from the deal name**, not just the
   per-deal-type settings floor (Roger: "are you not able to bring the configured
   floor from the SSPs?"). The SSP delivery feeds don't carry a per-deal floor

@@ -6509,6 +6509,7 @@ if st.session_state.active_view == "campaigns":
             rt = _pmp_at_routes.get("PMP deal · any issue", "PMP - Adjust")
             # Severity from eCPM vs floor.
             _ecpm = pd.to_numeric(row.get("eCPM"), errors="coerce")
+            _dt = row.get("Deal Type") or ""
             _floor = _deal_floor(row)
             severity = "Info"
             if pd.notna(_ecpm) and _floor:
