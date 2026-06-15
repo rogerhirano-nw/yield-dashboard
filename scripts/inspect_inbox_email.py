@@ -65,7 +65,7 @@ def main() -> int:
     if not api_key or not inbox:
         print("::error::AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set", file=sys.stderr)
         return 2
-    limit = int(os.environ.get("INSPECT_LIMIT", "15"))
+    limit = int(os.environ.get("INSPECT_LIMIT", "30"))
     lst = msg_list(api_get(
         f"/inboxes/{inbox}/messages?limit={limit}&include_unauthenticated=true", api_key))
     print(f"== {len(lst)} recent message(s) in {inbox} ==")
@@ -77,7 +77,8 @@ def main() -> int:
     ad_re = re.compile(r"gampad|securepubads|doubleclick|the-bulletin", re.I)
     target = None
     target_html = ""
-    first_detail = None
+    previews = []  # (subject, snippet) for the no-match dump
+    first_keys = None
     for m in lst:
         mid = m.get("id") or m.get("message_id")
         if not mid:
@@ -88,18 +89,26 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001
             print(f"  (detail fetch failed for {mid}: {e})")
             continue
-        if first_detail is None:
-            first_detail = detail
-        h = body_html(detail)
-        if h and ad_re.search(h):
-            target, target_html = m, h
+        if first_keys is None and isinstance(detail, dict):
+            first_keys = sorted(detail.keys())
+        blob = " ".join(str(detail.get(k) or "")
+                        for k in ("html", "text", "extracted_text", "preview", "subject"))
+        if len(previews) < 8:
+            snip = (detail.get("preview") or detail.get("text") or "")[:160].replace("\n", " ")
+            previews.append((detail.get("subject"), snip))
+        if ad_re.search(blob):
+            target = m
+            target_html = body_html(detail) or str(detail.get("text") or blob)
             break
 
     if not target:
         print("::notice::No message with a GAM ad tag found yet — the forward may "
-              "not have arrived, or the body field differs.")
-        if isinstance(first_detail, dict):
-            print("newest message detail keys:", sorted(first_detail.keys()))
+              "not have arrived, or its content is in a field/folder not scanned.")
+        if first_keys:
+            print("detail keys:", first_keys)
+        print("-- newest message previews --")
+        for subj, snip in previews:
+            print(f"   subject={subj!r}\n     {snip}")
         return 0
 
     print("=" * 72)
