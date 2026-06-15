@@ -1521,6 +1521,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 @media (min-width: 1025px) {
   .nw-drawer-charts > .nw-drawer-chart { max-width: none; }
   .nw-drawer-charts > .nw-sm-grid { grid-template-columns: repeat(5, 1fr); max-width: none; }
+  /* A video line shows 6 small-multiples (Viewability · VCR · CTR · Attention ·
+     SIVT · GIVT) — widen the row to 6 so they stay in one aligned row. */
+  .nw-drawer-charts > .nw-sm-grid--6 { grid-template-columns: repeat(6, 1fr); }
 }
 /* Desktop: the PMP deal drawer's 3 trend charts read as a "headline + funnel
    row" — revenue spans the full drawer width on top, then total requests +
@@ -4842,33 +4845,31 @@ if st.session_state.active_view == "campaigns":
                 fmt = row.get("_bench_format") or row.get("ad_format")
                 is_video = isinstance(fmt, str) and "video" in fmt.lower()
                 view = _row_view_series(row)
-                second_label = "VCR" if is_video else "CTR"
-                second = _row_vcr_series(row) if is_video else _row_ctr_series(row)
                 # Targets sourced from settings.benchmarks_by_format keyed on
                 # the row's (possibly re-categorized) ad_format.
                 view_target = _row_bench(fmt, "viewability_pct") or 70.0
-                second_target = _row_bench(fmt, "vcr_pct" if is_video else "ctr_pct")
                 panels = []
                 sm_dates = _sm_date_row_html()
-                if view is not None:
-                    latest = next((v for v in reversed(view) if v is not None), None)
-                    latest_html = f'<span class="latest">{latest:.1f}%</span>' if latest is not None else ''
+                # Rate panels: Viewability always; VCR for video (completion
+                # rate); CTR always — so a VIDEO line shows BOTH VCR and CTR
+                # (Roger 2026-06-15), while non-video shows CTR only. Decimals:
+                # CTR 2dp, viewability/VCR 1dp.
+                rate_specs = [("Viewability", view, view_target, 1)]
+                if is_video:
+                    rate_specs.append(
+                        ("VCR", _row_vcr_series(row), _row_bench(fmt, "vcr_pct"), 1))
+                rate_specs.append(
+                    ("CTR", _row_ctr_series(row), _row_bench(fmt, "ctr_pct"), 2))
+                for _r_label, _r_series, _r_target, _r_dp in rate_specs:
+                    if _r_series is None:
+                        continue
+                    latest = next((v for v in reversed(_r_series) if v is not None), None)
+                    latest_html = (f'<span class="latest">{latest:.{_r_dp}f}%</span>'
+                                   if latest is not None else '')
                     panels.append(
                         '<div class="nw-sm-panel">'
-                        f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
-                        f'{_sparkline_svg(view, target=view_target, klass="", uniform=True)}'
-                        f'{sm_dates}'
-                        '</div>'
-                    )
-                if second is not None:
-                    latest = next((v for v in reversed(second) if v is not None), None)
-                    fmt_str = f"{latest:.2f}%" if (latest is not None and not is_video) \
-                              else (f"{latest:.1f}%" if latest is not None else "")
-                    latest_html = f'<span class="latest">{fmt_str}</span>' if latest is not None else ''
-                    panels.append(
-                        '<div class="nw-sm-panel">'
-                        f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
-                        f'{_sparkline_svg(second, target=second_target, klass="", uniform=True)}'
+                        f'<div class="nw-sm-label"><span>{_r_label}</span>{latest_html}</div>'
+                        f'{_sparkline_svg(_r_series, target=_r_target, klass="", uniform=True)}'
                         f'{sm_dates}'
                         '</div>'
                     )
@@ -4896,7 +4897,11 @@ if st.session_state.active_view == "campaigns":
                     )
                 if not panels:
                     return ""
-                return '<div class="nw-sm-grid">' + "".join(panels) + '</div>'
+                # A video line carries 6 cards (Viewability·VCR·CTR·Attention·
+                # SIVT·GIVT); widen the desktop row from 5 to 6 so they stay in
+                # one aligned row (the --6 modifier; mobile stays 2-col).
+                _grid_cls = "nw-sm-grid nw-sm-grid--6" if len(panels) == 6 else "nw-sm-grid"
+                return f'<div class="{_grid_cls}">' + "".join(panels) + '</div>'
 
             def _drawer_html(row):
                 _raw_unesc = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
