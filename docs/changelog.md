@@ -31,12 +31,16 @@ and why" index, keyed by PR. Newest first.
   derivation). 119/119 tests pass; new numbering simulated on screenshot-shaped
   data.
 
-## 2026-06-14 — Dashboard load-time optimization
+## 2026-06-14 → 06-15 — Load-time + PMP drawer & mobile polish
 
-A focused pass on the **Campaigns view's cold-load and interaction speed**,
-after diagnosing first paint as dominated by the two big DoubleVerify tables
-(~17 MB across `dv_attention` + `dv_ivt`) plus repeated per-render work. All
-squash-merged to `main` on green (119 tests).
+Two intertwined threads. **(1) Cold-load speed** — first paint was dominated by
+the two big DoubleVerify tables (~17 MB across `dv_attention` + `dv_ivt`) plus
+repeated per-render work; fixed by memoized aggregates (#239), `load()` column
+projection + vectorized Direct rate cells (#240), and finally server-side
+pre-aggregation of DV (#247). **(2) PMP drawer / table / mobile** — pagination
+(#241), the compact one-row pager (#243), the hidden-deal subtitle (#242),
+tap-to-drawer on the signals card (#244), the bid-funnel drawer charts
+(#245/#246). All squash-merged to `main` on green (119 tests).
 
 - **#239** — Memoize the DV aggregations: the per-LI / per-order Attention and
   MRC SIVT/GIVT rollups moved into two `@st.cache_data` helpers
