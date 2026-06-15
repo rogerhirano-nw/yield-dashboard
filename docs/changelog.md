@@ -31,8 +31,125 @@ and why" index, keyed by PR. Newest first.
   tag → `sz=600x720`. Durable debrief: `docs/newsletter_native_ads.md` (+ CLAUDE.md
   GAM facts). NB style changes take ~6–9 min to propagate to the rendered image.
 
-## 2026-06-15 — Direct table badge/sort fix
+## 2026-06-15 — Direct table polish
 
+- **#261** — **Hotfix: `NameError` in `_pmp_airtable_url`** (crashed the PMP tab,
+  Roger's screenshot). #260's floor refactor removed the `_dt = row.get("Deal
+  Type")` line from `_pmp_airtable_url` when swapping in `_deal_floor(row)`, but
+  `_dt` is still used two lines down in the eCPM-vs-floor `notes` string —
+  undefined-name at runtime. Restored the line. (The crash is render-code only,
+  so `py_compile` + the logic tests passed; it also surfaced *more* after #260
+  because the per-deal floors populate ~85% of deals, so far more rows now reach
+  the floor-thesis branch.) Verified `pyflakes` reports 0 undefined names across
+  `dashboard.py`; 120/120 tests pass.
+- **#260** — PMP **Configured floor now comes from the deal name**, not just the
+  per-deal-type settings floor (Roger: "are you not able to bring the configured
+  floor from the SSPs?"). The SSP delivery feeds don't carry a per-deal floor
+  (Pubmatic/Magnite none; GAM only for PA deals, unjoinable to revenue) — but
+  Newsweek embeds it in the deal name as token 11 (`…_$14_…`), the same way
+  DSP / advertiser / campaign / format are already derived. New
+  `dl.pmp_deal_floor(name)` parses the `$<floor>` token; a `_deal_floor(row)`
+  helper resolves **name floor first, settings per-type floor as fallback**.
+  Wired into all four floor surfaces: the drawer's Configured-floor cell, the
+  eCPM-vs-floor status banner, the floor-breach exception banner (vectorized),
+  and the mobile card's eCPM-vs-floor bar — so the banding works **per-deal**
+  instead of per-type. The Google Evergreen PD deal that read "—" now shows
+  `$14.00`. Prod coverage: 229/271 (~85%) of distinct deals carry a parseable
+  floor token; the rest fall back. New `test_pmp_deal_floor` (real prod-shaped
+  names); 120/120 tests pass.
+- **#259** — Direct drawer: **Creative duration cell shows on video lines only**
+  (Roger). A creative's duration is only meaningful for video, so the
+  `.nw-li-grid` "Creative duration" cell is now gated on `_is_video` (format
+  contains "video"); non-video LIs drop it and show 6 detail cells instead of 7.
+  Render code only; 119/119 tests pass.
+- **#258** — Direct drawer: **video lines now show a CTR card alongside VCR**
+  (Roger flagged the CTR card "missing" for video). The drawer's second
+  small-multiple used to be VCR *instead of* CTR for video (`second_label =
+  "VCR" if is_video else "CTR"`), so video lines never showed CTR. Now CTR is
+  always shown and VCR is added for video, so a **video line shows 6 cards**
+  (Viewability · VCR · CTR · Attention · SIVT · GIVT) and non-video shows 5. A
+  new `.nw-sm-grid--6` modifier widens the desktop row from `repeat(5,1fr)` to
+  `repeat(6,1fr)` so the 6 cards stay in one aligned row; mobile keeps the
+  2-col default (3 rows). Each panel still skips when its series is empty (a
+  video line with no daily completion data simply shows no VCR card). Render
+  code only; 119/119 tests pass; verified with desktop (row of 6) + 390px
+  (2-col) renders.
+- **#257** — Direct drawer: **the LI-name title is now a `<div>`, not an
+  `<h3>`** (mobile font-size fix). Streamlit styles markdown headings via
+  container-scoped selectors that outrank a bare class, so the
+  `<h3 class="nw-li-name">` rendered at Streamlit's heading size (~24px) instead
+  of the 13px set in #256 — and the long full GAM name wrapped to ~8 lines,
+  dominating the mobile screen (Roger's screenshot). The standalone render mocks
+  missed it (no Streamlit CSS). Switching the title to a `<div>` means the
+  heading selectors no longer match, so `.nw-li-name` (13px mono) applies.
+  Proven with a mock that simulates Streamlit's `h3` rule (h3 → huge, div →
+  13px). One-line HTML change; 119/119 tests pass.
+- **#256** — Direct drawer spec-card cleanup (from #255):
+  - **One name, and it's the full GAM line-item name.** The friendly serif
+    title + the raw mono string stacked read as "two names for the LI" (Roger's
+    screenshot) — redundant. The card now shows a single title, and per Roger
+    it's the **full GAM line-item name** (`.nw-li-name`, rendered **mono** since
+    it's a structured technical identifier) — not the friendly
+    `<Advertiser> — <Campaign>` derivation; the detail view shows the real
+    complete GAM name, while the **table rows keep the friendly name** (scannable
+    + the A–Z sort key). The friendly name's useful parts (Format / CPM / Seller)
+    are decoded into the grid, and the GAM-ID pill is the deep link.
+  - **Dropped the `Status` detail-grid cell.** Redundant with the top pacing
+    banner (`✓ On track` / `⚠ Underpacing` / …), which the drawer still leads
+    with and which conveys delivery state at a glance. Removed the cell, its
+    `_status_v`/`_status_ok` vars, and the now-unused `.nw-li-grid .v.ok` CSS.
+    The banner (incl. red/amber alerts) is unchanged.
+  - CSS + `_drawer_html` only; 119/119 tests pass.
+- **#255** — Direct drawer: **consolidated the LI name + metadata into one spec
+  card after the graphs** (`_drawer_html` → `.nw-li-card`). The drawer used to
+  open with the raw LI name in a mono box at the top, then dump a flat 9-cell
+  meta grid at the bottom whose `Order` field repeated that same raw name — the
+  name appeared twice and the metadata read as an afterthought ("thrown in after
+  all the graphs", Roger's screenshot). Now one card below the charts leads with
+  the friendly `<Advertiser> — <Campaign>` title (serif) + a GAM-ID pill, the
+  raw convention string as a mono caption (replacing the duplicate `Order`
+  field), then 3 hero pacing tiles (Goal / Delivered + progress bar / Remaining,
+  compact K/M serif figures) over a tinted detail grid (Flight · Status ·
+  Format · CPM · Revenue · Clicks · Seller · Creative duration). Adds Delivered
+  + Revenue (weren't shown) so the card is self-contained; the orphaned
+  "Creative duration —" now lives in the grid. Chosen from a 3-option visual
+  mock (spec sheet / definition list / **hero tiles** — Roger picked hero
+  tiles). PMP drawer unchanged. CSS + `_drawer_html` only; 119/119 tests pass;
+  verified with real-CSS renders at 1280px + 390px.
+- **#254** — PMP deal drawer: on **desktop** the 3 trend charts now read as a
+  **headline + funnel row** — revenue spans the **full drawer width** on top,
+  with **total requests + bid responses paired in a row directly below it** —
+  instead of a tall 3-high full-width stack that left the drawer's right half
+  empty (Roger's screenshot; same "improve it like the Direct drawer" intent as
+  #252/#253). The three charts wrap in a new `.nw-pmp-charts` flex container
+  (`@media min-width:1025px`): `:first-child` (revenue) is forced full-width via
+  `flex-basis:100%`, the rest share the next flex line at `flex:1 1 240px`. The
+  variable chart count rides the flex with no builder branch — a 2-chart deal
+  (Pubmatic: revenue + bid responses) shows revenue full + responses full below;
+  a revenue-only deal shows one full-width chart. Mobile (≤1024px) is untouched
+  — the wrapper is a plain block, so every chart stacks full-width as before.
+  CSS-only (+ a one-line wrap of the three charts in `_pmp_drawer_html`).
+  Verified with real-CSS renders at 1400px (GAM 3-chart + Pubmatic 2-chart) and
+  a true 390px viewport (stacked). 119/119 tests pass.
+- **#253** — Direct drawer alignment fix, **superseding #252's side-by-side**.
+  On **desktop** the 7-day delivery chart now spans the **full drawer width**
+  and the Viewability / CTR / Attention / SIVT / GIVT small-multiples sit in
+  **one aligned row of 5 directly below it** (`.nw-drawer-charts > .nw-drawer-chart`
+  and `> .nw-sm-grid` both drop their 760 cap to `max-width:none`, and the grid's
+  `grid-template-columns` becomes `repeat(5,1fr)` at ≥1025px). #252's flex
+  side-by-side left the short chart next to a 3-row 2-col grid, which read ragged
+  / unaligned (Roger: "the graphs not aligned"). Now both edges line up,
+  full-bleed. Mobile (≤1024px) is unchanged — capped chart + 2-col grid, stacked.
+  CSS-only; verified with a real-CSS render at 1400px (aligned row of 5) + 390px
+  (still 2-col stacked). 119/119 tests pass.
+- **#252** — Direct drawer: on **desktop**, the Viewability / CTR / Attention /
+  SIVT / GIVT small-multiples lift up **beside the 7-day delivery chart** (a
+  new `.nw-drawer-charts` flex row, ≥1025px) instead of stacking below it and
+  leaving the drawer's right half empty (Roger's screenshot). The chart holds
+  ~760px on the left; the grid fills the right. Mobile (≤1024px) still stacks.
+  CSS-only; verified with a real-CSS render at 1400px + 390px. **Superseded by
+  #253** — the side-by-side read ragged; replaced with full-width chart + a row
+  of 5 below.
 - **#250** — Badge numbering reverted to **per GAM order** (from #248's
   per-displayed-campaign-group, which left unique campaigns badge-free — most
   Infiniti/Jeep lines lost their `#`, which Roger flagged). Now every line of a

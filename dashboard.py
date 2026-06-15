@@ -1352,6 +1352,43 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   color: var(--text-primary); font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+/* Consolidated LI identity + spec card (Direct drawer, 2026-06-15). Replaces
+   the top raw-name box AND the old flat 9-cell meta grid — both of which
+   duplicated the name (the grid's `Order` field WAS the raw name). It leads
+   with the friendly "<Advertiser> — <Campaign>" title (serif), a GAM-ID chip,
+   and the raw convention string as a mono caption, then hero pacing tiles
+   (Goal / Delivered+progress / Remaining) over a tinted detail grid. */
+.nw-li-card { margin-top: 18px; }
+.nw-li-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; }
+.nw-li-eyebrow { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
+.nw-li-name { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+  font-weight: 600; color: var(--text-primary); line-height: 1.45; margin: 0;
+  overflow-wrap: anywhere; }
+.nw-li-gam { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  white-space: nowrap; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 3px 11px; }
+.nw-li-gam a { color: var(--text-primary); font-weight: 600; text-decoration: none; }
+.nw-li-gam a:hover { text-decoration: underline; }
+.nw-li-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.nw-li-hero .tile { background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 13px; min-width: 0; }
+.nw-li-hero .k { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); display: block; margin-bottom: 4px; }
+.nw-li-hero .big { font-family: var(--font-display); font-size: 20px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums; line-height: 1; }
+.nw-li-bar { height: 6px; border-radius: 3px; background: var(--surface-2);
+  overflow: hidden; margin-top: 9px; border: 1px solid var(--border); }
+.nw-li-bar > i { display: block; height: 100%; background: var(--state-positive-muted); }
+.nw-li-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px; margin-top: 10px; }
+.nw-li-grid .cell { background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 8px 12px; min-width: 0; }
+.nw-li-grid .k { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-muted); display: block; margin-bottom: 2px; }
+.nw-li-grid .v { color: var(--text-primary); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
 .nw-warn {
   margin-top: 14px; padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -1475,6 +1512,35 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
    preserveAspectRatio="none") — height:auto keeps geometry true at any
    panel width instead of crushing the trend flat on the wide layout. */
 .nw-sm-panel svg { width: 100%; height: auto; display: block; }
+/* Desktop: the 7-day delivery chart spans the full drawer width, and the
+   Viewability/CTR/Attention/SIVT/GIVT small-multiples sit in ONE aligned row of
+   5 directly below it — so the graphs line up (Roger 2026-06-15). An earlier
+   side-by-side left the short delivery chart next to a 3-row grid, which read
+   ragged / unaligned. ≤1024px / mobile keeps the capped chart + 2-col grid,
+   stacked as before. */
+@media (min-width: 1025px) {
+  .nw-drawer-charts > .nw-drawer-chart { max-width: none; }
+  .nw-drawer-charts > .nw-sm-grid { grid-template-columns: repeat(5, 1fr); max-width: none; }
+  /* A video line shows 6 small-multiples (Viewability · VCR · CTR · Attention ·
+     SIVT · GIVT) — widen the row to 6 so they stay in one aligned row. */
+  .nw-drawer-charts > .nw-sm-grid--6 { grid-template-columns: repeat(6, 1fr); }
+}
+/* Desktop: the PMP deal drawer's 3 trend charts read as a "headline + funnel
+   row" — revenue spans the full drawer width on top, then total requests +
+   bid responses sit paired in a row directly below it (Roger 2026-06-15). Same
+   rhythm as the Direct drawer's full-width delivery chart + small-multiples
+   row, and it kills the tall 3-high full-width stack that left the drawer's
+   right half empty. The first chart (revenue) is forced full-width via
+   flex-basis:100%; the rest share the next flex line. Variable count is handled
+   for free: a 2-chart deal (Pubmatic — revenue + bid responses, no requests)
+   shows revenue full + responses full below; a revenue-only deal shows one
+   full-width chart. ≤1024px / mobile: the wrapper is a plain block, so every
+   chart stacks full-width exactly as before. */
+@media (min-width: 1025px) {
+  .nw-pmp-charts { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .nw-pmp-charts > .nw-drawer-chart { flex: 1 1 240px; max-width: none; margin-top: 0; }
+  .nw-pmp-charts > .nw-drawer-chart:first-child { flex-basis: 100%; }
+}
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -4485,11 +4551,29 @@ if st.session_state.active_view == "campaigns":
                 v = pd.to_numeric(v, errors="coerce")
                 return "—" if pd.isna(v) else f"{int(v):,}"
 
+            def _kmb(v):
+                # Compact K/M for the drawer hero tiles — matches the table's
+                # DELIVERED formatting (`_delivered_html`): 1,875,000 → "1.88M".
+                v = pd.to_numeric(v, errors="coerce")
+                if pd.isna(v):
+                    return "—"
+                a = abs(v)
+                if a >= 1_000_000:
+                    return f"{v/1_000_000:.2f}M"
+                if a >= 1_000:
+                    return f"{v/1_000:.1f}K"
+                return f"{int(v):,}"
+
             def _fmt_date_cell(v):
                 if v is None or (isinstance(v, float) and pd.isna(v)):
                     return "—"
                 s = str(v)
                 return s.split(" ")[0] if " " in s else s
+
+            def _pretty_date_cell(v):
+                # "Jun 3" — friendlier than ISO for the spec card's Flight field.
+                d = pd.to_datetime(v, errors="coerce")
+                return d.strftime("%b %d").replace(" 0", " ") if pd.notna(d) else "—"
 
             def _drawer_status_banner(row):
                 """Rule-based thesis statement (severity-colored). Flight ref
@@ -4761,33 +4845,31 @@ if st.session_state.active_view == "campaigns":
                 fmt = row.get("_bench_format") or row.get("ad_format")
                 is_video = isinstance(fmt, str) and "video" in fmt.lower()
                 view = _row_view_series(row)
-                second_label = "VCR" if is_video else "CTR"
-                second = _row_vcr_series(row) if is_video else _row_ctr_series(row)
                 # Targets sourced from settings.benchmarks_by_format keyed on
                 # the row's (possibly re-categorized) ad_format.
                 view_target = _row_bench(fmt, "viewability_pct") or 70.0
-                second_target = _row_bench(fmt, "vcr_pct" if is_video else "ctr_pct")
                 panels = []
                 sm_dates = _sm_date_row_html()
-                if view is not None:
-                    latest = next((v for v in reversed(view) if v is not None), None)
-                    latest_html = f'<span class="latest">{latest:.1f}%</span>' if latest is not None else ''
+                # Rate panels: Viewability always; VCR for video (completion
+                # rate); CTR always — so a VIDEO line shows BOTH VCR and CTR
+                # (Roger 2026-06-15), while non-video shows CTR only. Decimals:
+                # CTR 2dp, viewability/VCR 1dp.
+                rate_specs = [("Viewability", view, view_target, 1)]
+                if is_video:
+                    rate_specs.append(
+                        ("VCR", _row_vcr_series(row), _row_bench(fmt, "vcr_pct"), 1))
+                rate_specs.append(
+                    ("CTR", _row_ctr_series(row), _row_bench(fmt, "ctr_pct"), 2))
+                for _r_label, _r_series, _r_target, _r_dp in rate_specs:
+                    if _r_series is None:
+                        continue
+                    latest = next((v for v in reversed(_r_series) if v is not None), None)
+                    latest_html = (f'<span class="latest">{latest:.{_r_dp}f}%</span>'
+                                   if latest is not None else '')
                     panels.append(
                         '<div class="nw-sm-panel">'
-                        f'<div class="nw-sm-label"><span>Viewability</span>{latest_html}</div>'
-                        f'{_sparkline_svg(view, target=view_target, klass="", uniform=True)}'
-                        f'{sm_dates}'
-                        '</div>'
-                    )
-                if second is not None:
-                    latest = next((v for v in reversed(second) if v is not None), None)
-                    fmt_str = f"{latest:.2f}%" if (latest is not None and not is_video) \
-                              else (f"{latest:.1f}%" if latest is not None else "")
-                    latest_html = f'<span class="latest">{fmt_str}</span>' if latest is not None else ''
-                    panels.append(
-                        '<div class="nw-sm-panel">'
-                        f'<div class="nw-sm-label"><span>{second_label}</span>{latest_html}</div>'
-                        f'{_sparkline_svg(second, target=second_target, klass="", uniform=True)}'
+                        f'<div class="nw-sm-label"><span>{_r_label}</span>{latest_html}</div>'
+                        f'{_sparkline_svg(_r_series, target=_r_target, klass="", uniform=True)}'
                         f'{sm_dates}'
                         '</div>'
                     )
@@ -4815,10 +4897,20 @@ if st.session_state.active_view == "campaigns":
                     )
                 if not panels:
                     return ""
-                return '<div class="nw-sm-grid">' + "".join(panels) + '</div>'
+                # A video line carries 6 cards (Viewability·VCR·CTR·Attention·
+                # SIVT·GIVT); widen the desktop row from 5 to 6 so they stay in
+                # one aligned row (the --6 modifier; mobile stays 2-col).
+                _grid_cls = "nw-sm-grid nw-sm-grid--6" if len(panels) == 6 else "nw-sm-grid"
+                return f'<div class="{_grid_cls}">' + "".join(panels) + '</div>'
 
             def _drawer_html(row):
-                full_li = _esc(re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or "")))
+                _raw_unesc = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
+                # The card titles with the FULL GAM line-item name (Roger's call),
+                # not the friendly "<Advertiser> — <Campaign>" derivation — the
+                # detail view shows the real, complete GAM name. Rendered mono
+                # (`.nw-li-name`) since it's a structured technical identifier; the
+                # table ROWS still use the friendly name (scannable + sort key).
+                full_li = _esc(_raw_unesc)
                 li_id = row.get("line_item_id")
                 li_id_str = ""
                 if li_id is not None and not (isinstance(li_id, float) and pd.isna(li_id)):
@@ -4851,6 +4943,15 @@ if st.session_state.active_view == "campaigns":
                         _cdur_str = f"{float(_cdur):.0f}s"
                     except (TypeError, ValueError):
                         _cdur_str = "—"
+                # Creative duration is only meaningful for video — show the cell
+                # on video lines only (Roger 2026-06-15).
+                _fmt_dur = row.get("_bench_format") or row.get("ad_format")
+                _is_video = isinstance(_fmt_dur, str) and "video" in _fmt_dur.lower()
+                _cdur_cell = (
+                    f'<div class="cell"><span class="k">Creative duration</span>'
+                    f'<span class="v">{_cdur_str}</span></div>'
+                    if _is_video else ""
+                )
 
                 warn_html = ""
                 for w in _warnings_for(row):
@@ -4936,46 +5037,75 @@ if st.session_state.active_view == "campaigns":
                 actions = (f'<div class="nw-actions">{"".join(action_buttons)}</div>'
                            if action_buttons else "")
 
-                # GAM ID is a right-clickable link (Copy Link Address gets the
-                # full deep-link URL — Streamlit blocks JS so navigator.clipboard
+                # GAM ID chip — a right-clickable deep link (Copy Link Address
+                # gets the full URL; Streamlit blocks JS so navigator.clipboard
                 # isn't available, but the browser's native context menu is).
                 if li_id_str:
                     if gam_link:
-                        id_chip = (
-                            f'<span class="nw-drawer-id">GAM ID · '
-                            f'<a class="nw-drawer-id-link" href="{gam_link}" '
-                            f'target="_blank" rel="noopener noreferrer" '
+                        _gam_chip = (
+                            f'<span class="nw-li-gam">GAM ID · '
+                            f'<a href="{gam_link}" target="_blank" rel="noopener noreferrer" '
                             f'title="Click to open in GAM · right-click to copy link">'
-                            f'{_esc(li_id_str)}</a></span>'
+                            f'{_esc(li_id_str)} ↗</a></span>'
                         )
                     else:
-                        id_chip = f'<span class="nw-drawer-id">GAM ID · {_esc(li_id_str)}</span>'
+                        _gam_chip = f'<span class="nw-li-gam">GAM ID · {_esc(li_id_str)}</span>'
                 else:
-                    id_chip = ''
+                    _gam_chip = ''
+
+                # Spec-card values.
+                _rev_v = pd.to_numeric(row.get("lifetime_revenue"), errors="coerce")
+                if pd.isna(_rev_v):
+                    _rev_v = pd.to_numeric(row.get("ad_server_cpm_and_cpc_revenue"), errors="coerce")
+                _rev_s = f"${_rev_v:,.0f}" if pd.notna(_rev_v) else "—"
+                _prog = pd.to_numeric(row.get("progress_pct"), errors="coerce")
+                _bar_html = ""
+                if pd.notna(_prog):
+                    _bar_html = (f'<div class="nw-li-bar"><i style="width:'
+                                 f'{max(0.0, min(100.0, float(_prog))):.0f}%"></i></div>')
+                _seller_v = row.get("seller_ae")
+                _seller_s = (_esc(_seller_v) if isinstance(_seller_v, str) and _seller_v.strip()
+                             else "Programmatic")
+                _flight_s = (f'{_pretty_date_cell(row.get("start_date"))} → '
+                             f'{_pretty_date_cell(row.get("end_date"))}')
+
                 status_html = _drawer_status_banner(row)
                 chart_html = _drawer_delivery_chart(row)
                 sm_html = _drawer_small_multiples(row)
+                # Consolidated identity + spec card (Option C) — leads with the
+                # friendly name, GAM-ID chip, and the raw convention string, then
+                # hero pacing tiles + a tinted detail grid. The name + raw string
+                # used to sit in a box at the *top*; the metadata was a flat grid
+                # dumped at the bottom whose `Order` field repeated the raw name.
                 return (
                     '<div class="nw-drawer">'
-                    '<div class="nw-drawer-head">'
-                    f'<span class="nw-drawer-li">{full_li or "—"}</span>'
-                    f'{id_chip}'
-                    '</div>'
                     f'{status_html}'
                     f'{warn_html}'
-                    f'{chart_html}'
-                    f'{sm_html}'
-                    '<div class="nw-meta-grid">'
-                    f'<div><span class="lbl">Goal</span><span class="val">{_fmt_int_cell(row.get("impressions_goal"))}</span></div>'
-                    f'<div><span class="lbl">Remaining</span><span class="val">{_fmt_int_cell(row.get("remaining_impressions"))}</span></div>'
-                    f'<div><span class="lbl">Flight</span><span class="val">{_fmt_date_cell(row.get("start_date"))} → {_fmt_date_cell(row.get("end_date"))}</span></div>'
-                    f'<div><span class="lbl">Status</span><span class="val">{_esc(row.get("status") or "—")}</span></div>'
-                    f'<div><span class="lbl">Format</span><span class="val">{_esc(row.get("ad_format") or "—")}</span></div>'
-                    f'<div><span class="lbl">CPM</span><span class="val">{cpm_s}</span></div>'
-                    f'<div><span class="lbl">Clicks</span><span class="val">{_fmt_int_cell(clicks_raw)}</span></div>'
-                    f'<div><span class="lbl">Order</span><span class="val">{_esc(row.get("order_name") or "—")}</span></div>'
-                    f'<div><span class="lbl">Creative duration</span>'
-                    f'<span class="val">{_cdur_str}</span></div>'
+                    f'<div class="nw-drawer-charts">{chart_html}{sm_html}</div>'
+                    '<div class="nw-li-card">'
+                    '<div class="nw-li-head">'
+                    '<div><div class="nw-li-eyebrow">Line item</div>'
+                    f'<div class="nw-li-name">{full_li or "—"}</div></div>'
+                    f'{_gam_chip}'
+                    '</div>'
+                    '<div class="nw-li-hero">'
+                    f'<div class="tile"><span class="k">Goal</span>'
+                    f'<span class="big">{_kmb(row.get("impressions_goal"))}</span></div>'
+                    f'<div class="tile"><span class="k">Delivered</span>'
+                    f'<span class="big">{_kmb(row.get("lifetime_impressions_delivered"))}</span>'
+                    f'{_bar_html}</div>'
+                    f'<div class="tile"><span class="k">Remaining</span>'
+                    f'<span class="big">{_kmb(row.get("remaining_impressions"))}</span></div>'
+                    '</div>'
+                    '<div class="nw-li-grid">'
+                    f'<div class="cell"><span class="k">Flight</span><span class="v">{_flight_s}</span></div>'
+                    f'<div class="cell"><span class="k">Format</span><span class="v">{_esc(row.get("ad_format") or "—")}</span></div>'
+                    f'<div class="cell"><span class="k">CPM</span><span class="v">{cpm_s}</span></div>'
+                    f'<div class="cell"><span class="k">Revenue</span><span class="v">{_rev_s}</span></div>'
+                    f'<div class="cell"><span class="k">Clicks</span><span class="v">{_fmt_int_cell(clicks_raw)}</span></div>'
+                    f'<div class="cell"><span class="k">Seller</span><span class="v">{_seller_s}</span></div>'
+                    f'{_cdur_cell}'
+                    '</div>'
                     '</div>'
                     f'{actions}'
                     '</div>'
@@ -5981,10 +6111,26 @@ if st.session_state.active_view == "campaigns":
 
         # ── Exception banners ──
         _floors = _cfg.get("pmp_floors_by_deal_type", {}) or {}
+
+        def _deal_floor(row):
+            # Per-deal configured floor: the $<floor> token Newsweek embeds in
+            # the deal name (cross-SSP — the SSP delivery feeds carry no floor),
+            # falling back to the per-deal-type floor from settings when a deal
+            # isn't convention-named.
+            _f = dl.pmp_deal_floor(row.get("Deal"))
+            if _f is None:
+                _dt = row.get("Deal Type") or ""
+                _f = _floors.get(_dt) if _dt else None
+            return _f
+
         _breach_rows = pd.DataFrame()
-        if _floors and "eCPM" in combined_pmp.columns and "Deal Type" in combined_pmp.columns:
+        if "eCPM" in combined_pmp.columns and "Deal" in combined_pmp.columns:
             _df_b = combined_pmp.copy()
-            _df_b["_floor"] = _df_b["Deal Type"].map(_floors)
+            # Per-deal floor from the name; per-type settings floor as fallback.
+            _df_b["_floor"] = _df_b["Deal"].map(dl.pmp_deal_floor)
+            if _floors and "Deal Type" in _df_b.columns:
+                _df_b["_floor"] = _df_b["_floor"].fillna(_df_b["Deal Type"].map(_floors))
+            _df_b["_floor"] = pd.to_numeric(_df_b["_floor"], errors="coerce")
             _ecpm_num = pd.to_numeric(_df_b["eCPM"], errors="coerce")
             _breach_rows = _df_b[_df_b["_floor"].notna() & _ecpm_num.notna() & (_ecpm_num < _df_b["_floor"])]
 
@@ -6364,7 +6510,7 @@ if st.session_state.active_view == "campaigns":
             # Severity from eCPM vs floor.
             _ecpm = pd.to_numeric(row.get("eCPM"), errors="coerce")
             _dt = row.get("Deal Type") or ""
-            _floor = _floors.get(_dt) if _dt else None
+            _floor = _deal_floor(row)
             severity = "Info"
             if pd.notna(_ecpm) and _floor:
                 if _ecpm < _floor * 0.8: severity = "Critical"
@@ -6584,7 +6730,7 @@ if st.session_state.active_view == "campaigns":
         def _pmp_drawer_html(row):
             _full = _pmp_esc(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
-            _floor = _floors.get(_dt) if _dt else None
+            _floor = _deal_floor(row)
             _ecpm_v = pd.to_numeric(row.get("eCPM"), errors="coerce")
             _rev_chart  = _pmp_drawer_trend_chart(_pmp_rev_series_for(row), _pmp_rev_dates,
                                                   "7-day revenue", money=True)
@@ -6703,9 +6849,7 @@ if st.session_state.active_view == "campaigns":
                 f'<span class="nw-drawer-li">{_full or "—"}</span>'
                 '</div>'
                 f'{status_html}'
-                f'{_rev_chart}'
-                f'{_req_chart}'
-                f'{_resp_chart}'
+                f'<div class="nw-pmp-charts">{_rev_chart}{_req_chart}{_resp_chart}</div>'
                 f'{bid_html}'
                 f'{meta_html}'
                 f'{_action_html}'
@@ -6751,7 +6895,7 @@ if st.session_state.active_view == "campaigns":
         for _, row in _pmp_page_slice.iterrows():
             _primary, _sub = dl.pmp_deal_display_name(row.get("Deal") or "")
             _dt = row.get("Deal Type") or ""
-            _floor_val = _floors.get(_dt) if _dt else None
+            _floor_val = _deal_floor(row)
             _seller = row.get("Seller")
             if not isinstance(_seller, str) or not _seller.strip():
                 _seller_html = '<span class="seller-prog">—</span>'

@@ -588,6 +588,40 @@ def pmp_deal_display_name(name):
     return (re.sub(r"\s+", " ", raw.replace("_", " ")).strip(), "")
 
 
+def pmp_deal_floor(name):
+    """Configured floor (a CPM, as a float) parsed from a Newsweek-convention
+    PMP deal name — token 11 (`<floor>`) of
+    `Newsweek_<type>_<vertical>_<exchange>_<dsp>_<holding>_<agency>_<advertiser>_
+    <campaign>_<geo>_<format>_<floor>_<team>_<ae>`. E.g. the `$14` in
+    "…_US_Video_$14_Team-USA_ILee" → 14.0.
+
+    This is the per-deal floor Newsweek set when creating the deal. The SSP
+    delivery feeds don't carry one (Pubmatic/Magnite report none; GAM exposes
+    `floor_price` only for PA deals, and not joinable to the revenue rows), and
+    the deal name is already how the dashboard derives advertiser / campaign /
+    format. Returns a positive float, or None for a non-convention name, a
+    missing/NA floor token, or an unparseable / non-positive value."""
+    if not isinstance(name, str) or name.strip() in _PMP_NA:
+        return None
+    raw = name.strip()
+    if not _PMP_CONV_RE.match(raw):
+        return None
+    t = raw.split("_")
+    if len(t) <= 11:
+        return None
+    tok = t[11].strip()
+    if tok in _PMP_NA:
+        return None
+    m = re.search(r"\d+(?:\.\d+)?", tok.replace(",", ""))
+    if not m:
+        return None
+    try:
+        val = float(m.group(0))
+    except ValueError:
+        return None
+    return val if val > 0 else None
+
+
 # ── Pacing ──────────────────────────────────────────────────────────────
 
 
