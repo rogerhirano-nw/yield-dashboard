@@ -69,10 +69,11 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) when a branch
-          # push should perform a write; empty => push stays read-only. Reset to
-          # "" after the 600x560 create (#261) so a later marker push can't
-          # re-create a duplicate style (createNativeStyles is not idempotent).
-          PUSH_APPLY_ARGS: ""
+          # push should perform a write; empty => push stays read-only.
+          # Match the three newsletter native-style backgrounds to the Newsweek
+          # warm-paper canvas (#fefcf6). Idempotent (marker-delimited block), so
+          # re-runs are safe; reset to "" once applied.
+          PUSH_APPLY_ARGS: "--set-background fefcf6 --style-ids 972438,972441,972672 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then

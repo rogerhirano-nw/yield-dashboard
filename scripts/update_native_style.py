@@ -87,6 +87,28 @@ def apply_fix(css: str | None, image_height: int, mode: str) -> str:
     return f"{css}{sep}\n{block}\n"
 
 
+_BG_START = "/* nw-bg:start */"
+_BG_END = "/* nw-bg:end */"
+
+
+def apply_background(css: str | None, color: str) -> str:
+    """Append (or replace) a marker block forcing the background color on the
+    root containers (.pb logo / .bt banner / .sc sponsored) + html,body, so the
+    rasterized ad matches the newsletter canvas. Idempotent."""
+    if not color.startswith("#"):
+        color = "#" + color
+    block = (f"{_BG_START}\n"
+             f"html,body{{background:{color}!important}}"
+             f".pb,.bt,.sc{{background:{color}!important}}\n"
+             f"{_BG_END}")
+    css = css or ""
+    if _BG_START in css and _BG_END in css:
+        return re.sub(re.escape(_BG_START) + r".*?" + re.escape(_BG_END),
+                      lambda _m: block, css, flags=re.S)
+    sep = "" if (not css or css.endswith("\n")) else "\n"
+    return f"{css}{sep}\n{block}\n"
+
+
 def _dump(s: dict) -> None:
     print("-" * 72)
     aspect = " (aspect-ratio)" if s.get("is_aspect_ratio") else ""
@@ -139,6 +161,8 @@ def main() -> int:
         "--paper-bg", action="store_true",
         help="append an html,body paper background so the taller frame fills cleanly",
     )
+    ap.add_argument("--set-background", help="set background color (hex) on --style-ids")
+    ap.add_argument("--style-ids", help="comma-separated native style ids for --set-background")
     args = ap.parse_args()
 
     gam = GAMClient()
@@ -155,6 +179,27 @@ def main() -> int:
         return 0
 
     styles = gam.list_native_styles()
+
+    if args.set_background:
+        by_id = {s["id"]: s for s in styles}
+        ids = [s.strip() for s in (args.style_ids or "").split(",") if s.strip()]
+        if not ids:
+            print("::error::--style-ids is required with --set-background", file=sys.stderr)
+            return 1
+        for sid in ids:
+            cur = by_id.get(sid)
+            if not cur:
+                print(f"::error::native style {sid} not found", file=sys.stderr)
+                continue
+            new_css = apply_background(cur.get("css_snippet"), args.set_background)
+            print(f"== {sid} {cur['name']!r} ({cur['width']}x{cur['height']}) "
+                  f"-> background {args.set_background} ==")
+            if not args.apply:
+                print("(dry-run — add --apply to write)")
+                continue
+            gam.update_native_style(sid, css_snippet=new_css)
+            print(f"::notice::set background {args.set_background} on native style {sid}")
+        return 0
 
     if args.create_from:
         by_id = {s["id"]: s for s in styles}
