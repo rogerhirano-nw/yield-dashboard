@@ -74,10 +74,10 @@ def main() -> int:
               f"date={m.get('timestamp') or m.get('date') or m.get('created_at')}  "
               f"from={m.get('from') or m.get('sender')}  subject={m.get('subject')!r}")
 
+    subject_match = os.environ.get("INSPECT_SUBJECT", "Infiniti Ad Test").lower()
     ad_re = re.compile(r"gampad|securepubads|doubleclick|the-bulletin", re.I)
-    target = None
-    target_html = ""
-    previews = []  # (subject, snippet) for the no-match dump
+    target_detail = None
+    previews = []
     first_keys = None
     for m in lst:
         mid = m.get("id") or m.get("message_id")
@@ -91,19 +91,19 @@ def main() -> int:
             continue
         if first_keys is None and isinstance(detail, dict):
             first_keys = sorted(detail.keys())
+        subj = str(detail.get("subject") or m.get("subject") or "")
         blob = " ".join(str(detail.get(k) or "")
                         for k in ("html", "text", "extracted_text", "preview", "subject"))
         if len(previews) < 8:
             snip = (detail.get("preview") or detail.get("text") or "")[:160].replace("\n", " ")
-            previews.append((detail.get("subject"), snip))
-        if ad_re.search(blob):
-            target = m
-            target_html = body_html(detail) or str(detail.get("text") or blob)
+            previews.append((subj, snip))
+        if subject_match in subj.lower() or ad_re.search(blob):
+            target_detail = detail
             break
 
-    if not target:
-        print("::notice::No message with a GAM ad tag found yet — the forward may "
-              "not have arrived, or its content is in a field/folder not scanned.")
+    if not target_detail:
+        print(f"::notice::No message matching subject {subject_match!r} (or a GAM ad "
+              "tag) yet — the forward may not have landed.")
         if first_keys:
             print("detail keys:", first_keys)
         print("-- newest message previews --")
@@ -111,35 +111,48 @@ def main() -> int:
             print(f"   subject={subj!r}\n     {snip}")
         return 0
 
+    html_body = ""
+    for k in ("html", "html_body", "body_html"):
+        if isinstance(target_detail.get(k), str) and target_detail[k].strip():
+            html_body = target_detail[k]
+            break
+    text_body = str(target_detail.get("text") or target_detail.get("extracted_text") or "")
+    blob = html_body or text_body
     print("=" * 72)
-    print(f"AD-BEARING MESSAGE  from={target.get('from') or target.get('sender')}  "
-          f"subject={target.get('subject')!r}")
+    print(f"MATCHED MESSAGE  from={target_detail.get('from')}  "
+          f"subject={target_detail.get('subject')!r}")
+    print(f"has html: {bool(html_body)}  (html {len(html_body)} chars, text {len(text_body)} chars)")
 
-    blocks = re.findall(r"<a\b[^>]*gampad[^>]*>.*?</a>", target_html, re.I | re.S)
+    blocks = re.findall(r"<a\b[^>]*gampad[^>]*>.*?</a>", blob, re.I | re.S)
     if not blocks:
         blocks = re.findall(
-            r"<img\b[^>]*(?:gampad|googleusercontent|beehiv|mailchimp)[^>]*>",
-            target_html, re.I)
-    print(f"-- {len(blocks)} ad block(s) --")
+            r"<img\b[^>]*src=[\"'][^\"']*(?:gampad|googleusercontent|beehiv)[^\"']*[\"'][^>]*>",
+            blob, re.I)
+    print(f"-- {len(blocks)} ad <a>/<img> block(s) --")
     for b in blocks[:4]:
-        print(_html.unescape(b)[:1600])
+        print(_html.unescape(b)[:1500])
         print("-" * 40)
 
-    srcs = re.findall(r'<img\b[^>]*\bsrc=["\']([^"\']+)["\']', target_html, re.I)
-    print("all <img> src hosts:")
-    for s in srcs[:20]:
-        host = urllib.parse.urlparse(_html.unescape(s)).netloc
-        print(f"   {host or '(relative)'}   {_html.unescape(s)[:130]}")
+    # any ad-server URL anywhere (catches plain-text jump links too)
+    urls = re.findall(
+        r"https?://[^\s\"'<>]*(?:gampad|securepubads|doubleclick|googleusercontent)[^\s\"'<>]*",
+        blob, re.I)
+    print(f"-- {len(urls)} ad-server URL(s) in body --")
+    for u in list(dict.fromkeys(urls))[:8]:
+        print("   " + _html.unescape(u)[:240])
 
     def flag(name, pat):
-        m = re.search(pat, target_html, re.I)
+        m = re.search(pat, blob, re.I)
         print(f"{name}: {_html.unescape(m.group(0)) if m else 'NOT FOUND'}")
 
     flag("requested sz", r"sz=600x\d+")
-    flag("url= param", r"[?&]url=[^\"'&]*")
-    flag("clkk", r"clkk=[^\"'&]{0,80}")
-    if re.search(r"\{\{[^}]+\}\}", target_html):
-        print("note: literal {{merge_tags}} still present in body (unresolved)")
+    flag("url= param", r"[?&]url=[^\"'&\s]*")
+    flag("clkk", r"clkk=[^\"'&\s]{0,80}")
+    if re.search(r"\{\{[^}]+\}\}", blob):
+        print("note: literal {{merge_tags}} still present (unresolved)")
+    if not html_body:
+        print("\n-- text/extracted_text (first 3000 chars) --")
+        print(text_body[:3000])
     return 0
 
 
