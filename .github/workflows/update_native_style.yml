@@ -70,10 +70,9 @@ jobs:
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
           # write; reset to "" between writes so a stray marker push is a no-op.
-          # Make the Top Logo (972438, 600x80) render a bit taller IN PLACE (no
-          # tag change): tighten the chrome (padding 5, label margin 3) so the
-          # logo image cap can grow 44px -> 52px inside the same 80px frame.
-          PUSH_APPLY_ARGS: "--append-css-b64 LnBie3BhZGRpbmc6NXB4IDAhaW1wb3J0YW50fQoucGItbGFiZWx7bWFyZ2luLWJvdHRvbTozcHghaW1wb3J0YW50fQoucGIgaW1ne21heC1oZWlnaHQ6NTJweCFpbXBvcnRhbnR9 --marker logoheight --style-ids 972438 --apply"
+          # Done: Top Logo 972438 logo enlarged in place (max-height 52px, chrome
+          # tightened) within its 600x80 frame; Bottom Banner centered as 996986.
+          PUSH_APPLY_ARGS: ""
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then

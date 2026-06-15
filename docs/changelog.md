@@ -37,6 +37,14 @@ and why" index, keyed by PR. Newest first.
   `.bt img{margin:0 auto}`, carrying the `#FFFCF2` background) — image not
   stretched, just centered, like the Top Logo's `margin:0 auto`. Beehiv tag →
   `sz=600x250`. New gotcha 8 in the debrief.
+- **#261** — **Top Logo enlarged in place** (Roger: "increase the height for the
+  logo a little bit"). The 600×80 frame was fully packed (logo cap 44px + label +
+  padding ≈ 80px), so rather than grow the frame (which would force a Beehiv `sz`
+  change), tightened the chrome (`.pb` padding 10→5, `.pb-label` margin 6→3) to
+  free vertical space and raised the logo cap **`max-height:44px → 52px`** —
+  idempotent `nw-logoheight` block on `972438`, **same 600×80 size so the Beehiv
+  tag is unchanged**. Growing the frame (e.g. 600×96) remains the option if a
+  bigger bump is wanted.
 
 ## 2026-06-15 — Direct table polish
 

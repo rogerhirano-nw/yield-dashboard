@@ -114,3 +114,17 @@ Cloud sessions hold no GAM/agentmail creds and have no browser, so:
 3. Wait ~6–9 min, then verify via a delivered forward and/or a direct
    `gampad/ad` fetch. Mind the mobile downscale (font sizing) and match the
    background to the newsletter canvas (DOM ancestry).
+
+**Resize the content vs. resize the frame.** The native-style **size is the
+`sz=WxH` the Beehiv tag requests** — GAM rasterizes at exactly that, and only a
+style of that size+template serves it. So *growing the frame* (e.g. the Top Logo
+600×80 → 600×96) **requires repointing the Beehiv tag**. To make an element
+bigger *without* a tag change, enlarge it **inside the existing frame**: e.g. the
+Top Logo's 600×80 was fully packed (logo `max-height:44px` + "Presented by" label
++ padding ≈ 80px), so to render the logo taller we tightened the chrome (`.pb`
+padding 10→5, label margin 6→3) and raised the cap to `max-height:52px`
+in place (`--append-css-b64 … --marker logoheight --style-ids 972438`) — same
+600×80, tag untouched. Headroom is limited by the frame, so a bigger bump still
+means growing the frame + the tag. (Aspect note: a wide logo capped by
+`max-width:560px` in the 600 frame is width-bound — raising `max-height` only
+enlarges a height-bound logo, which a small-looking 44px-in-80px logo is.)
