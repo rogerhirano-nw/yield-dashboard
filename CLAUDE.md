@@ -340,7 +340,17 @@ Rules that survive any future restyle:
     drops the `$` for the count charts (K/M formatting), and **each chart skips
     when its metric sums to ≤0** — so Pubmatic (its `total_requests` is
     unpopulated upstream) shows revenue + bid responses, and any deal without
-    funnel rows shows revenue only. **All three SSPs report the bid funnel** —
+    funnel rows shows revenue only. **On desktop (≥1025px) the three charts wrap
+    in a `.nw-pmp-charts` flex row**: revenue spans the **full** drawer width on
+    top (`:first-child { flex-basis:100% }`) and total requests + bid responses
+    sit **paired in a row below** (`flex:1 1 240px`) — the same "headline +
+    funnel row" rhythm as the Direct drawer's full-width delivery chart over its
+    small-multiples row, which kills the tall 3-high full-width stack that left
+    the drawer's right half empty (Roger 2026-06-15). The variable count rides
+    the flex for free: a 2-chart deal (revenue + responses) shows revenue full +
+    responses full below; a revenue-only deal shows one full-width chart.
+    ≤1024px / mobile the wrapper is a plain block, so every chart stacks
+    full-width as before. **All three SSPs report the bid funnel** —
     the earlier "GAM has no funnel" assumption was wrong: GAM's per-deal funnel
     lives in a *separate* table, `gam_deal_bid_daily` (`deals_bid_requests` =
     ad requests, `deals_bids` = bid responses), keyed by `programmatic_deal_name`
