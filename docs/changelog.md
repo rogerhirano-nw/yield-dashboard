@@ -4,6 +4,53 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-15 — Bulletin newsletter native build-out + tooling
+
+- **#261** — GAM newsletter **native-style** tooling + a full visual build-out of
+  the Bulletin "Sponsored Content" unit (Infiniti Newsmakers). **Tooling:** SOAP
+  `NativeStyleService` read/patch/clone in `GAMClient` (`list_native_styles` /
+  `update_native_style` / `create_native_style_from` / `get_creative_detail`)
+  driven by `scripts/update_native_style.py` (`--list` / `--create-from` /
+  `--set-background` / `--sc-text-color` / `--cta-color` / `--append-css-b64` /
+  `--inspect-creative`; CSS overrides are idempotent marker blocks), plus a
+  forwarded-email diagnostic `scripts/inspect_inbox_email.py` (ad markup +
+  DOM-ancestry background scan over `newsweek@agentmail.to`) — both through
+  Actions (`update_native_style.yml` / `inspect_inbox.yml`) since cloud sessions
+  hold no creds (branch push = read-only dump to the PR; `[native-style-apply]`
+  marker / `workflow_dispatch` = the write). **The build, in order:** fixed the
+  **blank ad** (Beehiv tag pointed at the wrong ad unit `/22541732127/the-bulletin`
+  vs `…/newsletter.newsweek/the-bulletin`; also: Beehiv serves its own generated
+  tags, so the delivered email is the source of truth); rebuilt the **un-clipped**
+  design at **600×720** (`977578`, fluid creative `138562096121` — no new
+  creative/LICA; 600×314 `977473` / 600×560 `972672` superseded); **enlarged the
+  fonts ~1.6×** (headline 36 / body 26) because the rasterized 600px image scales
+  down on mobile while the page's live text doesn't; styled to the article (**red
+  title + red rule**, black body, blue underlined CTA); and matched the
+  background to the newsletter canvas **`#FFFCF2`** (found by DOM ancestry — the
+  ad `<td>`'s `background-color` — after colour-frequency guesses missed). Beehiv
+  tag → `sz=600x720`. Durable debrief: `docs/newsletter_native_ads.md` (+ CLAUDE.md
+  GAM facts). NB style changes take ~6–9 min to propagate to the rendered image.
+- **#261** — **Bottom Banner centered in a 600px frame** (Roger: the 300×250 sat
+  left of the ~600px column). The 300px banner image is left-justified inside the
+  wider column, so cloned `972441` (300×250) → **`996986` 600×250** with the
+  still-300px image centered (`.bt{width:600px}` + `.bt a{display:block}` +
+  `.bt img{margin:0 auto}`, carrying the `#FFFCF2` background) — image not
+  stretched, just centered, like the Top Logo's `margin:0 auto`. Beehiv tag →
+  `sz=600x250`. New gotcha 8 in the debrief.
+- **#261** — **Top Logo made taller via a 600×100 frame** (Roger: "increase the
+  height for the logo a little bit"). First tried enlarging **in place** within
+  the 600×80 frame (logo cap 44→52px + tightened chrome) — but the strip was
+  already packed (label + 44px logo + padding ≈ 80px), so it **crammed the tall
+  INFINITI lockup against "Presented by" and read as distorted**; reverted (added
+  a `--remove-marker` mode to `update_native_style.py` that strips a named
+  `nw-<marker>` block — the inverse of `--append-css-b64`, restoring `972438`
+  byte-for-byte). The clean fix is a **taller frame**: new **`978385` 600×100**
+  (clone of `972438`, logo cap 56px, original generous spacing) so the logo grows
+  ~27% with breathing room. **Render-verified** by fetching the `sz=600x100` ad
+  URL directly (crisp, not upscaled — see the new render-pixels recipe in the
+  debrief). Adopt by repointing the Beehiv logo tag to `sz=600x100`; `972438`
+  600×80 stays as the prior size.
+
 ## 2026-06-15 — Direct table polish
 
 - **#261** — **Hotfix: `NameError` in `_pmp_airtable_url`** (crashed the PMP tab,

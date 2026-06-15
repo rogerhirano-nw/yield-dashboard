@@ -754,6 +754,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `scripts/setup_fito_top_banner.py` (970x250 between article title and
   video player). Covers the INACTIVE-until-order-reapproved, viewport/size
   eligibility, and ONE_OR_MORE roadblocking gotchas.
+- `docs/newsletter_native_ads.md` — how the Bulletin newsletter serves GAM
+  native ads: one fluid creative + per-size native styles, rasterized to a PNG
+  that scales down on mobile. The build-out gotchas (wrong ad-unit path = blank,
+  Beehiv replaces pasted tags at send, font sizing for the mobile downscale,
+  matching the background by DOM ancestry not colour frequency, ~6–9 min
+  propagation) and the no-creds tooling (`scripts/update_native_style.py` /
+  `scripts/inspect_inbox_email.py` via Actions). Live: Sponsored Content
+  `977578` 600×720, background `#FFFCF2` (#261).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -784,6 +792,32 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   so LIs targeting them need both `skipInventoryCheck` AND `allowOverbook`
   at create. Native-style macros are `[%Var%]` — bare `[Var]` is not
   substituted.
+- **Newsletter native ads = one fluid creative + per-size native styles,
+  rasterized to a PNG.** Beehiv embeds GAM ads as image tags
+  (`<img src=gampad/ad?iu=<unit>&sz=WxH>`); GAM renders the size-matched native
+  style into a **flat image** using a single **fluid (1×1) `TemplateCreative`**
+  (`138562096121`) on LI `7335266347`. **Adding a size = add a native style +
+  repoint the Beehiv `sz` tag; no new creative / LI / LICA.** Bulletin styles:
+  Top Logo 600×80 `972438`, Bottom Banner **600×250 `996986`** (the 300×250 image
+  centered in a 600-wide frame; left-aligned `972441` 300×250 superseded),
+  Sponsored Content
+  **600×720 `977578`** (600×560 `972672` / 600×314 `977473` superseded). Unit:
+  `/22541732127/newsletter.newsweek/the-bulletin` (the full path — a truncated
+  `/22541732127/the-bulletin` no-fills → blank; Beehiv also serves its *own*
+  generated tags, so trust the delivered email, not the editor). Because the ad
+  is an **image scaled down on mobile** while the page's live text isn't, size
+  native fonts **~1.6×** the page; match the background to the newsletter canvas
+  (`#FFFCF2`) by **DOM ancestry** (the ad `<td>`'s bg), not colour frequency; and
+  remember the page's link CSS can't recolour an image (ad text colour is the
+  native style only). Style changes take **~6–9 min to propagate** to the render.
+  Read / patch / clone / restyle with `scripts/update_native_style.py` (`--list`
+  / `--create-from` / `--set-background` / `--sc-text-color` / `--cta-color` /
+  `--append-css-b64` / `--inspect-creative`); diagnose the delivered email with
+  `scripts/inspect_inbox_email.py` (ad markup + DOM-ancestry bg). Both run through
+  Actions like `archive_pli` (no GAM/agentmail creds locally — branch push =
+  read-only dump to the PR; `[native-style-apply]` commit marker or
+  `workflow_dispatch` = the write). Full debrief + gotchas:
+  **`docs/newsletter_native_ads.md`**.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
