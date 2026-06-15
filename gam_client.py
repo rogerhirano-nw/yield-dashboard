@@ -1068,6 +1068,47 @@ class GAMClient:
             "css_snippet":  getattr(u, "cssSnippet", None),
         }
 
+    def get_creative_detail(self, creative_id: str) -> dict:
+        """Read one creative's size + native template variable values via the
+        SOAP CreativeService. Used to inspect the newsletter native creatives
+        (size / fluidity / the asset values) before re-trafficking to a new
+        size. Returns {} if the id isn't found."""
+        client = self._get_soap_client()
+        from googleads import ad_manager  # type: ignore
+        svc = client.GetService("CreativeService", version=self._SOAP_API_VERSION)
+        sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+        sb.Where("id = :id").WithBindVariable("id", int(creative_id)).Limit(1)
+        resp = _soap_retry(
+            lambda: svc.getCreativesByStatement(sb.ToStatement()),
+            "getCreativesByStatement",
+        )
+        results = getattr(resp, "results", None) or []
+        if not results:
+            return {}
+        c = results[0]
+        size = getattr(c, "size", None)
+        vals = []
+        for v in (getattr(c, "creativeTemplateVariableValues", None) or []):
+            asset = getattr(v, "asset", None)
+            val = getattr(v, "value", None)
+            if asset is not None:
+                val = getattr(asset, "assetUrl", None) or getattr(asset, "assetId", None)
+            vals.append({
+                "name":  getattr(v, "uniqueName", None),
+                "type":  type(v).__name__,
+                "value": val,
+            })
+        return {
+            "id":                   str(getattr(c, "id", "") or ""),
+            "name":                 getattr(c, "name", None),
+            "type":                 type(c).__name__,
+            "width":                getattr(size, "width", None) if size else None,
+            "height":               getattr(size, "height", None) if size else None,
+            "creative_template_id": getattr(c, "creativeTemplateId", None),
+            "is_native_eligible":   getattr(c, "isNativeEligible", None),
+            "vars":                 vals,
+        }
+
     # ------------------------------------------------------------------
     # Combined pacing report
     # ------------------------------------------------------------------

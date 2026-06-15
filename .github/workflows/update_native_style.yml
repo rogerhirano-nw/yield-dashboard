@@ -79,7 +79,10 @@ jobs:
           elif printf '%s' "$HEAD_MSG" | grep -q '\[native-style-apply\]' && [ -n "$PUSH_APPLY_ARGS" ]; then
             ARGS="$PUSH_APPLY_ARGS"
           else
-            ARGS="--list"
+            # TEMP (Option 3 investigation): inspect the 600x314 newsletter
+            # creative + its LI before building the 600x540 set. Restore to
+            # "--list" before finalizing the PR.
+            ARGS="--inspect-creative 138562096121 --inspect-li 7335266347"
           fi
           echo "args: $ARGS"
           python scripts/update_native_style.py $ARGS 2>&1 | tee /tmp/output.txt

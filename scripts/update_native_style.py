@@ -121,9 +121,27 @@ def main() -> int:
     ap.add_argument(
         "--apply", action="store_true", help="write the patch (default: dry-run)"
     )
+    ap.add_argument(
+        "--inspect-creative", help="dump a creative's size + native template vars (read-only)"
+    )
+    ap.add_argument(
+        "--inspect-li", help="dump line-item <-> creative associations for an LI (read-only)"
+    )
     args = ap.parse_args()
 
     gam = GAMClient()
+
+    if args.inspect_creative or args.inspect_li:
+        import pprint
+        if args.inspect_creative:
+            print(f"== creative {args.inspect_creative} ==")
+            pprint.pprint(gam.get_creative_detail(args.inspect_creative))
+        if args.inspect_li:
+            df = gam.list_line_item_creative_associations([args.inspect_li])
+            print(f"== LICAs for LI {args.inspect_li} ==")
+            print(df.to_string(index=False) if not df.empty else "(none)")
+        return 0
+
     styles = gam.list_native_styles()
 
     if args.list or not args.style_id:
