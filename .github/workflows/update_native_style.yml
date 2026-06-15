@@ -69,11 +69,10 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. Option A: clone 972672 into a 600x720
-          # Sponsored Content style (keeps red title/rule, blue CTA, warm bg) and
-          # bump fonts ~1.6x (headline 36 / body 26 / label 14) so the ad matches
-          # the newsletter once the phone scales the 600px image down.
-          PUSH_APPLY_ARGS: "--create-from 972672 --new-width 600 --new-height 720 --append-css-b64 LnNjLWhlYWRsaW5le2ZvbnQtc2l6ZTozNnB4IWltcG9ydGFudH0uc2MtYm9keXtmb250LXNpemU6MjZweCFpbXBvcnRhbnR9LnNjLWxhYmVse2ZvbnQtc2l6ZToxNHB4IWltcG9ydGFudH0= --marker bigfont --apply"
+          # write; reset to "" after. Correct the canvas: the newsletter content
+          # bg is the cream #f5eee5 (the original style was #f5f0e8) — the earlier
+          # #fefcf6 was too white. Re-point all four native styles to #f5eee5.
+          PUSH_APPLY_ARGS: "--set-background f5eee5 --style-ids 972438,972441,972672,977578 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
