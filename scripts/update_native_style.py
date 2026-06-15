@@ -131,6 +131,28 @@ def apply_sc_text(css: str | None, color: str) -> str:
     return f"{css}{sep}\n{block}\n"
 
 
+_CTA_START = "/* nw-cta:start */"
+_CTA_END = "/* nw-cta:end */"
+
+
+def apply_cta_color(css: str | None, color: str) -> str:
+    """Style only the Sponsored Content CTA (the last `.sc-body` link, since the
+    CTA shares the body class) as a link — e.g. the newsletter's blue +
+    underline — while the headline and body stay black. Idempotent."""
+    if re.fullmatch(r"[0-9a-fA-F]{3,6}", color or ""):
+        color = "#" + color
+    block = (f"{_CTA_START}\n"
+             f".sc-content .sc-body:last-child a"
+             f"{{color:{color}!important;text-decoration:underline!important}}\n"
+             f"{_CTA_END}")
+    css = css or ""
+    if _CTA_START in css and _CTA_END in css:
+        return re.sub(re.escape(_CTA_START) + r".*?" + re.escape(_CTA_END),
+                      lambda _m: block, css, flags=re.S)
+    sep = "" if (not css or css.endswith("\n")) else "\n"
+    return f"{css}{sep}\n{block}\n"
+
+
 def _dump(s: dict) -> None:
     print("-" * 72)
     aspect = " (aspect-ratio)" if s.get("is_aspect_ratio") else ""
@@ -186,6 +208,8 @@ def main() -> int:
     ap.add_argument("--set-background", help="set background color (hex) on --style-ids")
     ap.add_argument("--sc-text-color",
                     help="override .sc-link text color on --style-ids ('inherit' or hex)")
+    ap.add_argument("--cta-color",
+                    help="style the Sponsored Content CTA link as blue/underline (hex) on --style-ids")
     ap.add_argument("--style-ids", help="comma-separated native style ids for the bulk modes")
     args = ap.parse_args()
 
@@ -204,13 +228,16 @@ def main() -> int:
 
     styles = gam.list_native_styles()
 
-    if args.set_background or args.sc_text_color:
+    if args.set_background or args.sc_text_color or args.cta_color:
         if args.set_background:
             label = f"background {args.set_background}"
             transform = lambda css: apply_background(css, args.set_background)  # noqa: E731
-        else:
+        elif args.sc_text_color:
             label = f"sc-link color {args.sc_text_color}"
             transform = lambda css: apply_sc_text(css, args.sc_text_color)  # noqa: E731
+        else:
+            label = f"cta link color {args.cta_color}"
+            transform = lambda css: apply_cta_color(css, args.cta_color)  # noqa: E731
         by_id = {s["id"]: s for s in styles}
         ids = [s.strip() for s in (args.style_ids or "").split(",") if s.strip()]
         if not ids:

@@ -69,10 +69,10 @@ jobs:
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
-          # write; reset to "" after. Restore the Sponsored Content text to the
-          # design colors (the .sc-link wrapper rendered headline/body/CTA as
-          # blue underlined links instead of black).
-          PUSH_APPLY_ARGS: "--sc-text-color inherit --style-ids 972672 --apply"
+          # write; reset to "" after. Style the Sponsored Content CTA (last
+          # .sc-body link) as the newsletter's blue underlined link while the
+          # headline/body stay black.
+          PUSH_APPLY_ARGS: "--cta-color 4B62E0 --style-ids 972672 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
