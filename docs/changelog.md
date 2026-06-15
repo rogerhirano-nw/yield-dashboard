@@ -30,6 +30,13 @@ and why" index, keyed by PR. Newest first.
   ad `<td>`'s `background-color` — after colour-frequency guesses missed). Beehiv
   tag → `sz=600x720`. Durable debrief: `docs/newsletter_native_ads.md` (+ CLAUDE.md
   GAM facts). NB style changes take ~6–9 min to propagate to the rendered image.
+- **#261** — **Bottom Banner centered in a 600px frame** (Roger: the 300×250 sat
+  left of the ~600px column). The 300px banner image is left-justified inside the
+  wider column, so cloned `972441` (300×250) → **`996986` 600×250** with the
+  still-300px image centered (`.bt{width:600px}` + `.bt a{display:block}` +
+  `.bt img{margin:0 auto}`, carrying the `#FFFCF2` background) — image not
+  stretched, just centered, like the Top Logo's `margin:0 auto`. Beehiv tag →
+  `sz=600x250`. New gotcha 8 in the debrief.
 
 ## 2026-06-15 — Direct table polish
 

@@ -20,7 +20,9 @@ hard-won gotchas from the Infiniti Newsmakers "Sponsored Content" build-out
 - Per-slot native styles (creative templates `12544544` Top Logo / `12543656`
   Bottom Banner / `12544547` Sponsored Content):
   - **Top Logo 600×80** — `972438`
-  - **Bottom Banner 300×250** — `972441`
+  - **Bottom Banner** — live: **`996986` 600×250** (the 300×250 banner image
+    centered in a 600-wide frame, see gotcha 8); earlier left-aligned
+    `972441` 300×250.
   - **Sponsored Content** — live: **`977578` 600×720**; superseded earlier
     iterations: `972672` 600×560, `977473` 600×314.
 
@@ -60,6 +62,14 @@ hard-won gotchas from the Infiniti Newsmakers "Sponsored Content" build-out
 7. **Propagation lag ~6–9 min.** A native-style change takes minutes to reach the
    rendered image; testing sooner shows the *old* version — the single biggest
    source of "it's still wrong" confusion in this build.
+8. **A sub-column-width banner reads left-aligned, not centered.** The newsletter
+   column is ~600px; a 300×250 native style renders a 300px-wide image that GAM
+   left-justifies in it. To center it, the **native style itself must be the
+   column width** — clone to **600×250** (`996986`) and center the still-300px
+   image inside: `.bt{width:600px}` + `.bt a{display:block}` + `.bt img{margin:0
+   auto}`. Repoint the Beehiv tag to `sz=600x250` (same ad unit). The image is
+   *not* stretched to 600 — it stays 300 and sits centered in the wider cream
+   frame (same approach as the Top Logo's `margin:0 auto`).
 
 ## Verifying without GAM creds or a browser
 

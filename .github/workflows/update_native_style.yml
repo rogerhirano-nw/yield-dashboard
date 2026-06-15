@@ -70,9 +70,9 @@ jobs:
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
           # write; reset to "" between writes so a stray marker push is a no-op.
-          # Center the Bottom Banner: clone 972441 (300x250) -> 600x250 with the
-          # 300px image centered (.bt 600px wide, .bt a block, .bt img margin:0 auto).
-          PUSH_APPLY_ARGS: "--create-from 972441 --new-width 600 --new-height 250 --append-css-b64 LmJ0e3dpZHRoOjYwMHB4IWltcG9ydGFudH0KLmJ0IGF7ZGlzcGxheTpibG9jayFpbXBvcnRhbnQ7dGV4dC1hbGlnbjpjZW50ZXIhaW1wb3J0YW50fQouYnQgaW1ne21hcmdpbjowIGF1dG8haW1wb3J0YW50fQ== --marker center --apply"
+          # Bottom Banner centering (#261) is done: live centered style is 996986
+          # (600x250, .bt 600px wide + image margin:0 auto), background #FFFCF2.
+          PUSH_APPLY_ARGS: ""
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
