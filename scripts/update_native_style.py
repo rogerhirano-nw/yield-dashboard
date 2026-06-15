@@ -246,7 +246,8 @@ def main() -> int:
 
     styles = gam.list_native_styles()
 
-    if args.set_background or args.sc_text_color or args.cta_color or args.append_css_b64:
+    if (args.set_background or args.sc_text_color or args.cta_color
+            or args.append_css_b64) and not args.create_from:
         if args.set_background:
             label = f"background {args.set_background}"
             transform = lambda css: apply_background(css, args.set_background)  # noqa: E731
