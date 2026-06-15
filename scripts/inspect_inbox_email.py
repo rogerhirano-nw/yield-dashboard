@@ -162,6 +162,21 @@ def main() -> int:
     print("  bgcolor= values (most common):", bgcolor.most_common(8))
     print("  background[-color]: hex (most common):", bgstyle.most_common(8))
 
+    # Is the native ad a rasterized <img>, or live HTML the newsletter styles?
+    print("-- ad embedding + newsletter link styles --")
+    n_adimg = len(re.findall(r"<img[^>]*gampad/ad", blob, re.I))
+    live_sc = bool(re.search(r'class=["\']sc[-"\']', blob))
+    live_head = bool(re.search(r"sc-headline|sc-link|\[%Headline%\]", blob))
+    print(f"  ad served as <img gampad/ad>: {n_adimg}  |  live .sc/.sc-link HTML in body: {live_sc or live_head}")
+    styles_txt = " ".join(re.findall(r"<style[^>]*>(.*?)</style>", blob, re.I | re.S))
+    arules = re.findall(r"(a[a-zA-Z0-9_\-:.\s,>]*\{[^}]*\})", styles_txt)
+    link_rules = [r.strip() for r in arules
+                  if "color" in r.lower() or "decoration" in r.lower()][:8]
+    print("  <style> link rules:", link_rules or "(none)")
+    inline_a = re.findall(r'<a[^>]*style="[^"]*(?:color|text-decoration)[^"]*"[^>]*>', blob, re.I)[:4]
+    for a in inline_a:
+        print("   inline <a>:", _html.unescape(a)[:160])
+
     if not html_body:
         print("\n-- text/extracted_text (first 3000 chars) --")
         print(text_body[:3000])
