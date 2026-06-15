@@ -1363,8 +1363,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   gap: 16px; flex-wrap: wrap; }
 .nw-li-eyebrow { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
   color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
-.nw-li-name { font-family: var(--font-display); font-size: 20px; font-weight: 600;
-  color: var(--text-primary); line-height: 1.15; margin: 0; }
+.nw-li-name { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+  font-weight: 600; color: var(--text-primary); line-height: 1.45; margin: 0;
+  overflow-wrap: anywhere; }
 .nw-li-gam { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
   white-space: nowrap; background: var(--surface-1); border: 1px solid var(--border);
   border-radius: var(--radius-pill); padding: 3px 11px; }
@@ -4899,13 +4900,12 @@ if st.session_state.active_view == "campaigns":
 
             def _drawer_html(row):
                 _raw_unesc = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
-                # Friendly "<Advertiser> — <Campaign>" title for the spec card —
-                # same memoized derivation as the table row's display name. The
-                # raw convention string is intentionally NOT shown: it duplicated
-                # the friendly name (two names read redundant) and its useful
-                # parts (Format / CPM / Seller) are decoded into the grid below;
-                # the GAM-ID pill is the canonical key + deep link.
-                disp_name = _esc(dl.line_item_display_name(_raw_unesc)) or "—"
+                # The card titles with the FULL GAM line-item name (Roger's call),
+                # not the friendly "<Advertiser> — <Campaign>" derivation — the
+                # detail view shows the real, complete GAM name. Rendered mono
+                # (`.nw-li-name`) since it's a structured technical identifier; the
+                # table ROWS still use the friendly name (scannable + sort key).
+                full_li = _esc(_raw_unesc)
                 li_id = row.get("line_item_id")
                 li_id_str = ""
                 if li_id is not None and not (isinstance(li_id, float) and pd.isna(li_id)):
@@ -5071,7 +5071,7 @@ if st.session_state.active_view == "campaigns":
                     '<div class="nw-li-card">'
                     '<div class="nw-li-head">'
                     '<div><div class="nw-li-eyebrow">Line item</div>'
-                    f'<h3 class="nw-li-name">{disp_name}</h3></div>'
+                    f'<h3 class="nw-li-name">{full_li or "—"}</h3></div>'
                     f'{_gam_chip}'
                     '</div>'
                     '<div class="nw-li-hero">'

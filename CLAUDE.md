@@ -390,19 +390,21 @@ Rules that survive any future restyle:
   name** — the name appeared twice and the metadata read as an afterthought
   ("thrown in after all the graphs", Roger). Now the name + info are
   consolidated into one card below the status banner + charts: a `.nw-li-head`
-  leads with the friendly **`<Advertiser> — <Campaign>`** title
-  (`dl.line_item_display_name`, serif `--font-display`) + a **GAM-ID chip**
-  (pill, deep-links to GAM), then **3 hero pacing tiles**
-  (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining, compact
-  `_kmb` K/M figures in serif) over a **tinted detail grid** (`.nw-li-grid`
-  auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller · Creative
-  duration). It **adds Delivered + Revenue** (weren't in the old grid)
+  leads with the **full GAM line-item name** as the title (`.nw-li-name`,
+  **mono** — it's a structured technical identifier, not an editorial headline;
+  Roger's call, NOT the friendly `<Advertiser> — <Campaign>` derivation — the
+  detail view shows the real complete GAM name, while the **table ROWS keep the
+  friendly `dl.line_item_display_name`** since it's scannable + the A–Z sort
+  key) + a **GAM-ID chip** (pill, deep-links to GAM), then **3 hero pacing
+  tiles** (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining,
+  compact `_kmb` K/M figures in serif) over a **tinted detail grid**
+  (`.nw-li-grid` auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller ·
+  Creative duration). It **adds Delivered + Revenue** (weren't in the old grid)
   so the card is self-contained, and the orphaned "Creative duration —" now sits
-  in the grid.
-  The **raw convention string is intentionally NOT shown** (the title +
-  raw stacked read as "two names", redundant — Roger 2026-06-15): its useful
-  parts (Format / CPM / Seller) are decoded into the grid, and the GAM-ID pill
-  is the canonical key + deep link, so the friendly title alone names the LI.
+  in the grid. Only **one name** is shown (no friendly-name title + raw-string
+  caption stacked — that read as "two names", redundant; Roger 2026-06-15) — the
+  full GAM name is it, and the friendly name's useful parts (Format / CPM /
+  Seller) are decoded into the grid.
   The **`Status` grid cell was also dropped** (Roger 2026-06-15) — it was
   redundant with the top pacing banner (`_drawer_status_banner`, the
   `✓ On track` / `⚠ Underpacing` / … verdict the drawer still leads with),
