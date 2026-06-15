@@ -168,6 +168,20 @@ def apply_css_block(css: str | None, block: str, marker: str) -> str:
     return f"{css}{sep}\n{full}\n"
 
 
+def remove_css_block(css: str | None, marker: str) -> str:
+    """Remove a named nw-<marker> block (delimiters included) from cssSnippet —
+    the inverse of apply_css_block, to cleanly revert an override. Idempotent: a
+    no-op if the marker isn't present. Also trims a left-over blank line."""
+    start = f"/* nw-{marker}:start */"
+    end = f"/* nw-{marker}:end */"
+    css = css or ""
+    out = re.sub(
+        r"\n*" + re.escape(start) + r".*?" + re.escape(end) + r"[ \t]*\n?",
+        "\n", css, flags=re.S,
+    )
+    return out
+
+
 def _dump(s: dict) -> None:
     print("-" * 72)
     aspect = " (aspect-ratio)" if s.get("is_aspect_ratio") else ""
@@ -227,6 +241,8 @@ def main() -> int:
                     help="style the Sponsored Content CTA link as blue/underline (hex) on --style-ids")
     ap.add_argument("--append-css-b64",
                     help="base64 of an arbitrary CSS block to append on --style-ids (under --marker)")
+    ap.add_argument("--remove-marker",
+                    help="remove the named nw-<marker> CSS block on --style-ids (revert an override)")
     ap.add_argument("--marker", default="custom", help="marker name for --append-css-b64")
     ap.add_argument("--style-ids", help="comma-separated native style ids for the bulk modes")
     args = ap.parse_args()
@@ -247,7 +263,7 @@ def main() -> int:
     styles = gam.list_native_styles()
 
     if (args.set_background or args.sc_text_color or args.cta_color
-            or args.append_css_b64) and not args.create_from:
+            or args.append_css_b64 or args.remove_marker) and not args.create_from:
         if args.set_background:
             label = f"background {args.set_background}"
             transform = lambda css: apply_background(css, args.set_background)  # noqa: E731
@@ -257,11 +273,14 @@ def main() -> int:
         elif args.cta_color:
             label = f"cta link color {args.cta_color}"
             transform = lambda css: apply_cta_color(css, args.cta_color)  # noqa: E731
-        else:
+        elif args.append_css_b64:
             import base64
             _blk = base64.b64decode(args.append_css_b64).decode("utf-8")
             label = f"append css [{args.marker}] ({len(_blk)} chars)"
             transform = lambda css: apply_css_block(css, _blk, args.marker)  # noqa: E731
+        else:
+            label = f"remove css block [{args.remove_marker}]"
+            transform = lambda css: remove_css_block(css, args.remove_marker)  # noqa: E731
         by_id = {s["id"]: s for s in styles}
         ids = [s.strip() for s in (args.style_ids or "").split(",") if s.strip()]
         if not ids:

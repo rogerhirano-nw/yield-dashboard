@@ -70,9 +70,9 @@ jobs:
           IN_APPLY: ${{ inputs.apply }}
           # Filled in (with the [native-style-apply] commit marker) for a one-off
           # write; reset to "" between writes so a stray marker push is a no-op.
-          # Done: Top Logo 972438 logo enlarged in place (max-height 52px, chrome
-          # tightened) within its 600x80 frame; Bottom Banner centered as 996986.
-          PUSH_APPLY_ARGS: ""
+          # Revert: the max-height:52px logo bump distorted the logo, so strip the
+          # nw-logoheight block from 972438 (back to the known-good 44px original).
+          PUSH_APPLY_ARGS: "--remove-marker logoheight --style-ids 972438 --apply"
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
