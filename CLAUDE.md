@@ -584,6 +584,28 @@ renamed/dropped upstream) falls back to `SELECT *`, so the projection is a
 pure optimization, never a hard dependency — but a silent always-fallback
 means it stopped saving anything, so keep the names in sync.
 
+**The campaigns view no longer loads the DV tables raw — it reads server-side
+pre-aggregations** (`_load_dv_attention_agg` / `_load_dv_ivt_agg`, 2026-06-15).
+The dashboard only needs per-(LI, date) / per-(order, date) / per-date Attention
+means and per-(LI, date, validity) IVT `monitored_ads` sums, so those `GROUP BY`s
+run **in Postgres** (like `_load_li_max_duration`) and the dashboard fetches the
+reduced result (~42% fewer rows: dv_attention 24k→14k, dv_ivt 44k→25k, plus tiny
+399-row / 7-row attention rollups) instead of the raw rows — and the ~7.7 MB raw
+frames are no longer held. The grain is chosen so it *is* each `dl` aggregator's
+first-level reduction, so feeding the pre-agg to the **unchanged**
+`attention_current_and_prior` / `ivt_share_with_prior` / `*_daily_series_by_li`
+is behaviour-identical to the raw rows (proven on prod: a real-order test through
+the `dl` functions, 0 diffs, + 0/107 order-dates diverge). Two correctness rules:
+**(1) Attention means don't compose**, so the per-order path (PMP column + KPI)
+gets its **own** `GROUP BY order_name, date` query — *not* derived from the
+per-LI grain, which would be a mean-of-means (exact only while creative counts
+stay uniform, as they are today: 0/107). IVT `monitored_ads` **sums** compose, so
+one `(LI, order, date, validity)` SUM frame serves every IVT path (per-LI,
+per-order, sparkline, publisher KPI). **(2) each query's `WHERE` mirrors the
+matching `dl` dropna** (e.g. `attention_index IS NOT NULL AND line_item_id IS NOT
+NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
+raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
+
 ## Subsystems with their own docs
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:

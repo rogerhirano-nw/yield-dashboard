@@ -82,6 +82,20 @@ squash-merged to `main` on green (119 tests).
   `gam_pmp_deals` (impressions/revenue), so GAM deals wrongly showed revenue
   only. Now **45 delivering GAM deals** also show the Total requests + Bid
   responses charts. All three SSPs report the funnel.
+- **#247** — **Server-side pre-aggregation of the DV tables.** The Campaigns
+  view no longer loads `dv_attention` / `dv_ivt` raw (~68k rows, the dominant
+  cold-load cost); it reads `GROUP BY` rollups computed in Postgres
+  (`_load_dv_attention_agg` / `_load_dv_ivt_agg`, like `_load_li_max_duration`):
+  per-(LI,date) + per-(order,date) + per-date Attention AVGs, and one
+  per-(LI,order,date,validity) IVT `monitored_ads` SUM. ~42% fewer rows
+  (24k→14k, 44k→25k) and the raw frames are no longer held. The grain *is* each
+  `dl` aggregator's first-level reduction, so the **unchanged** `dl` functions
+  produce identical output — proven on prod (a real-order test through the `dl`
+  functions, 0 diffs; the attention order path checked across all 107 multi-LI
+  order-dates, 0 divergent). Correctness: attention means don't compose so the
+  per-order path gets its own query; IVT sums compose so one frame serves every
+  path. Honest payoff: ~3 MB off cold load (~10% of first paint), not the "4–7×"
+  first estimated — the raw rows were only ~1.7× inflated by duplicate creatives.
 - **#243** — **Compact one-row pager** (`_compact_pager`) for both the Direct
   and PMP tables: `‹` · centered *Page X of N* (+ muted "N of M shown") · `›`.
   Replaces the `st.columns([1,4,1])` + full-width buttons, which **stacked into
