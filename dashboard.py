@@ -1370,10 +1370,6 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   border-radius: var(--radius-pill); padding: 3px 11px; }
 .nw-li-gam a { color: var(--text-primary); font-weight: 600; text-decoration: none; }
 .nw-li-gam a:hover { text-decoration: underline; }
-.nw-li-raw { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-  color: var(--text-secondary); overflow-wrap: anywhere; margin-top: 8px;
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 6px 9px; }
 .nw-li-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
 .nw-li-hero .tile { background: var(--surface-1); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 10px 13px; min-width: 0; }
@@ -1392,7 +1388,6 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   color: var(--text-muted); display: block; margin-bottom: 2px; }
 .nw-li-grid .v { color: var(--text-primary); font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere; }
-.nw-li-grid .v.ok { color: var(--state-positive); font-weight: 600; }
 .nw-warn {
   margin-top: 14px; padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -4904,9 +4899,12 @@ if st.session_state.active_view == "campaigns":
 
             def _drawer_html(row):
                 _raw_unesc = re.sub(r"^#\d+\s+", "", str(row.get("line_item_name") or ""))
-                full_li = _esc(_raw_unesc)
                 # Friendly "<Advertiser> — <Campaign>" title for the spec card —
-                # same memoized derivation as the table row's display name.
+                # same memoized derivation as the table row's display name. The
+                # raw convention string is intentionally NOT shown: it duplicated
+                # the friendly name (two names read redundant) and its useful
+                # parts (Format / CPM / Seller) are decoded into the grid below;
+                # the GAM-ID pill is the canonical key + deep link.
                 disp_name = _esc(dl.line_item_display_name(_raw_unesc)) or "—"
                 li_id = row.get("line_item_id")
                 li_id_str = ""
@@ -5051,9 +5049,6 @@ if st.session_state.active_view == "campaigns":
                 if pd.notna(_prog):
                     _bar_html = (f'<div class="nw-li-bar"><i style="width:'
                                  f'{max(0.0, min(100.0, float(_prog))):.0f}%"></i></div>')
-                _status_v = row.get("status")
-                _status_ok = (isinstance(_status_v, str)
-                              and _status_v.strip().lower() == "delivering")
                 _seller_v = row.get("seller_ae")
                 _seller_s = (_esc(_seller_v) if isinstance(_seller_v, str) and _seller_v.strip()
                              else "Programmatic")
@@ -5079,7 +5074,6 @@ if st.session_state.active_view == "campaigns":
                     f'<h3 class="nw-li-name">{disp_name}</h3></div>'
                     f'{_gam_chip}'
                     '</div>'
-                    f'<div class="nw-li-raw">{full_li or "—"}</div>'
                     '<div class="nw-li-hero">'
                     f'<div class="tile"><span class="k">Goal</span>'
                     f'<span class="big">{_kmb(row.get("impressions_goal"))}</span></div>'
@@ -5091,8 +5085,6 @@ if st.session_state.active_view == "campaigns":
                     '</div>'
                     '<div class="nw-li-grid">'
                     f'<div class="cell"><span class="k">Flight</span><span class="v">{_flight_s}</span></div>'
-                    f'<div class="cell"><span class="k">Status</span>'
-                    f'<span class="v{" ok" if _status_ok else ""}">{_esc(_status_v or "—")}</span></div>'
                     f'<div class="cell"><span class="k">Format</span><span class="v">{_esc(row.get("ad_format") or "—")}</span></div>'
                     f'<div class="cell"><span class="k">CPM</span><span class="v">{cpm_s}</span></div>'
                     f'<div class="cell"><span class="k">Revenue</span><span class="v">{_rev_s}</span></div>'

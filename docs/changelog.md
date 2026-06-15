@@ -6,6 +6,20 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#256** — Direct drawer spec-card cleanup (two redundancies from #255):
+  - **Dropped the raw convention-string caption.** The friendly serif title +
+    the raw mono string stacked read as "two names for the LI" (Roger's
+    screenshot) — redundant. The friendly `<Advertiser> — <Campaign>` title
+    alone names the LI now; the raw string's useful parts (Format / CPM /
+    Seller) are already decoded into the grid, and the GAM-ID pill is the
+    canonical key + deep link. Removed `.nw-li-raw` (HTML + CSS) and the
+    now-unused `full_li`.
+  - **Dropped the `Status` detail-grid cell.** Redundant with the top pacing
+    banner (`✓ On track` / `⚠ Underpacing` / …), which the drawer still leads
+    with and which conveys delivery state at a glance. Removed the cell, its
+    `_status_v`/`_status_ok` vars, and the now-unused `.nw-li-grid .v.ok` CSS.
+    The banner (incl. red/amber alerts) is unchanged.
+  - CSS + `_drawer_html` only; 119/119 tests pass.
 - **#255** — Direct drawer: **consolidated the LI name + metadata into one spec
   card after the graphs** (`_drawer_html` → `.nw-li-card`). The drawer used to
   open with the raw LI name in a mono box at the top, then dump a flat 9-cell

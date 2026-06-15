@@ -392,16 +392,22 @@ Rules that survive any future restyle:
   consolidated into one card below the status banner + charts: a `.nw-li-head`
   leads with the friendly **`<Advertiser> — <Campaign>`** title
   (`dl.line_item_display_name`, serif `--font-display`) + a **GAM-ID chip**
-  (pill, deep-links to GAM), the raw convention string sits below as a
-  **mono `.nw-li-raw` caption** (it carries the full naming convention — it's
-  what `Order` duplicated, so `Order` is dropped), then **3 hero pacing tiles**
+  (pill, deep-links to GAM), then **3 hero pacing tiles**
   (`.nw-li-hero`: Goal / Delivered + a `progress_pct` bar / Remaining, compact
   `_kmb` K/M figures in serif) over a **tinted detail grid** (`.nw-li-grid`
-  auto-fit: Flight · Status · Format · CPM · Revenue · Clicks · Seller ·
-  Creative duration). It **adds Delivered + Revenue** (weren't in the old grid)
+  auto-fit: Flight · Format · CPM · Revenue · Clicks · Seller · Creative
+  duration). It **adds Delivered + Revenue** (weren't in the old grid)
   so the card is self-contained, and the orphaned "Creative duration —" now sits
-  in the grid. Status reads quiet-green (`.v.ok`) only when "Delivering". This
-  is the Direct drawer only — the **PMP** drawer keeps `.nw-drawer-head` +
+  in the grid.
+  The **raw convention string is intentionally NOT shown** (the title +
+  raw stacked read as "two names", redundant — Roger 2026-06-15): its useful
+  parts (Format / CPM / Seller) are decoded into the grid, and the GAM-ID pill
+  is the canonical key + deep link, so the friendly title alone names the LI.
+  The **`Status` grid cell was also dropped** (Roger 2026-06-15) — it was
+  redundant with the top pacing banner (`_drawer_status_banner`, the
+  `✓ On track` / `⚠ Underpacing` / … verdict the drawer still leads with),
+  which conveys delivery state at a glance.
+  This is the Direct drawer only — the **PMP** drawer keeps `.nw-drawer-head` +
   `.nw-meta-grid` (still used there and by the bid-metrics strip). Chosen from a
   3-option visual mock (sectioned spec sheet / definition list / **hero tiles**,
   Roger picked hero tiles).
