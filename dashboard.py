@@ -1485,6 +1485,22 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   .nw-drawer-charts > .nw-drawer-chart { max-width: none; }
   .nw-drawer-charts > .nw-sm-grid { grid-template-columns: repeat(5, 1fr); max-width: none; }
 }
+/* Desktop: the PMP deal drawer's 3 trend charts read as a "headline + funnel
+   row" — revenue spans the full drawer width on top, then total requests +
+   bid responses sit paired in a row directly below it (Roger 2026-06-15). Same
+   rhythm as the Direct drawer's full-width delivery chart + small-multiples
+   row, and it kills the tall 3-high full-width stack that left the drawer's
+   right half empty. The first chart (revenue) is forced full-width via
+   flex-basis:100%; the rest share the next flex line. Variable count is handled
+   for free: a 2-chart deal (Pubmatic — revenue + bid responses, no requests)
+   shows revenue full + responses full below; a revenue-only deal shows one
+   full-width chart. ≤1024px / mobile: the wrapper is a plain block, so every
+   chart stacks full-width exactly as before. */
+@media (min-width: 1025px) {
+  .nw-pmp-charts { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .nw-pmp-charts > .nw-drawer-chart { flex: 1 1 240px; max-width: none; margin-top: 0; }
+  .nw-pmp-charts > .nw-drawer-chart:first-child { flex-basis: 100%; }
+}
 .nw-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
 .nw-action {
   display: inline-block; padding: 6px 14px;
@@ -6712,9 +6728,7 @@ if st.session_state.active_view == "campaigns":
                 f'<span class="nw-drawer-li">{_full or "—"}</span>'
                 '</div>'
                 f'{status_html}'
-                f'{_rev_chart}'
-                f'{_req_chart}'
-                f'{_resp_chart}'
+                f'<div class="nw-pmp-charts">{_rev_chart}{_req_chart}{_resp_chart}</div>'
                 f'{bid_html}'
                 f'{meta_html}'
                 f'{_action_html}'

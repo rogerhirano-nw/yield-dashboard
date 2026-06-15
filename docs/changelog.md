@@ -6,6 +6,21 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-15 — Direct table polish
 
+- **#254** — PMP deal drawer: on **desktop** the 3 trend charts now read as a
+  **headline + funnel row** — revenue spans the **full drawer width** on top,
+  with **total requests + bid responses paired in a row directly below it** —
+  instead of a tall 3-high full-width stack that left the drawer's right half
+  empty (Roger's screenshot; same "improve it like the Direct drawer" intent as
+  #252/#253). The three charts wrap in a new `.nw-pmp-charts` flex container
+  (`@media min-width:1025px`): `:first-child` (revenue) is forced full-width via
+  `flex-basis:100%`, the rest share the next flex line at `flex:1 1 240px`. The
+  variable chart count rides the flex with no builder branch — a 2-chart deal
+  (Pubmatic: revenue + bid responses) shows revenue full + responses full below;
+  a revenue-only deal shows one full-width chart. Mobile (≤1024px) is untouched
+  — the wrapper is a plain block, so every chart stacks full-width as before.
+  CSS-only (+ a one-line wrap of the three charts in `_pmp_drawer_html`).
+  Verified with real-CSS renders at 1400px (GAM 3-chart + Pubmatic 2-chart) and
+  a true 390px viewport (stacked). 119/119 tests pass.
 - **#253** — Direct drawer alignment fix, **superseding #252's side-by-side**.
   On **desktop** the 7-day delivery chart now spans the **full drawer width**
   and the Viewability / CTR / Attention / SIVT / GIVT small-multiples sit in
