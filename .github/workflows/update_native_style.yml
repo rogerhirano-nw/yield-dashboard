@@ -1,0 +1,103 @@
+name: Update newsletter native style (GAM)
+
+# GAM has no local creds in cloud sessions, so native-style reads/writes run
+# here with the GAM_SERVICE_ACCOUNT_JSON secret (same pattern as archive_pli).
+#  - push to the working branch -> read-only dump of all native styles, posted
+#    as a PR comment, so we can see the live template + ids without a merge.
+#  - workflow_dispatch           -> dry-run, or the write when apply=true.
+#    (workflow_dispatch needs this file on the default branch, i.e. after the
+#    PR merges — the intended gate for the production write.)
+#  - a push whose commit message contains [native-style-apply] AND a non-empty
+#    PUSH_APPLY_ARGS below -> the write, driven from the branch. PUSH_APPLY_ARGS
+#    starts empty so push stays read-only until the fix is confirmed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      style_id:
+        description: "Native style id to patch (blank = list all, read-only)"
+        required: false
+        type: string
+      image_height:
+        description: "Image height cap (px) for the image+text layout"
+        required: false
+        default: "180"
+        type: string
+      mode:
+        description: "image-text (default) or image-only"
+        required: false
+        default: "image-text"
+        type: string
+      apply:
+        description: "Write the patch (unchecked = dry-run)"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [claude/awesome-cannon-rnskoi]
+    paths:
+      - 'scripts/update_native_style.py'
+      - '.github/workflows/update_native_style.yml'
+      - 'gam_client.py'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  native-style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Run
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          # Inputs via env (not inline ${{ }} in run:) to avoid shell injection.
+          EVENT: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          IN_STYLE_ID: ${{ inputs.style_id }}
+          IN_IMAGE_HEIGHT: ${{ inputs.image_height }}
+          IN_MODE: ${{ inputs.mode }}
+          IN_APPLY: ${{ inputs.apply }}
+          # Filled in (with the [native-style-apply] commit marker) when the
+          # branch push should perform the write. Empty => push is read-only.
+          PUSH_APPLY_ARGS: ""
+        run: |
+          set -o pipefail
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
+            ARGS="--style-id $IN_STYLE_ID --mode ${IN_MODE:-image-text} --image-height ${IN_IMAGE_HEIGHT:-180}"
+            [ "$IN_APPLY" = "true" ] && ARGS="$ARGS --apply"
+          elif printf '%s' "$HEAD_MSG" | grep -q '\[native-style-apply\]' && [ -n "$PUSH_APPLY_ARGS" ]; then
+            ARGS="$PUSH_APPLY_ARGS"
+          else
+            ARGS="--list"
+          fi
+          echo "args: $ARGS"
+          python scripts/update_native_style.py $ARGS 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then echo "No open PR for ${{ github.ref_name }}"; exit 0; fi
+          {
+            echo '### GAM native style — `update_native_style.py`'
+            echo ''
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md

@@ -981,6 +981,94 @@ class GAMClient:
             return pd.DataFrame(columns=_cols)
 
     # ------------------------------------------------------------------
+    # Native styles (SOAP NativeStyleService). Like Creatives/LICAs, the
+    # v1 REST API exposes no NativeStyle resource, so we go through the
+    # legacy `googleads` SOAP API. Read + snippet patch for the newsletter
+    # native styles; driven by scripts/update_native_style.py.
+    # ------------------------------------------------------------------
+
+    def list_native_styles(self) -> list[dict]:
+        """Return every native style: id, name, size, status, the html/css
+        snippets, and creative_template_id. Read-only."""
+        client = self._get_soap_client()
+        from googleads import ad_manager  # type: ignore
+        svc = client.GetService("NativeStyleService", version=self._SOAP_API_VERSION)
+        sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+        sb.Limit(200)
+        out: list[dict] = []
+        while True:
+            resp = _soap_retry(
+                lambda: svc.getNativeStylesByStatement(sb.ToStatement()),
+                "getNativeStylesByStatement",
+            )
+            results = getattr(resp, "results", None) or []
+            if not results:
+                break
+            for ns in results:
+                size = getattr(ns, "size", None)
+                out.append({
+                    "id":                   str(getattr(ns, "id", "") or ""),
+                    "name":                 getattr(ns, "name", None),
+                    "status":               getattr(ns, "status", None),
+                    "width":                getattr(size, "width", None) if size else None,
+                    "height":               getattr(size, "height", None) if size else None,
+                    "is_aspect_ratio":      getattr(size, "isAspectRatio", None) if size else None,
+                    "creative_template_id": getattr(ns, "creativeTemplateId", None),
+                    "html_snippet":         getattr(ns, "htmlSnippet", None),
+                    "css_snippet":          getattr(ns, "cssSnippet", None),
+                })
+            sb.offset += sb.limit
+            if sb.offset >= getattr(resp, "totalResultSetSize", 0):
+                break
+        logger.info("GAM native styles (SOAP): %d", len(out))
+        return out
+
+    def update_native_style(
+        self,
+        style_id: str,
+        *,
+        html_snippet: Optional[str] = None,
+        css_snippet: Optional[str] = None,
+    ) -> dict:
+        """Patch one native style's htmlSnippet and/or cssSnippet by id.
+
+        Fetch-modify-write: read the full NativeStyle object and mutate only
+        the snippet field(s), because updateNativeStyles replaces the whole
+        entity — rebuilding it would drop size/targeting/name. Returns the
+        updated id + snippets. Raises if the id isn't found.
+        """
+        if html_snippet is None and css_snippet is None:
+            raise ValueError("nothing to update: pass html_snippet and/or css_snippet")
+        client = self._get_soap_client()
+        from googleads import ad_manager  # type: ignore
+        svc = client.GetService("NativeStyleService", version=self._SOAP_API_VERSION)
+        sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+        sb.Where("id = :id").WithBindVariable("id", int(style_id)).Limit(1)
+        resp = _soap_retry(
+            lambda: svc.getNativeStylesByStatement(sb.ToStatement()),
+            "getNativeStylesByStatement",
+        )
+        results = getattr(resp, "results", None) or []
+        if not results:
+            raise RuntimeError(f"native style {style_id} not found")
+        ns = results[0]
+        if html_snippet is not None:
+            ns.htmlSnippet = html_snippet
+        if css_snippet is not None:
+            ns.cssSnippet = css_snippet
+        updated = _soap_retry(
+            lambda: svc.updateNativeStyles([ns]),
+            "updateNativeStyles",
+        )
+        u = (updated or [ns])[0]
+        logger.info("updated native style %s", style_id)
+        return {
+            "id":           str(getattr(u, "id", style_id) or style_id),
+            "html_snippet": getattr(u, "htmlSnippet", None),
+            "css_snippet":  getattr(u, "cssSnippet", None),
+        }
+
+    # ------------------------------------------------------------------
     # Combined pacing report
     # ------------------------------------------------------------------
 
