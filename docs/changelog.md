@@ -4,6 +4,25 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-15 — Newsletter native style tooling + 600x560 Sponsored Content
+
+- **#261** — Tooling to read/patch GAM newsletter **native styles** via SOAP
+  `NativeStyleService` (`GAMClient.list_native_styles` / `update_native_style` /
+  `create_native_style_from` / `get_creative_detail`), driven by
+  `scripts/update_native_style.py` through
+  `.github/workflows/update_native_style.yml` (branch push = read-only dump to
+  the PR; `workflow_dispatch` / a `[native-style-apply]` commit marker = the
+  write — cloud sessions hold no GAM creds, same pattern as `archive_pli`).
+  Resolves the 600×314 "Sponsored Content" newsletter native **overflow** (the
+  image fills the 314 frame, so the headline/body/CTA are clipped when GAM
+  rasterizes the style to the email image) by adding a **600×560** native style
+  (`972672`, cloned from `977473` — same creative template `12544547` +
+  targeting). The newsletter creative (`138562096121`) is **fluid (1×1,
+  native-eligible)**, so it renders at whatever size the email tag requests using
+  the matching native style — no new creative or LICA. Beehiv tag moves
+  `sz=600x314` → `sz=600x560`. (Roger picked the taller-slot option over
+  fitting/cropping the design into 314.)
+
 ## 2026-06-15 — Direct table badge/sort fix
 
 - **#250** — Badge numbering reverted to **per GAM order** (from #248's

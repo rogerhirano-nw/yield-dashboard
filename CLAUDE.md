@@ -701,6 +701,21 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   so LIs targeting them need both `skipInventoryCheck` AND `allowOverbook`
   at create. Native-style macros are `[%Var%]` — bare `[Var]` is not
   substituted.
+- **Newsletter native styles are fixed-size-per-slot, rendering one *fluid*
+  native creative.** The Beehiv email tags (`gampad/ad?…&sz=WxH`) request a
+  size; GAM renders the size-matched **native style** (HTML/CSS template) using
+  the assets of a single **fluid (1×1, native-eligible) `TemplateCreative`** on
+  one LI — so adding a new size = **add a native style at that size; no new
+  creative / LI / LICA.** The Bulletin uses creative `138562096121` (fluid) on
+  LI `7335266347`; custom per-slot styles share creative template `12544547`
+  (Sponsored Content): `977473` 600×314 and `972672` 600×560 (#261 — added for
+  the full un-clipped design, since the 314 frame clipped the headline/body/CTA
+  stacked under the full-height image). Read / patch / clone styles with
+  `scripts/update_native_style.py` via `update_native_style.yml`
+  (`GAMClient.list_native_styles` / `update_native_style` /
+  `create_native_style_from` / `get_creative_detail`); cloud sessions hold no
+  GAM creds, so it runs through Actions like `archive_pli` (branch push = a
+  read-only dump to the PR; a `[native-style-apply]` commit marker = the write).
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative

@@ -68,11 +68,11 @@ jobs:
           IN_IMAGE_HEIGHT: ${{ inputs.image_height }}
           IN_MODE: ${{ inputs.mode }}
           IN_APPLY: ${{ inputs.apply }}
-          # Run on a push whose commit message contains [native-style-apply].
-          # Option 3: clone the 600x314 Sponsored Content style (977473) into a
-          # 600x560 style so the fluid newsletter creative serves the full,
-          # un-clipped design at sz=600x540 -> 560.
-          PUSH_APPLY_ARGS: "--create-from 977473 --new-width 600 --new-height 560 --paper-bg --apply"
+          # Filled in (with the [native-style-apply] commit marker) when a branch
+          # push should perform a write; empty => push stays read-only. Reset to
+          # "" after the 600x560 create (#261) so a later marker push can't
+          # re-create a duplicate style (createNativeStyles is not idempotent).
+          PUSH_APPLY_ARGS: ""
         run: |
           set -o pipefail
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$IN_STYLE_ID" ]; then
