@@ -46,15 +46,21 @@ class _IssueCollector(logging.Handler):
     def __init__(self) -> None:
         super().__init__(logging.WARNING)
         self.records: list[logging.LogRecord] = []
+        self.had_errors: bool = False  # any ERROR+ record → exit 1 the job
 
     def emit(self, record: logging.LogRecord) -> None:
         self.records.append(record)
+        if record.levelno >= logging.ERROR:
+            self.had_errors = True
 
 
-def _run_with_alert(mode_label: str, callables: list) -> int:
+def _run_with_alert(mode_label: str, callables: list) -> tuple[int, bool]:
     """Run each callable in sequence, catch exceptions per-callable so one
     failure doesn't abort the rest. Sends an email alert when any WARNING+
-    log records are emitted. Returns total row count."""
+    log records are emitted. Returns (total_row_count, had_errors) so callers
+    can propagate a non-zero exit code when an ERROR-level failure occurred
+    (e.g. expired API credentials, DB error). WARNING-only issues don't fail
+    the job — only ERROR+ (uncaught exceptions, explicit logger.error calls)."""
     collector = _IssueCollector()
     logging.getLogger().addHandler(collector)
     total = 0
@@ -68,7 +74,7 @@ def _run_with_alert(mode_label: str, callables: list) -> int:
     if collector.records:
         _send_sweep_alert(collector.records, total)
     logger.info("Done (%s). %d rows written.", mode_label, total)
-    return total
+    return total, collector.had_errors
 
 
 _ENGINE: sqlalchemy.Engine | None = None
@@ -1336,42 +1342,42 @@ def main() -> None:
 
     if mode == "direct":
         # GAM direct-only; used by refresh_direct.yml at 11 AM + 3 PM ET.
-        _run_with_alert("direct", [refresh_gam])
-        return
+        _, had_errors = _run_with_alert("direct", [refresh_gam])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "gam_hourly":
-        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_weekly])
-        return
+        _, had_errors = _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_weekly])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "dv":
-        _run_with_alert("dv", [refresh_dv_attention, refresh_dv_ivt])
-        return
+        _, had_errors = _run_with_alert("dv", [refresh_dv_attention, refresh_dv_ivt])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "opensincera":
-        _run_with_alert("opensincera", [
+        _, had_errors = _run_with_alert("opensincera", [
             refresh_opensincera_ecosystem,
             refresh_opensincera_publishers,
             refresh_opensincera_adsystems,
             refresh_opensincera_modules,
         ])
-        return
+        sys.exit(1 if had_errors else 0)
 
     if mode == "deal-metadata":
-        _run_with_alert("deal-metadata", [
+        _, had_errors = _run_with_alert("deal-metadata", [
             refresh_magnite_deal_metadata,
             refresh_pubmatic_deal_metadata,
         ])
-        return
+        sys.exit(1 if had_errors else 0)
 
     # ── parallel-sweep modes (one GitHub Actions job each) ─────────────────
 
     if mode == "magnite":
-        _run_with_alert("magnite", [refresh_magnite, refresh_magnite_deal_metadata])
-        return
+        _, had_errors = _run_with_alert("magnite", [refresh_magnite, refresh_magnite_deal_metadata])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "gam":
         # All GAM except LICA (which is the slow full-table fetch).
-        _run_with_alert("gam", [
+        _, had_errors = _run_with_alert("gam", [
             refresh_gam,
             refresh_gam_hourly,
             refresh_gam_weekly,
@@ -1380,24 +1386,24 @@ def main() -> None:
             refresh_gam_private_auctions,
             refresh_gam_preferred_deals,
         ])
-        return
+        sys.exit(1 if had_errors else 0)
 
     if mode == "gam-lica":
         # Slow full-table pulls; run in its own job so it can't delay others.
-        _run_with_alert("gam-lica", [refresh_gam_creatives, refresh_gam_lica])
-        return
+        _, had_errors = _run_with_alert("gam-lica", [refresh_gam_creatives, refresh_gam_lica])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "pubmatic":
-        _run_with_alert("pubmatic", [refresh_pubmatic, refresh_pubmatic_deal_metadata])
-        return
+        _, had_errors = _run_with_alert("pubmatic", [refresh_pubmatic, refresh_pubmatic_deal_metadata])
+        sys.exit(1 if had_errors else 0)
 
     if mode == "post-sweep":
         # Runs after magnite + gam + pubmatic complete (needs their tables).
-        _run_with_alert("post-sweep", [refresh_pmp_last_bid_date, _ensure_indexes])
-        return
+        _, had_errors = _run_with_alert("post-sweep", [refresh_pmp_last_bid_date, _ensure_indexes])
+        sys.exit(1 if had_errors else 0)
 
     # ── mode=all: sequential full sweep (local dev / backwards compat) ─────
-    _run_with_alert("all", [
+    _, had_errors = _run_with_alert("all", [
         refresh_magnite,
         refresh_magnite_deal_metadata,
         refresh_gam,
@@ -1420,6 +1426,7 @@ def main() -> None:
         refresh_pmp_last_bid_date,
         _ensure_indexes,
     ])
+    sys.exit(1 if had_errors else 0)
 
 
 if __name__ == "__main__":
