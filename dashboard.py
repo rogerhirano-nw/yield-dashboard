@@ -3587,10 +3587,28 @@ if st.session_state.active_view == "campaigns":
                         f'</div>')
                 return "".join(cells)
 
+            # ── Cockpit (WIP): route the Direct triage cards (Ending-soon +
+            # Needs-attention) into a keyed container that desktop CSS pins as a
+            # sticky right rail, with the main column given right-padding to make
+            # room. ≤1024px the container stays in normal flow (above the KPIs),
+            # exactly as before. This is additive — no control-flow change — so
+            # the worst case is visual; the top offset / width below need a pass
+            # on a running instance. PMP signals stay in the PMP section for now.
+            st.markdown(
+                "<style>@media (min-width:1025px){"
+                '[data-testid="stMainBlockContainer"],[data-testid="block-container"],'
+                ".block-container{padding-right:360px!important;}"
+                ".st-key-nw_campaigns_rail{position:fixed;top:120px;right:24px;width:320px;"
+                "max-height:calc(100vh - 140px);overflow-y:auto;z-index:6;}"
+                "}</style>",
+                unsafe_allow_html=True,
+            )
+            _rail = st.container(key="nw_campaigns_rail")
+
             if _lr_items:
                 _lr_n = len(_lr_items)
                 _lr_worst = "sev-red" if any(i["proj_pct"] < 90 for i in _lr_items) else "sev-amber"
-                st.markdown(
+                _rail.markdown(
                     '<details class="nw-na" open>'
                     '<summary class="nw-na-head"><span>Ending soon · at risk</span>'
                     f'<span class="cnt">{_lr_n} need pacing up</span>'
@@ -3668,7 +3686,7 @@ if st.session_state.active_view == "campaigns":
                 # whole card collapsed on mobile originally. Chevron is hidden and
                 # the header is non-interactive (the `open` attribute + the
                 # `--always` CSS rule both keep it expanded).
-                st.markdown(
+                _rail.markdown(
                     '<details class="nw-na nw-na--always" open>'
                     '<summary class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span>'
@@ -3678,7 +3696,7 @@ if st.session_state.active_view == "campaigns":
                 )
             else:
                 # All clear — three static ✓ rows; nothing to collapse.
-                st.markdown(
+                _rail.markdown(
                     '<div class="nw-na">'
                     '<div class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span></div>'
