@@ -212,6 +212,13 @@ _DEFAULT_SETTINGS: dict = {
     # under-delivery risks are still 2 weeks out when they're most fixable).
     "landing_window_days": 7,
     "landing_threshold_pct": 100.0,
+    # Stale-deals "still live" window (PMP signals): a deal stops counting as
+    # live (and drops out of Stale deals) once it hasn't appeared in the GAM
+    # bid feed for this many days. gam_deal_bid_daily retains ~7 days, so 7 ≈
+    # "currently live in GAM" — a paused deal clears within ~a week instead of
+    # the old 90-day grace, which left paused deals lingering for months
+    # (Roger 2026-06-17). Distinct from the 90-day no-bid staleness test.
+    "stale_seen_window_days": 7,
     # Manual long-preroll override — list of rules that force a line into
     # the "Video Preroll >30s" benchmark when creative duration can't be
     # auto-detected from GAM (Newsweek's 3rd-party video tags via Innovid /
@@ -6520,14 +6527,20 @@ if st.session_state.active_view == "campaigns":
                 _lbd_stale = pd.DataFrame()
             if not _lbd_stale.empty:
                 _stale_today = datetime.now(timezone.utc).date()
+                # Two distinct cutoffs: stale = no winning bid in 90+ days;
+                # "still live" = appeared in the GAM feed within the (short)
+                # seen-window, so a paused deal drops out within ~a week
+                # instead of lingering for the full 90.
                 _stale_cut = (_stale_today - timedelta(days=90)).isoformat()
+                _seen_window = int(_cfg.get("stale_seen_window_days", 7) or 7)
+                _seen_cut = (_stale_today - timedelta(days=_seen_window)).isoformat()
                 _lbd_stale = _lbd_stale.copy()
                 _lbd_stale["last_bid_date"]   = _lbd_stale["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 _lbd_stale["first_seen_date"] = _lbd_stale["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 if "last_seen_date" in _lbd_stale.columns:
                     _lbd_stale["last_seen_date"] = _lbd_stale["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 _stale = _lbd_stale[dl.stale_deal_mask(_lbd_stale, _stale_cut)
-                                    & dl.recently_seen_mask(_lbd_stale, _stale_cut)].copy()
+                                    & dl.recently_seen_mask(_lbd_stale, _seen_cut)].copy()
                 if not _stale.empty:
                     _stale["_idle"] = _stale.apply(
                         lambda r: dl.idle_days(r.get("last_bid_date"),
