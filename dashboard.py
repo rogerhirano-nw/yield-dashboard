@@ -1083,8 +1083,8 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    delivered, tick at right = goal. The gap to the tick is the shortfall. */
 .nw-lr-meta { display: block; font-size: 10px; color: var(--text-muted);
               line-height: 1.25; margin-top: 1px; }
-.nw-lr-bar { position: relative; height: 6px; border-radius: 999px;
-             background: var(--surface-2); margin-top: 5px; }
+.nw-lr-bar { display: block; position: relative; height: 6px; border-radius: 999px;
+             background: var(--surface-2); margin-top: 5px; max-width: 420px; }
 .nw-lr-proj { position: absolute; left: 0; top: 0; height: 100%;
               border-radius: 999px; opacity: .38; }
 .nw-lr-done { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
