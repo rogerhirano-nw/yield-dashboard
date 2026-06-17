@@ -212,6 +212,13 @@ _DEFAULT_SETTINGS: dict = {
     # under-delivery risks are still 2 weeks out when they're most fixable).
     "landing_window_days": 7,
     "landing_threshold_pct": 100.0,
+    # Stale-deals "still live" window (PMP signals): a deal stops counting as
+    # live (and drops out of Stale deals) once it hasn't appeared in the GAM
+    # bid feed for this many days. gam_deal_bid_daily retains ~7 days, so 7 ≈
+    # "currently live in GAM" — a paused deal clears within ~a week instead of
+    # the old 90-day grace, which left paused deals lingering for months
+    # (Roger 2026-06-17). Distinct from the 90-day no-bid staleness test.
+    "stale_seen_window_days": 7,
     # Manual long-preroll override — list of rules that force a line into
     # the "Video Preroll >30s" benchmark when creative duration can't be
     # auto-detected from GAM (Newsweek's 3rd-party video tags via Innovid /
@@ -1036,6 +1043,15 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-na .nw-na-body { display: block !important; }  /* always-expanded on desktop/tablet */
   .nw-na-h-chev { display: none; }
   .nw-na > summary.nw-na-head { cursor: default; }
+  /* Offenders shown inline on desktop — force each category's sub-list open
+     regardless of the <details> toggle, hide the per-row chevron, and tint
+     the category header by severity (the [open] tint can't fire when we're
+     not actually toggling it open). Click-to-expand stays on mobile. */
+  .nw-na-row > .nw-na-sub { display: block !important; }
+  .nw-na-row > summary .nw-na-chev { display: none; }
+  .nw-na-row > summary { cursor: default; }
+  .nw-na-row.sev-red   > summary { background: var(--state-critical-surface); }
+  .nw-na-row.sev-amber > summary { background: var(--state-warning-surface); }
 }
 /* `--always` opt-out of the mobile collapse: this card stays expanded at
    ALL widths (Roger wants Needs-attention's triage categories never a tap
@@ -3587,19 +3603,19 @@ if st.session_state.active_view == "campaigns":
                         f'</div>')
                 return "".join(cells)
 
-            if _lr_items:
-                _lr_n = len(_lr_items)
-                _lr_worst = "sev-red" if any(i["proj_pct"] < 90 for i in _lr_items) else "sev-amber"
-                st.markdown(
-                    '<details class="nw-na" open>'
-                    '<summary class="nw-na-head"><span>Ending soon · at risk</span>'
-                    f'<span class="cnt">{_lr_n} need pacing up</span>'
-                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
-                    f'<div class="nw-na-body"><div class="nw-na-row {_lr_worst}" '
-                    'style="padding:9px 13px;">'
-                    f'<div style="width:100%">{_lr_rows_html(_lr_items)}</div></div></div></details>',
-                    unsafe_allow_html=True,
-                )
+            # Ending-soon is folded into the Needs-attention card as its
+            # first (most severe) category band — revenue/time risk leads.
+            # _lr_n / _lr_worst / _lr_subrows feed the _na_row build below.
+            _lr_n = len(_lr_items)
+            _lr_worst = ("sev-red" if any(i["proj_pct"] < 90 for i in _lr_items)
+                         else "sev-amber") if _lr_items else "sev-amber"
+            _lr_subrows = _lr_rows_html(_lr_items) if _lr_items else ""
+            def _lr_detail(items):
+                if not items:
+                    return "All current lines on track to finish"
+                w = items[0]  # already sorted worst projected-% first
+                adv = dl.line_item_display_name(w["name"]).split(" — ", 1)[0]
+                return f"{_na_esc(adv)} · proj {w['proj_pct']:.0f}%"
 
             # ── "Needs attention" panel: one card, a row per alert category.
             # Categories with offenders render as a native <details> accordion
@@ -3642,7 +3658,7 @@ if st.session_state.active_view == "campaigns":
                         f'<div class="nw-na-sub">{subrows_html}</div></details>')
 
             _u_n, _o_n, _v_n = len(_under_rows), len(_over_rows), len(_vw_anom_rows)
-            _na_total = _u_n + _o_n + _v_n
+            _na_total = _lr_n + _u_n + _o_n + _v_n
             _under_sub = _na_subrows(
                 _under_rows.sort_values("pacing_pct"), "sev-red", "pacing_pct",
                 lambda v: f"{v:.0f}%") if _u_n else ""
@@ -3654,20 +3670,28 @@ if st.session_state.active_view == "campaigns":
                 lambda v: f"{v:.1f}%") if _v_n else ""
 
             _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
+            # One unified card. Ending soon (revenue/time risk) leads as the
+            # first, most-severe band, then the pacing/viewability quality
+            # flags. The ending-soon band's subrows carry the landing detail
+            # (projected-vs-goal bar + days left + ~Nk short) via _lr_rows_html;
+            # it's only emitted when there are at-risk lines (no ✓ row for it).
             _na_cats = (
-                _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
+                (_na_row(_lr_n, _lr_worst, "Ending soon", _lr_detail(_lr_items), _lr_subrows)
+                 if _lr_items else "")
+                + _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
                 + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
             if _na_total:
                 # Forced-open at ALL widths via `nw-na--always` (Roger, 2026-06):
                 # the triage categories stay visible even on mobile rather than
-                # collapsing to a header line. The per-category line-item lists
-                # underneath remain independently tap-to-expand, so the open card
-                # is the ~4 category rows, not a screenful — which is what got the
-                # whole card collapsed on mobile originally. Chevron is hidden and
-                # the header is non-interactive (the `open` attribute + the
-                # `--always` CSS rule both keep it expanded).
+                # collapsing to a header line (reverses the old mobile collapse).
+                # The open card is the ~4 category rows, not a screenful, because
+                # the per-category offender lists are auto-opened inline on
+                # desktop/tablet (the `@media min-width:641` rules above) and
+                # stay tap-to-expand on mobile. Chevron hidden + header
+                # non-interactive (the `open` attribute + the `--always` CSS rule
+                # keep it expanded).
                 st.markdown(
                     '<details class="nw-na nw-na--always" open>'
                     '<summary class="nw-na-head"><span>Needs attention</span>'
@@ -3677,7 +3701,7 @@ if st.session_state.active_view == "campaigns":
                     unsafe_allow_html=True,
                 )
             else:
-                # All clear — three static ✓ rows; nothing to collapse.
+                # All clear — static ✓ rows; nothing to collapse.
                 st.markdown(
                     '<div class="nw-na">'
                     '<div class="nw-na-head"><span>Needs attention</span>'
@@ -6516,14 +6540,20 @@ if st.session_state.active_view == "campaigns":
                 _lbd_stale = pd.DataFrame()
             if not _lbd_stale.empty:
                 _stale_today = datetime.now(timezone.utc).date()
+                # Two distinct cutoffs: stale = no winning bid in 90+ days;
+                # "still live" = appeared in the GAM feed within the (short)
+                # seen-window, so a paused deal drops out within ~a week
+                # instead of lingering for the full 90.
                 _stale_cut = (_stale_today - timedelta(days=90)).isoformat()
+                _seen_window = int(_cfg.get("stale_seen_window_days", 7) or 7)
+                _seen_cut = (_stale_today - timedelta(days=_seen_window)).isoformat()
                 _lbd_stale = _lbd_stale.copy()
                 _lbd_stale["last_bid_date"]   = _lbd_stale["last_bid_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 _lbd_stale["first_seen_date"] = _lbd_stale["first_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 if "last_seen_date" in _lbd_stale.columns:
                     _lbd_stale["last_seen_date"] = _lbd_stale["last_seen_date"].astype(str).replace({"None": pd.NA, "nan": pd.NA, "": pd.NA})
                 _stale = _lbd_stale[dl.stale_deal_mask(_lbd_stale, _stale_cut)
-                                    & dl.recently_seen_mask(_lbd_stale, _stale_cut)].copy()
+                                    & dl.recently_seen_mask(_lbd_stale, _seen_cut)].copy()
                 if not _stale.empty:
                     _stale["_idle"] = _stale.apply(
                         lambda r: dl.idle_days(r.get("last_bid_date"),
