@@ -1036,10 +1036,6 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-na .nw-na-body { display: block !important; }  /* always-expanded on desktop/tablet */
   .nw-na-h-chev { display: none; }
   .nw-na > summary.nw-na-head { cursor: default; }
-  /* Two attention cards side by side, sharing the row equally; drop the
-     760px single-card cap so they fill the wide canvas. */
-  .nw-attn-wrap { display: flex; gap: 16px; align-items: flex-start; }
-  .nw-attn-wrap > .nw-attn-card { flex: 1 1 0; min-width: 0; max-width: none; margin: 0; }
   /* Offenders shown inline on desktop — force each category's sub-list open
      regardless of the <details> toggle, hide the per-row chevron, and tint
      the category header by severity (the [open] tint can't fire when we're
@@ -1050,9 +1046,6 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-na-row.sev-red   > summary { background: var(--state-critical-surface); }
   .nw-na-row.sev-amber > summary { background: var(--state-warning-surface); }
 }
-/* The wrap is a plain block by default (mobile) so the two cards stack with
-   their own margins, exactly as before. */
-.nw-attn-wrap { margin: 6px 0 1rem; }
 .nw-na-row { border-bottom: 1px solid var(--border); }
 .nw-na-row:last-child { border-bottom: none; }
 .nw-na-row > summary, .nw-na-static { list-style: none; display: flex;
@@ -3594,21 +3587,19 @@ if st.session_state.active_view == "campaigns":
                         f'</div>')
                 return "".join(cells)
 
-            # Built as a string (not emitted yet) so it can sit beside the
-            # Needs-attention card in one flex row on desktop — see the
-            # combined `.nw-attn-wrap` emit at the end of this section.
-            _landing_html = ""
-            if _lr_items:
-                _lr_n = len(_lr_items)
-                _lr_worst = "sev-red" if any(i["proj_pct"] < 90 for i in _lr_items) else "sev-amber"
-                _landing_html = (
-                    '<details class="nw-na nw-attn-card" open>'
-                    '<summary class="nw-na-head"><span>Ending soon · at risk</span>'
-                    f'<span class="cnt">{_lr_n} need pacing up</span>'
-                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
-                    f'<div class="nw-na-body"><div class="nw-na-row {_lr_worst}" '
-                    'style="padding:9px 13px;">'
-                    f'<div style="width:100%">{_lr_rows_html(_lr_items)}</div></div></div></details>')
+            # Ending-soon is folded into the Needs-attention card as its
+            # first (most severe) category band — revenue/time risk leads.
+            # _lr_n / _lr_worst / _lr_subrows feed the _na_row build below.
+            _lr_n = len(_lr_items)
+            _lr_worst = ("sev-red" if any(i["proj_pct"] < 90 for i in _lr_items)
+                         else "sev-amber") if _lr_items else "sev-amber"
+            _lr_subrows = _lr_rows_html(_lr_items) if _lr_items else ""
+            def _lr_detail(items):
+                if not items:
+                    return "All current lines on track to finish"
+                w = items[0]  # already sorted worst projected-% first
+                adv = dl.line_item_display_name(w["name"]).split(" — ", 1)[0]
+                return f"{_na_esc(adv)} · proj {w['proj_pct']:.0f}%"
 
             # ── "Needs attention" panel: one card, a row per alert category.
             # Categories with offenders render as a native <details> accordion
@@ -3651,7 +3642,7 @@ if st.session_state.active_view == "campaigns":
                         f'<div class="nw-na-sub">{subrows_html}</div></details>')
 
             _u_n, _o_n, _v_n = len(_under_rows), len(_over_rows), len(_vw_anom_rows)
-            _na_total = _u_n + _o_n + _v_n
+            _na_total = _lr_n + _u_n + _o_n + _v_n
             _under_sub = _na_subrows(
                 _under_rows.sort_values("pacing_pct"), "sev-red", "pacing_pct",
                 lambda v: f"{v:.0f}%") if _u_n else ""
@@ -3663,8 +3654,15 @@ if st.session_state.active_view == "campaigns":
                 lambda v: f"{v:.1f}%") if _v_n else ""
 
             _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
+            # One unified card. Ending soon (revenue/time risk) leads as the
+            # first, most-severe band, then the pacing/viewability quality
+            # flags. The ending-soon band's subrows carry the landing detail
+            # (projected-vs-goal bar + days left + ~Nk short) via _lr_rows_html;
+            # it's only emitted when there are at-risk lines (no ✓ row for it).
             _na_cats = (
-                _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
+                (_na_row(_lr_n, _lr_worst, "Ending soon", _lr_detail(_lr_items), _lr_subrows)
+                 if _lr_items else "")
+                + _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
                 + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
@@ -3672,35 +3670,25 @@ if st.session_state.active_view == "campaigns":
                 # Collapsible card: on mobile it's one compact header line (it
                 # was dominating the first screen above the KPIs) — tap to reveal
                 # the category accordion. Desktop/tablet force the body open AND
-                # the per-category offenders open via CSS (`.nw-attn-wrap`
-                # rules) so the lines show inline with no click.
-                _na_html = (
-                    '<details class="nw-na nw-attn-card">'
+                # the per-category offenders open via CSS so the lines show
+                # inline with no click.
+                st.markdown(
+                    '<details class="nw-na">'
                     '<summary class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span>'
                     '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
-                    f'<div class="nw-na-body">{_na_cats}</div></details>')
-            else:
-                # All clear — three static ✓ rows; nothing to collapse.
-                _na_html = (
-                    '<div class="nw-na nw-attn-card">'
-                    '<div class="nw-na-head"><span>Needs attention</span>'
-                    f'<span class="cnt">{_na_head_cnt}</span></div>'
-                    + _na_cats + '</div>')
-
-            # ── Emit both attention cards. On desktop they sit side by side in
-            # one flex row (`.nw-attn-wrap`) — Ending soon (revenue/time risk)
-            # left, Needs attention (quality flags) right — to use the wide
-            # canvas and halve the vertical stack; on mobile the wrap is a plain
-            # block so they stack as before. When there's no landing card, Needs
-            # attention renders alone at its normal width.
-            if _landing_html:
-                st.markdown(
-                    f'<div class="nw-attn-wrap">{_landing_html}{_na_html}</div>',
+                    f'<div class="nw-na-body">{_na_cats}</div></details>',
                     unsafe_allow_html=True,
                 )
             else:
-                st.markdown(_na_html, unsafe_allow_html=True)
+                # All clear — static ✓ rows; nothing to collapse.
+                st.markdown(
+                    '<div class="nw-na">'
+                    '<div class="nw-na-head"><span>Needs attention</span>'
+                    f'<span class="cnt">{_na_head_cnt}</span></div>'
+                    + _na_cats + '</div>',
+                    unsafe_allow_html=True,
+                )
 
             # ── KPI strip: nine tiles — serif number, target subtitle where
             # applicable, neutral full-width sparkline (Newsweek anatomy).
