@@ -16,18 +16,11 @@ and why" index, keyed by PR. Newest first.
   instead by keeping only the **~4 category rows** open while each category's
   line-item list stays independently tap-to-expand. Scoped to Needs-attention;
   the **ending-soon** and **PMP-signals** cards keep the default mobile collapse.
-  Pure CSS + markup; decision logic untouched (55/55 logic tests pass).
-- **#274** — **Desktop right rail (WIP, additive first cut).** The Direct triage
-  cards (Ending-soon + Needs-attention) now render into a keyed
-  `st.container(key="nw_campaigns_rail")` that desktop CSS (`@media min-width:
-  1025px`) pins as a **sticky right rail** (`position:fixed` top-right), with the
-  main block given `padding-right` to make room; ≤1024px the container stays in
-  normal flow above the KPIs, unchanged. Done **additively** (no control-flow
-  change — can't crash) rather than wrapping the ~4,150-line Campaigns block in a
-  `with main_col:` Streamlit column, which would corrupt its many multi-line HTML
-  f-strings on a mechanical reindent. Parses + 55/55 tests pass, but the rail
-  **top-offset / width need a visual pass on a running instance**. Grouped/banded
-  table and the PMP-signals rail are still to come.
+  Pure CSS + markup; decision logic untouched (55/55 logic tests pass). The
+  desktop **sticky rail + grouped/banded table are deferred** — they need a
+  running instance to build against (the Campaigns tab is one ~3,000-line
+  sequential scroll, so a side-by-side rail is a large `with main_col:` reindent
+  whose visual result can't be verified in CI).
 
 ## 2026-06-15 — Direct table polish
 
