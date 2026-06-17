@@ -674,8 +674,22 @@ Cartier line hit (ended at 99%). Renders as an `.nw-na`-style card **above
 Needs-attention** (`open` by default), worst projected-% first, each row a
 two-tier `Advertiser — Campaign` label + meta (days left · ends · %
 delivered) + a compact projected-vs-goal bar (faint = projected, solid =
-delivered, tick = goal; the gap is the shortfall) + projected % and `~Nk
-short`. Severity: projected <90% = red, 90–99% = amber.
+delivered; the unfilled track to the bar's end is the shortfall) +
+projected % and `~Nk short`. Severity: projected <90% = red, 90–99% =
+amber.
+
+**Desktop layout (2026-06-17):** Ending soon + Needs-attention render
+**side by side** in one flex row (`.nw-attn-wrap` / `.nw-attn-card`,
+`@media min-width:641px`) — Ending soon left (red spine), Needs-attention
+right — to use the wide canvas and halve the vertical stack; both cards'
+760px cap is dropped inside the wrap. Both are built as HTML strings and
+emitted in **one** `st.markdown` so they can flex together (Streamlit
+wraps each markdown call separately, so two calls can't be flexed). When
+there's no landing card the wrap is skipped and Needs-attention renders
+alone at its normal width. On desktop the Needs-attention category
+offenders are forced **inline** (`.nw-na-row > .nw-na-sub { display:block
+!important }` + per-category severity tint), no click needed; ≤640px the
+wrap is a plain block (cards stack) and categories stay tap-to-expand.
 Decision logic is `dl.landing_projection` (projected = delivered +
 daily×days_left, daily from `impressions_1d`) and `dl.landing_at_risk`
 (ending within window AND projected < threshold), tested in
