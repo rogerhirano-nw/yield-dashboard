@@ -4,6 +4,24 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-17 — Campaigns Cockpit (WIP)
+
+- **#274** — **Needs-attention card stays open on mobile.** First slice of the
+  Campaigns desktop **"Cockpit"** rework (main work area + sticky right rail —
+  Roger's pick from a 3-way Focus / Cockpit / Command mockup). New
+  `nw-na--always` modifier forces the card body open, hides the chevron, and
+  makes the header non-interactive at **all** widths (paired with the `open`
+  attribute), reversing the 2026-06-14 mobile collapse. The reason for that
+  collapse (the card "dominating the first screen above the KPIs") is avoided
+  instead by keeping only the **~4 category rows** open while each category's
+  line-item list stays independently tap-to-expand. Scoped to Needs-attention;
+  the **ending-soon** and **PMP-signals** cards keep the default mobile collapse.
+  Pure CSS + markup; decision logic untouched (55/55 logic tests pass). The
+  desktop **sticky rail + grouped/banded table are deferred** — they need a
+  running instance to build against (the Campaigns tab is one ~3,000-line
+  sequential scroll, so a side-by-side rail is a large `with main_col:` reindent
+  whose visual result can't be verified in CI).
+
 ## 2026-06-15 — Direct table polish
 
 - **#261** — **Hotfix: `NameError` in `_pmp_airtable_url`** (crashed the PMP tab,
