@@ -354,6 +354,76 @@ PR #133 for the fix. The plist should carry only `PATH`, paths
 (`CONFIANT_BLOCKLIST_PROFILE_DIR`, `CONFIANT_BLOCKLIST_STATE`), and
 process-control keys (`AbandonProcessGroup`, etc.).
 
+## Manual blocks in GAM Ad Review Center (Cloaked / no-destination case)
+
+The daily `confiant_blocklist.py` cron handles Cloaked rows that have a
+landing-page domain (most of them: see "Confiant issue types" above for
+the `*.rtbrain.app` / `*.walnutplate.online` etc. pattern). What it can't
+handle is the **`Detail = ID xxxxx`** subset — cloaked creatives where
+Confiant's `issue_type_by_domain` API doesn't expose a destination URL.
+For those, the publisher-side action is a per-creative block in **GAM's
+Ad Review Center**, filtered by the GPT Ad Response ID.
+
+`scripts/confiant_gam_arc_block.py` automates this:
+
+```bash
+# JSON input — the same shape confiant_blocklist.py emits for cloaked review
+python scripts/confiant_gam_arc_block.py /tmp/cloaked_review_queue.json
+
+# …or pass adtrace URLs directly
+python scripts/confiant_gam_arc_block.py \
+    https://app.confiant.com/adtrace/<hash1> \
+    https://app.confiant.com/adtrace/<hash2>
+
+# Dry-run: extract GPT IDs only, don't drive GAM
+python scripts/confiant_gam_arc_block.py --dry-run /tmp/queue.json
+```
+
+Two-phase flow:
+
+1. **Pull the GPT Ad Response ID from Confiant** — open each adtrace page
+   in the existing `~/.confiant-blocklist/playwright-profile/`, regex out
+   `GPT Ad Response ID\s+(\S+)` from the page body.
+2. **Block in GAM Ad Review Center** — navigate to
+   `https://admanager.google.com/22541732127#brand_safety/ad_review_center`
+   (the new URL — Google moved ARC from `#creatives/ad_review_center` to
+   the Brand safety section), apply the **`Ad response ID` filter** (NOT
+   the generic `Text search`), click the Block button on the `Ad match`
+   card.
+
+### Gotchas captured from the 2026-06-17 run
+
+- **`Ad response ID` autocomplete is value-conditional.** Typing
+  characters in the filter box doesn't show "Ad response ID" as an
+  option until you type a value that looks like one. Script types the
+  value first, then clicks the `[role="menuitem"]:has-text("Ad response ID:")`
+  option.
+- **Low-impression creatives stick in skeleton-render state.** Cards for
+  2-impression and lower creatives can hang as gray placeholders forever
+  — the `Block ad` button never appears. The fix that worked: after
+  applying the filter, **reload the page**. GAM persists the filter as
+  `&as=<base64-blob>` in the URL hash, and the post-reload hydration
+  renders the card properly. The script falls back to this automatically
+  when the Block button isn't visible after 15s.
+- **`Couldn't find matching ad` is a real signal, not always a bug.**
+  Confiant's Real-Time Blocking catches ~99% of Cloaked Google flags
+  before they serve. The handful Confiant flags in `issue_type_by_domain`
+  but ARC says "Couldn't find" are the ones RTB caught upstream — they
+  literally never reached GAM. No action needed; the script reports
+  `not-in-arc` and moves on.
+
+### What lands in state.sqlite
+
+Each successful block writes one row to `blocked_domains` with:
+
+- `domain = "gam-arc:<gpt_ad_response_id>"` (tagged differently from
+  destination-URL blocks so the weekly digest can distinguish them)
+- `issue_type = "Manual block in GAM ARC — Confiant ID xxxxx → GPT ..."`
+- `protection_label = "ARC manual block"`
+
+In the weekly RevOps digest these surface under their own issue-type
+card, separate from the URL-based GAM Protection blocks.
+
 ## Email routing — success vs failure recipients
 
 The daily script splits the post-run email by outcome. Two env vars:
