@@ -868,6 +868,20 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   (display:none, not detached) and its unit's box == the slot div, so an
   **iframe mirror** (absolute transparent fill of the slot div) makes AV
   score real geometry — `docs/snippets/mobkoi_iframe_mirror_creative.html`.
+  **Deployed as a GAM creative wrapper at the AD-UNIT level** (label on the
+  in-article units), not just on the directly-trafficked creatives — so it
+  wraps **every** creative serving on those units, including Mobkoi's **S2S
+  Prebid / open-auction** demand, not only the direct interscroller/
+  uniscroller LIs. This is the key scope fact: an ad-unit wrapper carries the
+  fix across **all** demand sources on the unit, so there is **no Mobkoi-side
+  dependency** — it's the standing fix until Mobkoi ships the in-iframe render
+  mode (path 1 in the debrief). Confirmed on the programmatic path: the
+  `hb_bidder=mobkoi` (s2s) supply — which our per-creative edits never
+  touched — stepped from the ~5–8% AV artifact (Jun 1–15) to **45.5% (6/16)
+  → 68.6% (6/17)**, climbing toward the 75.4% display baseline, the same
+  correction the direct lines showed. (`docs/mobkoi_viewability.md` §1c still
+  frames this as a per-creative fix — reconcile it to the ad-unit-wrapper
+  deployment.)
   Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
   On-site preview + DOM forensics for any creative: dispatch
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
