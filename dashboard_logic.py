@@ -166,6 +166,25 @@ def choose_join_col(df, id_col: str = "line_item_id",
     return name_col
 
 
+def merge_lookups(primary: dict, secondary: dict) -> dict:
+    """Overlay `primary` on `secondary` — primary wins on key collision.
+
+    Used to give the PMP DV lookups a fallback key: order_name is the
+    canonical PMP join (primary), but some deals are trafficked with the
+    abbreviated word in `programmatic_deal_name` (the dashboard's "Deal"
+    key) while DV's Order column carries the long form — e.g.
+    "..._Tech_..._Video_$14" vs "..._Technology_..._Video_$14"
+    (2026-06-15). DV's Line Item column mirrors the abbreviated spelling,
+    so a line_item_name-keyed lookup (secondary) closes the gap. Verified
+    on prod: 0 collisions between PMP-style line_item_name keys and the
+    order lookup, so the fallback never overrides a real order match."""
+    if not secondary:
+        return dict(primary)
+    merged = dict(secondary)
+    merged.update(primary)
+    return merged
+
+
 def attention_current_and_prior(dv_df, group_col: str) -> tuple[dict, dict]:
     """Per-group Attention Index lookups: (current = mean of per-date
     means over the whole window, prior = same excluding the latest date —
