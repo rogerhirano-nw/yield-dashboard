@@ -593,6 +593,18 @@ def test_recently_seen_mask():
     assert recently_seen_mask(no_col, "2026-03-14").tolist() == [True, True]
 
 
+def test_recently_seen_short_window_drops_paused_deal():
+    # Replays 2026-06-17: a deal paused ~10 days ago (last seen 2026-06-07)
+    # vs one still live (seen yesterday). Under the old 90-day "seen" window
+    # the paused deal lingers; under the tightened ~7-day window it drops
+    # while the live deal stays. today = 2026-06-17.
+    import pandas as pd
+    from dashboard_logic import recently_seen_mask
+    df = pd.DataFrame({"last_seen_date": ["2026-06-07", "2026-06-16"]})  # paused, live
+    assert recently_seen_mask(df, "2026-03-19").tolist() == [True, True]   # 90d: both linger (the bug)
+    assert recently_seen_mask(df, "2026-06-10").tolist() == [False, True]  # 7d: paused drops, live stays
+
+
 def test_idle_days_prefers_last_bid_then_first_seen():
     from datetime import date as d
     from dashboard_logic import idle_days
