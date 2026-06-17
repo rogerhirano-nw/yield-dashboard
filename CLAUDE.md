@@ -667,29 +667,24 @@ Rules that survive any future restyle:
     meta line (SSP · last bid · `.nd-idle` days-idle). Folded in here
     2026-06-14; the archive action was removed.
 
-## Direct tab — "Ending soon · at risk" landing-risk card
+## Direct tab — "Ending soon · at risk" landing-risk band
 Surfaces Direct line items whose flight ends soon AND that are projected,
 at the current daily pace, to finish under goal — the under-delivery the
-Cartier line hit (ended at 99%). Renders as an `.nw-na`-style card **above
-Needs-attention** (`open` by default), worst projected-% first, each row a
-two-tier `Advertiser — Campaign` label + meta (days left · ends · %
-delivered) + a compact projected-vs-goal bar (faint = projected, solid =
-delivered; the unfilled track to the bar's end is the shortfall) +
-projected % and `~Nk short`. Severity: projected <90% = red, 90–99% =
-amber.
-
-**Desktop layout (2026-06-17):** Ending soon + Needs-attention render
-**side by side** in one flex row (`.nw-attn-wrap` / `.nw-attn-card`,
-`@media min-width:641px`) — Ending soon left (red spine), Needs-attention
-right — to use the wide canvas and halve the vertical stack; both cards'
-760px cap is dropped inside the wrap. Both are built as HTML strings and
-emitted in **one** `st.markdown` so they can flex together (Streamlit
-wraps each markdown call separately, so two calls can't be flexed). When
-there's no landing card the wrap is skipped and Needs-attention renders
-alone at its normal width. On desktop the Needs-attention category
-offenders are forced **inline** (`.nw-na-row > .nw-na-sub { display:block
-!important }` + per-category severity tint), no click needed; ≤640px the
-wrap is a plain block (cards stack) and categories stay tap-to-expand.
+Cartier line hit (ended at 99%). **Unified into the Needs-attention card
+as its first, most-severe band** (Roger 2026-06-17 — was briefly a
+separate side-by-side card, then merged into one box): the "Ending soon"
+category leads (revenue/time risk on top), then Underpacing / Overpacing /
+Viewability. Its subrows carry the landing detail — two-tier
+`Advertiser — Campaign` + meta (days left · ends · % delivered) + a compact
+projected-vs-goal bar (faint = projected, solid = delivered; the unfilled
+track to the bar's end is the shortfall) + projected % and `~Nk short`.
+Band severity: any line projected <90% = red, else amber; the band is
+omitted entirely (no ✓ row) when nothing is ending-at-risk, and its count
+folds into the card's `_na_total` header total.
+On desktop every category's offenders show **inline** (`.nw-na-row >
+.nw-na-sub { display:block !important }` + per-category severity tint),
+no click; ≤640px the card collapses to a one-line header and categories
+stay tap-to-expand.
 Decision logic is `dl.landing_projection` (projected = delivered +
 daily×days_left, daily from `impressions_1d`) and `dl.landing_at_risk`
 (ending within window AND projected < threshold), tested in
