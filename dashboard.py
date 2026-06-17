@@ -3683,16 +3683,20 @@ if st.session_state.active_view == "campaigns":
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
             # ── Cockpit (WIP): pin the unified triage card as a sticky right rail
-            # on desktop (≥1025px); the main block gets right-padding to make
-            # room. ≤1024px the container stays in normal flow above the KPIs,
-            # unchanged. Additive — no control-flow change — so the worst case is
-            # visual. The offsets below (rail top/width + main padding) are first
-            # guesses to tune against a running instance.
+            # on desktop (≥1025px). The main `.block-container` is capped at
+            # max-width:1600px elsewhere; here we shrink it and reserve a fixed
+            # right gutter (margin-right) so the fixed rail doesn't overlap it.
+            # Reuses that rule's exact 3-selector group so this (emitted later)
+            # wins on source order. ≤1024px nothing applies — the container stays
+            # in normal flow above the KPIs, unchanged.
             st.markdown(
                 "<style>@media (min-width:1025px){"
-                '[data-testid="stMainBlockContainer"],[data-testid="block-container"],'
-                ".block-container{padding-right:360px!important;}"
-                ".st-key-nw_campaigns_rail{position:fixed;top:120px;right:24px;width:320px;"
+                ".stApp .main .block-container,"
+                '.stApp [data-testid="stMain"] .block-container,'
+                '.stApp [data-testid="stAppViewContainer"] .block-container{'
+                "max-width:min(1320px,calc(100vw - 380px))!important;"
+                "margin-left:auto!important;margin-right:360px!important;}"
+                ".st-key-nw_campaigns_rail{position:fixed;top:120px;right:20px;width:320px;"
                 "max-height:calc(100vh - 140px);overflow-y:auto;z-index:6;}"
                 "}</style>",
                 unsafe_allow_html=True,
