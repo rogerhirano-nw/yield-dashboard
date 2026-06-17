@@ -1037,6 +1037,15 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-na-h-chev { display: none; }
   .nw-na > summary.nw-na-head { cursor: default; }
 }
+/* `--always` opt-out of the mobile collapse: this card stays expanded at
+   ALL widths (Roger wants Needs-attention's triage categories never a tap
+   away, even on mobile). Only the per-category line-item lists underneath
+   stay independently collapsible, so the open card is the ~4 category rows,
+   not a screenful. Applied to the Needs-attention card only; the
+   ending-soon and PMP-signals cards keep the default mobile collapse. */
+.nw-na--always .nw-na-body { display: block !important; }
+.nw-na--always > summary.nw-na-head .nw-na-h-chev { display: none; }
+.nw-na--always > summary.nw-na-head { cursor: default; }
 .nw-na-row { border-bottom: 1px solid var(--border); }
 .nw-na-row:last-child { border-bottom: none; }
 .nw-na-row > summary, .nw-na-static { list-style: none; display: flex;
@@ -3651,12 +3660,16 @@ if st.session_state.active_view == "campaigns":
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
             if _na_total:
-                # Collapsible card: on mobile it's one compact header line (it
-                # was dominating the first screen above the KPIs) — tap to reveal
-                # the category accordion. Desktop/tablet force the body open via
-                # CSS, so the always-expanded layout there is unchanged.
+                # Forced-open at ALL widths via `nw-na--always` (Roger, 2026-06):
+                # the triage categories stay visible even on mobile rather than
+                # collapsing to a header line. The per-category line-item lists
+                # underneath remain independently tap-to-expand, so the open card
+                # is the ~4 category rows, not a screenful — which is what got the
+                # whole card collapsed on mobile originally. Chevron is hidden and
+                # the header is non-interactive (the `open` attribute + the
+                # `--always` CSS rule both keep it expanded).
                 st.markdown(
-                    '<details class="nw-na">'
+                    '<details class="nw-na nw-na--always" open>'
                     '<summary class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span>'
                     '<span class="nw-na-h-chev">&rsaquo;</span></summary>'

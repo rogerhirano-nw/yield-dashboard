@@ -600,15 +600,21 @@ Rules that survive any future restyle:
   (`_na_row` / `_na_subrows`) is rendering, not decision logic — the
   offender sets (`_under_rows` / `_over_rows` / `_vw_anom_rows`) are still
   computed upstream from the configured benchmarks.
-  **The whole card is itself a `<details>`** (when there are flags): on
-  mobile it collapses to one compact header line — it was dominating the
-  first screen above the KPIs (2026-06-14) — and the category accordion is
-  one tap away. Desktop/tablet (`@media min-width:641px`) force
-  `.nw-na-body { display:block !important }` + hide the chevron, so the
-  always-expanded layout there is unchanged (CSS can't toggle the
-  `open` attribute responsively, so force the body open instead). The
-  all-clear state stays a plain `<div>` (three static ✓ rows, nothing to
-  collapse).
+  **The whole card is a `<details class="nw-na nw-na--always" open>`** (when
+  there are flags), **forced open at ALL widths** including mobile (Roger,
+  2026-06): the triage categories stay visible rather than collapsing to a
+  header line. This reverses the 2026-06-14 mobile-collapse (added because the
+  card "was dominating the first screen above the KPIs") — the domination is
+  avoided instead by keeping only the **~4 category rows** open while each
+  category's **line-item list stays independently tap-to-expand**, so the open
+  card is short. The `--always` modifier forces `.nw-na-body { display:block
+  !important }` + hides the chevron + makes the header non-interactive at every
+  width (paired with the `open` attribute, since CSS can't toggle `open`); it is
+  the mobile opt-out of the generic `@media min-width:641px` rule that only
+  desktop/tablet otherwise get. **Only the Needs-attention card carries
+  `--always`** — the **ending-soon** and **PMP-signals** `.nw-na` cards keep the
+  default mobile collapse (one-line header, tap to open). The all-clear state
+  stays a plain `<div>` (three static ✓ rows, nothing to collapse).
 - **PMP signals accordion** (under the PMP KPI strip, 2026-06-14). One
   `.nw-na` card (reuses the Needs-attention CSS, so it collapses to a
   one-line header on mobile and is forced-open on desktop) titled "PMP
