@@ -699,3 +699,34 @@ def test_token_fallback_when_api_missing():
     assert d("", name, ALIASES) == "Video"
     # non-convention name (no keywords, no API, no position-10 token) → no format
     assert d(None, "Newsweek_Prebid_Video_$19.00", ALIASES) is None
+
+
+# ── merge_lookups (PMP DV join fallback) ───────────────────────────────────
+
+def test_merge_lookups_primary_wins_secondary_fills():
+    from dashboard_logic import merge_lookups
+    primary = {"a": 1.0, "b": 2.0}            # order_name lookup
+    secondary = {"b": 99.0, "c": 3.0}         # line_item_name fallback
+    out = merge_lookups(primary, secondary)
+    assert out == {"a": 1.0, "b": 2.0, "c": 3.0}  # b stays primary; c filled
+    # inputs not mutated
+    assert primary == {"a": 1.0, "b": 2.0}
+    assert secondary == {"b": 99.0, "c": 3.0}
+
+
+def test_merge_lookups_edge_cases():
+    from dashboard_logic import merge_lookups
+    assert merge_lookups({"a": 1}, {}) == {"a": 1}
+    assert merge_lookups({}, {"c": 3}) == {"c": 3}
+    assert merge_lookups({}, {}) == {}
+
+
+def test_merge_lookups_resolves_the_tech_vs_technology_deal():
+    # The reported case: Deal key uses "Tech" (programmatic_deal_name) but
+    # DV's Order column has "Technology"; DV's Line Item has "Tech".
+    from dashboard_logic import merge_lookups
+    deal_key = "Newsweek_PD_Tech_Adx_DV360_WPP_..._Video_$14_Team-USA_ILee"
+    by_order = {"Newsweek_PD_Technology_Adx_DV360_WPP_..._Video_$14_Team-USA_ILee": 140.3}
+    by_li_name = {deal_key: 140.3}
+    merged = merge_lookups(by_order, by_li_name)
+    assert merged.get(deal_key) == 140.3   # was None before the fallback

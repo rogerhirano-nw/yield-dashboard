@@ -2045,6 +2045,14 @@ def _dv_attention_aggregates():
             series_by_li = dl.attention_daily_series_by_li(by_li_df, li_col)
     if not by_order_df.empty and {"order_name", "attention_index"}.issubset(by_order_df.columns):
         by_order, prior_by_order = dl.attention_current_and_prior(by_order_df, "order_name")
+    # PMP fallback: some deals carry an abbreviated word in their "Deal"
+    # key (programmatic_deal_name) that matches DV's Line Item, not Order
+    # (e.g. _Tech_ vs _Technology_). Merge a line_item_name-keyed lookup
+    # under the canonical order_name one so those deals still join.
+    if not by_li_df.empty and "line_item_name" in by_li_df.columns and "attention_index" in by_li_df.columns:
+        _bn, _pbn = dl.attention_current_and_prior(by_li_df, "line_item_name")
+        by_order = dl.merge_lookups(by_order, _bn)
+        prior_by_order = dl.merge_lookups(prior_by_order, _pbn)
     return li_col, by_li, prior_by_li, series_by_li, by_order, prior_by_order
 
 
@@ -2074,6 +2082,15 @@ def _dv_ivt_aggregates():
         if "order_name" in ivt.columns:
             sivt_by_order, sivt_prior_by_order = dl.ivt_share_with_prior(ivt, "order_name", "Fraud/SIVT")
             givt_by_order, givt_prior_by_order = dl.ivt_share_with_prior(ivt, "order_name", "Fraud/GIVT")
+        # PMP fallback by line_item_name — see _dv_attention_aggregates
+        # (deals whose "Deal" key matches DV's Line Item, not Order).
+        if "line_item_name" in ivt.columns:
+            _sbn, _spbn = dl.ivt_share_with_prior(ivt, "line_item_name", "Fraud/SIVT")
+            _gbn, _gpbn = dl.ivt_share_with_prior(ivt, "line_item_name", "Fraud/GIVT")
+            sivt_by_order = dl.merge_lookups(sivt_by_order, _sbn)
+            sivt_prior_by_order = dl.merge_lookups(sivt_prior_by_order, _spbn)
+            givt_by_order = dl.merge_lookups(givt_by_order, _gbn)
+            givt_prior_by_order = dl.merge_lookups(givt_prior_by_order, _gpbn)
     return (li_col, sivt_by_li, sivt_prior_by_li, givt_by_li, givt_prior_by_li,
             sivt_series_by_li, givt_series_by_li,
             sivt_by_order, sivt_prior_by_order, givt_by_order, givt_prior_by_order)
