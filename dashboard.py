@@ -1088,8 +1088,6 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-lr-proj { position: absolute; left: 0; top: 0; height: 100%;
               border-radius: 999px; opacity: .38; }
 .nw-lr-done { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
-.nw-lr-goal { position: absolute; right: 0; top: -2px; height: 10px; width: 2px;
-              background: var(--text-muted); }
 .nw-na-srow.sev-red   .nw-lr-proj, .nw-na-srow.sev-red   .nw-lr-done { background: var(--state-critical); }
 .nw-na-srow.sev-amber .nw-lr-proj, .nw-na-srow.sev-amber .nw-lr-done { background: var(--state-warning); }
 .nw-lr-short { display: block; font-size: 10px; margin-top: 1px; }
@@ -3573,7 +3571,7 @@ if st.session_state.active_view == "campaigns":
                         f'<span class="nm"><span class="adv">{_na_esc(adv)}</span>{camp_html}'
                         f'<span class="nw-lr-meta">{days_s} · ends {end_s} · {it["pct_done"]:.0f}% delivered</span>'
                         f'<span class="nw-lr-bar"><span class="nw-lr-proj" style="width:{proj:.0f}%"></span>'
-                        f'<span class="nw-lr-done" style="width:{done:.0f}%"></span><span class="nw-lr-goal"></span></span>'
+                        f'<span class="nw-lr-done" style="width:{done:.0f}%"></span></span>'
                         f'</span>'
                         f'<span class="pct">{it["proj_pct"]:.0f}%'
                         f'<span class="nw-lr-short">~{_lr_short_fmt(it["short"])} short</span></span>'
