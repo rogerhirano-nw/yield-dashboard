@@ -169,6 +169,9 @@ banked, the un-mirrored original (138557481462) was deactivated on the
 Invesco LI (run 27411814804, reversible LICA deactivation via
 `retire_mobkoi_control.yml`) — all remaining Mobkoi delivery is
 mirrored. Clean full-day read: the 6/13 diagnose pull on all three LIs.
+**Subsequently promoted to an ad-unit-level creative wrapper, so the fix now
+covers every creative on those in-article units — including Mobkoi's S2S /
+programmatic demand, not just these three direct creatives. See 1d.**
 
 Pulling the homepage takeover/insight LIs through the same diagnostic gave
 a clean A/B — same site, same homepage slots, overlapping flights:
@@ -199,6 +202,42 @@ Takeaways:
   1b). For any injected format, expect 0% AV; the realm-death and
   30%-threshold lessons still apply to tracking-pixel watchers.
 
+### 1d. Rolled out at the ad-unit level — now covers ALL demand (incl. S2S/programmatic)
+
+The mirror is **deployed as a GAM creative wrapper at the ad-unit level** (a
+label on the in-article units), not just appended to the three
+directly-trafficked creatives. A GAM creative wrapper adds a header/footer
+around **every** creative that serves on the labeled units, so the fix now
+rides **all** Mobkoi demand on those slots — the direct interscroller/
+uniscroller LIs **and** Mobkoi's S2S Prebid / open-auction supply — with no
+per-creative trafficking and **no Mobkoi-side dependency**.
+
+**Confirmed on the programmatic path.** Mobkoi also bids into our open auction
+through Prebid Server (`hb_source=s2s`, `hb_bidder=mobkoi`) — a supply path our
+per-creative edits never touched, since it renders Mobkoi's own Prebid
+creatives, not our hand-edited tags. Its GAM Active View stepped exactly like
+the direct lines once the ad-unit wrapper was covering it:
+
+| Date | S2S Prebid Mobkoi — GAM AV viewable % |
+|---|---|
+| Jun 1–15 | ~5–8% (the old artifact) |
+| Jun 16 | **45.5%** |
+| Jun 17 | **68.6%** (partial day, climbing toward the 75.4% display baseline) |
+
+Volume was flat across the step (~944k imps / ~$6.7k / ~$7.13 eCPM, Jun 1–17),
+so the jump is measurement correcting, not delivery changing. Because this path
+never carried our creative edits, the correction is proof the **ad-unit wrapper
+reaches programmatic demand** — our wrapper, not anything Mobkoi shipped, is
+what moved it.
+
+**Implication for path 1.** The ad-unit wrapper is the **standing fix**; we can
+report accurate GAM/DV viewability on these units today with no vendor
+dependency. The Mobkoi iframe-resident render mode (§1) stays the long-term
+ideal — once Mobkoi renders inside the GAM iframe natively, the wrapper becomes
+redundant and can be retired (re-verify with the diagnose workflow, then pull
+the label). The Mobkoi outreach email (asking for this native fix) and the
+internal stakeholder report live in `docs/mobkoi_viewability_comms.md`.
+
 ### 2. Verification loop (once Mobkoi ships a build)
 
 1. Have Mobkoi point a test `boot/<uuid>` at the new mode; traffic it on a
@@ -228,6 +267,12 @@ Takeaways:
   won't satisfy a buyer auditing Active View.
 
 ## Until the fix lands (this flight)
+
+_Update (post-wrapper): with the ad-unit creative wrapper live (§1d), GAM and DV
+now measure real viewability on the wrapped in-article units — points 1–2 below
+describe the pre-wrapper flight and still apply only to Mobkoi inventory the
+wrapper doesn't cover. Point 3 (no vCPM) stays prudent until the corrected AV
+has a clean multi-week baseline._
 
 1. **Report viewability from Mobkoi's own measurement** (or the
    advertiser's MRC vendor tagged inside Mobkoi's unit at Mobkoi's end),
