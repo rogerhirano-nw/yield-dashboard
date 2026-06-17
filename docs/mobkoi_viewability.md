@@ -235,7 +235,8 @@ report accurate GAM/DV viewability on these units today with no vendor
 dependency. The Mobkoi iframe-resident render mode (§1) stays the long-term
 ideal — once Mobkoi renders inside the GAM iframe natively, the wrapper becomes
 redundant and can be retired (re-verify with the diagnose workflow, then pull
-the label).
+the label). The Mobkoi outreach email (asking for this native fix) and the
+internal stakeholder report live in `docs/mobkoi_viewability_comms.md`.
 
 ### 2. Verification loop (once Mobkoi ships a build)
 

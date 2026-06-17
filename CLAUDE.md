@@ -884,7 +884,10 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
   On-site preview + DOM forensics for any creative: dispatch
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
-  screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
+  screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`; outreach +
+  internal comms (the Mobkoi "fix at source" ask email, the internal
+  S2S-confirmation note, the stakeholder .docx report):
+  `docs/mobkoi_viewability_comms.md`.
   Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
   `line_item_ids`. Never set vCPM goals on breakout formats.
 
