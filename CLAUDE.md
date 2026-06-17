@@ -667,6 +667,27 @@ Rules that survive any future restyle:
     meta line (SSP · last bid · `.nd-idle` days-idle). Folded in here
     2026-06-14; the archive action was removed.
 
+## Direct tab — "Ending soon · at risk" landing-risk card
+Surfaces Direct line items whose flight ends soon AND that are projected,
+at the current daily pace, to finish under goal — the under-delivery the
+Cartier line hit (ended at 99%). Renders as an `.nw-na`-style card **above
+Needs-attention** (`open` by default), worst projected-% first, each row a
+two-tier `Advertiser — Campaign` label + meta (days left · ends · %
+delivered) + a compact projected-vs-goal bar (faint = projected, solid =
+delivered, tick = goal; the gap is the shortfall) + projected % and `~Nk
+short`. Severity: projected <90% = red, 90–99% = amber.
+Decision logic is `dl.landing_projection` (projected = delivered +
+daily×days_left, daily from `impressions_1d`) and `dl.landing_at_risk`
+(ending within window AND projected < threshold), tested in
+`tests/test_dashboard_logic.py`. Two settings drive it:
+`landing_window_days` (default **7**, owner's pick 2026-06-17) and
+`landing_threshold_pct` (default **100**). Caveat proven on prod: at a
+7-day window only ~1 line flags, while the biggest shortfall risks
+(e.g. an Infiniti line pacing to 81%) are still ~14 days out where
+they're most fixable — **widen `landing_window_days` to 14 to catch them
+early** (flags ~10). `impressions_1d` is yesterday's delivery; a 7-day
+average would be steadier if pacing is spiky.
+
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 

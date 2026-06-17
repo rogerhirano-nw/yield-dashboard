@@ -204,6 +204,14 @@ _DEFAULT_SETTINGS: dict = {
         "Interstitial":       {"viewability_pct": 70.0, "viewability_red_below": None, "ctr_pct": 0.30, "ctr_red_below": None, "vcr_pct": None,  "vcr_red_below": None},
     },
     "pacing_target_pct": 100.0,
+    # Landing-risk card (Direct tab): flag lines ending within
+    # `landing_window_days` that are projected — at the current daily pace —
+    # to finish under `landing_threshold_pct` of goal. Owner default is a
+    # 7-day window (Roger, 2026-06-17); widen to ~14 to catch big shortfalls
+    # earlier (a 14-day window surfaces ~10 lines vs ~1 at 7, since the worst
+    # under-delivery risks are still 2 weeks out when they're most fixable).
+    "landing_window_days": 7,
+    "landing_threshold_pct": 100.0,
     # Manual long-preroll override — list of rules that force a line into
     # the "Video Preroll >30s" benchmark when creative duration can't be
     # auto-detected from GAM (Newsweek's 3rd-party video tags via Innovid /
@@ -1070,6 +1078,23 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
                    font-variant-numeric: tabular-nums; }
 .nw-na-srow.sev-red   .pct { color: var(--state-critical); }
 .nw-na-srow.sev-amber .pct { color: var(--state-warning); }
+/* Landing-risk row: meta line (days left · ends · delivered) + a compact
+   projected-vs-goal bar. Faint fill = projected at current pace, solid =
+   delivered, tick at right = goal. The gap to the tick is the shortfall. */
+.nw-lr-meta { display: block; font-size: 10px; color: var(--text-muted);
+              line-height: 1.25; margin-top: 1px; }
+.nw-lr-bar { position: relative; height: 6px; border-radius: 999px;
+             background: var(--surface-2); margin-top: 5px; }
+.nw-lr-proj { position: absolute; left: 0; top: 0; height: 100%;
+              border-radius: 999px; opacity: .38; }
+.nw-lr-done { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
+.nw-lr-goal { position: absolute; right: 0; top: -2px; height: 10px; width: 2px;
+              background: var(--text-muted); }
+.nw-na-srow.sev-red   .nw-lr-proj, .nw-na-srow.sev-red   .nw-lr-done { background: var(--state-critical); }
+.nw-na-srow.sev-amber .nw-lr-proj, .nw-na-srow.sev-amber .nw-lr-done { background: var(--state-warning); }
+.nw-lr-short { display: block; font-size: 10px; margin-top: 1px; }
+.nw-na-srow.sev-red   .nw-lr-short { color: var(--state-critical); }
+.nw-na-srow.sev-amber .nw-lr-short { color: var(--text-muted); }
 /* KPI strip — single grid so all nine tiles render at exactly the same
    height. Tile = white card with a 2px ink top rule and a serif number;
    the sparkline runs full-width under the figures (neutral stroke —
@@ -3485,14 +3510,97 @@ if st.session_state.active_view == "campaigns":
                 first = rows.iloc[0]
                 return f"{_short_advertiser(first['line_item_name'])} · {first['_v']:.1f}% viewable"
 
+            def _na_esc(s):
+                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            # ── "Ending soon · at risk" card — lines whose flight ends within
+            # the configured window AND that are projected, at the current
+            # daily pace, to finish under goal. Decision logic + tests live in
+            # dashboard_logic (landing_projection / landing_at_risk); this
+            # block only builds the rows. Sits above Needs-attention so a
+            # looming under-delivery (the Cartier problem) is the first thing
+            # seen. Worst projected % first.
+            _lr_window = int(_cfg.get("landing_window_days", 7) or 7)
+            _lr_thresh = float(_cfg.get("landing_threshold_pct", 100.0) or 100.0)
+            _lr_today = date.today()
+            _lr_items = []
+            if {"impressions_goal", "lifetime_impressions_delivered", "end_date"}.issubset(view_gam.columns):
+                for _, _lr in view_gam.iterrows():
+                    _ed = pd.to_datetime(_lr.get("end_date"), errors="coerce")
+                    if pd.isna(_ed):
+                        continue
+                    _days = (_ed.date() - _lr_today).days
+                    _proj = dl.landing_projection(
+                        _lr.get("impressions_goal"),
+                        _lr.get("lifetime_impressions_delivered"),
+                        _lr.get("impressions_1d"),
+                        _days)
+                    if _proj is None or not dl.landing_at_risk(
+                            _days, _proj["projected_pct"], _lr_window, _lr_thresh):
+                        continue
+                    _goal = float(_lr.get("impressions_goal"))
+                    _deliv = pd.to_numeric(_lr.get("lifetime_impressions_delivered"), errors="coerce")
+                    _lr_items.append({
+                        "name": _lr.get("line_item_name"),
+                        "days": _days,
+                        "end": _ed.date(),
+                        "pct_done": (float(_deliv) / _goal * 100) if pd.notna(_deliv) and _goal else 0.0,
+                        "proj_pct": _proj["projected_pct"],
+                        "short": _proj["short"],
+                    })
+            _lr_items.sort(key=lambda d: d["proj_pct"])
+
+            def _lr_short_fmt(n):
+                n = float(n)
+                if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+                if n >= 1_000:     return f"{n/1_000:.0f}k"
+                return f"{int(n):,}"
+
+            def _lr_rows_html(items):
+                cells = []
+                for it in items:
+                    sev = "sev-red" if it["proj_pct"] < 90 else "sev-amber"
+                    full = dl.line_item_display_name(it["name"])
+                    adv, camp = (full.split(" — ", 1) + [""])[:2] if " — " in full else (full, "")
+                    camp_html = f'<span class="camp">{_na_esc(camp)}</span>' if camp else ""
+                    proj = max(min(it["proj_pct"], 100.0), 0.0)
+                    done = max(min(it["pct_done"], 100.0), 0.0)
+                    end_s = it["end"].strftime("%b %-d")
+                    days_s = "ends today" if it["days"] == 0 else (
+                        "1 day left" if it["days"] == 1 else f'{it["days"]} days left')
+                    cells.append(
+                        f'<div class="nw-na-srow {sev}">'
+                        f'<span class="nm"><span class="adv">{_na_esc(adv)}</span>{camp_html}'
+                        f'<span class="nw-lr-meta">{days_s} · ends {end_s} · {it["pct_done"]:.0f}% delivered</span>'
+                        f'<span class="nw-lr-bar"><span class="nw-lr-proj" style="width:{proj:.0f}%"></span>'
+                        f'<span class="nw-lr-done" style="width:{done:.0f}%"></span><span class="nw-lr-goal"></span></span>'
+                        f'</span>'
+                        f'<span class="pct">{it["proj_pct"]:.0f}%'
+                        f'<span class="nw-lr-short">~{_lr_short_fmt(it["short"])} short</span></span>'
+                        f'</div>')
+                return "".join(cells)
+
+            if _lr_items:
+                _lr_n = len(_lr_items)
+                _lr_worst = "sev-red" if any(i["proj_pct"] < 90 for i in _lr_items) else "sev-amber"
+                st.markdown(
+                    '<details class="nw-na" open>'
+                    '<summary class="nw-na-head"><span>Ending soon · at risk</span>'
+                    f'<span class="cnt">{_lr_n} need pacing up</span>'
+                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
+                    f'<div class="nw-na-body"><div class="nw-na-row {_lr_worst}" '
+                    'style="padding:9px 13px;">'
+                    f'<div style="width:100%">{_lr_rows_html(_lr_items)}</div></div></div></details>',
+                    unsafe_allow_html=True,
+                )
+
             # ── "Needs attention" panel: one card, a row per alert category.
             # Categories with offenders render as a native <details> accordion
             # — tap the row to reveal the specific line items inline (worst
             # first, severity-tinted bar + value); browser-native toggle, no
             # Streamlit rerun. Clear categories render as a static sev-ok row.
             # Counts keep the existing head(4)/head(6) display cap.
-            def _na_esc(s):
-                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            # (_na_esc defined above, with the landing-risk card.)
 
             def _na_subrows(rows, sev, metric_col, fmt):
                 # Two-tier identifiable label: advertiser (bold) over the muted

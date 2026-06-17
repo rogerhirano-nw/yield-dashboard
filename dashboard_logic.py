@@ -865,3 +865,38 @@ def derive_format(inventory_format_name, line_item_name, aliases=None):
     if isinstance(inventory_format_name, str) and inventory_format_name.strip():
         return canonicalize_format(inventory_format_name, aliases)
     return canonicalize_format(li_part(line_item_name, 10), aliases)
+
+
+# ── Delivery landing risk (ending-soon under-delivery) ──────────────────
+
+
+def landing_projection(goal, delivered, daily_rate, days_left):
+    """Projected final delivery at the current daily pace.
+
+    Returns ``{projected, projected_pct, short}`` or None when the line
+    isn't goal-graded (no positive impressions_goal — e.g. house/AV
+    lines). `days_left` is clamped at 0, so a line ending today projects
+    to exactly what it has delivered. A missing/NaN daily rate counts as
+    0 (no further delivery assumed) rather than erroring."""
+    g = _num(goal)
+    if math.isnan(g) or g <= 0:
+        return None
+    d = _num(delivered)
+    if math.isnan(d):
+        return None
+    rem = max(int(days_left), 0) if days_left is not None else 0
+    rate = _num(daily_rate)
+    proj = d + (0.0 if math.isnan(rate) else rate) * rem
+    return {"projected": proj, "projected_pct": proj / g * 100.0,
+            "short": max(g - proj, 0.0)}
+
+
+def landing_at_risk(days_left, projected_pct,
+                    window_days: int = 7, threshold_pct: float = 100.0) -> bool:
+    """True when a line is ending within `window_days` (and not already
+    past) AND projected to finish under `threshold_pct` of goal. Both
+    None-guarded: a line with no end date or no projection never flags.
+    Defaults match the owner's pick (within 7 days, projected < 100%)."""
+    if days_left is None or projected_pct is None:
+        return False
+    return 0 <= days_left <= window_days and projected_pct < threshold_pct
