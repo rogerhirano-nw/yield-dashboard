@@ -4,6 +4,19 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-17 — Mobkoi viewability: ad-unit wrapper covers S2S
+
+- **#276** — **Documented that the Mobkoi iframe-mirror viewability fix is
+  deployed as a GAM creative wrapper at the AD-UNIT level**, not per-creative —
+  so it wraps every creative serving on the in-article units, including
+  Mobkoi's **S2S Prebid / open-auction** demand, with no Mobkoi-side
+  dependency. Confirmed on the programmatic path: `hb_bidder=mobkoi` (s2s) GAM
+  Active View stepped from the ~5–8% artifact (Jun 1–15) to **45.5% (6/16) →
+  68.6% (6/17)**, toward the 75.4% display baseline — the same correction the
+  directly-trafficked lines showed, on a path our per-creative edits never
+  touched. Docs only: new `docs/mobkoi_viewability.md` §1d, reconciled §1c and
+  the "Until the fix lands" note, and the CLAUDE.md GAM-facts block.
+
 ## 2026-06-17 — Campaigns Cockpit (WIP)
 
 - **#274** — **Needs-attention card stays open on mobile.** First slice of the

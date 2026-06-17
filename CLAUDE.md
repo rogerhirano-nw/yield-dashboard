@@ -879,9 +879,8 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `hb_bidder=mobkoi` (s2s) supply — which our per-creative edits never
   touched — stepped from the ~5–8% AV artifact (Jun 1–15) to **45.5% (6/16)
   → 68.6% (6/17)**, climbing toward the 75.4% display baseline, the same
-  correction the direct lines showed. (`docs/mobkoi_viewability.md` §1c still
-  frames this as a per-creative fix — reconcile it to the ad-unit-wrapper
-  deployment.)
+  correction the direct lines showed (full writeup + S2S evidence:
+  `docs/mobkoi_viewability.md` §1d).
   Mobkoi creatives are Celtra-built with advertiser-side DV `sid=mobkoi`.
   On-site preview + DOM forensics for any creative: dispatch
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
