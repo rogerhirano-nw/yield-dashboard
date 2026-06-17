@@ -730,3 +730,45 @@ def test_merge_lookups_resolves_the_tech_vs_technology_deal():
     by_li_name = {deal_key: 140.3}
     merged = merge_lookups(by_order, by_li_name)
     assert merged.get(deal_key) == 140.3   # was None before the fallback
+
+
+# ── landing_projection / landing_at_risk (ending-soon under-delivery) ──────
+
+def test_landing_projection_basic():
+    from dashboard_logic import landing_projection as lp
+    # Infiniti Custom-Audience: 30,202 delivered, 3,656/day, 14 days, goal 100k
+    r = lp(100000, 30202, 3656, 14)
+    assert round(r["projected"]) == 81386
+    assert round(r["projected_pct"]) == 81
+    assert round(r["short"]) == 18614
+
+
+def test_landing_projection_clamps_and_guards():
+    from dashboard_logic import landing_projection as lp
+    import math
+    assert lp(0, 100, 5, 3) is None          # no positive goal → not graded
+    assert lp(None, 100, 5, 3) is None
+    assert lp(1000, math.nan, 5, 3) is None   # delivered unknown → can't project
+    # ended (days_left ≤ 0) projects to exactly delivered, no negative time
+    assert lp(1000, 900, 50, -2)["projected"] == 900
+    assert lp(1000, 900, 50, 0)["projected"] == 900
+    # missing daily rate → assume no further delivery, not an error
+    assert lp(1000, 900, None, 5)["projected"] == 900
+    # already over goal → short clamps to 0
+    assert lp(1000, 1200, 0, 3)["short"] == 0
+
+
+def test_landing_at_risk_window_and_threshold():
+    from dashboard_logic import landing_at_risk as risk
+    # owner defaults: within 7 days, projected < 100%
+    assert risk(2, 98.0)                       # Poker Power — close miss, urgent
+    assert risk(7, 81.0)                        # on the window boundary
+    assert not risk(8, 81.0)                    # outside 7-day window
+    assert not risk(2, 100.0)                   # exactly on goal → not at risk
+    assert not risk(2, 105.0)                   # over-pacing
+    assert not risk(-1, 50.0)                   # already ended → not "ending soon"
+    assert risk(None, 50.0) is False            # no end date
+    assert risk(3, None) is False               # no projection
+    # a wider window catches the early big shortfall (Infiniti at 14d/81%)
+    assert risk(14, 81.0, window_days=14)
+    assert not risk(14, 81.0, window_days=7)
