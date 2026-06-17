@@ -41,6 +41,22 @@ When auditing or adding data, the production sources are:
 
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
+**How DV metrics join to the dashboard** (Attention / SIVT / GIVT). Two
+paths, both in `dashboard_logic`:
+- **Direct tab** → by `line_item_id` (immune to renames; the #151 `.0`
+  normalization is what makes it work). A new line shows "—" until DV's
+  export catches up — DV lags ~2 days, so a line that started yesterday
+  has no DV row yet; that's timing, not a bug.
+- **PMP tab** → by deal name. The lookup is keyed on DV's **Order**
+  column but the table's "Deal" key is GAM `programmatic_deal_name`, and
+  those can disagree when a deal is trafficked with two spellings of one
+  word (seen 2026-06-15: `order_name` "…_Technology_…" vs
+  `programmatic_deal_name` "…_Tech_…"). The per-order lookups therefore
+  **merge a `line_item_name`-keyed fallback** (`dl.merge_lookups`,
+  order_name canonical) since DV's Line Item column mirrors the
+  `programmatic_deal_name` spelling. Root cause is a GAM trafficking
+  inconsistency — reconcile the deal's two name fields to fix at source.
+
 **Per-report retention (the no-duplicate invariant).** The three PMP daily
 tables — `gam_pmp_deals`, `magnite_deal_daily`, `pubmatic_deals` — pull a
 **14-day** window so the dashboard can grade **week-vs-week spend momentum**
