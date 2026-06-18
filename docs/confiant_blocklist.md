@@ -354,6 +354,33 @@ PR #133 for the fix. The plist should carry only `PATH`, paths
 (`CONFIANT_BLOCKLIST_PROFILE_DIR`, `CONFIANT_BLOCKLIST_STATE`), and
 process-control keys (`AbandonProcessGroup`, etc.).
 
+## Phase 2 integration: ARC blocks happen in the daily cron too
+
+As of PR #268 (2026-06-18) the daily `confiant_blocklist.py` cron has a
+Phase 2 — after pushing destination-URL flags to GAM Protection, it walks
+the same Cloaked-by-ID rows the standalone script handles, opens each
+Confiant adtrace, extracts the GPT Ad Response ID, and runs the ARC
+filter + block flow. So most Cloaked-by-ID rows get blocked overnight
+without anyone running the manual script.
+
+Failure isolation: Phase 2 runs in a `try/except` that captures errors
+into `ArcStats.error_msg`. URL push results (Phase 1) stay valid even
+if ARC fails entirely. The daily summary email shows ARC results in
+its own section + a red callout when Phase 2 errored.
+
+Skip-already: Phase 2 reads existing `gam-arc:<gpt_id>` rows from
+`state.sqlite` and skips IDs we've already blocked. So a Confiant ID
+that re-appears in the 7-day rolling window doesn't trigger a duplicate
+Playwright run.
+
+Open-Bidding rows correctly report `not-in-arc` — those creatives are
+served by external SSPs via Google's Open Bidding mechanism and don't
+surface in GAM's Ad Review Center at all. Confiant's Active Blocking
+catches them upstream (verified via `providers_by_day -> Blocking
+Status = Active Blocking`).
+
+Disable with `--no-arc` if you need a URL-only run for some reason.
+
 ## Manual blocks in GAM Ad Review Center (Cloaked / no-destination case)
 
 The daily `confiant_blocklist.py` cron handles Cloaked rows that have a

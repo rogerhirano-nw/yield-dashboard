@@ -33,6 +33,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 import confiant_client
@@ -95,6 +96,27 @@ def _open_state() -> sqlite3.Connection:
 # ── main flow ─────────────────────────────────────────────────────────────────
 
 @dataclass
+class ArcStats:
+    """Phase 2 result: GAM Ad Review Center manual-block run for the
+    Cloaked rows whose Detail = 'ID xxxxx' (no destination URL)."""
+    attempted: int = 0
+    blocked: int = 0
+    skipped_already: int = 0
+    not_in_arc: int = 0
+    errors: int = 0
+    error_msg: str | None = None  # Phase-level fatal error (Playwright crash etc.)
+    blocked_ids: list[tuple[str, str]] = None  # (confiant_id, gpt_id) for email
+
+    def __post_init__(self):
+        if self.blocked_ids is None:
+            self.blocked_ids = []
+
+    @property
+    def did_anything(self) -> bool:
+        return self.attempted > 0
+
+
+@dataclass
 class RunSummary:
     source: str                # CSV path or 'api://<endpoint>/<hash>'
     categories: tuple[str, ...]
@@ -107,6 +129,7 @@ class RunSummary:
     cloaked_for_review: list[confiant_client.FlaggedRow]
     dry_run: bool
     success: bool
+    arc: ArcStats | None = None  # Phase 2 results (None if --no-arc or n/a)
     error: str | None = None
 
 
@@ -169,6 +192,125 @@ def push_and_record(
     conn.commit()
 
 
+def run_arc_phase(
+    cloaked_for_review: list[confiant_client.FlaggedRow],
+    profile_dir: Path,
+    network_id: str,
+    headless: bool = False,
+) -> ArcStats:
+    """Phase 2 of the daily cron — walk Cloaked rows where Detail = 'ID xxxxx'
+    (no destination URL exposed by Confiant's API), pull the GPT Ad Response ID
+    from each Confiant adtrace page, then filter+block in GAM Ad Review Center.
+
+    Failure isolation: any exception in the phase is captured into ArcStats.
+    error_msg and printed to stderr — never raised. The URL-push results
+    from Phase 1 stay valid even if ARC blows up entirely.
+
+    Skips: rows whose GPT ID is already recorded in state.sqlite as
+    `gam-arc:<gpt_id>` (i.e. we already blocked it on an earlier day, or via
+    the standalone `scripts/confiant_gam_arc_block.py`).
+    """
+    import gam_arc
+
+    stats = ArcStats()
+    # Find Cloaked rows with Detail = "ID xxxxx" — dedupe by Confiant ID
+    id_only: dict[str, confiant_client.FlaggedRow] = {}
+    for r in cloaked_for_review:
+        if not gam_arc.CLOAKED_ID_RE.match(r.detail.strip()):
+            continue
+        cid = r.detail.replace("ID ", "").strip()
+        # Keep the highest-impression occurrence (best signal for adtrace pull)
+        prev = id_only.get(cid)
+        if prev is None or r.flagged_impressions > prev.flagged_impressions:
+            id_only[cid] = r
+    if not id_only:
+        return stats  # nothing to do; KPI tile renders "0"
+
+    # Filter against state.sqlite — skip GPT IDs we've already ARC-blocked.
+    # The skip happens AFTER we pull the GPT ID per-Confiant-ID; we can't
+    # skip by Confiant ID because state.sqlite is keyed by GPT ID.
+    already_arc = gam_arc.already_arc_blocked(_state_path())
+
+    print(f"\n=== ARC Phase 2: {len(id_only)} cloaked-by-ID candidate(s) ===",
+          file=sys.stderr)
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        stats.error_msg = f"Playwright import failed: {e}"
+        print(f"ARC phase skipped: {stats.error_msg}", file=sys.stderr)
+        return stats
+
+    try:
+        with sync_playwright() as p:
+            ctx = p.chromium.launch_persistent_context(
+                str(profile_dir), headless=headless,
+                viewport={"width": 1500, "height": 950},
+            )
+            confiant_page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+            for cid, row in id_only.items():
+                stats.attempted += 1
+                # Phase 1: pull GPT ID from Confiant adtrace
+                try:
+                    confiant_page.goto(row.adtrace_url, wait_until="load",
+                                       timeout=60000)
+                    confiant_page.wait_for_timeout(5000)
+                    gpt_id = gam_arc.extract_gpt_id(confiant_page)
+                except Exception as e:
+                    stats.errors += 1
+                    print(f"  Confiant {cid}: adtrace fetch failed: {e}",
+                          file=sys.stderr)
+                    continue
+                if not gpt_id:
+                    stats.errors += 1
+                    print(f"  Confiant {cid}: GPT Ad Response ID not found "
+                          f"in adtrace body", file=sys.stderr)
+                    continue
+                if gpt_id in already_arc:
+                    stats.skipped_already += 1
+                    print(f"  Confiant {cid}: already ARC-blocked "
+                          f"(gam-arc:{gpt_id[:12]}...) — skip", file=sys.stderr)
+                    continue
+
+                # Phase 2: ARC filter + block (fresh tab so filter chips don't
+                # leak between iterations — same gotcha that bit the manual
+                # script's first multi-iteration pass on 2026-06-17).
+                arc_page = ctx.new_page()
+                try:
+                    status = gam_arc.block_in_arc(arc_page, gpt_id, network_id)
+                except Exception as e:
+                    stats.errors += 1
+                    print(f"  Confiant {cid}: ARC block raised: {e}",
+                          file=sys.stderr)
+                    arc_page.close()
+                    continue
+                arc_page.close()
+
+                if status == "blocked":
+                    stats.blocked += 1
+                    stats.blocked_ids.append((cid, gpt_id))
+                    gam_arc.record_arc_block(_state_path(), gpt_id, cid)
+                    print(f"  Confiant {cid} → GPT {gpt_id[:12]}... → BLOCKED",
+                          file=sys.stderr)
+                elif status == "not-in-arc":
+                    stats.not_in_arc += 1
+                    print(f"  Confiant {cid}: not in ARC (likely Open Bidding "
+                          f"channel — see Thomas reply pending)", file=sys.stderr)
+                else:
+                    stats.errors += 1
+                    print(f"  Confiant {cid}: {status}", file=sys.stderr)
+
+            ctx.close()
+    except Exception as e:
+        stats.error_msg = f"{type(e).__name__}: {e}"
+        print(f"ARC phase fatal: {stats.error_msg}", file=sys.stderr)
+
+    print(f"ARC phase done: attempted={stats.attempted} blocked={stats.blocked} "
+          f"skipped_already={stats.skipped_already} not_in_arc={stats.not_in_arc} "
+          f"errors={stats.errors}", file=sys.stderr)
+    return stats
+
+
 def record_run(conn: sqlite3.Connection, summary: RunSummary) -> None:
     conn.execute(
         """INSERT INTO runs
@@ -219,6 +361,78 @@ def _state_total() -> int:
         return 0
 
 
+def _arc_section_html(summary, dark, green, muted, bg_soft, bg_light, border, red) -> str:
+    """Render the Phase 2 (GAM Ad Review Center) results into the daily email.
+    Returns an empty string if the ARC phase didn't run / had nothing to do."""
+    arc = summary.arc
+    if arc is None or (not arc.did_anything and not arc.error_msg):
+        return ""
+    if arc.error_msg:
+        return (
+            f"<tr><td style='padding:8px 24px 0 24px'>"
+            f"<h2 style='margin:14px 0 6px 0;color:{dark};font-size:15px;font-weight:700'>"
+            f"GAM Ad Review Center &mdash; phase failed</h2>"
+            f"<div style='background:#fff5f5;border:1px solid #f3c2c5;"
+            f"border-left:4px solid {red};padding:12px 16px;border-radius:4px;"
+            f"color:{dark};font-family:Menlo,Consolas,monospace;font-size:12px'>"
+            f"{escape(arc.error_msg)}</div>"
+            f"<p style='margin:8px 0 0 0;font-size:12px;color:{muted}'>"
+            f"URL-push results above are unaffected. Re-run "
+            f"<code>scripts/confiant_gam_arc_block.py</code> manually if needed."
+            f"</p></td></tr>"
+        )
+    # Render the per-ID blocks if any
+    if arc.blocked > 0:
+        rows_html = "".join(
+            f"<tr>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {border};"
+            f"font-family:Menlo,Consolas,monospace;font-size:12px;color:{dark}'>{cid}</td>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid {border};"
+            f"font-family:Menlo,Consolas,monospace;font-size:11px;color:{dark};"
+            f"word-break:break-all'>{gpt}</td>"
+            f"</tr>" for cid, gpt in arc.blocked_ids
+        )
+        blocks_card = (
+            f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
+            f"style='border-collapse:collapse;width:100%;border:1px solid {border};"
+            f"border-radius:6px;overflow:hidden;margin:6px 0 14px 0'>"
+            f"<thead><tr>"
+            f"<th style='background:{bg_soft};padding:8px 12px;text-align:left;"
+            f"font-size:11px;text-transform:uppercase;letter-spacing:0.5px;"
+            f"color:{dark};border-bottom:1px solid {border}'>Confiant ID</th>"
+            f"<th style='background:{bg_soft};padding:8px 12px;text-align:left;"
+            f"font-size:11px;text-transform:uppercase;letter-spacing:0.5px;"
+            f"color:{dark};border-bottom:1px solid {border}'>GPT Ad Response ID</th>"
+            f"</tr></thead><tbody>{rows_html}</tbody></table>"
+        )
+    else:
+        blocks_card = ""
+    # Per-status counter line
+    counters = []
+    if arc.blocked: counters.append(f"<strong style='color:{green}'>{arc.blocked} blocked</strong>")
+    if arc.skipped_already: counters.append(f"{arc.skipped_already} already done")
+    if arc.not_in_arc: counters.append(f"{arc.not_in_arc} not in ARC")
+    if arc.errors: counters.append(f"<strong style='color:{red}'>{arc.errors} errors</strong>")
+    counter_line = " &middot; ".join(counters) if counters else ""
+
+    return (
+        f"<tr><td style='padding:8px 24px 0 24px'>"
+        f"<h2 style='margin:14px 0 6px 0;color:{dark};font-size:15px;font-weight:700'>"
+        f"GAM Ad Review Center &mdash; manual blocks ({arc.blocked})</h2>"
+        f"<p style='margin:0 0 8px 0;color:{muted};font-size:12px'>"
+        f"Attempted {arc.attempted} cloaked-by-ID candidate"
+        f"{'s' if arc.attempted != 1 else ''} &middot; {counter_line}"
+        f"</p>"
+        f"{blocks_card}"
+        f"<p style='margin:0 0 4px 0;color:{muted};font-size:11px;line-height:1.5'>"
+        f"&ldquo;Not in ARC&rdquo; rows are typically served by Open Bidding "
+        f"partners that GAM doesn't surface in its review center. Confiant's "
+        f"Active Blocking handles those upstream &mdash; confirmed via "
+        f"<code>providers_by_day</code> Blocking Status column."
+        f"</p></td></tr>"
+    )
+
+
 def _build_email_html(summary: RunSummary) -> str:
     from datetime import date
 
@@ -253,13 +467,15 @@ def _build_email_html(summary: RunSummary) -> str:
         _NW_GREEN if new_count else _NW_DARK
     )
     spacer = "<td style='width:8px;font-size:0;line-height:0'>&nbsp;</td>"
+    arc_blocked = summary.arc.blocked if summary.arc else 0
+    arc_color = _NW_GREEN if arc_blocked else _NW_DARK
     kpi_strip = (
         f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' "
         f"style='border-collapse:separate;width:100%;margin:18px 0 6px 0'>"
         f"<tr>"
-        f"{_kpi('Blocked today', f'{new_count:,}', new_tile_color)}"
+        f"{_kpi('URL blocks', f'{new_count:,}', new_tile_color)}"
         f"{spacer}"
-        f"{_kpi('Already blocked', f'{summary.skipped_already_blocked:,}')}"
+        f"{_kpi('ARC blocks', f'{arc_blocked:,}', arc_color)}"
         f"{spacer}"
         f"{_kpi('Cloaked (review)', f'{cloaked_count:,}', _NW_AMBER if cloaked_count else _NW_DARK)}"
         f"{spacer}"
@@ -432,6 +648,8 @@ def _build_email_html(summary: RunSummary) -> str:
     {_new_domains_card()}
   </td></tr>
 
+  {_arc_section_html(summary, _NW_DARK, _NW_GREEN, _NW_MUTED, _NW_BG_SOFT, _NW_BG_LIGHT, _NW_BORDER, _NW_RED)}
+
   <tr><td style='padding:8px 24px 0 24px'>
     <h2 style='margin:14px 0 6px 0;color:{_NW_DARK};font-size:15px;font-weight:700'>
       Cloaked &mdash; manual review needed ({cloaked_count})
@@ -571,6 +789,9 @@ def _parse_args() -> argparse.Namespace:
                         "Default: ~/.confiant-blocklist/playwright-profile")
     p.add_argument("--no-email", action="store_true",
                    help="Skip the summary email even if env vars are set.")
+    p.add_argument("--no-arc", action="store_true",
+                   help="Skip the GAM Ad Review Center Phase 2 (just push "
+                        "URL flags to Protection and finish).")
     return p.parse_args()
 
 
@@ -666,6 +887,17 @@ def main() -> int:
             summary.success = False
             summary.error = f"{type(e).__name__}: {e}"
             print(f"GAM push failed: {summary.error}", file=sys.stderr)
+
+    # Phase 2: GAM Ad Review Center manual block for cloaked-by-ID rows.
+    # Isolated from Phase 1 — any failure here is captured into ArcStats and
+    # logged, but doesn't flip summary.success or alter the URL-push outcome.
+    if not args.dry_run and not args.no_arc and network_id and cloaked:
+        summary.arc = run_arc_phase(
+            cloaked_for_review=cloaked,
+            profile_dir=profile_dir,
+            network_id=network_id,
+            headless=args.headless,
+        )
 
     record_run(conn, summary)
     if not args.no_email:
