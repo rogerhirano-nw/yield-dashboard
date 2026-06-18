@@ -581,6 +581,28 @@ Rules that survive any future restyle:
   Needs-attention card keeps its collapsed-on-mobile default since `open` is
   per-element). The other tabs (By site / size, By DSP, Pubmatic, Magnite)
   still use plain `st.columns` filter rows.
+- **Campaigns desktop "Cockpit": triage lives in a sticky right rail.** On
+  desktop (`@media min-width:1025px`) the **Needs-attention** card and the
+  **PMP-signals** card both render into one keyed container
+  (`st.container(key="nw_campaigns_rail")` → `.st-key-nw_campaigns_rail`,
+  `_rail` in the Campaigns block; the PMP-signals slot is `_rail.empty()` so it
+  stacks under Needs-attention) that CSS pins **`position:fixed` top-right**, and
+  the main `.block-container` is shrunk + given a reserved right gutter
+  (`max-width:min(1320px,calc(100vw - 380px))` + `margin-right`) so content and
+  rail sit side by side with no overlap. The override **reuses the existing
+  3-selector block-container group** (`.stApp [data-testid="stMain"]
+  .block-container`, …) and is emitted *inside* the Campaigns block (later in
+  source) so it wins on order and is auto-scoped to that view only. So Campaigns
+  reads **left = work (KPIs + tables), right = always-visible triage** — fixing
+  the stretched-full-width + cluttered-vertical-stack complaints. **≤1024px the
+  rail CSS doesn't apply**, so the cards fall back to normal flow above the KPIs
+  (mobile unchanged; the Needs-attention `--always` open behavior above still
+  holds). Chosen from a 3-way mockup (Focus / Cockpit / Command; Roger picked
+  Cockpit, 2026-06-17). **Local QA without prod:** `scripts/seed_local_demo.py`
+  fabricates a throwaway SQLite DB (`DATABASE_URL=sqlite:///…`) with the
+  Campaigns tables so the dashboard renders on synthetic data — DV tables fall
+  back to empty on SQLite (Postgres-only date SQL), so Attention/SIVT/GIVT show
+  "—". Don't reintroduce a per-section rail — it's one combined rail.
 - **Campaigns alerts are a "Needs attention" accordion, not three stacked
   banners.** The pacing/viewability exceptions render as one `.nw-na`
   card with a row per category. A category with offenders is a native
