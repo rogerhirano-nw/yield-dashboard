@@ -356,7 +356,7 @@ process-control keys (`AbandonProcessGroup`, etc.).
 
 ## Phase 2 integration: ARC blocks happen in the daily cron too
 
-As of PR #268 (2026-06-18) the daily `confiant_blocklist.py` cron has a
+As of PR #277 (2026-06-18) the daily `confiant_blocklist.py` cron has a
 Phase 2 — after pushing destination-URL flags to GAM Protection, it walks
 the same Cloaked-by-ID rows the standalone script handles, opens each
 Confiant adtrace, extracts the GPT Ad Response ID, and runs the ARC
