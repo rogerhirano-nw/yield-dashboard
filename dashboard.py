@@ -3682,6 +3682,26 @@ if st.session_state.active_view == "campaigns":
                 + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
+            # ── Cockpit (WIP): pin the unified triage card as a sticky right rail
+            # on desktop (≥1025px). The main `.block-container` is capped at
+            # max-width:1600px elsewhere; here we shrink it and reserve a fixed
+            # right gutter (margin-right) so the fixed rail doesn't overlap it.
+            # Reuses that rule's exact 3-selector group so this (emitted later)
+            # wins on source order. ≤1024px nothing applies — the container stays
+            # in normal flow above the KPIs, unchanged.
+            st.markdown(
+                "<style>@media (min-width:1025px){"
+                ".stApp .main .block-container,"
+                '.stApp [data-testid="stMain"] .block-container,'
+                '.stApp [data-testid="stAppViewContainer"] .block-container{'
+                "max-width:min(1320px,calc(100vw - 380px))!important;"
+                "margin-left:auto!important;margin-right:360px!important;}"
+                ".st-key-nw_campaigns_rail{position:fixed;top:120px;right:20px;width:320px;"
+                "max-height:calc(100vh - 140px);overflow-y:auto;z-index:6;}"
+                "}</style>",
+                unsafe_allow_html=True,
+            )
+            _rail = st.container(key="nw_campaigns_rail")
             if _na_total:
                 # Forced-open at ALL widths via `nw-na--always` (Roger, 2026-06):
                 # the triage categories stay visible even on mobile rather than
@@ -3692,7 +3712,7 @@ if st.session_state.active_view == "campaigns":
                 # stay tap-to-expand on mobile. Chevron hidden + header
                 # non-interactive (the `open` attribute + the `--always` CSS rule
                 # keep it expanded).
-                st.markdown(
+                _rail.markdown(
                     '<details class="nw-na nw-na--always" open>'
                     '<summary class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span>'
@@ -3702,7 +3722,7 @@ if st.session_state.active_view == "campaigns":
                 )
             else:
                 # All clear — static ✓ rows; nothing to collapse.
-                st.markdown(
+                _rail.markdown(
                     '<div class="nw-na">'
                     '<div class="nw-na-head"><span>Needs attention</span>'
                     f'<span class="cnt">{_na_head_cnt}</span></div>'
@@ -6376,16 +6396,18 @@ if st.session_state.active_view == "campaigns":
         # Reuses the Needs-attention accordion CSS, so it collapses to one line
         # on mobile and stays open on desktop. Stale deals folded in read-only
         # 2026-06 (archive removed).
-        #
-        # Renders into this st.empty() SLOT (visually under the PMP KPI strip)
-        # but is BUILT by _render_pmp_signals() — called AFTER the drawer
-        # machinery is defined below — so each flagged deal can **expand to the
-        # SAME _pmp_drawer_html the main table row opens** (Roger 2026-06-14:
-        # "see the PMP details on the signals card"). Deals present in the
-        # delivery frame get the full performance drawer (revenue · eCPM ·
-        # 7-day trend · metadata); no-delivery / long-stale deals (no delivery
-        # data) expand to a name-only note.
-        _pmp_sig_slot = st.empty()
+        # Renders into this SLOT, which lives **in the cockpit rail**
+        # (`_rail`, defined in the Direct section above) so the rail carries all
+        # triage — Needs-attention on top, PMP signals below — as one pinned
+        # column on desktop. ≤1024px the rail is normal flow, so PMP signals just
+        # stack under the Needs-attention card as before. It is BUILT by
+        # _render_pmp_signals() — called AFTER the drawer machinery is defined
+        # below — so each flagged deal can **expand to the SAME _pmp_drawer_html
+        # the main table row opens** (Roger 2026-06-14: "see the PMP details on
+        # the signals card"). Deals present in the delivery frame get the full
+        # performance drawer (revenue · eCPM · 7-day trend · metadata);
+        # no-delivery / long-stale deals expand to a name-only note.
+        _pmp_sig_slot = _rail.empty()
 
         def _render_pmp_signals():
             # Deal name → its row in the UNFILTERED combined frame, so a flagged

@@ -4,8 +4,24 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-06-17 — Campaigns Cockpit (WIP)
+## 2026-06-17 — Campaigns Cockpit
 
+- **#275** — **Campaigns desktop "Cockpit": sticky right rail.** The unified
+  Needs-attention triage card **and** the PMP-signals card now render into a
+  keyed `st.container(key="nw_campaigns_rail")` that desktop CSS
+  (`@media min-width:1025px`) pins as a **fixed top-right rail**; the main
+  `.block-container` is shrunk (`max-width:min(1320px, 100vw-380px)`) with a
+  reserved right gutter (`margin-right`) so content + rail sit side by side
+  without overlap. ≤1024px nothing applies — the cards stay in normal flow above
+  the KPIs, unchanged. So Campaigns reads as **left = work (KPIs + tables),
+  right = always-visible triage**, which declutters the old vertical stack and
+  caps the previously full-width (stretched) content. Additive — no control-flow
+  change; reuses the existing block-container selector group so the override wins
+  on source order. Chosen from a 3-way mockup (Focus / Cockpit / Command; Roger
+  picked Cockpit). Built + visually QA'd locally on synthetic data (no prod) via
+  the new `scripts/seed_local_demo.py`, which fabricates a throwaway SQLite DB
+  with the tables the Campaigns view reads (DV tables fall back to empty on
+  SQLite → Attention/SIVT/GIVT show "—"). 56/56 tests pass.
 - **#274** — **Needs-attention card stays open on mobile.** First slice of the
   Campaigns desktop **"Cockpit"** rework (main work area + sticky right rail —
   Roger's pick from a 3-way Focus / Cockpit / Command mockup). New
