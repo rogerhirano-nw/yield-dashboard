@@ -6396,16 +6396,18 @@ if st.session_state.active_view == "campaigns":
         # Reuses the Needs-attention accordion CSS, so it collapses to one line
         # on mobile and stays open on desktop. Stale deals folded in read-only
         # 2026-06 (archive removed).
-        #
-        # Renders into this st.empty() SLOT (visually under the PMP KPI strip)
-        # but is BUILT by _render_pmp_signals() — called AFTER the drawer
-        # machinery is defined below — so each flagged deal can **expand to the
-        # SAME _pmp_drawer_html the main table row opens** (Roger 2026-06-14:
-        # "see the PMP details on the signals card"). Deals present in the
-        # delivery frame get the full performance drawer (revenue · eCPM ·
-        # 7-day trend · metadata); no-delivery / long-stale deals (no delivery
-        # data) expand to a name-only note.
-        _pmp_sig_slot = st.empty()
+        # Renders into this SLOT, which lives **in the cockpit rail**
+        # (`_rail`, defined in the Direct section above) so the rail carries all
+        # triage — Needs-attention on top, PMP signals below — as one pinned
+        # column on desktop. ≤1024px the rail is normal flow, so PMP signals just
+        # stack under the Needs-attention card as before. It is BUILT by
+        # _render_pmp_signals() — called AFTER the drawer machinery is defined
+        # below — so each flagged deal can **expand to the SAME _pmp_drawer_html
+        # the main table row opens** (Roger 2026-06-14: "see the PMP details on
+        # the signals card"). Deals present in the delivery frame get the full
+        # performance drawer (revenue · eCPM · 7-day trend · metadata);
+        # no-delivery / long-stale deals expand to a name-only note.
+        _pmp_sig_slot = _rail.empty()
 
         def _render_pmp_signals():
             # Deal name → its row in the UNFILTERED combined frame, so a flagged
