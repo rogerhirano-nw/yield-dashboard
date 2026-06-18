@@ -58,122 +58,31 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
-import sqlite3
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-# Reuse env / state helpers from confiant_blocklist.
+# Reuse env / state helpers from confiant_blocklist + ARC helpers from gam_arc.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from confiant_blocklist import _load_dotenv, _state_path  # noqa: E402
+import gam_arc  # noqa: E402
 
 
 PROFILE = Path("~/.confiant-blocklist/playwright-profile").expanduser()
 GAM_NETWORK = "22541732127"  # Newsweek
-ARC_URL = (
-    f"https://admanager.google.com/{GAM_NETWORK}"
-    "#brand_safety/ad_review_center"
-)
-GPT_LABEL_RE = re.compile(r"GPT Ad Response ID\s+(\S+)", re.IGNORECASE)
 
-
+# Thin wrappers around gam_arc helpers so callers (and tests) don't need to
+# pass network_id / state_path arguments through every call.
 def _extract_gpt_id(page) -> str | None:
-    body = page.inner_text("body")
-    m = GPT_LABEL_RE.search(body)
-    return m.group(1).strip() if m else None
-
-
-def _apply_ad_response_id_filter(page, gpt_id: str) -> None:
-    """Type the GPT ID into the filter input + click the 'Ad response ID:'
-    autocomplete option (not 'Text search:')."""
-    fi = page.locator('input[placeholder*="Filter"]').first
-    fi.click()
-    page.wait_for_timeout(500)
-    fi.fill("")
-    page.keyboard.type(gpt_id, delay=20)
-    page.wait_for_timeout(2000)
-    opt = page.locator('[role="menuitem"]:has-text("Ad response ID:")').first
-    if opt.count() == 0:
-        raise RuntimeError(
-            "'Ad response ID:' autocomplete option missing — GAM may have "
-            "changed the filter UI. Re-probe with /tmp/bs_autocomplete_*.png."
-        )
-    opt.click()
-    page.wait_for_timeout(8000)
+    return gam_arc.extract_gpt_id(page)
 
 
 def _block_in_arc(page, gpt_id: str, confiant_id: str | None = None) -> str:
-    """Filter + block one GPT ID. Returns 'blocked' / 'not-in-arc' / status."""
-    page.goto(ARC_URL, wait_until="load", timeout=60000)
-    page.wait_for_timeout(7000)
-    _apply_ad_response_id_filter(page, gpt_id)
-
-    # Did the filter return nothing?
-    if "Couldn't find matching ad" in page.inner_text("body"):
-        return "not-in-arc"  # Confiant RTB already caught it upstream
-
-    # Wait for the Block button. If it doesn't appear, try the reload trick.
-    try:
-        page.locator('button[aria-label="Block ad"]').first.wait_for(
-            state="visible", timeout=15000
-        )
-    except Exception:
-        # The reload trick: GAM persists the filter as &as=… in the URL hash.
-        # Post-reload hydration renders skeleton-stuck cards properly.
-        print("    Block button absent after 15s — applying reload trick...")
-        page.reload(wait_until="load")
-        page.wait_for_timeout(15000)
-        try:
-            page.locator('button[aria-label="Block ad"]').first.wait_for(
-                state="visible", timeout=20000
-            )
-        except Exception:
-            return "no-block-btn"  # even the reload trick failed
-
-    # Hover the matching card (some action buttons appear on hover).
-    card = page.locator('div:has-text("Ad match")').first
-    try:
-        card.hover()
-        page.wait_for_timeout(800)
-    except Exception:
-        pass
-
-    page.locator('button[aria-label="Block ad"]').first.click()
-    page.wait_for_timeout(4000)
-
-    # If a confirmation dialog appears, click the primary Block button.
-    for sel in (
-        '[role="dialog"] button:has-text("Block")',
-        '[role="dialog"] button:has-text("Confirm")',
-    ):
-        c = page.locator(sel).last
-        if c.count() and c.is_visible():
-            try:
-                c.click()
-                page.wait_for_timeout(2000)
-                break
-            except Exception:
-                pass
-
-    return "blocked"
+    return gam_arc.block_in_arc(page, gpt_id, GAM_NETWORK)
 
 
 def _record(gpt_id: str, confiant_id: str | None) -> None:
-    """One row per block in state.sqlite for traceability in the weekly digest."""
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    cid_label = f"Confiant ID {confiant_id} → " if confiant_id else ""
-    it = f"Manual block in GAM ARC — {cid_label}GPT {gpt_id}"
-    with sqlite3.connect(_state_path()) as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO blocked_domains "
-            "(domain, issue_type, first_seen_in_csv, first_pushed_to_gam, "
-            " protection_id, protection_label) VALUES (?,?,?,?,?,?)",
-            (f"gam-arc:{gpt_id}", it, now[:10], now, 28044902,
-             "ARC manual block"),
-        )
-        conn.commit()
+    gam_arc.record_arc_block(_state_path(), gpt_id, confiant_id)
 
 
 def _load_input(argv_paths_or_urls: list[str]) -> list[dict]:
