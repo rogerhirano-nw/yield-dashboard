@@ -381,6 +381,22 @@ Status = Active Blocking`).
 
 Disable with `--no-arc` if you need a URL-only run for some reason.
 
+**Email's Cloaked-review section filters against Phase 2 results (PR #283).**
+After the cron records each Phase 2 outcome, the summary email's
+"Cloaked — manual review needed" KPI tile + per-section table drop any
+Confiant ID whose row was already handled (blocked just now / skipped
+because we already blocked it on an earlier run / not-in-arc because
+Confiant RTB took care of it). What remains is genuinely "Phase 2 tried
+and couldn't" — usually rows whose adtrace page wouldn't load or where
+the GPT Ad Response ID extraction failed. When every cloaked row got
+handled, the empty-state callout reads
+*"No cloaked Google creatives need human review. All N cloaked rows
+in this run were handled by Phase 2 above"* rather than the default
+*"No cloaked Google creatives in this run"*. The distinction matters
+for trust — readers were starting to ignore the section because it
+kept showing "1 needs review" on rows the cron had already taken care
+of (today's run #29 surfaced exactly that, see PR #283).
+
 ## Manual blocks in GAM Ad Review Center (Cloaked / no-destination case)
 
 The daily `confiant_blocklist.py` cron handles Cloaked rows that have a
