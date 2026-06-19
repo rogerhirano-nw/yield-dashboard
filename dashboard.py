@@ -1157,6 +1157,8 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
                margin-bottom: 4px; }
 .nw-ttd-kpi-row { display: grid; gap: 8px; margin-bottom: 12px;
                   grid-template-columns: repeat(5, 1fr); }
+.nw-ttd-kpi-row .kpi-value { font-size: 17px; white-space: nowrap; overflow: hidden;
+                              text-overflow: ellipsis; }
 /* bar chart container */
 .nw-ttd-charts { display: grid; grid-template-columns: 1fr 1fr;
                  gap: 10px; margin-bottom: 12px; }
