@@ -1172,7 +1172,7 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
                     font-variant-numeric: tabular-nums; }
 .nw-ttd-bar-track { flex: 1; height: 7px; background: var(--surface-2);
                     border-radius: 3px; overflow: hidden; }
-.nw-ttd-bar-fill  { height: 100%; border-radius: 3px;
+.nw-ttd-bar-fill  { display: block; height: 100%; border-radius: 3px;
                     background: var(--text-secondary); }
 .nw-ttd-bar-val   { flex: 0 0 50px; font-variant-numeric: tabular-nums; }
 /* breakdown table */
