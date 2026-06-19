@@ -105,15 +105,38 @@ class ArcStats:
     not_in_arc: int = 0
     errors: int = 0
     error_msg: str | None = None  # Phase-level fatal error (Playwright crash etc.)
+    # Per-row outcomes. Tracking all three "handled" states (not just blocked)
+    # lets the email rendering filter the Cloaked-review section so it doesn't
+    # keep showing rows we already took care of.
     blocked_ids: list[tuple[str, str]] = None  # (confiant_id, gpt_id) for email
+    skipped_cids: list[str] = None             # Confiant IDs we found already in state.sqlite
+    not_in_arc_cids: list[str] = None          # Confiant IDs ARC said "Couldn't find" (likely OB-channel)
+    errored_cids: list[str] = None             # Confiant IDs whose Phase 2 raised an error
 
     def __post_init__(self):
         if self.blocked_ids is None:
             self.blocked_ids = []
+        if self.skipped_cids is None:
+            self.skipped_cids = []
+        if self.not_in_arc_cids is None:
+            self.not_in_arc_cids = []
+        if self.errored_cids is None:
+            self.errored_cids = []
 
     @property
     def did_anything(self) -> bool:
         return self.attempted > 0
+
+    @property
+    def handled_cids(self) -> set[str]:
+        """Confiant IDs Phase 2 took care of in any of the non-error outcomes
+        (blocked just now, skipped because already done, not in ARC = handled
+        upstream by Confiant RTB). The email rendering filters the
+        Cloaked-review list against this set to avoid showing rows we don't
+        actually need a human to look at."""
+        return ({cid for cid, _ in self.blocked_ids}
+                | set(self.skipped_cids)
+                | set(self.not_in_arc_cids))
 
 
 @dataclass
@@ -258,16 +281,19 @@ def run_arc_phase(
                     gpt_id = gam_arc.extract_gpt_id(confiant_page)
                 except Exception as e:
                     stats.errors += 1
+                    stats.errored_cids.append(cid)
                     print(f"  Confiant {cid}: adtrace fetch failed: {e}",
                           file=sys.stderr)
                     continue
                 if not gpt_id:
                     stats.errors += 1
+                    stats.errored_cids.append(cid)
                     print(f"  Confiant {cid}: GPT Ad Response ID not found "
                           f"in adtrace body", file=sys.stderr)
                     continue
                 if gpt_id in already_arc:
                     stats.skipped_already += 1
+                    stats.skipped_cids.append(cid)
                     print(f"  Confiant {cid}: already ARC-blocked "
                           f"(gam-arc:{gpt_id[:12]}...) — skip", file=sys.stderr)
                     continue
@@ -280,6 +306,7 @@ def run_arc_phase(
                     status = gam_arc.block_in_arc(arc_page, gpt_id, network_id)
                 except Exception as e:
                     stats.errors += 1
+                    stats.errored_cids.append(cid)
                     print(f"  Confiant {cid}: ARC block raised: {e}",
                           file=sys.stderr)
                     arc_page.close()
@@ -294,10 +321,12 @@ def run_arc_phase(
                           file=sys.stderr)
                 elif status == "not-in-arc":
                     stats.not_in_arc += 1
+                    stats.not_in_arc_cids.append(cid)
                     print(f"  Confiant {cid}: not in ARC (likely Open Bidding "
                           f"channel — see Thomas reply pending)", file=sys.stderr)
                 else:
                     stats.errors += 1
+                    stats.errored_cids.append(cid)
                     print(f"  Confiant {cid}: {status}", file=sys.stderr)
 
             ctx.close()
@@ -435,9 +464,28 @@ def _arc_section_html(summary, dark, green, muted, bg_soft, bg_light, border, re
 
 def _build_email_html(summary: RunSummary) -> str:
     from datetime import date
+    import re
 
     new_count = len(summary.new_domains)
-    cloaked_count = len(summary.cloaked_for_review)
+
+    # Filter cloaked-review against Phase 2 results: rows whose Confiant ID
+    # Phase 2 already handled (blocked / skipped because already in state /
+    # not in ARC = Confiant RTB handled upstream) don't need to clutter the
+    # "Cloaked — manual review needed" section. We only flag rows Phase 2
+    # genuinely couldn't take care of (errors, or rows whose Detail isn't
+    # the "ID xxxxx" shape Phase 2 targets).
+    _id_pat = re.compile(r"^ID\s+\d+$", re.IGNORECASE)
+    arc_handled: set[str] = summary.arc.handled_cids if summary.arc else set()
+    cloaked_for_email: list = []
+    for r in summary.cloaked_for_review:
+        m = _id_pat.match(r.detail.strip())
+        if m:
+            cid = m.group().replace("ID ", "").strip()
+            if cid in arc_handled:
+                continue  # Phase 2 took care of it
+        cloaked_for_email.append(r)
+    cloaked_count = len(cloaked_for_email)
+
     cumulative = _state_total()
     today_str = date.today().strftime("%B %-d, %Y")
 
@@ -541,17 +589,27 @@ def _build_email_html(summary: RunSummary) -> str:
 
     # ── Cloaked review card — top N by impressions ──────────────────────
     def _cloaked_card() -> str:
-        if not summary.cloaked_for_review:
+        if not cloaked_for_email:
+            handled_note = ""
+            if summary.cloaked_for_review and not cloaked_for_email:
+                # Every cloaked row got handled by Phase 2 (blocked / already
+                # in state / not-in-arc). Surface that explicitly — otherwise
+                # the green callout reads like a misleading "nothing was here".
+                handled_note = (
+                    f" All {len(summary.cloaked_for_review)} cloaked row"
+                    f"{'s' if len(summary.cloaked_for_review) != 1 else ''} "
+                    f"in this run were handled by Phase 2 above."
+                )
             return (
                 f"<div style='background:{_NW_BG_LIGHT};border:1px solid {_NW_BORDER};"
                 f"border-left:4px solid {_NW_GREEN};padding:14px 18px;border-radius:4px;"
                 f"margin:0 0 14px 0;color:{_NW_DARK};font-size:13px'>"
-                f"No cloaked Google creatives in this run.</div>"
+                f"No cloaked Google creatives need human review.{handled_note}</div>"
             )
         # Sort by impressions desc, cap at 20 to keep the email scannable.
         # Confiant trace URL is the source of truth — link out for full detail.
         rows_sorted = sorted(
-            summary.cloaked_for_review,
+            cloaked_for_email,
             key=lambda r: -r.flagged_impressions,
         )
         head = rows_sorted[:20]
