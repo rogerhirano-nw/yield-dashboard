@@ -900,3 +900,131 @@ def landing_at_risk(days_left, projected_pct,
     if days_left is None or projected_pct is None:
         return False
     return 0 <= days_left <= window_days and projected_pct < threshold_pct
+
+
+# ── TTD Luckyland CPA ────────────────────────────────────────────────────
+
+def ttd_cpa_summary(df: pd.DataFrame) -> dict:
+    """Summarise a `ttd_luckyland` DataFrame for the CPA accordion.
+
+    Returns a dict:
+      date_min / date_max  — window edges (date objects)
+      impressions          — total int
+      clicks               — total int
+      conversions          — total int (0 when column absent)
+      spend_usd            — total float
+      cpa                  — spend / conversions (None when 0 conversions)
+      conv_rate            — conversions / clicks × 100 (None when 0 clicks)
+      by_media_type        — list of dicts {media_type, impressions, clicks,
+                             conversions, spend_usd, cpa, conv_rate}
+      daily_conversions    — list of (date, n) sorted by date
+      daily_cpa            — list of (date, cpa_float) sorted by date (only
+                             days with conversions > 0)
+      delta_conversions    — % change recent-half vs prior-half (None when
+                             insufficient date range)
+      delta_cpa            — absolute CPA change (recent − prior; None same)
+      delta_spend          — % spend change (None same)
+
+    All keys are always present; missing data becomes 0/None/[].
+    """
+    if df.empty:
+        return {
+            "date_min": None, "date_max": None,
+            "impressions": 0, "clicks": 0, "conversions": 0,
+            "spend_usd": 0.0, "cpa": None, "conv_rate": None,
+            "by_media_type": [], "daily_conversions": [], "daily_cpa": [],
+            "delta_conversions": None, "delta_cpa": None, "delta_spend": None,
+        }
+
+    df = df.copy()
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        df = df.dropna(subset=["date"])
+
+    _c = df.columns.tolist()
+    impr   = int(pd.to_numeric(df["impressions"], errors="coerce").fillna(0).sum()) if "impressions" in _c else 0
+    clicks = int(pd.to_numeric(df["clicks"],      errors="coerce").fillna(0).sum()) if "clicks"      in _c else 0
+    spend  = float(pd.to_numeric(df["spend_usd"], errors="coerce").fillna(0.0).sum()) if "spend_usd"  in _c else 0.0
+    convs  = int(pd.to_numeric(df.get("attributed_conversions", pd.Series(dtype=float)),
+                               errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
+
+    cpa        = round(spend / convs, 2) if convs > 0 else None
+    conv_rate  = round(convs / clicks * 100, 3) if clicks > 0 else None
+    date_min   = df["date"].min() if "date" in _c else None
+    date_max   = df["date"].max() if "date" in _c else None
+
+    # ── by media type ──
+    by_media: list[dict] = []
+    if "media_type" in _c and "date" in _c:
+        for mt, grp in df.groupby("media_type"):
+            g_impr  = int(pd.to_numeric(grp.get("impressions",   pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+            g_clk   = int(pd.to_numeric(grp.get("clicks",        pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+            g_spend = float(pd.to_numeric(grp.get("spend_usd",   pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+            g_conv  = int(pd.to_numeric(grp.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
+            by_media.append({
+                "media_type":  str(mt),
+                "impressions": g_impr,
+                "clicks":      g_clk,
+                "conversions": g_conv,
+                "spend_usd":   g_spend,
+                "cpa":         round(g_spend / g_conv, 2) if g_conv > 0 else None,
+                "conv_rate":   round(g_conv / g_clk * 100, 3) if g_clk > 0 else None,
+            })
+        by_media.sort(key=lambda r: r["spend_usd"], reverse=True)
+
+    # ── daily series (summed across all ad groups / media types) ──
+    daily_convs: list[tuple] = []
+    daily_cpa_s: list[tuple] = []
+    if "date" in _c:
+        day_agg: dict[object, dict] = {}
+        for _, row in df.iterrows():
+            d = row["date"]
+            if d not in day_agg:
+                day_agg[d] = {"spend": 0.0, "convs": 0}
+            day_agg[d]["spend"] += float(pd.to_numeric(row.get("spend_usd",  0), errors="coerce") or 0)
+            day_agg[d]["convs"] += int(pd.to_numeric(row.get("attributed_conversions", 0), errors="coerce") or 0) if "attributed_conversions" in _c else 0
+        for d in sorted(day_agg):
+            n = day_agg[d]["convs"]
+            s = day_agg[d]["spend"]
+            daily_convs.append((d, n))
+            if n > 0:
+                daily_cpa_s.append((d, round(s / n, 2)))
+
+    # ── window-half deltas (recent half vs prior half by distinct dates) ──
+    delta_convs = delta_cpa_v = delta_spend = None
+    if "date" in _c and "attributed_conversions" in _c:
+        dates_sorted = sorted(day_agg.keys()) if daily_convs else []
+        D = len(dates_sorted)
+        if D >= 6:
+            half = D // 2
+            prior_dates = set(dates_sorted[:half])
+            recent_dates = set(dates_sorted[half:])
+            p_spend = sum(day_agg[d]["spend"] for d in prior_dates)
+            r_spend = sum(day_agg[d]["spend"] for d in recent_dates)
+            p_conv  = sum(day_agg[d]["convs"] for d in prior_dates)
+            r_conv  = sum(day_agg[d]["convs"] for d in recent_dates)
+            if p_conv > 0:
+                delta_convs = round((r_conv - p_conv) / p_conv * 100, 1)
+            if p_spend > 0:
+                delta_spend = round((r_spend - p_spend) / p_spend * 100, 1)
+            p_cpa = round(p_spend / p_conv, 2) if p_conv > 0 else None
+            r_cpa = round(r_spend / r_conv, 2) if r_conv > 0 else None
+            if p_cpa is not None and r_cpa is not None:
+                delta_cpa_v = round(r_cpa - p_cpa, 2)
+
+    return {
+        "date_min":           date_min,
+        "date_max":           date_max,
+        "impressions":        impr,
+        "clicks":             clicks,
+        "conversions":        convs,
+        "spend_usd":          spend,
+        "cpa":                cpa,
+        "conv_rate":          conv_rate,
+        "by_media_type":      by_media,
+        "daily_conversions":  daily_convs,
+        "daily_cpa":          daily_cpa_s,
+        "delta_conversions":  delta_convs,
+        "delta_cpa":          delta_cpa_v,
+        "delta_spend":        delta_spend,
+    }

@@ -1148,6 +1148,50 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .kpi-delta-amber { color: var(--state-warning); }
 .kpi-delta-flat  { color: var(--text-muted); }
 .kpi-delta-neutral { color: var(--text-secondary); }
+/* ── TTD Luckyland CPA accordion ──────────────────────────────────── */
+/* Reuses the .nw-na accordion shell + .kpi-tile/.kpi-row atoms;
+   adds a bar-chart row, a breakdown table, and a date-range eyebrow. */
+.nw-ttd-wrap { margin: 6px 0 1rem; }
+.nw-ttd-date { font-size: 10px; letter-spacing: var(--track-eyebrow);
+               text-transform: uppercase; color: var(--text-muted);
+               margin-bottom: 4px; }
+.nw-ttd-kpi-row { display: grid; gap: 8px; margin-bottom: 12px;
+                  grid-template-columns: repeat(5, 1fr); }
+/* bar chart container */
+.nw-ttd-charts { display: grid; grid-template-columns: 1fr 1fr;
+                 gap: 10px; margin-bottom: 12px; }
+.nw-ttd-chart { background: var(--surface-1); border: 1px solid var(--border);
+                border-radius: var(--radius-sm); padding: 10px 12px; }
+.nw-ttd-chart-title { font-size: 10px; letter-spacing: var(--track-eyebrow);
+                      text-transform: uppercase; color: var(--text-secondary);
+                      font-weight: 600; margin-bottom: 6px; }
+.nw-ttd-bars { display: flex; flex-direction: column; gap: 3px; }
+.nw-ttd-bar-row { display: flex; align-items: center; gap: 6px;
+                  font-size: 10.5px; color: var(--text-secondary); }
+.nw-ttd-bar-label { flex: 0 0 32px; text-align: right;
+                    font-variant-numeric: tabular-nums; }
+.nw-ttd-bar-track { flex: 1; height: 7px; background: var(--surface-2);
+                    border-radius: 3px; overflow: hidden; }
+.nw-ttd-bar-fill  { height: 100%; border-radius: 3px;
+                    background: var(--text-secondary); }
+.nw-ttd-bar-val   { flex: 0 0 50px; font-variant-numeric: tabular-nums; }
+/* breakdown table */
+.nw-ttd-table { width: 100%; border-collapse: collapse; font-size: 11.5px;
+                margin-top: 4px; }
+.nw-ttd-table th { font-size: 10px; letter-spacing: var(--track-eyebrow);
+                   text-transform: uppercase; color: var(--text-secondary);
+                   font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--border);
+                   text-align: right; }
+.nw-ttd-table th:first-child { text-align: left; }
+.nw-ttd-table td { padding: 5px 8px; border-bottom: 1px solid var(--border);
+                   font-variant-numeric: tabular-nums; text-align: right;
+                   color: var(--text-primary); }
+.nw-ttd-table td:first-child { text-align: left; color: var(--text-secondary); }
+.nw-ttd-table tr:last-child td { border-bottom: none; }
+@media (max-width: 640px) {
+  .nw-ttd-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .nw-ttd-charts  { grid-template-columns: 1fr; }
+}
 /* Sentence-case helper class (utility — applied selectively). */
 .nw-sentence::first-letter { text-transform: uppercase; }
 /* Compact dataframe borders */
@@ -3087,6 +3131,14 @@ if st.session_state.active_view == "campaigns":
      _sivt_series_by_li, _givt_series_by_li,
      _sivt_by_order, _sivt_prior_by_order, _givt_by_order, _givt_prior_by_order) = _dv_ivt_aggregates()
 
+    # TTD Luckyland acquisition report — polled from agentmail by refresh_ttd().
+    # Degrades silently to empty frame when the table doesn't exist yet.
+    try:
+        _ttd_df = load("ttd_luckyland")
+    except Exception:
+        _ttd_df = pd.DataFrame()
+    _ttd_summary = dl.ttd_cpa_summary(_ttd_df)
+
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
     else:
@@ -3931,6 +3983,197 @@ if st.session_state.active_view == "campaigns":
                     txt += f' · target {suffix_target}'
                 return (txt, cls)
 
+            def _render_ttd_cpa(summary: dict) -> None:
+                """Render the TTD Luckyland CPA accordion below the Direct KPI strip.
+
+                Uses the .nw-na shell (collapsible on mobile, force-open on tablet+)
+                with 5 KPI tiles, two mini bar charts (daily conversions / daily CPA),
+                and a media-type breakdown table.
+                """
+                def _fmt_money_cpa(v):
+                    if v is None or pd.isna(v): return "—"
+                    return f"${v:,.2f}"
+
+                def _fmt_int(v):
+                    if not v: return "—"
+                    v = int(v)
+                    if v >= 1_000_000: return f"{v/1_000_000:.1f}M"
+                    if v >= 1_000:     return f"{v/1_000:.1f}K"
+                    return str(v)
+
+                def _fmt_pct(v, dp=2):
+                    if v is None or pd.isna(v): return "—"
+                    return f"{v:.{dp}f}%"
+
+                def _delta_html(v, invert=False, fmt="pct"):
+                    """Colored delta text — green = improving (lower CPA = good,
+                    hence `invert=True` for CPA). fmt='pct' → '±X%', 'abs' → '±$X'."""
+                    if v is None or pd.isna(v): return ""
+                    improving = (v < 0) if invert else (v > 0)
+                    cls = "kpi-delta-up" if improving else "kpi-delta-down"
+                    arrow = "▲" if v > 0 else "▼"
+                    if fmt == "abs":
+                        body = f"{arrow} ${abs(v):.2f}"
+                    else:
+                        body = f"{arrow} {abs(v):.1f}%"
+                    return f' <span class="{cls}">{body}</span>'
+
+                def _bar_chart_html(series, title, fmt_val, color_css="var(--text-secondary)"):
+                    """Mini horizontal bar chart for a daily series [(date, val), ...]."""
+                    if not series:
+                        return ""
+                    vals = [v for _, v in series]
+                    max_v = max(vals) if vals else 1
+                    if max_v == 0:
+                        max_v = 1
+                    bars = ""
+                    for d, v in series:
+                        pct = v / max_v * 100
+                        label = d.strftime("%m/%d") if hasattr(d, "strftime") else str(d)
+                        bars += (
+                            f'<div class="nw-ttd-bar-row">'
+                            f'<span class="nw-ttd-bar-label">{label}</span>'
+                            f'<span class="nw-ttd-bar-track">'
+                            f'<span class="nw-ttd-bar-fill" style="width:{pct:.1f}%;background:{color_css}"></span>'
+                            f'</span>'
+                            f'<span class="nw-ttd-bar-val">{fmt_val(v)}</span>'
+                            f'</div>'
+                        )
+                    return (
+                        f'<div class="nw-ttd-chart">'
+                        f'<div class="nw-ttd-chart-title">{title}</div>'
+                        f'<div class="nw-ttd-bars">{bars}</div>'
+                        f'</div>'
+                    )
+
+                s = summary
+                empty = not s["impressions"] and not s["conversions"]
+
+                # Date range eyebrow
+                date_label = ""
+                if s["date_min"] and s["date_max"]:
+                    d0 = s["date_min"]
+                    d1 = s["date_max"]
+                    if hasattr(d0, "strftime"):
+                        date_label = f'{d0.strftime("%b %d")} – {d1.strftime("%b %d, %Y")}'
+                    else:
+                        date_label = f'{d0} – {d1}'
+
+                # 5 KPI tiles
+                cpa_sub = ""
+                if s["delta_cpa"] is not None:
+                    cpa_sub = _delta_html(s["delta_cpa"], invert=True, fmt="abs")
+                conv_sub = ""
+                if s["delta_conversions"] is not None:
+                    conv_sub = _delta_html(s["delta_conversions"], fmt="pct")
+                spend_sub = ""
+                if s["delta_spend"] is not None:
+                    spend_sub = _delta_html(s["delta_spend"], fmt="pct")
+
+                tiles_html = (
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">CPA</div>'
+                    f'<div class="kpi-value">{_fmt_money_cpa(s["cpa"])}</div>'
+                    f'<div class="kpi-target">{cpa_sub}</div>'
+                    f'</div>'
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">Conversions</div>'
+                    f'<div class="kpi-value">{_fmt_int(s["conversions"])}</div>'
+                    f'<div class="kpi-target">{conv_sub}</div>'
+                    f'</div>'
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">Spend</div>'
+                    f'<div class="kpi-value">{_fmt_money_cpa(s["spend_usd"]) if s["spend_usd"] else "—"}</div>'
+                    f'<div class="kpi-target">{spend_sub}</div>'
+                    f'</div>'
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">Conv. Rate</div>'
+                    f'<div class="kpi-value">{_fmt_pct(s["conv_rate"], dp=3)}</div>'
+                    f'</div>'
+                    f'<div class="kpi-tile">'
+                    f'<div class="kpi-label">Clicks</div>'
+                    f'<div class="kpi-value">{_fmt_int(s["clicks"])}</div>'
+                    f'</div>'
+                )
+
+                # Bar charts (show last 14 days max to keep bars readable)
+                daily_convs = s["daily_conversions"][-14:]
+                daily_cpa   = s["daily_cpa"][-14:]
+                charts_html = ""
+                if daily_convs or daily_cpa:
+                    conv_chart = _bar_chart_html(
+                        daily_convs, "Daily Conversions",
+                        lambda v: str(int(v)),
+                        "var(--text-secondary)",
+                    )
+                    cpa_chart = _bar_chart_html(
+                        daily_cpa, "Daily CPA",
+                        lambda v: f"${v:.0f}",
+                        "var(--text-muted)",
+                    )
+                    if conv_chart or cpa_chart:
+                        charts_html = (
+                            f'<div class="nw-ttd-charts">'
+                            f'{conv_chart}{cpa_chart}'
+                            f'</div>'
+                        )
+
+                # Media type breakdown table
+                table_html = ""
+                if s["by_media_type"]:
+                    rows = ""
+                    for row in s["by_media_type"]:
+                        cpa_cell  = _fmt_money_cpa(row["cpa"])
+                        cvr_cell  = _fmt_pct(row["conv_rate"], dp=3)
+                        rows += (
+                            f'<tr>'
+                            f'<td>{row["media_type"]}</td>'
+                            f'<td>{_fmt_int(row["impressions"])}</td>'
+                            f'<td>{_fmt_int(row["clicks"])}</td>'
+                            f'<td>{_fmt_int(row["conversions"])}</td>'
+                            f'<td>{_fmt_money_cpa(row["spend_usd"])}</td>'
+                            f'<td>{cpa_cell}</td>'
+                            f'<td>{cvr_cell}</td>'
+                            f'</tr>'
+                        )
+                    table_html = (
+                        f'<table class="nw-ttd-table">'
+                        f'<thead><tr>'
+                        f'<th>Format</th><th>Impr.</th><th>Clicks</th>'
+                        f'<th>Conv.</th><th>Spend</th><th>CPA</th><th>CVR</th>'
+                        f'</tr></thead>'
+                        f'<tbody>{rows}</tbody>'
+                        f'</table>'
+                    )
+
+                # Accordion body
+                if empty:
+                    body_inner = '<div style="padding:12px 13px;font-size:12px;color:var(--text-muted)">No TTD data yet — run <code>refresh_cache.py --mode=ttd</code> to populate.</div>'
+                else:
+                    body_inner = (
+                        (f'<div class="nw-ttd-date">{date_label}</div>' if date_label else "")
+                        + f'<div class="nw-ttd-kpi-row">{tiles_html}</div>'
+                        + charts_html
+                        + table_html
+                    )
+
+                count_label = f"{s['conversions']:,} conv." if s["conversions"] else "no data"
+                st.markdown(
+                    f'<div class="nw-ttd-wrap">'
+                    f'<details class="nw-na" open>'
+                    f'<summary class="nw-na-head">'
+                    f'Luckyland Casino · TTD Acquisition'
+                    f'<span class="nw-na-h-chev">›</span>'
+                    f'<span class="cnt">{count_label}</span>'
+                    f'</summary>'
+                    f'<div class="nw-na-body" style="padding:12px 13px 4px">'
+                    f'{body_inner}'
+                    f'</div>'
+                    f'</details>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
             def _kpi_tile(label, value, target=None, spark=None):
                 """Render one KPI card: label / serif number / target subtitle,
                 with the (neutral) sparkline running full-width underneath —
@@ -4133,6 +4376,9 @@ if st.session_state.active_view == "campaigns":
                 + '</div>',
                 unsafe_allow_html=True,
             )
+
+            # ---------- TTD Luckyland CPA accordion ----------
+            _render_ttd_cpa(_ttd_summary)
 
             # ---------- Campaign table ----------
             # Remaining impressions (None when no goal is set)

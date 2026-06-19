@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luckyland CPA data — 3 layout options</title>
+<style>
+:root {
+  --brand-red: #e91d0c;
+  --surface-0: #fefcf6;
+  --surface-1: #ffffff;
+  --surface-2: #f6f2e6;
+  --border: #e7e0c9;
+  --border-strong: #1f1e19;
+  --text-primary: #1f1e19;
+  --text-secondary: #57564f;
+  --text-muted: #8c887b;
+  --state-positive: #3c6b14;
+  --state-positive-surface: rgba(76,122,25,.12);
+  --state-positive-muted: #6f8f56;
+  --state-positive-surface-quiet: rgba(76,122,25,.07);
+  --state-warning: #8a6d00;
+  --state-warning-surface: rgba(214,170,0,.18);
+  --state-critical: #c41608;
+  --state-critical-surface: rgba(233,29,12,.10);
+  --viz-1: #4b62e0;
+  --viz-2: #2d8d92;
+  --viz-4: #d84f86;
+  --viz-5: #b08900;
+  --font-sans: "Franklin Gothic","Helvetica Neue",Arial,sans-serif;
+  --font-display: Georgia,"Times New Roman",serif;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #e8e4d8;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  padding: 40px 24px;
+}
+
+/* ── Page chrome ── */
+.page-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.page-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 40px;
+}
+
+.option-block { margin-bottom: 60px; }
+.option-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-left: 3px solid var(--brand-red);
+  padding-left: 8px;
+  margin-bottom: 14px;
+}
+.option-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.option-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  max-width: 680px;
+  line-height: 1.5;
+}
+
+/* ── Shared app shell ── */
+.app-shell {
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-width: 900px;
+}
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border-strong);
+  padding: 0 16px;
+  background: var(--surface-0);
+}
+.tab {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+.tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand-red);
+}
+
+/* ── Eyebrow ── */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── KPI strip ── */
+.kpi-strip {
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.kpi-tile {
+  flex: 1;
+  background: var(--surface-1);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.kpi-n {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+.kpi-n.positive { color: var(--state-positive); }
+.kpi-n.muted    { color: var(--state-positive-muted); }
+
+/* ── Table rows ── */
+.tbl-section { padding: 0 16px 16px; }
+.tbl-header {
+  display: grid;
+  padding: 8px 0 6px;
+  border-bottom: 2px solid var(--border-strong);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.row {
+  display: grid;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  align-items: center;
+}
+.row:last-child { border-bottom: none; }
+.row-name { font-weight: 600; color: var(--text-primary); }
+.row-sub  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.num { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.num.hi  { color: var(--state-positive-muted); }
+.num.lo  { color: var(--state-critical); }
+
+/* Pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pill-green  { background: var(--state-positive-surface-quiet); color: var(--state-positive); }
+.pill-amber  { background: var(--state-warning-surface); color: var(--state-warning); }
+.pill-red    { background: var(--state-critical-surface); color: var(--state-critical); }
+.pill-blue   { background: rgba(75,98,224,.10); color: var(--viz-1); }
+.pill-teal   { background: rgba(45,141,146,.12); color: var(--viz-2); }
+
+/* ── Pace bar ── */
+.pace-wrap { position: relative; height: 4px; background: var(--surface-2); border-radius: 2px; width: 80px; }
+.pace-fill { height: 100%; border-radius: 2px; }
+.pace-fill.green  { background: var(--state-positive-muted); }
+.pace-fill.amber  { background: var(--state-warning); }
+
+/* ─────────────────────────────────────────────
+   OPTION 1  —  Drawer panel
+   ───────────────────────────────────────────── */
+.drawer-wrap {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+.drawer-main {
+  flex: 1;
+  min-width: 0;
+  padding: 20px;
+  border-right: 1px solid var(--border);
+}
+.drawer-ttd-panel {
+  width: 256px;
+  flex: 0 0 256px;
+  background: var(--surface-2);
+  padding: 16px;
+  border-left: 3px solid var(--viz-1);
+}
+.ttd-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ttd-panel-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--viz-1);
+}
+.ttd-panel-period {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.ttd-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ttd-kpi {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.ttd-kpi-n {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.ttd-kpi-l {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.ttd-breakdown {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ttd-bk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.ttd-bk-row:last-child { border-bottom: none; }
+.ttd-bk-label { color: var(--text-secondary); }
+.ttd-bk-val   { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-primary); }
+.ttd-attr {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.drawer-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--state-positive-surface-quiet);
+  border: 1px solid rgba(76,122,25,.2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--state-positive);
+  margin-bottom: 14px;
+}
+.drawer-chart-placeholder {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.drawer-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 6px;
+}
+.drawer-meta-cell {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+}
+.drawer-meta-cell .l { font-size: 10px; color: var(--text-muted); letter-spacing:.05em; text-transform: uppercase; }
+.drawer-meta-cell .v { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+
+/* ─────────────────────────────────────────────
+   OPTION 2  —  Extra table columns
+   ───────────────────────────────────────────── */
+.opt2-note {
+  background: rgba(75,98,224,.06);
+  border: 1px solid rgba(75,98,224,.25);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--viz-1);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.col-new { position: relative; }
+.col-new::after {
+  content: "TTD";
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  background: rgba(75,98,224,.12);
+  color: var(--viz-1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.col-group-marker {
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--viz-1);
+  background: rgba(75,98,224,.06);
+  border-bottom: 1px solid rgba(75,98,224,.2);
+  padding: 3px 0;
+  grid-column: 7 / 9;
+}
+
+/* ─────────────────────────────────────────────
+   OPTION 3  —  CPA accordion
+   ───────────────────────────────────────────── */
+.nw-na {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.nw-na-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-0);
+}
+.nw-na-head .cnt {
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-left: auto;
+}
+.cpa-kpi-strip {
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.cpa-kpi {
+  flex: 1;
+  background: var(--surface-1);
+  padding: 13px 16px;
+}
+.cpa-kpi-n {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.cpa-kpi-delta {
+  font-size: 11px;
+  margin-top: 3px;
+}
+.cpa-kpi-delta.up   { color: var(--state-positive-muted); }
+.cpa-kpi-delta.down { color: var(--state-critical); }
+.cpa-body { padding: 16px; }
+.cpa-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cpa-chart-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.cpa-chart-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.mini-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 48px;
+}
+.mini-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: var(--viz-1);
+  opacity: .7;
+  min-height: 4px;
+}
+.mini-bar.hi { opacity: 1; }
+.cpa-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.cpa-breakdown-table th {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 2px solid var(--border-strong);
+}
+.cpa-breakdown-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.cpa-breakdown-table td.name { font-weight: 600; color: var(--text-primary); }
+.cpa-breakdown-table tr:last-child td { border-bottom: none; }
+.cpa-breakdown-table td.good { color: var(--state-positive-muted); font-weight: 600; }
+.cpa-breakdown-table td.ok   { color: var(--state-warning); font-weight: 600; }
+
+/* attribution strip */
+.attribution-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(75,98,224,.06);
+  border: 1px solid rgba(75,98,224,.2);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--viz-1);
+  margin-top: 12px;
+}
+
+/* section headers inside app */
+.section-eyebrow {
+  padding: 14px 16px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.section-rule {
+  height: 1px;
+  background: var(--border);
+  margin: 0 16px 12px;
+}
+
+/* ── SVG sparklines ── */
+svg.spark { display: block; }
+
+</style>
+</head>
+<body>
+
+<div class="page-title">Luckyland Casino TTD CPA data — layout options</div>
+<div class="page-sub">3 approaches · Newsweek Paper design system</div>
+
+
+<!-- ══════════════════════════════════════════
+     OPTION 1 — Drawer side panel
+     ══════════════════════════════════════════ -->
+<div class="option-block">
+  <div class="option-label">Option 1</div>
+  <div class="option-title">Drawer side panel</div>
+  <div class="option-desc">
+    When you open the Luckyland Casino line item, a TTD panel appears on the right side of the drawer —
+    same view, no new columns. The table is unchanged; the CPA data is one click away on the relevant line items.
+    Best if the join to individual line items is uncertain (TTD data is campaign-level, not LI-level).
+  </div>
+
+  <div class="app-shell">
+    <div class="tab-bar">
+      <div class="tab active">Campaigns</div>
+      <div class="tab">By Site / Size</div>
+      <div class="tab">By DSP</div>
+      <div class="tab">Pubmatic</div>
+    </div>
+
+    <!-- Compressed table showing one open row -->
+    <div class="tbl-section" style="padding-bottom:0">
+      <div class="tbl-header" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr; padding: 8px 0 6px;">
+        <span>Line Item</span><span>Pacing</span><span>Revenue</span><span>Viewability</span><span>Attention</span><span>SIVT</span>
+      </div>
+      <!-- other rows (muted) -->
+      <div class="row" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr; opacity:.4;">
+        <div><div class="row-name">Infiniti — Newsmakers Centerstage</div><div class="row-sub">Order 4821 · Centerstage</div></div>
+        <div><span class="pill pill-green">103%</span></div>
+        <div class="num">$8,140</div>
+        <div class="num hi">74%</div>
+        <div class="num">118</div>
+        <div class="num">0.4%</div>
+      </div>
+      <!-- Luckyland row — open (highlighted) -->
+      <div class="row" style="grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 1fr; background: rgba(75,98,224,.04); border-bottom:none;">
+        <div>
+          <div class="row-name" style="color:var(--viz-1);">▼ VGW — Luckyland Casino Display</div>
+          <div class="row-sub">Order 4068 · Display · <span style="color:var(--viz-1);font-weight:700;">TTD data available</span></div>
+        </div>
+        <div><span class="pill pill-amber">88%</span></div>
+        <div class="num">$6,220</div>
+        <div class="num hi">71%</div>
+        <div class="num">102</div>
+        <div class="num">0.6%</div>
+      </div>
+    </div>
+
+    <!-- Drawer -->
+    <div class="drawer-wrap">
+      <!-- Left: normal drawer content -->
+      <div class="drawer-main">
+        <div class="drawer-status-banner">⚠ Underpacing · 88% delivered · 12 days left</div>
+        <div class="drawer-chart-placeholder">7-day delivery chart</div>
+        <!-- Mini meta grid -->
+        <div class="drawer-meta-grid">
+          <div class="drawer-meta-cell"><div class="l">Flight</div><div class="v">Jun 1 – Jun 30</div></div>
+          <div class="drawer-meta-cell"><div class="l">Format</div><div class="v">Display</div></div>
+          <div class="drawer-meta-cell"><div class="l">CPM</div><div class="v">$14.00</div></div>
+          <div class="drawer-meta-cell"><div class="l">Goal</div><div class="v">500k impr</div></div>
+          <div class="drawer-meta-cell"><div class="l">Delivered</div><div class="v">440k</div></div>
+          <div class="drawer-meta-cell"><div class="l">Revenue</div><div class="v">$6,220</div></div>
+        </div>
+      </div>
+
+      <!-- Right: TTD CPA panel -->
+      <div class="drawer-ttd-panel">
+        <div class="ttd-panel-head">
+          <span class="ttd-panel-label">TTD · Acquisition</span>
+          <span class="ttd-panel-period">May 20 – Jun 18</span>
+        </div>
+
+        <div class="ttd-kpi-grid">
+          <div class="ttd-kpi">
+            <div class="ttd-kpi-n">1,284</div>
+            <div class="ttd-kpi-l">Conversions</div>
+          </div>
+          <div class="ttd-kpi">
+            <div class="ttd-kpi-n">$4.85</div>
+            <div class="ttd-kpi-l">CPA</div>
+          </div>
+          <div class="ttd-kpi">
+            <div class="ttd-kpi-n">$6,227</div>
+            <div class="ttd-kpi-l">TTD Spend</div>
+          </div>
+          <div class="ttd-kpi">
+            <div class="ttd-kpi-n">0.41%</div>
+            <div class="ttd-kpi-l">Conv Rate</div>
+          </div>
+        </div>
+
+        <div class="ttd-breakdown">
+          <div class="ttd-bk-row" style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+            <span class="ttd-bk-label" style="font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">By media type</span>
+          </div>
+          <div class="ttd-bk-row">
+            <span class="ttd-bk-label">Display</span>
+            <span class="ttd-bk-val">862 conv · $4.62 CPA</span>
+          </div>
+          <div class="ttd-bk-row">
+            <span class="ttd-bk-label">Video</span>
+            <span class="ttd-bk-val">422 conv · $5.31 CPA</span>
+          </div>
+        </div>
+
+        <div class="ttd-attr">Source: The Trade Desk · Campaign-level attribution · 30-day window</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     OPTION 2 — Extra table columns
+     ══════════════════════════════════════════ -->
+<div class="option-block">
+  <div class="option-label">Option 2</div>
+  <div class="option-title">Extra columns in the Direct table</div>
+  <div class="option-desc">
+    Two new columns — <strong>Conv.</strong> (attributed conversions) and <strong>CPA</strong> — appear on every row.
+    Luckyland rows show TTD values; all other rows show "—". Follows the same pattern as Attention, SIVT, GIVT.
+    Best when the join to individual line items is reliable and you want the signal always visible.
+  </div>
+
+  <div class="app-shell">
+    <div class="tab-bar">
+      <div class="tab active">Campaigns</div>
+      <div class="tab">By Site / Size</div>
+      <div class="tab">By DSP</div>
+      <div class="tab">Pubmatic</div>
+    </div>
+
+    <div class="tbl-section">
+      <!-- Column group marker -->
+      <div style="display:grid; grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr; margin-top:6px; margin-bottom:0;">
+        <div></div><div></div><div></div><div></div><div></div><div></div>
+        <div style="grid-column:7/9; text-align:center; font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--viz-1); background:rgba(75,98,224,.07); border:1px solid rgba(75,98,224,.2); border-radius:3px 3px 0 0; padding:2px 0;">TTD attribution</div>
+      </div>
+      <div class="tbl-header" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr;">
+        <span>Line Item</span>
+        <span>Pacing</span>
+        <span>Revenue</span>
+        <span>Viewability</span>
+        <span>Attention</span>
+        <span>SIVT</span>
+        <span style="color:var(--viz-1);">Conv.</span>
+        <span style="color:var(--viz-1);">CPA</span>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr;">
+        <div><div class="row-name">Infiniti — Newsmakers Centerstage</div><div class="row-sub">Order 4821 · Centerstage</div></div>
+        <div><span class="pill pill-green">103%</span></div>
+        <div class="num">$8,140</div>
+        <div class="num hi">74%</div>
+        <div class="num">118</div>
+        <div class="num">0.4%</div>
+        <div class="num" style="color:var(--text-muted);">—</div>
+        <div class="num" style="color:var(--text-muted);">—</div>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr; background:rgba(75,98,224,.03);">
+        <div><div class="row-name">VGW — Luckyland Casino Display</div><div class="row-sub">Order 4068 · Display</div></div>
+        <div><span class="pill pill-amber">88%</span></div>
+        <div class="num">$6,220</div>
+        <div class="num hi">71%</div>
+        <div class="num">102</div>
+        <div class="num">0.6%</div>
+        <div class="num" style="color:var(--text-primary);font-weight:600;">862</div>
+        <div class="num hi" style="font-weight:600;">$4.62</div>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr; background:rgba(75,98,224,.03);">
+        <div><div class="row-name">VGW — Luckyland Casino Video</div><div class="row-sub">Order 4068 · Video</div></div>
+        <div><span class="pill pill-green">96%</span></div>
+        <div class="num">$2,890</div>
+        <div class="num hi">68%</div>
+        <div class="num">109</div>
+        <div class="num">0.5%</div>
+        <div class="num" style="color:var(--text-primary);font-weight:600;">422</div>
+        <div class="num" style="color:var(--state-warning);font-weight:600;">$5.31</div>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr .65fr .65fr; opacity:.4;">
+        <div><div class="row-name">Patek Philippe — Homepage Takeover</div><div class="row-sub">Order 5103 · Display</div></div>
+        <div><span class="pill pill-green">101%</span></div>
+        <div class="num">$12,500</div>
+        <div class="num hi">78%</div>
+        <div class="num">131</div>
+        <div class="num">0.3%</div>
+        <div class="num" style="color:var(--text-muted);">—</div>
+        <div class="num" style="color:var(--text-muted);">—</div>
+      </div>
+    </div>
+
+    <div style="padding:0 16px 14px;">
+      <div class="opt2-note">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#4b62e0" stroke-width="1.5"/><path d="M7 6v4M7 4.5v.5" stroke="#4b62e0" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Conv. and CPA columns show TTD attribution for Luckyland Casino rows only. Campaign-level data divided across line items by media type.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════
+     OPTION 3 — Dedicated CPA accordion
+     ══════════════════════════════════════════ -->
+<div class="option-block">
+  <div class="option-label">Option 3</div>
+  <div class="option-title">Dedicated CPA accordion (below KPI strip)</div>
+  <div class="option-desc">
+    A standalone "Luckyland · TTD Acquisition" accordion sits below the Direct KPI strip, always visible when data is present —
+    similar to PMP signals. No join to line items needed; the campaign-level totals speak for themselves.
+    Best while the TTD ↔ GAM line-item mapping is being established.
+  </div>
+
+  <div class="app-shell">
+    <div class="tab-bar">
+      <div class="tab active">Campaigns</div>
+      <div class="tab">By Site / Size</div>
+      <div class="tab">By DSP</div>
+      <div class="tab">Pubmatic</div>
+    </div>
+
+    <!-- KPI strip (simplified) -->
+    <div class="kpi-strip">
+      <div class="kpi-tile"><div class="eyebrow">Revenue</div><div class="kpi-n">$41.2k</div></div>
+      <div class="kpi-tile"><div class="eyebrow">Impressions</div><div class="kpi-n">2.94M</div></div>
+      <div class="kpi-tile"><div class="eyebrow">eCPM</div><div class="kpi-n">$14.02</div></div>
+      <div class="kpi-tile"><div class="eyebrow">Pacing</div><div class="kpi-n muted">94%</div></div>
+      <div class="kpi-tile"><div class="eyebrow">Viewability</div><div class="kpi-n muted">72%</div></div>
+    </div>
+
+    <!-- CPA accordion -->
+    <div style="padding:14px 16px 0;">
+      <div class="nw-na" style="border-color:rgba(75,98,224,.3);">
+        <div class="nw-na-head" style="background:rgba(75,98,224,.05); border-bottom-color:rgba(75,98,224,.2);">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="#4b62e0" stroke-width="1.4"/><path d="M4 6h4M6 4v4" stroke="#4b62e0" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span style="color:var(--viz-1);">Luckyland Casino · TTD Acquisition</span>
+          <span style="margin-left:6px; color:var(--text-muted); font-size:10px; letter-spacing:.04em; text-transform:none; font-weight:400;">May 20 – Jun 18 · Display + Video</span>
+          <span class="cnt">▾</span>
+        </div>
+
+        <!-- KPI strip inside accordion -->
+        <div class="cpa-kpi-strip">
+          <div class="cpa-kpi">
+            <div class="eyebrow">Conversions</div>
+            <div class="cpa-kpi-n">1,284</div>
+            <div class="cpa-kpi-delta up">▲ 18% vs prior 30d</div>
+          </div>
+          <div class="cpa-kpi">
+            <div class="eyebrow">CPA</div>
+            <div class="cpa-kpi-n">$4.85</div>
+            <div class="cpa-kpi-delta up">▼ $0.63 vs prior 30d</div>
+          </div>
+          <div class="cpa-kpi">
+            <div class="eyebrow">TTD Spend</div>
+            <div class="cpa-kpi-n">$6,227</div>
+            <div class="cpa-kpi-delta up">▲ 9%</div>
+          </div>
+          <div class="cpa-kpi">
+            <div class="eyebrow">Clicks</div>
+            <div class="cpa-kpi-n">31,240</div>
+            <div class="cpa-kpi-delta up">▲ 4%</div>
+          </div>
+          <div class="cpa-kpi">
+            <div class="eyebrow">Conv Rate</div>
+            <div class="cpa-kpi-n">0.41%</div>
+            <div class="cpa-kpi-delta up">▲ 0.06pp</div>
+          </div>
+        </div>
+
+        <div class="cpa-body">
+          <!-- Charts row -->
+          <div class="cpa-chart-row">
+            <div class="cpa-chart-box">
+              <div class="cpa-chart-title">Daily conversions (last 30d)</div>
+              <div class="mini-bars">
+                <div class="mini-bar" style="height:38%"></div>
+                <div class="mini-bar" style="height:42%"></div>
+                <div class="mini-bar" style="height:35%"></div>
+                <div class="mini-bar" style="height:50%"></div>
+                <div class="mini-bar" style="height:48%"></div>
+                <div class="mini-bar" style="height:55%"></div>
+                <div class="mini-bar" style="height:60%"></div>
+                <div class="mini-bar" style="height:58%"></div>
+                <div class="mini-bar" style="height:62%"></div>
+                <div class="mini-bar" style="height:70%"></div>
+                <div class="mini-bar" style="height:65%"></div>
+                <div class="mini-bar" style="height:72%"></div>
+                <div class="mini-bar" style="height:68%"></div>
+                <div class="mini-bar" style="height:75%"></div>
+                <div class="mini-bar hi" style="height:80%"></div>
+                <div class="mini-bar hi" style="height:85%"></div>
+                <div class="mini-bar hi" style="height:78%"></div>
+                <div class="mini-bar hi" style="height:90%"></div>
+                <div class="mini-bar hi" style="height:88%"></div>
+                <div class="mini-bar hi" style="height:95%"></div>
+                <div class="mini-bar hi" style="height:100%"></div>
+                <div class="mini-bar hi" style="height:92%"></div>
+                <div class="mini-bar hi" style="height:88%"></div>
+                <div class="mini-bar hi" style="height:85%"></div>
+                <div class="mini-bar hi" style="height:82%"></div>
+                <div class="mini-bar hi" style="height:88%"></div>
+                <div class="mini-bar hi" style="height:91%"></div>
+                <div class="mini-bar hi" style="height:86%"></div>
+                <div class="mini-bar hi" style="height:89%"></div>
+                <div class="mini-bar hi" style="height:84%"></div>
+              </div>
+            </div>
+            <div class="cpa-chart-box">
+              <div class="cpa-chart-title">Daily CPA trend</div>
+              <div class="mini-bars">
+                <div class="mini-bar" style="height:90%; background:var(--viz-2); opacity:.6;"></div>
+                <div class="mini-bar" style="height:85%; background:var(--viz-2); opacity:.6;"></div>
+                <div class="mini-bar" style="height:92%; background:var(--viz-2); opacity:.6;"></div>
+                <div class="mini-bar" style="height:88%; background:var(--viz-2); opacity:.6;"></div>
+                <div class="mini-bar" style="height:80%; background:var(--viz-2); opacity:.6;"></div>
+                <div class="mini-bar" style="height:75%; background:var(--viz-2); opacity:.7;"></div>
+                <div class="mini-bar" style="height:78%; background:var(--viz-2); opacity:.7;"></div>
+                <div class="mini-bar" style="height:72%; background:var(--viz-2); opacity:.7;"></div>
+                <div class="mini-bar" style="height:70%; background:var(--viz-2); opacity:.7;"></div>
+                <div class="mini-bar" style="height:68%; background:var(--viz-2); opacity:.7;"></div>
+                <div class="mini-bar" style="height:65%; background:var(--viz-2); opacity:.8;"></div>
+                <div class="mini-bar" style="height:62%; background:var(--viz-2); opacity:.8;"></div>
+                <div class="mini-bar" style="height:60%; background:var(--viz-2); opacity:.8;"></div>
+                <div class="mini-bar" style="height:58%; background:var(--viz-2); opacity:.8;"></div>
+                <div class="mini-bar" style="height:55%; background:var(--viz-2); opacity:.9;"></div>
+                <div class="mini-bar" style="height:53%; background:var(--viz-2); opacity:.9;"></div>
+                <div class="mini-bar" style="height:50%; background:var(--viz-2); opacity:.9;"></div>
+                <div class="mini-bar" style="height:52%; background:var(--viz-2); opacity:.9;"></div>
+                <div class="mini-bar" style="height:48%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:45%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:43%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:46%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:44%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:42%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:40%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:43%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:41%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:39%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:42%; background:var(--viz-2); opacity:1;"></div>
+                <div class="mini-bar" style="height:40%; background:var(--viz-2); opacity:1;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Breakdown by media type -->
+          <table class="cpa-breakdown-table">
+            <thead>
+              <tr>
+                <th>Media Type</th>
+                <th>Impressions</th>
+                <th>Clicks</th>
+                <th>Conv.</th>
+                <th>Conv. Rate</th>
+                <th>TTD Spend</th>
+                <th>CPA</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">Display</td>
+                <td>2,210,000</td>
+                <td>22,840</td>
+                <td>862</td>
+                <td>0.44%</td>
+                <td>$3,983</td>
+                <td class="good">$4.62</td>
+              </tr>
+              <tr>
+                <td class="name">Video</td>
+                <td>730,000</td>
+                <td>8,400</td>
+                <td>422</td>
+                <td>0.35%</td>
+                <td>$2,244</td>
+                <td class="ok">$5.31</td>
+              </tr>
+              <tr style="font-weight:700;">
+                <td class="name" style="font-weight:700;">Total</td>
+                <td>2,940,000</td>
+                <td>31,240</td>
+                <td>1,284</td>
+                <td>0.41%</td>
+                <td>$6,227</td>
+                <td class="good">$4.85</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="attribution-strip">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#4b62e0" stroke-width="1.5"/><path d="M7 6v4M7 4.5v.5" stroke="#4b62e0" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Source: The Trade Desk · attributed conversions (post-click + post-view) · campaign-level · not split by GAM line item
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- compressed table below accordion -->
+    <div class="tbl-section">
+      <div class="tbl-header" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr; margin-top:8px;">
+        <span>Line Item</span><span>Pacing</span><span>Revenue</span><span>Viewability</span><span>Attention</span><span>SIVT</span>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr; opacity:.5;">
+        <div><div class="row-name">VGW — Luckyland Casino Display</div><div class="row-sub">Order 4068 · Display</div></div>
+        <div><span class="pill pill-amber">88%</span></div>
+        <div class="num">$6,220</div><div class="num hi">71%</div><div class="num">102</div><div class="num">0.6%</div>
+      </div>
+      <div class="row" style="grid-template-columns:2fr .9fr .8fr .7fr .65fr .65fr; opacity:.5;">
+        <div><div class="row-name">VGW — Luckyland Casino Video</div><div class="row-sub">Order 4068 · Video</div></div>
+        <div><span class="pill pill-green">96%</span></div>
+        <div class="num">$2,890</div><div class="num hi">68%</div><div class="num">109</div><div class="num">0.5%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
