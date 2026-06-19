@@ -3749,8 +3749,9 @@ if st.session_state.active_view == "campaigns":
                 '.stApp [data-testid="stMain"] .block-container,'
                 '.stApp [data-testid="stAppViewContainer"] .block-container{'
                 "max-width:min(1320px,calc(100vw - 380px))!important;"
-                "margin-left:auto!important;margin-right:360px!important;}"
-                ".st-key-nw_campaigns_rail{position:fixed;top:120px;right:20px;width:320px;"
+                "margin-left:0!important;margin-right:0!important;}"
+                ".st-key-nw_campaigns_rail{position:fixed;top:120px;"
+                "left:calc(min(1320px,100vw - 380px) + 20px);width:320px;"
                 "max-height:calc(100vh - 140px);overflow-y:auto;z-index:6;}"
                 "}</style>",
                 unsafe_allow_html=True,
