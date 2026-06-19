@@ -10,11 +10,14 @@ fallbacks misgrading long-form video under plain Video thresholds. The
 
 from __future__ import annotations
 
+import datetime
 import math
+
+import pandas as pd
 
 from dashboard_logic import (LONG_PREROLL_FORMAT, band, bench_red_cut,
                              bench_target, bump_video_format,
-                             matches_long_preroll)
+                             matches_long_preroll, ttd_cpa_summary)
 
 # Mirrors the production benchmarks_by_format settings at the time of the
 # 2026-06-10 incident: long-form video green ≥35 / red <34.9, plain video
@@ -784,3 +787,138 @@ def test_landing_at_risk_window_and_threshold():
     # a wider window catches the early big shortfall (Infiniti at 14d/81%)
     assert risk(14, 81.0, window_days=14)
     assert not risk(14, 81.0, window_days=7)
+
+
+# ─── ttd_cpa_summary ────────────────────────────────────────────────────────
+
+def _ttd_df(rows: list[dict]) -> pd.DataFrame:
+    """Build a minimal ttd_luckyland-shaped DataFrame for test fixtures."""
+    return pd.DataFrame(rows)
+
+
+def test_ttd_cpa_summary_empty():
+    s = ttd_cpa_summary(pd.DataFrame())
+    assert s["impressions"] == 0
+    assert s["clicks"] == 0
+    assert s["conversions"] == 0
+    assert s["spend_usd"] == 0.0
+    assert s["cpa"] is None
+    assert s["conv_rate"] is None
+    assert s["by_media_type"] == []
+    assert s["daily_conversions"] == []
+    assert s["daily_cpa"] == []
+    assert s["delta_conversions"] is None
+    assert s["delta_cpa"] is None
+    assert s["delta_spend"] is None
+
+
+def test_ttd_cpa_summary_basic():
+    df = _ttd_df([
+        {"date": "2026-06-01", "impressions": 10_000, "clicks": 200,
+         "spend_usd": 500.0, "attributed_conversions": 10},
+        {"date": "2026-06-02", "impressions": 12_000, "clicks": 240,
+         "spend_usd": 600.0, "attributed_conversions": 12},
+    ])
+    s = ttd_cpa_summary(df)
+    assert s["impressions"] == 22_000
+    assert s["clicks"] == 440
+    assert s["conversions"] == 22
+    assert abs(s["spend_usd"] - 1100.0) < 0.01
+    assert abs(s["cpa"] - round(1100.0 / 22, 2)) < 0.01
+    assert abs(s["conv_rate"] - round(22 / 440 * 100, 3)) < 0.001
+    assert s["date_min"] == datetime.date(2026, 6, 1)
+    assert s["date_max"] == datetime.date(2026, 6, 2)
+    # daily series
+    assert len(s["daily_conversions"]) == 2
+    assert s["daily_conversions"][0] == (datetime.date(2026, 6, 1), 10)
+    assert s["daily_conversions"][1] == (datetime.date(2026, 6, 2), 12)
+    assert len(s["daily_cpa"]) == 2
+
+
+def test_ttd_cpa_summary_no_conversions_column():
+    """When attributed_conversions is absent the function degrades to 0."""
+    df = _ttd_df([
+        {"date": "2026-06-01", "impressions": 5000, "clicks": 100, "spend_usd": 250.0},
+    ])
+    s = ttd_cpa_summary(df)
+    assert s["conversions"] == 0
+    assert s["cpa"] is None
+    # conv_rate is 0.0 (not None) when clicks > 0 — a genuine 0% rate
+    assert s["conv_rate"] == 0.0
+
+
+def test_ttd_cpa_summary_zero_clicks():
+    df = _ttd_df([
+        {"date": "2026-06-01", "impressions": 5000, "clicks": 0,
+         "spend_usd": 300.0, "attributed_conversions": 5},
+    ])
+    s = ttd_cpa_summary(df)
+    assert s["conv_rate"] is None
+    assert abs(s["cpa"] - 60.0) < 0.01
+
+
+def test_ttd_cpa_summary_by_media_type():
+    df = _ttd_df([
+        {"date": "2026-06-01", "impressions": 8000, "clicks": 160,
+         "spend_usd": 400.0, "attributed_conversions": 8, "media_type": "Display"},
+        {"date": "2026-06-01", "impressions": 4000, "clicks": 80,
+         "spend_usd": 300.0, "attributed_conversions": 6, "media_type": "Video"},
+    ])
+    s = ttd_cpa_summary(df)
+    assert len(s["by_media_type"]) == 2
+    # sorted by spend descending: Display ($400) before Video ($300)
+    assert s["by_media_type"][0]["media_type"] == "Display"
+    assert s["by_media_type"][1]["media_type"] == "Video"
+    d = s["by_media_type"][0]
+    assert d["impressions"] == 8000
+    assert d["clicks"] == 160
+    assert d["conversions"] == 8
+    assert abs(d["spend_usd"] - 400.0) < 0.01
+    assert abs(d["cpa"] - 50.0) < 0.01
+
+
+def test_ttd_cpa_summary_deltas_require_6_dates():
+    """Window-half deltas are None when fewer than 6 distinct dates."""
+    rows = [
+        {"date": f"2026-06-0{i+1}", "impressions": 1000, "clicks": 20,
+         "spend_usd": 50.0, "attributed_conversions": 2}
+        for i in range(5)
+    ]
+    s = ttd_cpa_summary(_ttd_df(rows))
+    assert s["delta_conversions"] is None
+    assert s["delta_cpa"] is None
+    assert s["delta_spend"] is None
+
+
+def test_ttd_cpa_summary_deltas_computed():
+    """With ≥6 dates, prior-half vs recent-half deltas are computed."""
+    # 6 days: prior half = days 1-3, recent half = days 4-6.
+    # Prior: 3 days × 2 conv, $50 spend → 6 conv, $150
+    # Recent: 3 days × 4 conv, $80 spend → 12 conv, $240
+    rows = (
+        [{"date": f"2026-06-0{i+1}", "impressions": 1000, "clicks": 20,
+          "spend_usd": 50.0, "attributed_conversions": 2} for i in range(3)]
+        + [{"date": f"2026-06-0{i+4}", "impressions": 1000, "clicks": 20,
+            "spend_usd": 80.0, "attributed_conversions": 4} for i in range(3)]
+    )
+    s = ttd_cpa_summary(_ttd_df(rows))
+    # conversions: (12-6)/6*100 = 100%
+    assert abs(s["delta_conversions"] - 100.0) < 0.1
+    # spend: (240-150)/150*100 = 60%
+    assert abs(s["delta_spend"] - 60.0) < 0.1
+    # CPA prior = 150/6 = 25, recent = 240/12 = 20 → delta = -5.0
+    assert abs(s["delta_cpa"] - (-5.0)) < 0.01
+
+
+def test_ttd_cpa_summary_daily_cpa_only_nonzero():
+    """daily_cpa excludes days with 0 conversions."""
+    df = _ttd_df([
+        {"date": "2026-06-01", "impressions": 1000, "clicks": 20,
+         "spend_usd": 100.0, "attributed_conversions": 0},
+        {"date": "2026-06-02", "impressions": 1000, "clicks": 20,
+         "spend_usd": 100.0, "attributed_conversions": 5},
+    ])
+    s = ttd_cpa_summary(df)
+    assert len(s["daily_conversions"]) == 2
+    assert len(s["daily_cpa"]) == 1          # only day 2 had conversions
+    assert s["daily_cpa"][0][1] == 20.0      # $100 / 5 conv
