@@ -35,6 +35,7 @@ from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
+from ttd_client import pull_ttd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -158,6 +159,7 @@ _INDEXES = [
     ("dv_attention",          "idx_dv_attention_date",            '"date"'),
     ("dv_ivt",                "idx_dv_ivt_date",                  '"date"'),
     ("betting_conversions",   "idx_betting_conversions_date",     '"date"'),
+    ("ttd_luckyland",         "idx_ttd_luckyland_date",           '"date"'),
     ("opensincera_ecosystem", "idx_opensincera_ecosystem_date",   '"date"'),
     ("gam_deal_bid_daily",    "idx_gam_deal_bid_daily_date",      '"date"'),
     ("gam_pmp_deals",         "idx_gam_pmp_deals_date",           '"date"'),
@@ -1146,6 +1148,68 @@ def refresh_improvado() -> int:
     return len(df)
 
 
+def refresh_ttd() -> int:
+    """Poll newsweek@agentmail.to for TTD (The Trade Desk) report notification
+    emails (subject starts with 'Report Available: Luckyland Casino TTD'),
+    extract the pre-signed download URL, download the CSV, and upsert by date
+    into the `ttd_luckyland` table.
+
+    TTD emails a notification — not an attachment — when a scheduled report
+    is ready.  The body contains a signed link valid 30 days that serves the
+    CSV directly.  The report covers a rolling 30-day window; on each ingest
+    we delete rows for every date present in the new batch and re-insert, so
+    the table stays current while retaining any historical rows that fell
+    outside the new window.
+
+    Skips silently (returns 0) when agentmail credentials aren't set."""
+    logger.info("Refreshing TTD Luckyland Casino report")
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    if not api_key or not inbox_id:
+        logger.warning(
+            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "skipping TTD report refresh"
+        )
+        return 0
+
+    df, meta = pull_ttd(api_key, inbox_id)
+    if df.empty:
+        logger.warning(
+            "No TTD report found in inbox (exec_id=%s)", meta.get("execution_id")
+        )
+        return 0
+
+    df["_pulled_at"]    = datetime.now(timezone.utc).isoformat()
+    df["_execution_id"] = df.get("_execution_id", meta.get("execution_id"))
+
+    table = "ttd_luckyland"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            elif "date" in df.columns:
+                dates = [
+                    d.isoformat() if d is not None else None
+                    for d in df["date"].dropna().unique().tolist()
+                ]
+                if dates:
+                    conn.execute(
+                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
+                        {"dates": dates},
+                    )
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info(
+        "Wrote %d rows to %s (exec_id=%s, %d dates)",
+        len(df), table,
+        meta.get("execution_id"),
+        df["date"].nunique() if "date" in df.columns else 0,
+    )
+    return len(df)
+
+
 # Hardcoded watch-list for the OpenSincera /publishers endpoint.
 # Newsweek + editorial peers we care about for quality benchmarking
 # (A2CR, ads-in-view, ad refresh, page weight, ID absorption).
@@ -1323,7 +1387,7 @@ def main() -> None:
 
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
-        "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep",
+        "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep", "ttd",
     )
     if mode not in _VALID_MODES:
         logger.error("Unknown --mode=%s  valid: %s", mode, ", ".join(_VALID_MODES))
@@ -1345,6 +1409,10 @@ def main() -> None:
 
     if mode == "dv":
         _run_with_alert("dv", [refresh_dv_attention, refresh_dv_ivt])
+        return
+
+    if mode == "ttd":
+        _run_with_alert("ttd", [refresh_ttd])
         return
 
     if mode == "opensincera":
@@ -1413,6 +1481,7 @@ def main() -> None:
         refresh_pubmatic_deal_metadata,
         refresh_dv_attention,
         refresh_dv_ivt,
+        refresh_ttd,
         refresh_opensincera_ecosystem,
         refresh_opensincera_publishers,
         refresh_opensincera_adsystems,
