@@ -4160,7 +4160,8 @@ if st.session_state.active_view == "campaigns":
 
                 # Accordion body
                 if empty:
-                    body_inner = '<div style="padding:12px 13px;font-size:12px;color:var(--text-muted)">No TTD data yet — run <code>refresh_cache.py --mode=ttd</code> to populate.</div>'
+                    mode_flag = "ttd-chumba" if "Chumba" in title else "ttd"
+                    body_inner = f'<div style="padding:12px 13px;font-size:12px;color:var(--text-muted)">No TTD data yet — run <code>refresh_cache.py --mode={mode_flag}</code> to populate.</div>'
                 else:
                     body_inner = (
                         (f'<div class="nw-ttd-date">{date_label}</div>' if date_label else "")
