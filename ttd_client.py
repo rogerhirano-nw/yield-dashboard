@@ -89,12 +89,17 @@ COLUMN_MAP: dict[str, str] = {
     "CTR":                           "ctr",
     "Frequency":                     "frequency",
     "Reach":                         "reach",
-    # Spend
+    # Spend — generic TTD export names and the Luckyland advertiser-currency variants
     "Spend (USD)":                   "spend_usd",
     "Total Spend (USD)":             "spend_usd",
     "Media Spend (USD)":             "media_spend_usd",
     "Data Spend (USD)":              "data_spend_usd",
     "Fee Spend (USD)":               "fee_spend_usd",
+    "Advertiser Cost (Adv Currency)": "spend_usd",
+    "Media Cost (Adv Currency)":      "media_spend_usd",
+    "Advertiser Currency Code":       "advertiser_currency_code",
+    # Deal
+    "Deal ID":                       "deal_id",
     # CPM / CPC
     "eCPM (USD)":                    "ecpm_usd",
     "CPM (USD)":                     "ecpm_usd",
@@ -255,14 +260,18 @@ def _execution_id_from_url(url: str) -> str | None:
 
 
 def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFrame:
-    """Parse a TTD report CSV into a DataFrame with standardized columns.
+    """Parse a TTD report (CSV or XLSX) into a DataFrame with standardized columns.
 
-    TTD reports have no metadata preamble — the first row is the header.
+    TTD serves reports as XLSX (ZIP magic bytes PK\\x03\\x04) or plain CSV.
     Applies COLUMN_MAP for known columns; auto-converts unknown columns
     to snake_case.  Date and numeric columns are coerced.
     """
-    text = content.decode("utf-8-sig", errors="replace")
-    df = pd.read_csv(io.StringIO(text))
+    # Detect XLSX by ZIP magic bytes — TTD currently serves Excel
+    if content[:4] == b"PK\x03\x04":
+        df = pd.read_excel(io.BytesIO(content), sheet_name=0, engine="openpyxl")
+    else:
+        text = content.decode("utf-8-sig", errors="replace")
+        df = pd.read_csv(io.StringIO(text))
 
     # Rename using COLUMN_MAP, then snake-case unknowns
     rename = {}
@@ -283,7 +292,8 @@ def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFra
                  "site", "domain", "media_type", "format", "creative",
                  "creative_size", "device_type", "country", "region",
                  "advertiser_id", "campaign_id", "ad_group_id", "creative_id",
-                 "report_schedule", "report_type"}
+                 "report_schedule", "report_type", "advertiser_currency_code",
+                 "deal_id"}
     for col in df.columns:
         if col not in _str_cols:
             coerced = pd.to_numeric(df[col], errors="coerce")
@@ -292,6 +302,33 @@ def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFra
             # didn't make it into _str_cols).
             if coerced.notna().sum() > 0 or df[col].isna().all():
                 df[col] = coerced
+
+    # ── Derived columns ───────────────────────────────────────────────────
+    # attributed_conversions: sum all "*_total_click_view_conversions" or
+    # "*_conversions" columns when the report doesn't have a single named
+    # attributed_conversions column (the Luckyland report uses per-event
+    # columns, one per conversion pixel).
+    if "attributed_conversions" not in df.columns:
+        conv_cols = [c for c in df.columns
+                     if "conversion" in c and c not in _str_cols]
+        if conv_cols:
+            df["attributed_conversions"] = (
+                df[conv_cols]
+                .apply(pd.to_numeric, errors="coerce")
+                .fillna(0)
+                .sum(axis=1)
+                .astype(int)
+            )
+
+    # media_type: derive from ad_group name when not present.
+    # Luckyland ad groups follow LC_ACQ_TTD_US_{Display|Video}_...
+    if "media_type" not in df.columns and "ad_group" in df.columns:
+        def _mt(ag: str) -> str:
+            ag_upper = str(ag).upper()
+            if "_VIDEO_" in ag_upper or ag_upper.endswith("_VIDEO"):
+                return "Video"
+            return "Display"
+        df["media_type"] = df["ad_group"].map(_mt)
 
     if execution_id:
         df["_execution_id"] = execution_id
