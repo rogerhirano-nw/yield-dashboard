@@ -1136,6 +1136,68 @@ def refresh_ttd() -> int:
     return len(df)
 
 
+def refresh_ttd() -> int:
+    """Poll newsweek@agentmail.to for TTD (The Trade Desk) report notification
+    emails (subject starts with 'Report Available: Luckyland Casino TTD'),
+    extract the pre-signed download URL, download the CSV, and upsert by date
+    into the `ttd_luckyland` table.
+
+    TTD emails a notification — not an attachment — when a scheduled report
+    is ready.  The body contains a signed link valid 30 days that serves the
+    CSV directly.  The report covers a rolling 30-day window; on each ingest
+    we delete rows for every date present in the new batch and re-insert, so
+    the table stays current while retaining any historical rows that fell
+    outside the new window.
+
+    Skips silently (returns 0) when agentmail credentials aren't set."""
+    logger.info("Refreshing TTD Luckyland Casino report")
+    api_key  = os.environ.get("AGENTMAIL_API_KEY")
+    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+    if not api_key or not inbox_id:
+        logger.warning(
+            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "skipping TTD report refresh"
+        )
+        return 0
+
+    df, meta = pull_ttd(api_key, inbox_id)
+    if df.empty:
+        logger.warning(
+            "No TTD report found in inbox (exec_id=%s)", meta.get("execution_id")
+        )
+        return 0
+
+    df["_pulled_at"]    = datetime.now(timezone.utc).isoformat()
+    df["_execution_id"] = df.get("_execution_id", meta.get("execution_id"))
+
+    table = "ttd_luckyland"
+    with _engine().begin() as conn:
+        if table in sa_inspect(conn).get_table_names():
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+            elif "date" in df.columns:
+                dates = [
+                    d.isoformat() if d is not None else None
+                    for d in df["date"].dropna().unique().tolist()
+                ]
+                if dates:
+                    conn.execute(
+                        text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
+                        {"dates": dates},
+                    )
+        df.to_sql(table, conn, if_exists="append", index=False)
+
+    logger.info(
+        "Wrote %d rows to %s (exec_id=%s, %d dates)",
+        len(df), table,
+        meta.get("execution_id"),
+        df["date"].nunique() if "date" in df.columns else 0,
+    )
+    return len(df)
+
+
 # Hardcoded watch-list for the OpenSincera /publishers endpoint.
 # Newsweek + editorial peers we care about for quality benchmarking
 # (A2CR, ads-in-view, ad refresh, page weight, ID absorption).
