@@ -42,8 +42,9 @@ AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 
 # Match any TTD report-available notification.  The full subject
 # includes the report name and schedule; we only need a stable prefix.
-TTD_SUBJECT_NEEDLE = "Report Available: Luckyland Casino TTD"
-TTD_SENDER_DOMAIN  = "thetradedesk.com"
+TTD_SUBJECT_NEEDLE        = "Report Available: Luckyland Casino TTD"
+CHUMBA_SUBJECT_NEEDLE     = "Report Available: Newsweek Automated report VGW Chumba Casino"
+TTD_SENDER_DOMAIN         = "thetradedesk.com"
 
 # Extract the TTD report URL from an email body.  Two cases:
 #   1. Safelinks wrapper  →  capture the encoded inner URL from ?url=
@@ -135,6 +136,13 @@ COLUMN_MAP: dict[str, str] = {
     # Report metadata
     "Report Schedule":               "report_schedule",
     "Report Type":                   "report_type",
+    # VGW Chumba Casino per-pixel conversion columns (pixel 01 = registrations,
+    # pixel 03 = FTPs).  Named so "cpa" never matches the "conversion" filter in
+    # parse_ttd_csv → attributed_conversions won't accidentally sum CPA values.
+    "01 - Total Click + View Conversions":                "conversions_pixel_01",
+    "03 - Total Click + View Conversions":                "conversions_pixel_03",
+    "01 - Total Click + View Conversions CPA (Adv Currency)": "cpa_pixel_01_usd",
+    "03 - Total Click + View Conversions CPA (Adv Currency)": "cpa_pixel_03_usd",
 }
 
 _NON_ALPHANUM = re.compile(r"[^a-z0-9]+")
@@ -167,18 +175,24 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
         ) from e
 
 
-def list_ttd_messages(api_key: str, inbox_id: str, limit: int = 10) -> list[dict]:
-    """List recent messages whose subject contains the TTD report needle."""
+def list_ttd_messages(
+    api_key: str,
+    inbox_id: str,
+    limit: int = 10,
+    *,
+    subject_needle: str = TTD_SUBJECT_NEEDLE,
+) -> list[dict]:
+    """List recent messages whose subject contains *subject_needle*."""
     raw = _api_get(f"/inboxes/{inbox_id}/messages?limit={limit}", api_key=api_key)
     messages = raw.get("messages", raw.get("data", [])) if isinstance(raw, dict) else (raw or [])
     matches = []
     for m in messages:
         subj = (m.get("subject") or "").strip()
-        if TTD_SUBJECT_NEEDLE in subj:
+        if subject_needle in subj:
             matches.append(m)
     logger.info(
-        "agentmail: scanned %d message(s); %d match TTD report notification",
-        len(messages), len(matches),
+        "agentmail: scanned %d message(s); %d match needle %r",
+        len(messages), len(matches), subject_needle,
     )
     return matches
 
@@ -336,15 +350,20 @@ def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFra
     return df
 
 
-def pull_ttd(api_key: str, inbox_id: str) -> tuple[pd.DataFrame, dict]:
-    """End-to-end: poll inbox for latest TTD report notification,
-    extract the download URL, download the CSV, and parse it.
+def pull_ttd(
+    api_key: str,
+    inbox_id: str,
+    *,
+    subject_needle: str = TTD_SUBJECT_NEEDLE,
+) -> tuple[pd.DataFrame, dict]:
+    """End-to-end: poll inbox for latest TTD report notification matching
+    *subject_needle*, extract the download URL, download the CSV, and parse it.
 
     Returns (df, meta) where meta includes execution_id, subject,
     and received_at.  Empty DataFrame if no matching message found
     or download fails.
     """
-    messages = list_ttd_messages(api_key, inbox_id)
+    messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
     if not messages:
         return pd.DataFrame(), {}
 

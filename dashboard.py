@@ -3133,13 +3133,19 @@ if st.session_state.active_view == "campaigns":
      _sivt_series_by_li, _givt_series_by_li,
      _sivt_by_order, _sivt_prior_by_order, _givt_by_order, _givt_prior_by_order) = _dv_ivt_aggregates()
 
-    # TTD Luckyland acquisition report — polled from agentmail by refresh_ttd().
-    # Degrades silently to empty frame when the table doesn't exist yet.
+    # TTD acquisition reports — polled from agentmail by refresh_ttd / refresh_ttd_chumba.
+    # Degrade silently to empty frame when a table doesn't exist yet.
     try:
         _ttd_df = load("ttd_luckyland")
     except Exception:
         _ttd_df = pd.DataFrame()
     _ttd_summary = dl.ttd_cpa_summary(_ttd_df)
+
+    try:
+        _ttd_chumba_df = load("ttd_chumba")
+    except Exception:
+        _ttd_chumba_df = pd.DataFrame()
+    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df)
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -3986,8 +3992,11 @@ if st.session_state.active_view == "campaigns":
                     txt += f' · target {suffix_target}'
                 return (txt, cls)
 
-            def _render_ttd_cpa(summary: dict) -> None:
-                """Render the TTD Luckyland CPA accordion below the Direct KPI strip.
+            def _render_ttd_cpa(
+                summary: dict,
+                title: str = "Luckyland Casino · TTD Acquisition",
+            ) -> None:
+                """Render a TTD CPA accordion.
 
                 Uses the .nw-na shell (collapsible on mobile, force-open on tablet+)
                 with 5 KPI tiles, two mini bar charts (daily conversions / daily CPA),
@@ -4165,7 +4174,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="nw-ttd-wrap">'
                     f'<details class="nw-na" open>'
                     f'<summary class="nw-na-head">'
-                    f'Luckyland Casino · TTD Acquisition'
+                    f'{title}'
                     f'<span class="nw-na-h-chev">›</span>'
                     f'<span class="cnt">{count_label}</span>'
                     f'</summary>'
@@ -4380,8 +4389,12 @@ if st.session_state.active_view == "campaigns":
                 unsafe_allow_html=True,
             )
 
-            # ---------- TTD Luckyland CPA accordion ----------
+            # ---------- TTD CPA accordions ----------
             _render_ttd_cpa(_ttd_summary)
+            _render_ttd_cpa(
+                _ttd_chumba_summary,
+                title="VGW Chumba Casino · TTD Acquisition",
+            )
 
             # ---------- Campaign table ----------
             # Remaining impressions (None when no goal is set)
