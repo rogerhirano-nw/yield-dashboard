@@ -467,6 +467,70 @@ Each successful block writes one row to `blocked_domains` with:
 In the weekly RevOps digest these surface under their own issue-type
 card, separate from the URL-based GAM Protection blocks.
 
+## Auto-fix MVP (opt-in, OFF by default)
+
+`auto_fix.py` calls the Anthropic API on a hard failure to propose a
+diagnosed fix as a **draft GitHub PR**. The cron never auto-merges; a
+human always reviews the diff.
+
+### Hard gates
+
+- **`--auto-fix` flag required.** Without it, the failure path stays
+  exactly as it has been (alert email only). The launchd plist's
+  `ProgramArguments` does NOT pass `--auto-fix` by default; you opt
+  in by editing the plist (or by running the script manually).
+- **`ANTHROPIC_API_KEY` required** in `.env`. The key the Mac currently
+  has is added 2026-06-21; ensure the account has a non-zero credit
+  balance before enabling the flag.
+- **`EDITABLE_FILES` allowlist.** The LLM may only propose changes to
+  `gam_blocklist_ui.py`, `gam_arc.py`, `confiant_client.py`, or
+  `scripts/confiant_gam_arc_block.py`. Anything else returns a refusal
+  the human can act on.
+- **24h cooldown** via `~/.confiant-blocklist/auto_fix_last.json` so
+  a misdiagnosis doesn't open 100 PRs over a stuck cron.
+- **Single Claude call per invocation** (sonnet, ~8k output tokens
+  max). Roughly $0.05-$0.30 per call.
+
+### What lands in the PR body for audit
+
+Every auto-fix draft PR includes:
+- Diagnosis paragraph
+- Model self-rated confidence
+- File changed (allowlist-validated)
+- The full prompt the LLM was sent (verbatim)
+- The raw LLM response (verbatim)
+
+A reviewer sees exactly what context the model had and what it returned
+— there's no hidden chain-of-thought, no silent retries.
+
+### Legal disclosure obligation
+
+Enabling `--auto-fix` in the cron means the production runtime calls
+Anthropic with **error tracebacks + ~200 lines of source around the
+failure point + extra context (protection_id etc)**. The 2026-06
+Newsweek legal data-sharing chart Roger sent listed Anthropic as
+"code-gen during dev + interactive drafting" only. Before flipping
+`--auto-fix` on in the launchd plist, update the chart row and notify
+legal — same procedure as PR #173's original disclosure. See
+`reference_claude_data_flow_framing.md` in memory for the framing.
+
+### Manual testing
+
+```bash
+# Replay a failed run from state.sqlite and see the proposed fix
+python auto_fix.py --replay-from-state-runs 32 --dry-run
+
+# Same but actually open a draft PR
+python auto_fix.py --replay-from-state-runs 32
+
+# From an arbitrary JSON context file
+python auto_fix.py --context-file /tmp/failure.json --dry-run
+```
+
+The dry-run path prints the proposal JSON without pushing anything,
+so you can sanity-check the diagnosis before letting it open a real
+PR.
+
 ## Email routing — success vs failure recipients
 
 The daily script splits the post-run email by outcome. Two env vars:
