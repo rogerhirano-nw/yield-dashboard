@@ -121,7 +121,7 @@ _SELECTORS = {
 #            see PR #267 and the 2026-06-17 ARC findings). The legacy
 #            `#protections/...` URL silently redirects to Delivery →
 #            Orders, causing the daily cron to fail at the "find the
-#            Edit button" step (PR #287 fix).
+#            Edit button" step (PR #289 fix).
 # The XPath selector below for the Advertiser URLs Edit button is
 # unchanged; only the page URL needed updating.
 # Override via env var if Google ships another routing change.
@@ -129,6 +129,27 @@ _PROTECTION_DETAIL_URL_FMT = os.environ.get(
     "GAM_PROTECTION_DETAIL_URL_FMT",
     "https://admanager.google.com/{network_id}#brand_safety/protections/detail/protection_id={protection_id}",
 )
+
+# When Google migrates the URL again (twice in the last few months at this
+# point), the legacy URL silently redirects to an unrelated page instead of
+# 404'ing. The script then can't find the Edit button and fails with a
+# misleading error. Auto-recovery: after navigation, sanity-check that we
+# landed on a Protection detail page (look for "Advertiser URLs" text in
+# the body); if not, try the next URL pattern in the chain. Logs which one
+# worked so the daily email flags a heads-up to update the configured URL.
+#
+# Order matters — primary (configured) first, then known-good fallbacks
+# in decreasing recency, then the historical legacy. Dedup at the end in
+# case the configured URL is one of the fallbacks too.
+_PROTECTION_URL_CANDIDATES = list(dict.fromkeys([
+    _PROTECTION_DETAIL_URL_FMT,
+    # 2026-06-21: Brand safety nav reorg
+    "https://admanager.google.com/{network_id}#brand_safety/protections/detail/protection_id={protection_id}",
+    # 2026-05: Top-level out from under Delivery
+    "https://admanager.google.com/{network_id}#protections/detail/protection_id={protection_id}&type=AD_CONTENT",
+    # Pre-2026-05: under Delivery
+    "https://admanager.google.com/{network_id}#delivery/protections/detail/protection_id={protection_id}",
+]))
 
 
 @dataclass
@@ -138,6 +159,14 @@ class GAMBlocklistBrowser:
     headless: bool = False
     debug: bool = False
     nav_timeout_ms: int = 30_000
+    # Set by _try_protection_url_candidates IF the configured URL didn't land
+    # on a Protection detail page and a fallback was used instead. Lets the
+    # daily summary email surface a "update your URL config" heads-up without
+    # the cron actually failing.
+    auto_recovered_url: str | None = None
+    # The URL that actually worked this run (configured or fallback). Used by
+    # the post-save re-navigation step so it goes back to the same page.
+    _resolved_protection_url: str | None = None
 
     def __post_init__(self) -> None:
         self.profile_dir = Path(self.profile_dir).expanduser()
@@ -241,8 +270,11 @@ class GAMBlocklistBrowser:
             # re-navigate (no-op if we're already on the detail page) and
             # re-open the modal. Count >= initial + 1 confirms a real write.
             self._sleep("post-save propagation", 5.0)
+            # Re-nav to the same URL that worked initially (the resolved one
+            # — may be a fallback, not the configured primary). Avoids
+            # re-running the candidate chain.
             page.goto(
-                _PROTECTION_DETAIL_URL_FMT.format(
+                self._resolved_protection_url or _PROTECTION_DETAIL_URL_FMT.format(
                     network_id=self.network_id, protection_id=protection_id
                 ),
                 wait_until="domcontentloaded",
@@ -338,18 +370,76 @@ class GAMBlocklistBrowser:
 
     # ── internals ─────────────────────────────────────────────────────────────
 
+    def _try_protection_url_candidates(self, page, protection_id: int) -> str:
+        """Iterate _PROTECTION_URL_CANDIDATES and use the first one whose
+        navigation lands on an actual Protection detail page. Sanity check is
+        "is 'Advertiser URLs' text present in the body" — that's the heading
+        that anchors our Edit button, and it shows up only on the right page.
+
+        Returns the URL that worked. Sets self.auto_recovered_url to that URL
+        IF a fallback was used (i.e. the primary configured URL silently
+        landed on the wrong page). The caller uses that signal to flag a
+        heads-up in the daily summary email.
+
+        Raises RuntimeError if every candidate fails — that's the "Google
+        rewrote the page entirely" case that needs a human to update
+        _PROTECTION_URL_CANDIDATES.
+        """
+        for i, url_fmt in enumerate(_PROTECTION_URL_CANDIDATES):
+            url = url_fmt.format(network_id=self.network_id,
+                                 protection_id=protection_id)
+            if self.debug or i > 0:
+                print(f"  [browser] trying URL candidate {i}: {url}",
+                      file=sys.stderr)
+            page.goto(url, wait_until="domcontentloaded")
+            # GAM is a heavy React SPA; let it hydrate.
+            self._sleep(f"post-nav settle (candidate {i})", 20.0)
+
+            # Login redirect check happens regardless of which candidate —
+            # no URL fallback can recover from session expiry.
+            if page.locator(_SELECTORS["login_redirect_marker"]).count():
+                raise RuntimeError(
+                    "GAM session expired — Google login screen detected. "
+                    "Re-run with --inspect to log in manually and re-"
+                    f"establish the profile at {self.profile_dir}."
+                )
+
+            # Sanity check: does this page look like a Protection detail page?
+            try:
+                body = page.inner_text("body")[:20000]
+            except Exception:
+                body = ""
+            if "Advertiser URLs" in body:
+                if i > 0:
+                    self.auto_recovered_url = url
+                    print(f"  [browser] AUTO-RECOVERED via candidate {i}. "
+                          f"Update GAM_PROTECTION_DETAIL_URL_FMT.",
+                          file=sys.stderr)
+                return url
+            if self.debug:
+                page.screenshot(
+                    path=str(self.profile_dir / f"debug-url-candidate-{i}-failed.png"),
+                    full_page=True,
+                )
+            print(f"  [browser] candidate {i} didn't land on a Protection detail page "
+                  f"(no 'Advertiser URLs' heading) — trying next", file=sys.stderr)
+
+        raise RuntimeError(
+            f"None of {len(_PROTECTION_URL_CANDIDATES)} known Protection URL "
+            "patterns landed on a page with 'Advertiser URLs'. Google likely "
+            "moved the page again — open the GAM UI, find the new URL hash "
+            "for Protections, and prepend it to _PROTECTION_URL_CANDIDATES."
+        )
+
     def _open_protection_page(self, protection_id: int):
         """Context manager that launches the persistent Chromium context,
-        navigates to the Protection detail page, checks for login redirect,
-        expands the Ad content section, and yields (page, ctx). Closes the
-        context on exit, capturing a final screenshot in debug mode.
+        navigates to the Protection detail page (trying URL candidates if
+        the primary one doesn't land), checks for login redirect, expands
+        the Ad content section, and yields (page, ctx). Closes the context
+        on exit, capturing a final screenshot in debug mode.
         """
         from contextlib import contextmanager
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-
-        url = _PROTECTION_DETAIL_URL_FMT.format(
-            network_id=self.network_id, protection_id=protection_id
-        )
 
         @contextmanager
         def _cm():
@@ -362,29 +452,17 @@ class GAMBlocklistBrowser:
                 page = ctx.new_page()
                 page.set_default_timeout(self.nav_timeout_ms)
                 try:
-                    page.goto(url, wait_until="domcontentloaded")
-                    # GAM is a heavy React SPA. Detail-page content can take
-                    # 12-20s to render. Some runs land on a "New protection"
-                    # creation modal first; the hash route needs settle time
-                    # to redirect to the actual detail view.
-                    self._sleep("post-nav settle (SPA hydration)", 20.0)
+                    self._resolved_protection_url = self._try_protection_url_candidates(
+                        page, protection_id,
+                    )
                     if self.debug:
                         page.screenshot(
                             path=str(self.profile_dir / "debug-post-nav.png"),
                             full_page=True,
                         )
 
-                    if page.locator(_SELECTORS["login_redirect_marker"]).count():
-                        raise RuntimeError(
-                            "GAM session expired — Google login screen detected. "
-                            "Re-run with --inspect to log in manually and re-"
-                            f"establish the profile at {self.profile_dir}."
-                        )
-
-                    # No section-expand step needed: the &type=AD_CONTENT URL
-                    # param lands us directly on the Ad content tab, and
-                    # Advertiser URLs is a top-level section on that page.
-
+                    # No section-expand step needed: Advertiser URLs is a
+                    # top-level section on the resolved page.
                     yield page, ctx
                 finally:
                     if self.debug:

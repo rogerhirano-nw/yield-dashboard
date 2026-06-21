@@ -153,7 +153,12 @@ class RunSummary:
     dry_run: bool
     success: bool
     arc: ArcStats | None = None  # Phase 2 results (None if --no-arc or n/a)
-    error: str | None = None
+    # Set by push_and_record when GAMBlocklistBrowser had to fall back to a
+    # non-primary URL candidate to reach the Protection detail page. Surfaces
+    # as a yellow callout in the daily email so we know to update
+    # _PROTECTION_DETAIL_URL_FMT, even though this run didn't fail.
+    auto_recovered_url: str | None = None
+    error: str | None = None  # populated when summary.success becomes False
 
 
 def diff_new_domains(
@@ -201,6 +206,13 @@ def push_and_record(
         debug=debug,
     )
     browser.append_to_protection(summary.protection_id, [d for d, _ in summary.new_domains])
+    # If the browser fell back to a non-primary URL to reach the Protection,
+    # surface that on the RunSummary so the email can show a "please update
+    # GAM_PROTECTION_DETAIL_URL_FMT" callout. The cron still succeeds — the
+    # fallback worked — but we want a heads-up before the legacy URL is
+    # removed entirely.
+    if browser.auto_recovered_url:
+        summary.auto_recovered_url = browser.auto_recovered_url
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     today_date = now[:10]
@@ -545,6 +557,28 @@ def _build_email_html(summary: RunSummary) -> str:
             f"</p></div>"
         )
 
+    # ── Auto-recovered URL callout (only when the browser had to fall back) ──
+    # Cron still succeeded — the fallback URL worked — but the configured
+    # primary URL silently redirected to a wrong page. Surface a yellow
+    # heads-up so we update the config before the legacy URL is removed.
+    auto_recover_block = ""
+    if summary.auto_recovered_url:
+        auto_recover_block = (
+            f"<div style='background:#fffbeb;border:1px solid #fde68a;border-left:4px solid {_NW_AMBER};"
+            f"padding:14px 18px;border-radius:4px;margin:14px 0;color:{_NW_DARK}'>"
+            f"<div style='font-size:13px;font-weight:700;margin-bottom:4px'>"
+            f"⚠️ URL auto-recovered — please update the configured Protection URL</div>"
+            f"<div style='font-size:12px;color:{_NW_DARK};line-height:1.5;margin-bottom:8px'>"
+            f"The script's primary Protection URL didn't land on a Protection detail page. "
+            f"It fell back to a known alternate that worked, and the rest of the run succeeded "
+            f"normally. To prevent a future hard failure when Google removes the legacy URL, "
+            f"update <code>gam_blocklist_ui.py:_PROTECTION_DETAIL_URL_FMT</code> or set the "
+            f"<code>GAM_PROTECTION_DETAIL_URL_FMT</code> env var to:</div>"
+            f"<div style='font-family:Menlo,Consolas,monospace;font-size:11px;color:{_NW_DARK};"
+            f"background:#fff8e1;padding:8px 10px;border-radius:3px;word-break:break-all'>"
+            f"{escape(summary.auto_recovered_url)}</div></div>"
+        )
+
     # ── New domains card (group by issue type, ordered by count) ─────────
     def _new_domains_card() -> str:
         if not summary.new_domains:
@@ -698,6 +732,7 @@ def _build_email_html(summary: RunSummary) -> str:
   <tr><td style='padding:0 24px'>{kpi_strip}</td></tr>
 
   {f"<tr><td style='padding:0 24px'>{error_block}</td></tr>" if error_block else ""}
+  {f"<tr><td style='padding:0 24px'>{auto_recover_block}</td></tr>" if auto_recover_block else ""}
 
   <tr><td style='padding:18px 24px 0 24px'>
     <h2 style='margin:0 0 6px 0;color:{_NW_DARK};font-size:15px;font-weight:700'>
