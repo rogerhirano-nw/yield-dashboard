@@ -159,6 +159,13 @@ class RunSummary:
     # _PROTECTION_DETAIL_URL_FMT, even though this run didn't fail.
     auto_recovered_url: str | None = None
     error: str | None = None  # populated when summary.success becomes False
+    # Auto-fix MVP (PR #291) — populated when --auto-fix is on and a hard
+    # failure triggered an LLM call. The PR URL goes into the failure
+    # email's error block so the on-call can click straight to the proposed
+    # diff for review.
+    auto_fix_pr_url: str | None = None
+    auto_fix_diagnosis: str | None = None
+    auto_fix_refusal: str | None = None
 
 
 def diff_new_domains(
@@ -546,6 +553,30 @@ def _build_email_html(summary: RunSummary) -> str:
     # ── Error callout (only when summary.error is set) ──────────────────
     error_block = ""
     if summary.error:
+        # Auto-fix add-on (when --auto-fix triggered): either a green PR
+        # link (LLM proposed a diff, draft PR open for review) or a muted
+        # "refused" line (LLM declined to propose; needs a human).
+        autofix_html = ""
+        if summary.auto_fix_pr_url:
+            autofix_html = (
+                f"<p style='margin:10px 0 0 0;font-size:12px;color:{_NW_DARK}'>"
+                f"<strong>Auto-fix proposal:</strong> "
+                f"<a href='{escape(summary.auto_fix_pr_url)}' style='color:#1a73e8'>"
+                f"draft PR open for review &rarr;</a></p>"
+                f"<p style='margin:6px 0 0 0;font-size:11px;color:{_NW_MUTED};line-height:1.5'>"
+                f"<strong>Diagnosis:</strong> "
+                f"{escape(summary.auto_fix_diagnosis or '(no diagnosis)')}<br>"
+                f"Review the diff carefully; LLM proposals can be wrong. "
+                f"The PR is draft and will not auto-merge."
+                f"</p>"
+            )
+        elif summary.auto_fix_refusal:
+            autofix_html = (
+                f"<p style='margin:10px 0 0 0;font-size:12px;color:{_NW_MUTED}'>"
+                f"<strong>Auto-fix refused:</strong> "
+                f"{escape(summary.auto_fix_refusal[:300])}"
+                f"</p>"
+            )
         error_block = (
             f"<div style='background:#fff5f5;border:1px solid #f3c2c5;border-left:4px solid {_NW_RED};"
             f"padding:14px 18px;border-radius:4px;margin:14px 0;color:{_NW_DARK}'>"
@@ -554,7 +585,9 @@ def _build_email_html(summary: RunSummary) -> str:
             f"white-space:pre-wrap;word-break:break-word'>{summary.error}</div>"
             f"<p style='margin:10px 0 0 0;font-size:12px;color:{_NW_MUTED}'>"
             f"State.sqlite was not updated for the rows above — they'll be retried on the next run."
-            f"</p></div>"
+            f"</p>"
+            f"{autofix_html}"
+            f"</div>"
         )
 
     # ── Auto-recovered URL callout (only when the browser had to fall back) ──
@@ -885,6 +918,15 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--no-arc", action="store_true",
                    help="Skip the GAM Ad Review Center Phase 2 (just push "
                         "URL flags to Protection and finish).")
+    p.add_argument("--auto-fix", action="store_true",
+                   help="On hard failure (after URL fallback chain exhausts), "
+                        "call Anthropic via auto_fix.py to propose a fix as a "
+                        "DRAFT PR. Never auto-merges; 24h cooldown; full audit "
+                        "trail in PR body. OFF by default — opt in per-run, or "
+                        "via the launchd plist ProgramArguments, after billing "
+                        "credits are loaded on the ANTHROPIC_API_KEY account "
+                        "and the legal data-sharing chart row for Anthropic "
+                        "covers production runtime.")
     return p.parse_args()
 
 
@@ -980,6 +1022,40 @@ def main() -> int:
             summary.success = False
             summary.error = f"{type(e).__name__}: {e}"
             print(f"GAM push failed: {summary.error}", file=sys.stderr)
+
+            # Auto-fix MVP — call Anthropic to propose a DRAFT PR with a
+            # diagnosed fix. Hard-gated behind --auto-fix flag so the cron
+            # stays Anthropic-free in production until the legal disclosure
+            # row for Anthropic is updated. 24h cooldown inside auto_fix.run()
+            # prevents loops. Never auto-merges; always draft.
+            if args.auto_fix:
+                try:
+                    import auto_fix
+                    proposal, pr_url = auto_fix.run(
+                        error_traceback=summary.error,
+                        failing_file=Path(__file__).parent / "gam_blocklist_ui.py",
+                        around_line=None,
+                        extra_context={
+                            "protection_id": summary.protection_id,
+                            "protection_label": summary.protection_label,
+                            "source": summary.source,
+                        },
+                        repo_root=Path(__file__).parent,
+                    )
+                    summary.auto_fix_pr_url = pr_url
+                    summary.auto_fix_diagnosis = proposal.diagnosis
+                    summary.auto_fix_refusal = proposal.refusal_reason
+                    if pr_url:
+                        print(f"Auto-fix draft PR opened: {pr_url}",
+                              file=sys.stderr)
+                    else:
+                        print(f"Auto-fix refused: "
+                              f"{proposal.refusal_reason or '(no diff returned)'}",
+                              file=sys.stderr)
+                except Exception as af_e:
+                    print(f"Auto-fix invocation raised "
+                          f"({type(af_e).__name__}): {af_e}",
+                          file=sys.stderr)
 
     # Phase 2: GAM Ad Review Center manual block for cloaked-by-ID rows.
     # Isolated from Phase 1 — any failure here is captured into ArcStats and

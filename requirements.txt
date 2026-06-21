@@ -13,3 +13,4 @@ playwright
 structlog
 pytest
 msal
+anthropic  # auto_fix.py — opt-in via confiant_blocklist.py --auto-fix
