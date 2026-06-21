@@ -581,28 +581,50 @@ Rules that survive any future restyle:
   Needs-attention card keeps its collapsed-on-mobile default since `open` is
   per-element). The other tabs (By site / size, By DSP, Pubmatic, Magnite)
   still use plain `st.columns` filter rows.
-- **Campaigns desktop "Cockpit": triage lives in a sticky right rail.** On
-  desktop (`@media min-width:1025px`) the **Needs-attention** card and the
-  **PMP-signals** card both render into one keyed container
-  (`st.container(key="nw_campaigns_rail")` → `.st-key-nw_campaigns_rail`,
-  `_rail` in the Campaigns block; the PMP-signals slot is `_rail.empty()` so it
-  stacks under Needs-attention) that CSS pins **`position:fixed` top-right**, and
-  the main `.block-container` is shrunk + given a reserved right gutter
-  (`max-width:min(1320px,calc(100vw - 380px))` + `margin-right`) so content and
-  rail sit side by side with no overlap. The override **reuses the existing
-  3-selector block-container group** (`.stApp [data-testid="stMain"]
-  .block-container`, …) and is emitted *inside* the Campaigns block (later in
-  source) so it wins on order and is auto-scoped to that view only. So Campaigns
-  reads **left = work (KPIs + tables), right = always-visible triage** — fixing
-  the stretched-full-width + cluttered-vertical-stack complaints. **≤1024px the
-  rail CSS doesn't apply**, so the cards fall back to normal flow above the KPIs
-  (mobile unchanged; the Needs-attention `--always` open behavior above still
-  holds). Chosen from a 3-way mockup (Focus / Cockpit / Command; Roger picked
-  Cockpit, 2026-06-17). **Local QA without prod:** `scripts/seed_local_demo.py`
-  fabricates a throwaway SQLite DB (`DATABASE_URL=sqlite:///…`) with the
-  Campaigns tables so the dashboard renders on synthetic data — DV tables fall
-  back to empty on SQLite (Postgres-only date SQL), so Attention/SIVT/GIVT show
-  "—". Don't reintroduce a per-section rail — it's one combined rail.
+- **Campaigns landing = "Editorial" layout: briefing lede → two serif heroes
+  → hairline quality line.** (Replaces the sticky-rail "Cockpit", 2026-06-21 —
+  the fixed rail was `position:fixed` and **overlapped the KPI strip**, hiding
+  the 9th tile; the editorial layout fixes that *structurally* by putting
+  everything in normal flow.) Reading order, top to bottom:
+  1. **Briefing lede** (`.nw-brief`): triage is the first thing on the page, in
+     normal flow — an editorial **"Needs you today"** header (`.nw-brief-lede`,
+     eyebrow + `_na_head_cnt`) over the existing Needs-attention category rows
+     (`_na_cats`, unchanged) in `.nw-brief-cats`. On desktop (`@media
+     min-width:641px`) the categories sit in a compact **auto-fit grid** and are
+     **collapsed by default, tap-to-expand** to offenders (the briefing
+     overrides the `.nw-na`-on-desktop force-open so the lede stays short); on
+     mobile they stack. No `_rail`, no `position:fixed`, no block-container
+     shrink — all removed.
+  2. **KPI tiles, tiered — kept as CARDS** (Roger: "we must keep the cards",
+     2026-06-21; the first cut dissolved them into a borderless hero+hairline
+     band and was reverted). One wrapping flex row, `.nw-kpi-cards`, reusing the
+     original `.kpi-tile` anatomy: **Revenue · Avg pacing** are **double-width
+     `.nw-hero-tile`s** (`flex:2`, 40px value, 3px ink rule) and the other
+     **seven** QA metrics — Impressions · Viewability · Attention · SIVT · GIVT ·
+     VCR · CTR — are standard tiles (`flex:1`). So the band reads **2 big + 7
+     small in one aligned row** on desktop and wraps cleanly on mobile. This
+     replaced the flat **9-up `.nw-kpi-row`** equal grid (the PMP tab still uses
+     `.nw-kpi-row--pmp`). Hero tiles take the **uniform-regime** sparkline
+     (`_sparkline_svg(..., uniform=True, klass="")`, `.nw-hero-tile svg`
+     width-filled + height-capped) because a hero tile is a wide box where the
+     tile *stretch* regime would smear the round end-cap; the seven small tiles
+     keep their normal stretch sparklines. Same values / subtitles / series as
+     the old strip — only the tiering changed.
+  3. **Priority flights** (`.nw-section-eyebrow` + the two TTD cards): the
+     Luckyland + Chumba TTD CPA accordions, **demoted + collapsed** via
+     `.nw-na--collapsible` (a modifier that opts out of the desktop force-open
+     so the `<details>` toggle works at all widths). They used to render
+     force-open and dominate the "overall" view.
+  - **PMP signals** moved out of the rail into the **PMP section's normal flow**
+    (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
+  - Same values/subtitles/series as before — **only presentation changed**; all
+    decision logic untouched. Chosen from a **5-direction mock**
+    (`docs/campaigns_redesign_options.html` — Editorial / Cockpit / Status board
+    / Split / Tiles 2.0; Roger picked **Editorial**, 2026-06-21).
+  - **Local QA without prod:** `scripts/seed_local_demo.py` fabricates a
+    throwaway SQLite DB (`DATABASE_URL=sqlite:///…`) with the Campaigns tables
+    so the dashboard renders on synthetic data — DV tables fall back to empty on
+    SQLite (Postgres-only date SQL), so Attention/SIVT/GIVT show "—".
 - **Campaigns alerts are a "Needs attention" accordion, not three stacked
   banners.** The pacing/viewability exceptions render as one `.nw-na`
   card with a row per category. A category with offenders is a native

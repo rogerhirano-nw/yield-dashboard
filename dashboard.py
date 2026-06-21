@@ -1129,6 +1129,67 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    the ≤1024 auto-fit rule at every width, so this holds 4-up on desktop and
    tablet without the inline style it used to need. */
 .nw-kpi-row.nw-kpi-row--pmp { grid-template-columns: repeat(4, 1fr); }
+/* ═══════════════════════════════════════════════════════════════════
+   EDITORIAL LAYOUT (Campaigns landing) — briefing lede + two serif
+   heroes + a hairline quality stat-line. Replaces the flat 9-up KPI
+   grid and the fixed cockpit rail (which overlapped the KPIs). One job
+   per zone: triage reads as the lede, the hero numbers are the first
+   read, the QA metrics recede to a supporting line.
+   ═══════════════════════════════════════════════════════════════════ */
+/* Section eyebrow (e.g. "Priority flights"). */
+.nw-section-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 700; color: var(--text-secondary); margin: 14px 0 8px; }
+/* Briefing lede — triage as the first thing on the page, in normal flow. */
+.nw-brief { background: var(--surface-1); border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-red); border-radius: var(--radius-md);
+  margin: 2px 0 18px; overflow: hidden; }
+.nw-brief-lede { display: flex; align-items: baseline; gap: 12px;
+  padding: 11px 16px; border-bottom: 1px solid var(--border); }
+.nw-brief-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 700; color: var(--text-secondary); }
+.nw-brief-count { font-family: var(--font-display); font-size: 17px; font-weight: 700;
+  color: var(--text-primary); margin-left: auto; }
+.nw-brief-cats { padding: 4px 8px; }
+.nw-brief .nw-na-row { border-bottom: none; }
+@media (min-width: 641px) {
+  /* Category rows sit in a compact auto-fit grid (the horizontal "briefing
+     bar"), each tap-to-expand to its offenders — overrides the always-open
+     desktop rule so the lede stays compact, and restores the chevron. */
+  .nw-brief-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+    gap: 2px 12px; align-items: start; padding: 6px 12px; }
+  .nw-brief .nw-na-row:not([open]) > .nw-na-sub { display: none !important; }
+  .nw-brief .nw-na-row > summary { cursor: pointer; }
+  .nw-brief .nw-na-row > summary .nw-na-chev { display: inline-block !important; }
+}
+/* KPI cards — the editorial HIERARCHY is kept (Revenue + Avg pacing as
+   double-width hero tiles, the other seven QA metrics as standard tiles) but
+   every metric stays a CARD (Roger: "we must keep the cards"). One wrapping
+   flex row: hero tiles grow 2×, quality tiles 1×, so desktop reads as 2 big +
+   7 small in one aligned band and wraps cleanly on narrow screens. Reuses the
+   original `.kpi-tile` anatomy. */
+.nw-kpi-cards { display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin: 4px 0 20px; align-items: stretch; }
+.nw-kpi-cards .kpi-tile { flex: 1 1 132px; }
+.nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
+.nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
+.nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
+/* Hero sparkline uses the UNIFORM regime (a hero tile is a wide box) — fill
+   width with a bounded height so the round end-cap never smears. */
+.nw-hero-tile svg { width: 100% !important; height: auto !important;
+  max-height: 34px; display: block; margin-top: 8px; }
+/* Priority-flight (TTD) cards are demoted + collapsed by default — opt out
+   of the desktop force-open so the <details> toggle works at all widths. */
+@media (min-width: 641px) {
+  details.nw-na.nw-na--collapsible:not([open]) > .nw-na-body { display: none !important; }
+  details.nw-na.nw-na--collapsible > summary.nw-na-head { cursor: pointer; }
+  details.nw-na.nw-na--collapsible > summary.nw-na-head .nw-na-h-chev { display: inline-block; }
+}
+@media (max-width: 640px) {
+  /* Two hero tiles share the top row; quality tiles wrap ~3-up below. */
+  .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 1 1 44%; }
+  .nw-kpi-cards .kpi-tile { flex: 1 1 28%; }
+  .nw-hero-tile .kpi-value { font-size: 32px; }
+}
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
              padding: var(--space-3); position: relative; overflow: hidden;
              border-radius: var(--radius-sm);
@@ -3742,54 +3803,25 @@ if st.session_state.active_view == "campaigns":
                 + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
                 + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
             )
-            # ── Cockpit (WIP): pin the unified triage card as a sticky right rail
-            # on desktop (≥1025px). The main `.block-container` is capped at
-            # max-width:1600px elsewhere; here we shrink it and reserve a fixed
-            # right gutter (margin-right) so the fixed rail doesn't overlap it.
-            # Reuses that rule's exact 3-selector group so this (emitted later)
-            # wins on source order. ≤1024px nothing applies — the container stays
-            # in normal flow above the KPIs, unchanged.
+            # ── Briefing lede (Editorial layout): triage is the first thing on
+            # the page, in NORMAL FLOW — not a floating rail. The old cockpit
+            # rail was `position:fixed` and overlapped the KPI strip; rendering
+            # the triage as a full-width "Needs you today" lede here fixes that
+            # structurally (nothing is fixed-positioned, so it can't collide).
+            # On desktop the category rows sit in a compact auto-fit grid, each
+            # tap-to-expand to its offenders; on mobile they stack. `_na_cats`
+            # already builds both the flagged rows and the all-clear ✓ rows, so
+            # one render covers both states. PMP signals render in the PMP
+            # section below (also normal flow), keeping PMP triage with the PMP
+            # content rather than hoisting it into a shared rail.
             st.markdown(
-                "<style>@media (min-width:1025px){"
-                ".stApp .main .block-container,"
-                '.stApp [data-testid="stMain"] .block-container,'
-                '.stApp [data-testid="stAppViewContainer"] .block-container{'
-                "max-width:min(1320px,calc(100vw - 380px))!important;"
-                "margin-left:0!important;margin-right:0!important;}"
-                ".st-key-nw_campaigns_rail{position:fixed;top:120px;"
-                "left:calc(min(1320px,100vw - 380px) + 20px);width:320px;"
-                "max-height:calc(100vh - 140px);overflow-y:auto;z-index:6;}"
-                "}</style>",
+                '<div class="nw-brief">'
+                '<div class="nw-brief-lede">'
+                '<span class="nw-brief-eyebrow">Needs you today</span>'
+                f'<span class="nw-brief-count">{_na_head_cnt}</span></div>'
+                f'<div class="nw-brief-cats">{_na_cats}</div></div>',
                 unsafe_allow_html=True,
             )
-            _rail = st.container(key="nw_campaigns_rail")
-            if _na_total:
-                # Forced-open at ALL widths via `nw-na--always` (Roger, 2026-06):
-                # the triage categories stay visible even on mobile rather than
-                # collapsing to a header line (reverses the old mobile collapse).
-                # The open card is the ~4 category rows, not a screenful, because
-                # the per-category offender lists are auto-opened inline on
-                # desktop/tablet (the `@media min-width:641` rules above) and
-                # stay tap-to-expand on mobile. Chevron hidden + header
-                # non-interactive (the `open` attribute + the `--always` CSS rule
-                # keep it expanded).
-                _rail.markdown(
-                    '<details class="nw-na nw-na--always" open>'
-                    '<summary class="nw-na-head"><span>Needs attention</span>'
-                    f'<span class="cnt">{_na_head_cnt}</span>'
-                    '<span class="nw-na-h-chev">&rsaquo;</span></summary>'
-                    f'<div class="nw-na-body">{_na_cats}</div></details>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                # All clear — static ✓ rows; nothing to collapse.
-                _rail.markdown(
-                    '<div class="nw-na">'
-                    '<div class="nw-na-head"><span>Needs attention</span>'
-                    f'<span class="cnt">{_na_head_cnt}</span></div>'
-                    + _na_cats + '</div>',
-                    unsafe_allow_html=True,
-                )
 
             # ── KPI strip: nine tiles — serif number, target subtitle where
             # applicable, neutral full-width sparkline (Newsweek anatomy).
@@ -4173,7 +4205,7 @@ if st.session_state.active_view == "campaigns":
                 count_label = f"{s['conversions']:,} conv." if s["conversions"] else "no data"
                 st.markdown(
                     f'<div class="nw-ttd-wrap">'
-                    f'<details class="nw-na" open>'
+                    f'<details class="nw-na nw-na--collapsible">'
                     f'<summary class="nw-na-head">'
                     f'{title}'
                     f'<span class="nw-na-h-chev">›</span>'
@@ -4369,13 +4401,29 @@ if st.session_state.active_view == "campaigns":
                 if v < 1:     return f"{v:.2f}%"
                 if v < 10:    return f"{v:.1f}%"
                 return f"{v:.0f}%"
+            # ── Editorial KPI band — kept as CARDS (Roger: "we must keep the
+            # cards"): Revenue + Avg pacing as double-width hero tiles, the other
+            # seven QA metrics as standard tiles, all in one wrapping flex row so
+            # the page has a clear first read (the two big tiles) while every
+            # metric keeps its box. Reuses the original `_kpi_tile` + per-metric
+            # sparkline vars; hero tiles take the UNIFORM sparkline (a hero tile
+            # is a wide box, where the tile stretch regime would smear the
+            # round end-cap — the documented wide-box distortion).
+            def _hero_tile(label, value, sub, spark):
+                sub_html = f'<div class="kpi-target">{sub}</div>' if sub else ""
+                return (f'<div class="kpi-tile nw-hero-tile"><div class="kpi-label">{label}</div>'
+                        f'<div class="kpi-value">{value}</div>{sub_html}{spark or ""}</div>')
+
+            _rev_hero_spark  = _sparkline_svg(_rev_series, uniform=True, klass="") if _rev_series else ""
+            _pace_hero_spark = (_sparkline_svg(_pace_series, target=float(_pacing_target),
+                                               uniform=True, klass="") if _pace_series else "")
             st.markdown(
-                '<div class="nw-kpi-row">'
-                + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
+                '<div class="nw-kpi-cards">'
+                + _hero_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_hero_spark)
+                + _hero_tile("Avg pacing",
+                             f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
+                             _pace_sub, _pace_hero_spark)
                 + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
-                + _kpi_tile("Avg pacing",
-                            f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                            _pace_sub, _pace_spark)
                 + _kpi_tile("Viewability",
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
                             _view_sub, _view_spark)
@@ -4390,7 +4438,14 @@ if st.session_state.active_view == "campaigns":
                 unsafe_allow_html=True,
             )
 
-            # ---------- TTD CPA accordions ----------
+            # ---------- Priority flights (TTD CPA) — demoted + collapsed ----------
+            # These two acquisition flights used to render force-open and
+            # dominated the "overall" view; in the editorial layout they sit in a
+            # collapsed "Priority flights" section below the headline numbers,
+            # expandable on demand (the `nw-na--collapsible` modifier opts them
+            # out of the desktop force-open).
+            st.markdown('<div class="nw-section-eyebrow">Priority flights</div>',
+                        unsafe_allow_html=True)
             _render_ttd_cpa(_ttd_summary)
             _render_ttd_cpa(
                 _ttd_chumba_summary,
@@ -6659,18 +6714,18 @@ if st.session_state.active_view == "campaigns":
         # Reuses the Needs-attention accordion CSS, so it collapses to one line
         # on mobile and stays open on desktop. Stale deals folded in read-only
         # 2026-06 (archive removed).
-        # Renders into this SLOT, which lives **in the cockpit rail**
-        # (`_rail`, defined in the Direct section above) so the rail carries all
-        # triage — Needs-attention on top, PMP signals below — as one pinned
-        # column on desktop. ≤1024px the rail is normal flow, so PMP signals just
-        # stack under the Needs-attention card as before. It is BUILT by
+        # Renders into this SLOT in NORMAL FLOW within the PMP section. The
+        # editorial layout removed the fixed cockpit rail that used to host it
+        # (the rail was `position:fixed` and overlapped the KPI strip), so PMP
+        # triage now sits with the PMP content instead of a shared pinned
+        # column. It is BUILT by
         # _render_pmp_signals() — called AFTER the drawer machinery is defined
         # below — so each flagged deal can **expand to the SAME _pmp_drawer_html
         # the main table row opens** (Roger 2026-06-14: "see the PMP details on
         # the signals card"). Deals present in the delivery frame get the full
         # performance drawer (revenue · eCPM · 7-day trend · metadata);
         # no-delivery / long-stale deals expand to a name-only note.
-        _pmp_sig_slot = _rail.empty()
+        _pmp_sig_slot = st.empty()
 
         def _render_pmp_signals():
             # Deal name → its row in the UNFILTERED combined frame, so a flagged
