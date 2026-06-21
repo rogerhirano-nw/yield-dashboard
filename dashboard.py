@@ -1173,10 +1173,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
 .nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
 .nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
-/* Hero sparkline uses the UNIFORM regime (a hero tile is a wide box) — fill
-   width with a bounded height so the round end-cap never smears. */
-.nw-hero-tile svg { width: 100% !important; height: auto !important;
-  max-height: 34px; display: block; margin-top: 8px; }
+/* Hero tiles reuse the shared `.kpi-spark` sparkline (stretch regime, like
+   every other tile) so all nine end-dots render identically — an earlier
+   uniform-regime hero sparkline put the end-dot in a different spot from the
+   rest and read as "off". */
 /* Priority-flight (TTD) cards are demoted + collapsed by default — opt out
    of the desktop force-open so the <details> toggle works at all widths. */
 @media (min-width: 641px) {
@@ -4406,23 +4406,21 @@ if st.session_state.active_view == "campaigns":
             # seven QA metrics as standard tiles, all in one wrapping flex row so
             # the page has a clear first read (the two big tiles) while every
             # metric keeps its box. Reuses the original `_kpi_tile` + per-metric
-            # sparkline vars; hero tiles take the UNIFORM sparkline (a hero tile
-            # is a wide box, where the tile stretch regime would smear the
-            # round end-cap — the documented wide-box distortion).
+            # sparkline vars; hero tiles reuse the SAME `.kpi-spark` (stretch)
+            # sparkline as the other tiles so all nine end-dots render
+            # identically (an earlier uniform-regime hero sparkline placed the
+            # end-dot differently and read as "off").
             def _hero_tile(label, value, sub, spark):
                 sub_html = f'<div class="kpi-target">{sub}</div>' if sub else ""
                 return (f'<div class="kpi-tile nw-hero-tile"><div class="kpi-label">{label}</div>'
                         f'<div class="kpi-value">{value}</div>{sub_html}{spark or ""}</div>')
 
-            _rev_hero_spark  = _sparkline_svg(_rev_series, uniform=True, klass="") if _rev_series else ""
-            _pace_hero_spark = (_sparkline_svg(_pace_series, target=float(_pacing_target),
-                                               uniform=True, klass="") if _pace_series else "")
             st.markdown(
                 '<div class="nw-kpi-cards">'
-                + _hero_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_hero_spark)
+                + _hero_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
                 + _hero_tile("Avg pacing",
                              f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                             _pace_sub, _pace_hero_spark)
+                             _pace_sub, _pace_spark)
                 + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
                 + _kpi_tile("Viewability",
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",

@@ -604,12 +604,12 @@ Rules that survive any future restyle:
      VCR · CTR — are standard tiles (`flex:1`). So the band reads **2 big + 7
      small in one aligned row** on desktop and wraps cleanly on mobile. This
      replaced the flat **9-up `.nw-kpi-row`** equal grid (the PMP tab still uses
-     `.nw-kpi-row--pmp`). Hero tiles take the **uniform-regime** sparkline
-     (`_sparkline_svg(..., uniform=True, klass="")`, `.nw-hero-tile svg`
-     width-filled + height-capped) because a hero tile is a wide box where the
-     tile *stretch* regime would smear the round end-cap; the seven small tiles
-     keep their normal stretch sparklines. Same values / subtitles / series as
-     the old strip — only the tiering changed.
+     `.nw-kpi-row--pmp`). **All nine tiles reuse the shared `.kpi-spark`
+     (stretch) sparkline** so every end-dot renders identically — an interim
+     uniform-regime hero sparkline placed the end-dot in a different spot from
+     the rest and read as "off" (Roger, 2026-06-21), so heroes use the same
+     `_rev_spark`/`_pace_spark` as the old strip. Same values / subtitles /
+     series as the old strip — only the tiering changed.
   3. **Priority flights** (`.nw-section-eyebrow` + the two TTD cards): the
      Luckyland + Chumba TTD CPA accordions, **demoted + collapsed** via
      `.nw-na--collapsible` (a modifier that opts out of the desktop force-open
