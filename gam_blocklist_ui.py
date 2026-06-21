@@ -112,12 +112,22 @@ _SELECTORS = {
 
 
 # URL format for the Protection detail page. Verified against the current GAM
-# UI (May 2026): Protections is a top-level nav section, not under Delivery;
-# `type=AD_CONTENT` lands us directly on the Ad content tab where Advertiser
-# URLs live. Override via env var if Google ships a routing change.
+# UI history:
+#   2026-05: Protections moved out from under Delivery to a top-level nav,
+#            URL was `#protections/detail/protection_id={id}&type=AD_CONTENT`.
+#   2026-06-21: Google moved it again — Protections is now under the new
+#            top-level "Brand safety" section (same migration that put
+#            Ad Review Center at `#brand_safety/ad_review_center` —
+#            see PR #267 and the 2026-06-17 ARC findings). The legacy
+#            `#protections/...` URL silently redirects to Delivery →
+#            Orders, causing the daily cron to fail at the "find the
+#            Edit button" step (PR #287 fix).
+# The XPath selector below for the Advertiser URLs Edit button is
+# unchanged; only the page URL needed updating.
+# Override via env var if Google ships another routing change.
 _PROTECTION_DETAIL_URL_FMT = os.environ.get(
     "GAM_PROTECTION_DETAIL_URL_FMT",
-    "https://admanager.google.com/{network_id}#protections/detail/protection_id={protection_id}&type=AD_CONTENT",
+    "https://admanager.google.com/{network_id}#brand_safety/protections/detail/protection_id={protection_id}",
 )
 
 
