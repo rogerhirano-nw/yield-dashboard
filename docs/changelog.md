@@ -4,6 +4,30 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-21 — Campaigns "Editorial" landing
+
+- **#294** — **Campaigns landing redesigned to the "Editorial" layout; the
+  sticky Cockpit rail is removed.** The fixed right rail (#275) was
+  `position:fixed` and **overlapped the KPI strip** — it clipped the VCR tile
+  and hid the 9th KPI (CTR) at common window widths. The redesign fixes that
+  *structurally* (nothing is fixed-positioned anymore) and gives the page a
+  clear first read. New top-to-bottom order: (1) a **"Needs you today" briefing
+  lede** (`.nw-brief`) — the Needs-attention categories (`_na_cats`, unchanged)
+  in normal flow, a compact tap-to-expand auto-fit grid on desktop; (2) **two
+  serif heroes** (`.nw-hero-band`) — Revenue · Avg pacing, big Benton figures +
+  uniform-regime sparklines — replacing the flat **9-up `.nw-kpi-row`** grid;
+  (3) a **hairline quality stat-line** (`.nw-quality-line`) for the other seven
+  QA metrics, no boxes; (4) **Priority flights** — the two TTD CPA cards demoted
+  + collapsed (`.nw-na--collapsible`, opting out of the desktop force-open).
+  **PMP signals** moved from the rail into the PMP section's normal flow
+  (`_pmp_sig_slot = st.empty()`). Same values / subtitles / series throughout —
+  **only presentation changed; all decision logic untouched.** Chosen from a
+  **5-direction mock** (`docs/campaigns_redesign_options.html` — Editorial /
+  Cockpit / Status board / Split / Tiles 2.0; Roger picked **Editorial**).
+- **#294** (proposal) — **5-direction redesign mock** for the Campaigns landing
+  (`docs/campaigns_redesign_options.html`), a self-contained HTML file on
+  production tokens used to choose the direction before writing code.
+
 ## 2026-06-17 — Campaigns Cockpit
 
 - **#275** — **Campaigns desktop "Cockpit": sticky right rail.** The unified
