@@ -595,17 +595,22 @@ Rules that survive any future restyle:
      overrides the `.nw-na`-on-desktop force-open so the lede stays short); on
      mobile they stack. No `_rail`, no `position:fixed`, no block-container
      shrink — all removed.
-  2. **Two serif heroes** (`.nw-hero-band` → `.nw-hero`): **Revenue · Avg
-     pacing** only, big Benton figures + delta sub + a **uniform-regime**
-     sparkline (`_sparkline_svg(..., uniform=True, klass="")` wrapped in
-     `.nw-hero-spark` — heroes are wide boxes, so the tile *stretch* regime
-     would smear the end-cap). This replaced the flat **9-up `.nw-kpi-row`**
-     grid on Campaigns (the PMP tab still uses `.nw-kpi-row--pmp`).
-  3. **Hairline quality stat-line** (`.nw-quality-line` → `.nw-q`): the other
-     seven QA metrics — Impressions · Viewability · Attention · SIVT · GIVT ·
-     VCR · CTR — as label/value/sub **with no boxes**, hairline-separated.
-     Severity stays in the delta text (the same `_*_sub` strings as the tiles).
-  4. **Priority flights** (`.nw-section-eyebrow` + the two TTD cards): the
+  2. **KPI tiles, tiered — kept as CARDS** (Roger: "we must keep the cards",
+     2026-06-21; the first cut dissolved them into a borderless hero+hairline
+     band and was reverted). One wrapping flex row, `.nw-kpi-cards`, reusing the
+     original `.kpi-tile` anatomy: **Revenue · Avg pacing** are **double-width
+     `.nw-hero-tile`s** (`flex:2`, 40px value, 3px ink rule) and the other
+     **seven** QA metrics — Impressions · Viewability · Attention · SIVT · GIVT ·
+     VCR · CTR — are standard tiles (`flex:1`). So the band reads **2 big + 7
+     small in one aligned row** on desktop and wraps cleanly on mobile. This
+     replaced the flat **9-up `.nw-kpi-row`** equal grid (the PMP tab still uses
+     `.nw-kpi-row--pmp`). Hero tiles take the **uniform-regime** sparkline
+     (`_sparkline_svg(..., uniform=True, klass="")`, `.nw-hero-tile svg`
+     width-filled + height-capped) because a hero tile is a wide box where the
+     tile *stretch* regime would smear the round end-cap; the seven small tiles
+     keep their normal stretch sparklines. Same values / subtitles / series as
+     the old strip — only the tiering changed.
+  3. **Priority flights** (`.nw-section-eyebrow` + the two TTD cards): the
      Luckyland + Chumba TTD CPA accordions, **demoted + collapsed** via
      `.nw-na--collapsible` (a modifier that opts out of the desktop force-open
      so the `<details>` toggle works at all widths). They used to render

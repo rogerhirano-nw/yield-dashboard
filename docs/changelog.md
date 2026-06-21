@@ -13,12 +13,13 @@ and why" index, keyed by PR. Newest first.
   *structurally* (nothing is fixed-positioned anymore) and gives the page a
   clear first read. New top-to-bottom order: (1) a **"Needs you today" briefing
   lede** (`.nw-brief`) — the Needs-attention categories (`_na_cats`, unchanged)
-  in normal flow, a compact tap-to-expand auto-fit grid on desktop; (2) **two
-  serif heroes** (`.nw-hero-band`) — Revenue · Avg pacing, big Benton figures +
-  uniform-regime sparklines — replacing the flat **9-up `.nw-kpi-row`** grid;
-  (3) a **hairline quality stat-line** (`.nw-quality-line`) for the other seven
-  QA metrics, no boxes; (4) **Priority flights** — the two TTD CPA cards demoted
-  + collapsed (`.nw-na--collapsible`, opting out of the desktop force-open).
+  in normal flow, a compact tap-to-expand auto-fit grid on desktop; (2) the KPI
+  metrics **kept as cards but tiered** (`.nw-kpi-cards`) — Revenue · Avg pacing
+  as **double-width hero tiles** + the other seven QA metrics as standard tiles,
+  one wrapping flex row, replacing the flat **9-up `.nw-kpi-row`** equal grid
+  (an interim borderless hero+hairline band was reverted on Roger's "we must
+  keep the cards"); (3) **Priority flights** — the two TTD CPA cards demoted +
+  collapsed (`.nw-na--collapsible`, opting out of the desktop force-open).
   **PMP signals** moved from the rail into the PMP section's normal flow
   (`_pmp_sig_slot = st.empty()`). Same values / subtitles / series throughout —
   **only presentation changed; all decision logic untouched.** Chosen from a

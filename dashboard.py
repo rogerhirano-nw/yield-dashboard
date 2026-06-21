@@ -1161,26 +1161,22 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-brief .nw-na-row > summary { cursor: pointer; }
   .nw-brief .nw-na-row > summary .nw-na-chev { display: inline-block !important; }
 }
-/* Two serif heroes (Revenue · Avg pacing). */
-.nw-hero-band { display: grid; grid-template-columns: 1fr 1fr; gap: 36px;
-  padding: 6px 2px 18px; border-bottom: 1px solid var(--border); margin: 4px 0 16px; }
-.nw-hero-l { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-secondary); }
-.nw-hero-v { font-family: var(--font-display); font-weight: 700; font-size: 54px;
-  line-height: 1.04; margin: 4px 0 2px; letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums; }
-.nw-hero-s { font-size: 12.5px; color: var(--text-muted); }
-.nw-hero-spark { max-width: 240px; margin-top: 10px; }
-.nw-hero-spark svg { width: 100% !important; height: auto !important; display: block; }
-/* Hairline quality stat-line — no boxes; severity stays in the delta text. */
-.nw-quality-line { display: flex; flex-wrap: wrap; gap: 10px 0; margin: 0 0 22px; }
-.nw-q { padding: 0 22px; border-right: 1px solid var(--border); }
-.nw-q:first-child { padding-left: 2px; }
-.nw-q:last-child { border-right: none; }
-.nw-q-l { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.nw-q-v { font-family: var(--font-display); font-size: 21px; font-weight: 700; margin-top: 3px;
-  font-variant-numeric: tabular-nums; }
-.nw-q-s { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+/* KPI cards — the editorial HIERARCHY is kept (Revenue + Avg pacing as
+   double-width hero tiles, the other seven QA metrics as standard tiles) but
+   every metric stays a CARD (Roger: "we must keep the cards"). One wrapping
+   flex row: hero tiles grow 2×, quality tiles 1×, so desktop reads as 2 big +
+   7 small in one aligned band and wraps cleanly on narrow screens. Reuses the
+   original `.kpi-tile` anatomy. */
+.nw-kpi-cards { display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin: 4px 0 20px; align-items: stretch; }
+.nw-kpi-cards .kpi-tile { flex: 1 1 132px; }
+.nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
+.nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
+.nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
+/* Hero sparkline uses the UNIFORM regime (a hero tile is a wide box) — fill
+   width with a bounded height so the round end-cap never smears. */
+.nw-hero-tile svg { width: 100% !important; height: auto !important;
+  max-height: 34px; display: block; margin-top: 8px; }
 /* Priority-flight (TTD) cards are demoted + collapsed by default — opt out
    of the desktop force-open so the <details> toggle works at all widths. */
 @media (min-width: 641px) {
@@ -1189,11 +1185,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   details.nw-na.nw-na--collapsible > summary.nw-na-head .nw-na-h-chev { display: inline-block; }
 }
 @media (max-width: 640px) {
-  .nw-hero-band { grid-template-columns: 1fr; gap: 16px; }
-  .nw-hero-v { font-size: 42px; }
-  .nw-quality-line { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 0; }
-  .nw-q { padding: 0 12px; border-right: 1px solid var(--border); }
-  .nw-q:nth-child(2n) { border-right: none; }
+  /* Two hero tiles share the top row; quality tiles wrap ~3-up below. */
+  .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 1 1 44%; }
+  .nw-kpi-cards .kpi-tile { flex: 1 1 28%; }
+  .nw-hero-tile .kpi-value { font-size: 32px; }
 }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
              padding: var(--space-3); position: relative; overflow: hidden;
@@ -4406,47 +4401,39 @@ if st.session_state.active_view == "campaigns":
                 if v < 1:     return f"{v:.2f}%"
                 if v < 10:    return f"{v:.1f}%"
                 return f"{v:.0f}%"
-            # ── Editorial KPI band: two serif heroes (Revenue · Avg pacing)
-            # over a hairline quality stat-line. Same values / subtitles /
-            # series as the old 9-up tile grid — only the presentation changed,
-            # to give the page a clear first read (the hero figures) with the
-            # seven QA metrics as a quiet supporting line. Hero sparklines use
-            # the UNIFORM regime (not the tile stretch) because a hero box is
-            # far wider than a ~130px tile, where the stretch regime would smear
-            # the round end-cap (the documented wide-box distortion).
-            def _hero(label, value, sub, spark):
-                sub_html = f'<div class="nw-hero-s">{sub}</div>' if sub else ""
-                spark_html = f'<div class="nw-hero-spark">{spark}</div>' if spark else ""
-                return (f'<div class="nw-hero"><div class="nw-hero-l">{label}</div>'
-                        f'<div class="nw-hero-v">{value}</div>{sub_html}{spark_html}</div>')
-
-            def _qstat(label, value, sub):
-                sub_html = f'<div class="nw-q-s">{sub}</div>' if sub else ""
-                return (f'<div class="nw-q"><div class="nw-q-l">{label}</div>'
-                        f'<div class="nw-q-v">{value}</div>{sub_html}</div>')
+            # ── Editorial KPI band — kept as CARDS (Roger: "we must keep the
+            # cards"): Revenue + Avg pacing as double-width hero tiles, the other
+            # seven QA metrics as standard tiles, all in one wrapping flex row so
+            # the page has a clear first read (the two big tiles) while every
+            # metric keeps its box. Reuses the original `_kpi_tile` + per-metric
+            # sparkline vars; hero tiles take the UNIFORM sparkline (a hero tile
+            # is a wide box, where the tile stretch regime would smear the
+            # round end-cap — the documented wide-box distortion).
+            def _hero_tile(label, value, sub, spark):
+                sub_html = f'<div class="kpi-target">{sub}</div>' if sub else ""
+                return (f'<div class="kpi-tile nw-hero-tile"><div class="kpi-label">{label}</div>'
+                        f'<div class="kpi-value">{value}</div>{sub_html}{spark or ""}</div>')
 
             _rev_hero_spark  = _sparkline_svg(_rev_series, uniform=True, klass="") if _rev_series else ""
             _pace_hero_spark = (_sparkline_svg(_pace_series, target=float(_pacing_target),
                                                uniform=True, klass="") if _pace_series else "")
             st.markdown(
-                '<div class="nw-hero-band">'
-                + _hero("Revenue", _fmt_money(total_rev), _rev_sub, _rev_hero_spark)
-                + _hero("Avg pacing",
-                        f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                        _pace_sub, _pace_hero_spark)
-                + '</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div class="nw-quality-line">'
-                + _qstat("Impressions", _fmt_count(total_impr), _impr_sub)
-                + _qstat("Viewability",
-                         f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—", _view_sub)
-                + _qstat("Attention", _attn_disp, _attn_sub)
-                + _qstat("SIVT", _ivt_disp(_sivt_total), _sivt_sub)
-                + _qstat("GIVT", _ivt_disp(_givt_total), _givt_sub)
-                + _qstat("VCR", _vcr_val, _vcr_sub)
-                + _qstat("CTR", f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—", _ctr_sub)
+                '<div class="nw-kpi-cards">'
+                + _hero_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_hero_spark)
+                + _hero_tile("Avg pacing",
+                             f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
+                             _pace_sub, _pace_hero_spark)
+                + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
+                + _kpi_tile("Viewability",
+                            f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
+                            _view_sub, _view_spark)
+                + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark)
+                + _kpi_tile("SIVT", _ivt_disp(_sivt_total), _sivt_sub, _sivt_spark)
+                + _kpi_tile("GIVT", _ivt_disp(_givt_total), _givt_sub, _givt_spark)
+                + _kpi_tile("VCR", _vcr_val, _vcr_sub, _vcr_spark)
+                + _kpi_tile("CTR",
+                            f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
+                            _ctr_sub, _ctr_spark)
                 + '</div>',
                 unsafe_allow_html=True,
             )
