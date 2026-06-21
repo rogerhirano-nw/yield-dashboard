@@ -94,6 +94,11 @@ FRESHNESS_CHECKS = [
     ("gam_pmp_deals fresh",       "gam_pmp_deals",      "date", 1),
     ("dv_attention fresh",        "dv_attention",       "date", 3),
     ("dv_ivt fresh",              "dv_ivt",             "date", 3),
+    # TTD scheduled reports arrive via agentmail (same pipeline as DV).
+    # Allow 2 days lag — TTD typically sends the report same-day but the
+    # signed URL is valid 30 days so the report always reflects past data.
+    ("ttd_luckyland fresh",       "ttd_luckyland",      "date", 2),
+    ("ttd_chumba fresh",          "ttd_chumba",         "date", 2),
 ]
 
 # (check name, table, timestamp column, max age in hours)
