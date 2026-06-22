@@ -143,6 +143,14 @@ COLUMN_MAP: dict[str, str] = {
     "03 - Total Click + View Conversions":                "conversions_pixel_03",
     "01 - Total Click + View Conversions CPA (Adv Currency)": "cpa_pixel_01_usd",
     "03 - Total Click + View Conversions CPA (Adv Currency)": "cpa_pixel_03_usd",
+    # Luckyland IdentityAlliance per-pixel conversion columns.  The "Purchase"
+    # pixel is the authoritative acquisition KPI; "First Purchase" is a
+    # sub-event.  Both are mapped explicitly so they don't collide with the
+    # "conversion" auto-sum in parse_ttd_csv.
+    "usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions":
+        "conversions_ia_purchase",
+    "usergenLLC First Purchase [IdentityAlliance] - Total Click + View Conversions":
+        "conversions_ia_first_purchase",
 }
 
 _NON_ALPHANUM = re.compile(r"[^a-z0-9]+")
@@ -273,12 +281,25 @@ def _execution_id_from_url(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFrame:
+def parse_ttd_csv(
+    content: bytes,
+    execution_id: str | None = None,
+    primary_conv_col: str | None = None,
+) -> pd.DataFrame:
     """Parse a TTD report (CSV or XLSX) into a DataFrame with standardized columns.
 
     TTD serves reports as XLSX (ZIP magic bytes PK\\x03\\x04) or plain CSV.
     Applies COLUMN_MAP for known columns; auto-converts unknown columns
     to snake_case.  Date and numeric columns are coerced.
+
+    `primary_conv_col` — the **pre-rename** TTD column name that is the single
+    authoritative conversion KPI for this campaign (e.g.
+    ``"usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions"``
+    for Luckyland, ``"01 - Total Click + View Conversions"`` for Chumba).
+    When provided and present in the report, its post-rename value is copied to
+    ``attributed_conversions`` instead of auto-summing all conversion columns.
+    Falls back to the auto-sum when the column is absent (e.g. a future report
+    that drops the pixel).
     """
     # Detect XLSX by ZIP magic bytes — TTD currently serves Excel
     if content[:4] == b"PK\x03\x04":
@@ -318,21 +339,34 @@ def parse_ttd_csv(content: bytes, execution_id: str | None = None) -> pd.DataFra
                 df[col] = coerced
 
     # ── Derived columns ───────────────────────────────────────────────────
-    # attributed_conversions: sum all "*_total_click_view_conversions" or
-    # "*_conversions" columns when the report doesn't have a single named
-    # attributed_conversions column (the Luckyland report uses per-event
-    # columns, one per conversion pixel).
+    # attributed_conversions: use the single authoritative column when
+    # primary_conv_col is specified (post-rename lookup), otherwise fall back
+    # to summing all "*conversion*" columns.  The auto-sum is wrong for
+    # Luckyland (sums 4 pixel columns) and Chumba (sums pixel_01 + pixel_03)
+    # — only the designated acquisition pixel is the campaign KPI.
     if "attributed_conversions" not in df.columns:
-        conv_cols = [c for c in df.columns
-                     if "conversion" in c and c not in _str_cols]
-        if conv_cols:
+        resolved = COLUMN_MAP.get(primary_conv_col, _snake(primary_conv_col)) if primary_conv_col else None
+        if resolved and resolved in df.columns:
             df["attributed_conversions"] = (
-                df[conv_cols]
-                .apply(pd.to_numeric, errors="coerce")
-                .fillna(0)
-                .sum(axis=1)
-                .astype(int)
+                pd.to_numeric(df[resolved], errors="coerce").fillna(0).astype(int)
             )
+        else:
+            if primary_conv_col and resolved not in df.columns:
+                logger.warning(
+                    "primary_conv_col %r (→ %r) not in report columns — "
+                    "falling back to conversion auto-sum",
+                    primary_conv_col, resolved,
+                )
+            conv_cols = [c for c in df.columns
+                         if "conversion" in c and c not in _str_cols]
+            if conv_cols:
+                df["attributed_conversions"] = (
+                    df[conv_cols]
+                    .apply(pd.to_numeric, errors="coerce")
+                    .fillna(0)
+                    .sum(axis=1)
+                    .astype(int)
+                )
 
     # media_type: derive from ad_group name when not present.
     # Luckyland ad groups follow LC_ACQ_TTD_US_{Display|Video}_...
@@ -355,6 +389,7 @@ def pull_ttd(
     inbox_id: str,
     *,
     subject_needle: str = TTD_SUBJECT_NEEDLE,
+    primary_conv_col: str | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """End-to-end: poll inbox for latest TTD report notification matching
     *subject_needle*, extract the download URL, download the CSV, and parse it.
@@ -362,6 +397,8 @@ def pull_ttd(
     Returns (df, meta) where meta includes execution_id, subject,
     and received_at.  Empty DataFrame if no matching message found
     or download fails.
+
+    `primary_conv_col` is forwarded to `parse_ttd_csv` — see its docstring.
     """
     messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
     if not messages:
@@ -415,7 +452,8 @@ def pull_ttd(
             return pd.DataFrame(), meta
 
         try:
-            df = parse_ttd_csv(content, execution_id=exec_id)
+            df = parse_ttd_csv(content, execution_id=exec_id,
+                               primary_conv_col=primary_conv_col)
         except Exception as exc:
             logger.warning("TTD CSV parse failed for exec %s: %s", exec_id, exc)
             return pd.DataFrame(), meta

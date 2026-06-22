@@ -1092,7 +1092,11 @@ def refresh_dv_ivt() -> int:
     return len(df)
 
 
-def _refresh_ttd_campaign(subject_needle: str, table: str) -> int:
+def _refresh_ttd_campaign(
+    subject_needle: str,
+    table: str,
+    primary_conv_col: str | None = None,
+) -> int:
     """Poll newsweek@agentmail.to for a TTD report whose subject contains
     *subject_needle*, download the XLSX/CSV, and upsert into *table*.
 
@@ -1101,6 +1105,9 @@ def _refresh_ttd_campaign(subject_needle: str, table: str) -> int:
     history.  Schema changes (column set drift) auto-recreate the table.
 
     Skips silently (returns 0) when agentmail credentials aren't set.
+
+    `primary_conv_col` — forwarded to `pull_ttd`/`parse_ttd_csv`; sets the
+    single authoritative conversion KPI column for this campaign.
     """
     logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
@@ -1112,7 +1119,11 @@ def _refresh_ttd_campaign(subject_needle: str, table: str) -> int:
         )
         return 0
 
-    df, meta = pull_ttd(api_key, inbox_id, subject_needle=subject_needle)
+    df, meta = pull_ttd(
+        api_key, inbox_id,
+        subject_needle=subject_needle,
+        primary_conv_col=primary_conv_col,
+    )
     if df.empty:
         logger.warning(
             "No TTD report found for %s (exec_id=%s)", table, meta.get("execution_id")
@@ -1152,12 +1163,23 @@ def _refresh_ttd_campaign(subject_needle: str, table: str) -> int:
 def refresh_ttd() -> int:
     """Poll for TTD Luckyland Casino report and upsert into ttd_luckyland."""
     from ttd_client import TTD_SUBJECT_NEEDLE
-    return _refresh_ttd_campaign(TTD_SUBJECT_NEEDLE, "ttd_luckyland")
+    # Luckyland KPI = IdentityAlliance Purchase pixel (not the auto-sum of all
+    # conversion columns, which overcounts by including pixel_01/03/ia_fp).
+    return _refresh_ttd_campaign(
+        TTD_SUBJECT_NEEDLE, "ttd_luckyland",
+        primary_conv_col=(
+            "usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions"
+        ),
+    )
 
 
 def refresh_ttd_chumba() -> int:
     """Poll for VGW Chumba Casino TTD report and upsert into ttd_chumba."""
-    return _refresh_ttd_campaign(CHUMBA_SUBJECT_NEEDLE, "ttd_chumba")
+    # Chumba KPI = pixel 01 (registrations) only, not pixel_01 + pixel_03.
+    return _refresh_ttd_campaign(
+        CHUMBA_SUBJECT_NEEDLE, "ttd_chumba",
+        primary_conv_col="01 - Total Click + View Conversions",
+    )
 
 
 # Hardcoded watch-list for the OpenSincera /publishers endpoint.
