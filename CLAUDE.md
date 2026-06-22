@@ -930,6 +930,20 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   that creates the test LIs + creatives + LICAs and reduces the control goal).
 
 ## GAM facts (network 22541732127)
+- **`ad_server_cpm_and_cpc_revenue` is NET of a ~10% Google fee on AdX
+  programmatic deals (Preferred Deal + Programmatic Guaranteed), not gross.**
+  Every PD/PG line's realized eCPM is exactly **0.90× the booked CPM** —
+  verified network-wide 2026-06-22 (123 `PREFERRED_DEAL` + 24 AdX-`STANDARD`/PG
+  lines all at 0.90; the Luckyland/Chumba `$6` PG deals report `$5.40`). The
+  metric maps from GAM's `AD_SERVER_GROSS_REVENUE`, but for AdX-transacted
+  demand Google's rev-share is already removed, so the stored figure
+  (`gam_campaigns.lifetime_revenue` / `revenue_*d`, and `gam_pmp_deals`) is
+  effectively **net**. **Direct sold at rate card (`PRICE_PRIORITY` and Direct
+  `STANDARD`) reports `1.00×` — already gross** (2,189 + 12 lines at 1.00). To
+  report **gross** booked revenue for PD/PG (Roger's ask 2026-06-22), use
+  `revenue ÷ 0.90` = delivered impressions × booked CPM (the `$<floor>`/rate
+  token). The dashboard's Direct + PMP revenue columns currently surface the
+  **net** figure.
 - **Line-item `start_time`/`end_time` are instants in the network tz
   (America/New_York), not UTC.** GAM ends a line at 23:59 ET on the flight's
   last day, so `end_time` for a 6/30 flight is `2026-07-01T03:59Z` — reading the
