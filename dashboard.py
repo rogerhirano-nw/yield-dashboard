@@ -4287,7 +4287,7 @@ if st.session_state.active_view == "campaigns":
                 count_label = f"{s['conversions']:,} conv." if s["conversions"] else "no data"
                 st.markdown(
                     f'<div class="nw-ttd-wrap">'
-                    f'<details class="nw-na nw-na--collapsible">'
+                    f'<details class="nw-na nw-na--collapsible" open>'
                     f'<summary class="nw-na-head">'
                     f'{title}'
                     f'<span class="nw-na-h-chev">›</span>'
