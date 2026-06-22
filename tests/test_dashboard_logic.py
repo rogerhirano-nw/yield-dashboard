@@ -922,3 +922,48 @@ def test_ttd_cpa_summary_daily_cpa_only_nonzero():
     assert len(s["daily_conversions"]) == 2
     assert len(s["daily_cpa"]) == 1          # only day 2 had conversions
     assert s["daily_cpa"][0][1] == 20.0      # $100 / 5 conv
+
+
+def test_ttd_cpa_summary_month_of():
+    """month_of restricts the summary to that calendar month; None = whole frame."""
+    df = _ttd_df([
+        {"date": "2026-05-30", "impressions": 1000, "clicks": 10,
+         "spend_usd": 50.0, "attributed_conversions": 5},
+        {"date": "2026-06-02", "impressions": 2000, "clicks": 20,
+         "spend_usd": 80.0, "attributed_conversions": 4},
+        {"date": "2026-06-10", "impressions": 3000, "clicks": 30,
+         "spend_usd": 120.0, "attributed_conversions": 6},
+    ])
+    s = ttd_cpa_summary(df, month_of=datetime.date(2026, 6, 15))
+    assert s["impressions"] == 5000          # only the two June rows
+    assert s["conversions"] == 10
+    assert abs(s["spend_usd"] - 200.0) < 0.01
+    assert s["date_min"] == datetime.date(2026, 6, 2)
+    assert s["date_max"] == datetime.date(2026, 6, 10)
+    assert len(s["daily_conversions"]) == 2
+    # A month with no rows → empty summary, all keys present
+    s2 = ttd_cpa_summary(df, month_of=datetime.date(2026, 7, 1))
+    assert s2["impressions"] == 0
+    assert s2["date_min"] is None
+    assert s2["by_ad_size"] == []
+    # Default (None) keeps the whole frame — unchanged behavior
+    assert ttd_cpa_summary(df)["impressions"] == 6000
+
+
+def test_ttd_cpa_summary_by_ad_size():
+    """by_ad_size breaks down on creative_size, sorted by spend desc; blanks skipped."""
+    df = _ttd_df([
+        {"date": "2026-06-01", "creative_size": "300x250", "media_type": "Display",
+         "impressions": 1000, "clicks": 20, "spend_usd": 100.0, "attributed_conversions": 4},
+        {"date": "2026-06-02", "creative_size": "728x90", "media_type": "Display",
+         "impressions": 2000, "clicks": 40, "spend_usd": 300.0, "attributed_conversions": 6},
+        {"date": "2026-06-03", "creative_size": "", "media_type": "Video",
+         "impressions": 5000, "clicks": 10, "spend_usd": 200.0, "attributed_conversions": 2},
+    ])
+    s = ttd_cpa_summary(df)
+    sizes = s["by_ad_size"]
+    assert [r["ad_size"] for r in sizes] == ["728x90", "300x250"]   # spend desc; blank skipped
+    assert sizes[0]["conversions"] == 6
+    assert abs(sizes[0]["cpa"] - 50.0) < 0.01       # 300 / 6
+    # by_media_type still present + keyed on media_type (unchanged)
+    assert {r["media_type"] for r in s["by_media_type"]} == {"Display", "Video"}

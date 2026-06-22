@@ -1254,7 +1254,8 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-ttd-trend { display: block; width: 100%; height: auto; }
 .nw-ttd-xax { display: flex; justify-content: space-between; font-size: 9px;
               color: var(--text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
-/* breakdown table */
+/* breakdown table(s) — "By ad size" / "By format" section titles + table */
+.nw-ttd-sec { margin-top: 16px; }
 .nw-ttd-table { width: 100%; border-collapse: collapse; font-size: 11.5px;
                 margin-top: 4px; }
 .nw-ttd-table th { font-size: 10px; letter-spacing: var(--track-eyebrow);
@@ -3216,13 +3217,13 @@ if st.session_state.active_view == "campaigns":
         _ttd_df = load("ttd_luckyland")
     except Exception:
         _ttd_df = pd.DataFrame()
-    _ttd_summary = dl.ttd_cpa_summary(_ttd_df)
+    _ttd_summary = dl.ttd_cpa_summary(_ttd_df, month_of=date.today())
 
     try:
         _ttd_chumba_df = load("ttd_chumba")
     except Exception:
         _ttd_chumba_df = pd.DataFrame()
-    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df)
+    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df, month_of=date.today())
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4168,9 +4169,10 @@ if st.session_state.active_view == "campaigns":
                     + '</div></div>'
                 )
 
-                # Trend charts (last 14 days): area for conversions, line for CPA.
-                daily_convs = s["daily_conversions"][-14:]
-                daily_cpa   = s["daily_cpa"][-14:]
+                # Trend charts over the current month (the summary is already
+                # month-scoped): area for conversions, line for CPA.
+                daily_convs = s["daily_conversions"]
+                daily_cpa   = s["daily_cpa"]
                 charts_html = ""
                 if daily_convs or daily_cpa:
                     conv_chart = _ttd_trend_svg(daily_convs, "Daily conversions", kind="area")
@@ -4178,33 +4180,39 @@ if st.session_state.active_view == "campaigns":
                     if conv_chart or cpa_chart:
                         charts_html = f'<div class="nw-ttd-charts">{conv_chart}{cpa_chart}</div>'
 
-                # Media type breakdown table
-                table_html = ""
-                if s["by_media_type"]:
-                    rows = ""
-                    for row in s["by_media_type"]:
-                        cpa_cell  = _fmt_money_cpa(row["cpa"])
-                        cvr_cell  = _fmt_pct(row["conv_rate"], dp=3)
-                        rows += (
-                            f'<tr>'
-                            f'<td>{row["media_type"]}</td>'
-                            f'<td>{_fmt_int(row["impressions"])}</td>'
-                            f'<td>{_fmt_int(row["clicks"])}</td>'
-                            f'<td>{_fmt_int(row["conversions"])}</td>'
-                            f'<td>{_fmt_money_cpa(row["spend_usd"])}</td>'
-                            f'<td>{cpa_cell}</td>'
-                            f'<td>{cvr_cell}</td>'
-                            f'</tr>'
-                        )
-                    table_html = (
-                        f'<table class="nw-ttd-table">'
-                        f'<thead><tr>'
-                        f'<th>Format</th><th>Impr.</th><th>Clicks</th>'
-                        f'<th>Conv.</th><th>Spend</th><th>CPA</th><th>CVR</th>'
-                        f'</tr></thead>'
-                        f'<tbody>{rows}</tbody>'
-                        f'</table>'
+                # Breakdown tables — by ad size (the creative_size column) first,
+                # then by format (media type). Same 7-column table; empty
+                # sections are skipped (ad size is empty when the report carries
+                # no creative sizes, e.g. video-only days).
+                def _ttd_break_table(rows, label_key, col0):
+                    if not rows:
+                        return ""
+                    body = "".join(
+                        '<tr>'
+                        f'<td>{row[label_key]}</td>'
+                        f'<td>{_fmt_int(row["impressions"])}</td>'
+                        f'<td>{_fmt_int(row["clicks"])}</td>'
+                        f'<td>{_fmt_int(row["conversions"])}</td>'
+                        f'<td>{_fmt_money_cpa(row["spend_usd"])}</td>'
+                        f'<td>{_fmt_money_cpa(row["cpa"])}</td>'
+                        f'<td>{_fmt_pct(row["conv_rate"], dp=3)}</td>'
+                        '</tr>'
+                        for row in rows
                     )
+                    return (
+                        '<table class="nw-ttd-table"><thead><tr>'
+                        f'<th>{col0}</th><th>Impr.</th><th>Clicks</th>'
+                        '<th>Conv.</th><th>Spend</th><th>CPA</th><th>CVR</th>'
+                        f'</tr></thead><tbody>{body}</tbody></table>'
+                    )
+
+                _size_tbl = _ttd_break_table(s.get("by_ad_size", []), "ad_size", "Ad size")
+                _fmt_tbl  = _ttd_break_table(s["by_media_type"], "media_type", "Format")
+                table_html = ""
+                if _size_tbl:
+                    table_html += f'<div class="nw-ttd-chart-title nw-ttd-sec">By ad size</div>{_size_tbl}'
+                if _fmt_tbl:
+                    table_html += f'<div class="nw-ttd-chart-title nw-ttd-sec">By format</div>{_fmt_tbl}'
 
                 # Accordion body
                 if empty:
