@@ -525,7 +525,11 @@ class GAMClient:
             return pd.DataFrame(columns=_cols)
         df["line_item_id"] = df["line_item_id"].astype(str).str.strip()
         df["deal_id"] = df["deal_id"].astype(str).str.strip()
-        df = df[df["deal_id"].ne("") & df["deal_id"].ne("0")]
+        # Keep only real numeric deal ids. GAM emits "(Not applicable)" for a line
+        # item's non-deal (open-auction / direct) delivery and 0/"" for no deal —
+        # none of those join, and writing "(Not applicable)" as a deal_id would be
+        # garbage. A PG LI's rows are all its deal, so this leaves it intact.
+        df = df[df["deal_id"].str.fullmatch(r"\d+") & df["deal_id"].ne("0")]
         if df.empty:
             return pd.DataFrame(columns=_cols)
         if "ad_server_impressions" in df.columns:

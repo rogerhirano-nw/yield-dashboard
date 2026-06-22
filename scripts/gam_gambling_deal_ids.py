@@ -71,50 +71,36 @@ def main() -> None:
         except Exception as e:
             print(f"\n[report] {deal_dim} report failed: {type(e).__name__}: {e}")
 
-    # 1b) Durable LI→deal map (validates gam_client.run_li_deal_map_report and
-    #     produces the backfill map). Wide window so every recently-delivering
-    #     deal LI shows. Printed as `DEALMAP <li> <deal>` for easy extraction.
+    # 1b) Gambling LI→deal backfill map. Validates gam_client.run_li_deal_map_report
+    #     (count of numeric-deal LIs network-wide), then prints the gambling-only
+    #     rows last as `DEALMAP <li> <deal> <name>` so they're fully visible in a
+    #     tailed run log. Wide window so every recently-delivering gambling LI
+    #     shows. (The earlier 3-day report already proved DEAL_ID == TTD deal_id;
+    #     the SOAP ProposalLineItem dump proved it carries no deal-id field, so
+    #     both are dropped here to keep the output small.)
+    import re
+    wide_start = end - timedelta(days=90)
     try:
-        wide_start = end - timedelta(days=60)
         dm = client.run_li_deal_map_report(wide_start, end)
-        print(f"\n=== LI→deal map (run_li_deal_map_report, {wide_start}..{end}) — {len(dm)} LIs ===")
-        for _, r in dm.iterrows():
-            print(f"DEALMAP {r['line_item_id']} {r['deal_id']}")
+        print(f"\n=== run_li_deal_map_report ({wide_start}..{end}) — {len(dm)} LIs with a numeric deal id ===")
     except Exception as e:
         print(f"\n[map] run_li_deal_map_report failed: {type(e).__name__}: {e}")
-
-    # 2) SOAP ProposalLineItemService — PG inventory lives here. Dump the fields
-    #    + a full serialization of the first gambling PLI so we can spot whatever
-    #    field carries the deal id.
     try:
-        from googleads import ad_manager  # type: ignore
-        from zeep.helpers import serialize_object  # type: ignore
-        sc = client._get_soap_client()
-        svc = sc.GetService("ProposalLineItemService", version=client._SOAP_API_VERSION)
-        sb = ad_manager.StatementBuilder(version=client._SOAP_API_VERSION)
-        sb.Where("isArchived = false").Limit(500)
-        printed = 0
-        while True:
-            resp = svc.getProposalLineItemsByStatement(sb.ToStatement())
-            results = list(getattr(resp, "results", None) or [])
-            if not results:
-                break
-            for li in results:
-                if not _is_gambling(getattr(li, "name", "")):
-                    continue
-                if printed == 0:
-                    fields = sorted(a for a in dir(li) if not a.startswith("_"))
-                    print("\n=== ProposalLineItem fields ===\n  " + ", ".join(fields))
-                    print("\n=== First gambling PLI (full serialize) ===")
-                    print(serialize_object(li))
-                print(f"\n[PLI] id={getattr(li, 'id', None)} | name={getattr(li, 'name', None)}")
-                printed += 1
-            sb.offset += sb.limit
-            if sb.offset >= int(getattr(resp, "totalResultSetSize", 0) or 0):
-                break
-        print(f"\n[PLI] {printed} gambling proposal line items")
+        named = client._run_report(
+            dimensions=["LINE_ITEM_ID", "LINE_ITEM_NAME", "DEAL_ID"],
+            metrics=["AD_SERVER_IMPRESSIONS"],
+            start_date=wide_start, end_date=end,
+        )
+        named["line_item_id"] = named["line_item_id"].astype(str).str.strip()
+        named["deal_id"] = named["deal_id"].astype(str).str.strip()
+        g = named[named["line_item_name"].map(_is_gambling)
+                  & named["deal_id"].map(lambda s: bool(re.fullmatch(r"\d+", s)) and s != "0")]
+        g = g.drop_duplicates(subset=["line_item_id", "deal_id"]).sort_values("line_item_id")
+        print(f"=== Gambling LI→deal backfill map — {len(g)} rows ===")
+        for _, r in g.iterrows():
+            print(f"DEALMAP {r['line_item_id']} {r['deal_id']} {r['line_item_name']}")
     except Exception as e:
-        print(f"\n[SOAP] ProposalLineItem dump failed: {type(e).__name__}: {e}")
+        print(f"\n[map] gambling named report failed: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
