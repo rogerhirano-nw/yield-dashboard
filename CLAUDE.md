@@ -915,6 +915,19 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
   diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
   that creates the test LIs + creatives + LICAs and reduces the control goal).
+- `docs/mediago_baidu_onboarding.md` — Baidu/MediaGo programmatic demand-partner
+  onboarding (2026-06). The full technical-questionnaire answer set + verified
+  evidence. **Key framing: the integration is via Magnite Demand Manager
+  (managed Prebid), server-side / Prebid Server** — so the RTB-protocol internals
+  (OpenRTB version, gzip, loss URL, `tmax`, QPS + throttling, `schain`, no-bid
+  handling) are **Magnite's PBS to answer, not Newsweek's** (this repo only knows
+  Magnite as a *reporting* source). Newsweek owns brand safety / fraud / creative
+  governance / privacy / supply chain / inventory. Carries the live-verified
+  findings (ads.txt 67 DIRECT/118 RESELLER + no `MANAGERDOMAIN`; consent: TCF v2
+  ✓ / legacy US-Privacy `1---` ✓ / **GPP not implemented**; DV IVT <0.72%; ~78M
+  ad-req/day → ~2–3k QPS peak ceiling) and the Newsweek action items (GPP
+  enablement, MediaGo ads.txt authorization, creative-appeal SLA, GAM blocklist
+  export, an Advertising-Quality policy page).
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
