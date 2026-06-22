@@ -16,8 +16,8 @@ import math
 import pandas as pd
 
 from dashboard_logic import (LONG_PREROLL_FORMAT, band, bench_red_cut,
-                             bench_target, bump_video_format,
-                             matches_long_preroll, ttd_cpa_summary)
+                             bench_target, bump_video_format, cpa_join_key,
+                             matches_long_preroll, ttd_cpa_for_li, ttd_cpa_summary)
 
 # Mirrors the production benchmarks_by_format settings at the time of the
 # 2026-06-10 incident: long-form video green ≥35 / red <34.9, plain video
@@ -995,3 +995,45 @@ def test_ttd_cpa_summary_ad_size_from_creative():
     # spend desc; the video creative (no WxH) is dropped
     assert [r["ad_size"] for r in s["by_ad_size"]] == ["728x90", "300x250"]
     assert s["by_ad_size"][0]["conversions"] == 6
+
+
+# ─── cpa_join_key / ttd_cpa_for_li (TTD ad_group ↔ GAM LI linkage) ──────────
+
+def test_cpa_join_key():
+    # Both the TTD ad_group and the GAM LI name reduce to the same key.
+    assert cpa_join_key(
+        "LC_ACQ_TTD_US_Display_PROS_Publisher_Newsweek_728x90-300x250_CasinoGamblers"
+    ) == "casino|728x90-300x250"
+    assert cpa_join_key(
+        "Newsweek_PG_Gambling_ADX_TTD_NA_NA_Luckyland_Test-Display-CasinoGamblers-JUNE-728x90-300x250_US_Display_$6_Team-USA_ILee"
+    ) == "casino|728x90-300x250"
+    assert cpa_join_key(
+        "Newsweek_PG_Gambling_ADX_TTD_NA_NA_Luckyland_Test-Display-SocialGamblers-JUNE-320x50_US_Display_$6_Team-USA_ILee"
+    ) == "social|320x50"
+    # Non-gambling / no size → None (no CPA block for these)
+    assert cpa_join_key("Newsweek_Direct_Apple_iPhone_Q326_Privacy7") is None
+    assert cpa_join_key("LC_ACQ_TTD_US_Video_PROS_Publisher_Newsweek_CasinoGamblers") is None
+    assert cpa_join_key(None) is None
+
+
+def test_ttd_cpa_for_li():
+    df = _ttd_df([
+        # matches "casino|728x90-300x250"
+        {"date": "2026-05-30", "ad_group": "X_Display_728x90-300x250_CasinoGamblers",
+         "spend_usd": 100.0, "attributed_conversions": 5},     # before window → excluded
+        {"date": "2026-06-02", "ad_group": "X_Display_728x90-300x250_CasinoGamblers",
+         "spend_usd": 200.0, "attributed_conversions": 4},
+        {"date": "2026-06-03", "ad_group": "X_Display_728x90-300x250_CasinoGamblers",
+         "spend_usd": 100.0, "attributed_conversions": 0},     # no conv → not in daily_cpa
+        # a different key — must not leak in
+        {"date": "2026-06-02", "ad_group": "X_Display_320x50_SocialGamblers",
+         "spend_usd": 999.0, "attributed_conversions": 9},
+    ])
+    info = ttd_cpa_for_li(df, "casino|728x90-300x250", start=datetime.date(2026, 6, 1))
+    assert info["conversions"] == 4                 # only the in-window casino row
+    assert abs(info["spend_usd"] - 300.0) < 0.01    # 200 + 100 (the 0-conv day still spends)
+    assert abs(info["cpa"] - 75.0) < 0.01           # 300 / 4
+    assert info["daily_cpa"] == [(datetime.date(2026, 6, 2), 50.0)]   # only the conv>0 day
+    # No match / no rows → None
+    assert ttd_cpa_for_li(df, "casino|970x250") is None
+    assert ttd_cpa_for_li(df, None) is None

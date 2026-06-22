@@ -650,6 +650,18 @@ Rules that survive any future restyle:
      Priority-flights render** (after `view_gam` is filtered), not at load time.
      Pinned by `test_ttd_cpa_summary_window` / `_by_ad_size` /
      `_ad_size_from_creative`.
+     **Per-LI CPA in the Direct drawer** (2026-06-22): the Direct LI drawer shows
+     a **CPA acquisition** block (CPA · conversions · daily-CPA chart) for the
+     gambling LIs that map to a TTD ad_group. There's no shared id (TTD has no
+     GAM `line_item_id`; `gam_campaigns` has no TTD `deal_id`), so the join is on
+     the two dimensions both names encode — **audience (Casino/Social) + ad
+     size** — via `dl.cpa_join_key` (`"casino|728x90-300x250"`), and
+     `dl.ttd_cpa_for_li(ttd_df, key, start=row.start_date)` aggregates that
+     ad_group from the LI's start. `dl.cpa_join_key` is None for every
+     non-gambling LI (and the video ad_groups with no pixel size), so only those
+     ~8 LIs get the block. `_ttd_trend_svg` is **hoisted** out of `_render_ttd_cpa`
+     so the drawer reuses the same chart. Pinned by `test_cpa_join_key` /
+     `test_ttd_cpa_for_li`.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all
