@@ -178,7 +178,7 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
 def list_ttd_messages(
     api_key: str,
     inbox_id: str,
-    limit: int = 10,
+    limit: int = 50,
     *,
     subject_needle: str = TTD_SUBJECT_NEEDLE,
 ) -> list[dict]:
