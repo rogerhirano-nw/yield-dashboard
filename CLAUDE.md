@@ -635,13 +635,15 @@ Rules that survive any future restyle:
      not a pixel size, so they drop out of the size table. On prod June data the
      sizes are 300x250 / 320x50 / 728x90. Replaced the old 5-equal-tiles +
      horizontal-bar-lists.
-     **Both cards are scoped to the CURRENT CALENDAR MONTH**
-     (`dl.ttd_cpa_summary(df, month_of=date.today())`, Roger 2026-06-22): the
-     `month_of` arg filters the frame to that year+month before any aggregation,
-     so totals / charts / breakdowns / date-range eyebrow are all month-to-date
-     (charts no longer cap at 14 days). `ttd_cpa_summary` returns `empty` when
-     the month has no rows yet (early in the month). Both behaviors pinned by
-     `test_ttd_cpa_summary_month_of` / `_by_ad_size`.
+     **Both cards show FLIGHT-TO-DATE** — the whole frame, no calendar window —
+     to match how the **Direct campaigns** read (they're lifetime / flight-to-
+     date, not a date range; there's no date filter on the Campaigns tab). Roger
+     briefly had them current-month (2026-06-22) then chose to match Direct, so
+     `dl.ttd_cpa_summary(df)` is called with **no** window. The optional
+     `month_of` arg (filters to a year+month before aggregation; pinned by
+     `test_ttd_cpa_summary_month_of`) is **left unused** — pass it if a
+     month-scoped view is ever wanted again. The ad-size breakdown is pinned by
+     `test_ttd_cpa_summary_by_ad_size` / `_ad_size_from_creative`.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all

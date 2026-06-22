@@ -6,12 +6,14 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
-- **TTD cards: current-month scope + ad-size breakdown.** Both Luckyland +
-  Chumba cards now show **only the current calendar month** —
-  `dl.ttd_cpa_summary(df, month_of=date.today())`; the new `month_of` arg filters
-  the frame to that year+month before any aggregation, so totals/charts/
-  breakdowns/date eyebrow are all month-to-date (the daily charts no longer cap
-  at 14 days). And when a card is opened it now shows a **by-ad-size** breakdown
+- **TTD cards: flight-to-date window + ad-size breakdown.** Both Luckyland +
+  Chumba cards show **flight-to-date** (the whole frame, no calendar window) to
+  match how the **Direct campaigns** read — Direct is lifetime / flight-to-date,
+  not a date range, and the Campaigns tab has no date filter. (Briefly shipped as
+  current-month via a new `month_of` arg, then switched to match Direct on
+  Roger's call; `month_of` stays as an optional, tested capability but is unused.
+  The daily charts no longer cap at 14 days.) And when a card is opened it now
+  shows a **by-ad-size** breakdown
   (`by_ad_size`) above the by-format table. Ad size is **parsed as a `WxH` token
   from the `creative` name** — the TTD tables have no `creative_size` column, so
   the first cut grouped on a column that didn't exist and showed nothing; size

@@ -3217,13 +3217,16 @@ if st.session_state.active_view == "campaigns":
         _ttd_df = load("ttd_luckyland")
     except Exception:
         _ttd_df = pd.DataFrame()
-    _ttd_summary = dl.ttd_cpa_summary(_ttd_df, month_of=date.today())
+    # Flight-to-date (whole frame), to match how the Direct campaigns read —
+    # they're lifetime, not a calendar window (Roger 2026-06-22). `month_of` is
+    # left unused; pass it if a month-scoped view is ever wanted again.
+    _ttd_summary = dl.ttd_cpa_summary(_ttd_df)
 
     try:
         _ttd_chumba_df = load("ttd_chumba")
     except Exception:
         _ttd_chumba_df = pd.DataFrame()
-    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df, month_of=date.today())
+    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df)
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4169,8 +4172,8 @@ if st.session_state.active_view == "campaigns":
                     + '</div></div>'
                 )
 
-                # Trend charts over the current month (the summary is already
-                # month-scoped): area for conversions, line for CPA.
+                # Trend charts over the full flight (all dates in the frame):
+                # area for conversions, line for CPA.
                 daily_convs = s["daily_conversions"]
                 daily_cpa   = s["daily_cpa"]
                 charts_html = ""
