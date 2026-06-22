@@ -212,6 +212,11 @@ _DEFAULT_SETTINGS: dict = {
     # under-delivery risks are still 2 weeks out when they're most fixable).
     "landing_window_days": 7,
     "landing_threshold_pct": 100.0,
+    # TTD acquisition CPA goal ($) — the target the Priority-flights cards
+    # (Luckyland / Chumba) grade against: the CPA hero shows over/under vs this,
+    # and the Daily CPA chart draws a dashed reference line at it. $150 per Roger
+    # (2026-06-22); editable in Settings → Direct.
+    "ttd_cpa_goal": 150.0,
     # Stale-deals "still live" window (PMP signals): a deal stops counting as
     # live (and drops out of Stale deals) once it hasn't appeared in the GAM
     # bid feed for this many days. gam_deal_bid_daily retains ~7 days, so 7 ≈
@@ -1223,6 +1228,9 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 /* Reuses the .nw-na accordion shell + .kpi-tile/.kpi-row atoms;
    adds a bar-chart row, a breakdown table, and a date-range eyebrow. */
 .nw-ttd-wrap { margin: 6px 0 1rem; }
+/* Side-by-side: fill the st.columns column. The shared .nw-na 760px cap is for
+   the single-column Needs-attention / PMP-signals cards and stays put. */
+.nw-ttd-wrap .nw-na { max-width: none; }
 .nw-ttd-date { font-size: 10px; letter-spacing: var(--track-eyebrow);
                text-transform: uppercase; color: var(--text-muted);
                margin-bottom: 4px; }
@@ -1243,6 +1251,7 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-ttd-cpa-v { font-family: var(--font-display); font-weight: 700; font-size: 42px;
                 line-height: 1.02; margin: 2px 0; font-variant-numeric: tabular-nums; }
 .nw-ttd-cpa-s { font-size: 11.5px; color: var(--text-muted); }
+.nw-ttd-goal { font-size: 11.5px; color: var(--text-muted); margin-top: 5px; }
 .nw-ttd-stats { display: grid; grid-template-columns: repeat(2, auto); gap: 8px 26px; }
 .nw-ttd-st-l { font-size: 9.5px; letter-spacing: var(--track-eyebrow);
                text-transform: uppercase; color: var(--text-muted); }
@@ -4054,7 +4063,7 @@ if st.session_state.active_view == "campaigns":
 
             # Hoisted out of _render_ttd_cpa so the Direct LI drawer's CPA block
             # can reuse it too (same uniform-regime line/area chart).
-            def _ttd_trend_svg(series, title, kind="area"):
+            def _ttd_trend_svg(series, title, kind="area", ref=None):
                 """Compact SVG trend chart for a daily [(date, val), …] series —
                 neutral ink line + faint area wash + baseline + round end-dot, in
                 the UNIFORM regime (no preserveAspectRatio) so the dot never
@@ -4065,6 +4074,15 @@ if st.session_state.active_view == "campaigns":
                     return ""
                 vals = [v for _, v in pts]
                 mx = max(vals) or 1
+                ref_v = None
+                if ref is not None:
+                    try:
+                        ref_v = float(ref)
+                        ref_v = ref_v if ref_v > 0 else None
+                    except (TypeError, ValueError):
+                        ref_v = None
+                    if ref_v is not None and ref_v > mx:
+                        mx = ref_v          # keep the goal line on-canvas
                 W, H, top, bot, pad = 600, 116, 12, 22, 8
                 n = len(pts)
                 xs = [pad + i / (n - 1) * (W - 2 * pad) for i in range(n)]
@@ -4079,10 +4097,18 @@ if st.session_state.active_view == "campaigns":
                 dot = (f'<path d="M{xs[-1]:.1f} {ys[-1]:.1f}h0" fill="none" '
                        'style="stroke:var(--text-secondary)" stroke-width="5.5" '
                        'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+                ref_line = ""
+                if ref_v is not None:
+                    ry = (H - bot) - (ref_v / mx) * ((H - bot) - top)
+                    ry = max(top, min(H - bot, ry))
+                    ref_line = (f'<line x1="{pad}" y1="{ry:.1f}" x2="{W - pad}" y2="{ry:.1f}" '
+                                'style="stroke:var(--text-muted)" stroke-width="1" '
+                                'stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>')
                 svg = (f'<svg viewBox="0 0 {W} {H}" class="nw-ttd-trend" '
                        f'xmlns="http://www.w3.org/2000/svg">{area}'
                        f'<line x1="{pad}" y1="{H - bot:.1f}" x2="{W - pad}" y2="{H - bot:.1f}" '
                        'style="stroke:var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+                       f'{ref_line}'
                        f'<polyline points="{poly}" fill="none" style="stroke:var(--text-secondary)" '
                        'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" '
                        f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
@@ -4095,6 +4121,7 @@ if st.session_state.active_view == "campaigns":
             def _render_ttd_cpa(
                 summary: dict,
                 title: str = "Luckyland Casino · TTD Acquisition",
+                goal=None,
             ) -> None:
                 """Render a TTD CPA accordion — the "Editorial scorecard" layout.
 
@@ -4168,11 +4195,28 @@ if st.session_state.active_view == "campaigns":
                 # figure; Conversions / Spend / Conv. rate / Clicks sit quiet
                 # beside it.
                 cpa_s = f'{cpa_sub} vs prior period' if cpa_sub else ''
+                # Goal verdict ($ over/under) — reuses the kpi-delta colors
+                # (under = green / over = red), so it obeys the two-reds rule.
+                _gv = None
+                if goal:
+                    try:
+                        _gv = float(goal)
+                        _gv = _gv if _gv > 0 else None
+                    except (TypeError, ValueError):
+                        _gv = None
+                goal_html = ""
+                if _gv:
+                    gd = dl.cpa_goal_delta(s["cpa"], _gv)
+                    if gd is not None:
+                        _flag = (f'<span class="kpi-delta-down">✗ ${gd["delta"]:,.2f} over</span>'
+                                 if gd["over"] else
+                                 f'<span class="kpi-delta-up">✓ ${gd["delta"]:,.2f} under</span>')
+                        goal_html = f'<div class="nw-ttd-goal">Goal ${_gv:,.0f} {_flag}</div>'
                 hero_html = (
                     '<div class="nw-ttd-hero">'
                     '<div class="nw-ttd-cpa"><div class="nw-ttd-cpa-l">Cost per acquisition</div>'
                     f'<div class="nw-ttd-cpa-v">{_fmt_money_cpa(s["cpa"])}</div>'
-                    f'<div class="nw-ttd-cpa-s">{cpa_s}</div></div>'
+                    f'<div class="nw-ttd-cpa-s">{cpa_s}</div>{goal_html}</div>'
                     '<div class="nw-ttd-stats">'
                     + _ttd_stat("Conversions", _fmt_int(s["conversions"]), conv_sub)
                     + _ttd_stat("Spend", _fmt_money_cpa(s["spend_usd"]) if s["spend_usd"] else "—", spend_sub)
@@ -4189,7 +4233,8 @@ if st.session_state.active_view == "campaigns":
                 charts_html = ""
                 if daily_convs or daily_cpa:
                     conv_chart = _ttd_trend_svg(daily_convs, "Daily conversions", kind="area")
-                    cpa_chart  = _ttd_trend_svg(daily_cpa, "Daily CPA", kind="line")
+                    _cpa_title = f"Daily CPA · goal ${_gv:,.0f}" if _gv else "Daily CPA"
+                    cpa_chart  = _ttd_trend_svg(daily_cpa, _cpa_title, kind="line", ref=_gv)
                     if conv_chart or cpa_chart:
                         charts_html = f'<div class="nw-ttd-charts">{conv_chart}{cpa_chart}</div>'
 
@@ -4501,11 +4546,20 @@ if st.session_state.active_view == "campaigns":
                 _m = view_gam["order_name"].astype(str).str.contains(order_token, case=False, na=False)
                 _s = pd.to_datetime(view_gam.loc[_m, "start_date"], errors="coerce").dropna()
                 return _s.min().date() if not _s.empty else None
-            _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")))
-            _render_ttd_cpa(
-                dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
-                title="VGW Chumba Casino · TTD Acquisition",
-            )
+            # Side-by-side on desktop (st.columns collapses to stacked on mobile);
+            # the .nw-ttd-wrap override lifts the shared .nw-na 760px cap so each
+            # card fills its column. Both graded against the configured CPA goal.
+            _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
+            _pf_cols = st.columns(2)
+            with _pf_cols[0]:
+                _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")),
+                                goal=_ttd_goal)
+            with _pf_cols[1]:
+                _render_ttd_cpa(
+                    dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
+                    title="VGW Chumba Casino · TTD Acquisition",
+                    goal=_ttd_goal,
+                )
 
             # ---------- Campaign table ----------
             # Remaining impressions (None when no goal is set)
@@ -8627,6 +8681,27 @@ if st.session_state.active_view == "configure":
                     unsafe_allow_html=True,
                 )
 
+            # ── 3a′: TTD acquisition CPA goal — Priority-flights target.
+            _ttd_goal_existing = float(_s.get("ttd_cpa_goal", 150.0) or 150.0)
+            st.markdown(
+                f'<div class="cfg-card-title" style="margin-top:14px">TTD CPA goal</div>'
+                f'<div style="font-size:11px;color:var(--text-secondary);">'
+                f'Target for the Luckyland / Chumba Priority-flights cards — the CPA hero '
+                f'flags over/under this and the Daily CPA chart marks it.</div>',
+                unsafe_allow_html=True,
+            )
+            _tg1, _tg2 = st.columns([1, 5])
+            with _tg1:
+                _ttd_cpa_goal_edit = st.number_input(
+                    "TTD CPA goal ($)",
+                    value=_ttd_goal_existing,
+                    min_value=0.0,
+                    step=5.0,
+                    format="%.2f",
+                    key="settings_ttd_cpa_goal",
+                    label_visibility="collapsed",
+                )
+
             # ── 3b: Benchmarks by Format — with usage count and explicit blanks.
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">Benchmarks by format '
@@ -9014,6 +9089,7 @@ if st.session_state.active_view == "configure":
                     }
 
                 _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
+                _new_ttd_cpa_goal = float(_ttd_cpa_goal_edit) if _ttd_cpa_goal_edit is not None else 150.0
 
                 _new_status_colors = []
                 for _, r in _status_color_editor.iterrows():
@@ -9105,6 +9181,7 @@ if st.session_state.active_view == "configure":
                     "direct_sources": _new_direct,
                     "benchmarks_by_format": _new_benchmarks,
                     "pacing_target_pct":   _new_pacing_target,
+                    "ttd_cpa_goal":        _new_ttd_cpa_goal,
                     "status_colors":       _new_status_colors,
                     "seller_colors":       _new_seller_colors,
                     "gam_network_id":      (_gam_network_id_edit or "").strip(),

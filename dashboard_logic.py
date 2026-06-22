@@ -1082,6 +1082,22 @@ _CPA_AUD_RE = re.compile(r"(casino|social)gamblers", re.I)
 _CPA_SIZE_RE = re.compile(r"(\d{2,4}x\d{2,4}(?:-\d{2,4}x\d{2,4})*)")
 
 
+def cpa_goal_delta(cpa, goal):
+    """Compare a CPA to the acquisition goal for the Priority-flights cards.
+    Returns ``{"over": bool, "delta": abs($ from goal)}`` — `over` True when the
+    CPA exceeds the goal (bad), with the absolute distance. None when either
+    side is missing/NaN or the goal isn't positive, so the card only shows a
+    verdict when both a CPA and a real goal exist. Exactly at goal = not over."""
+    try:
+        c = float(cpa)
+        g = float(goal)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(c) or pd.isna(g) or g <= 0:
+        return None
+    return {"over": c > g, "delta": abs(c - g)}
+
+
 def cpa_join_key(name):
     """Key linking a TTD ad_group ↔ a GAM line-item name for the gambling CPA
     flights: ``"<audience>|<size>"`` (e.g. ``"casino|728x90-300x250"``). None

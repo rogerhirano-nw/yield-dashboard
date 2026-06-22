@@ -1000,6 +1000,20 @@ def test_ttd_cpa_summary_ad_size_from_creative():
 
 # ─── cpa_join_key / ttd_cpa_for_li (TTD ad_group ↔ GAM LI linkage) ──────────
 
+def test_cpa_goal_delta():
+    from dashboard_logic import cpa_goal_delta
+    r = cpa_goal_delta(206.49, 150)
+    assert r["over"] is True and abs(r["delta"] - 56.49) < 0.01
+    r = cpa_goal_delta(73.14, 150)
+    assert r["over"] is False and abs(r["delta"] - 76.86) < 0.01
+    assert cpa_goal_delta(150, 150) == {"over": False, "delta": 0.0}   # at goal = not over
+    assert cpa_goal_delta("206.49", "150")["over"] is True             # numeric strings coerce
+    # missing / non-positive goal → None (no verdict shown)
+    assert cpa_goal_delta(None, 150) is None
+    assert cpa_goal_delta(100, 0) is None
+    assert cpa_goal_delta(100, None) is None
+
+
 def test_cpa_join_key():
     # Both the TTD ad_group and the GAM LI name reduce to the same key.
     assert cpa_join_key(

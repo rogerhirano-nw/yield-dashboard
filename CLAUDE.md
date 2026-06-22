@@ -652,6 +652,17 @@ Rules that survive any future restyle:
      Priority-flights render** (after `view_gam` is filtered), not at load time.
      Pinned by `test_ttd_cpa_summary_window` / `_by_ad_size` /
      `_ad_size_from_creative`.
+     **The two cards render side-by-side** (`st.columns(2)`, 2026-06-22) — the
+     `.nw-ttd-wrap .nw-na` rule lifts the shared `.nw-na` 760px cap so each fills
+     its column (the cap stays for the single-column Needs-attention / PMP-signals
+     cards); `st.columns` collapses to stacked on mobile. **Each is graded against
+     a CPA goal** (`ttd_cpa_goal` setting, default **$150**, editable in Settings →
+     Direct): the CPA hero shows a `✓ under` (green) / `✗ over` (red) verdict via
+     `dl.cpa_goal_delta`, and `_ttd_trend_svg` draws a dashed reference line at the
+     goal on the Daily CPA chart (`ref=` param, folded into the y-scale so it stays
+     on-canvas; default `None` leaves the drawer's reuse of the helper untouched).
+     Over/under reuses the `kpi-delta-up/down` colors, so it obeys the two-reds
+     rule. Pinned by `test_cpa_goal_delta`.
      **Per-LI CPA in the Direct drawer** (2026-06-22): the Direct LI drawer shows
      a **CPA acquisition** block (CPA · conversions · daily-CPA chart) for the
      gambling LIs with TTD data. **The join is the GAM/TTD shared `deal_id`.**

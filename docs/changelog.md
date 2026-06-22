@@ -6,6 +6,17 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
+- **Priority-flights cards: side-by-side + $150 CPA goal.** The two TTD
+  acquisition cards (Luckyland / Chumba) now render **side-by-side** on desktop
+  (`st.columns(2)`; a `.nw-ttd-wrap .nw-na` override lifts the shared 760px cap so
+  each fills its column — the cap stays for the single-column Needs-attention /
+  PMP-signals cards), and collapse to stacked on mobile. Each card is **graded
+  against a CPA goal** (new `ttd_cpa_goal` setting, default **$150**, editable in
+  Settings → Direct): the CPA hero shows a `✓ $X under` / `✗ $X over` verdict
+  (`dl.cpa_goal_delta`, reusing the green/red delta colors), and the Daily CPA
+  chart draws a dashed reference line at the goal (`_ttd_trend_svg(ref=…)`, folded
+  into the y-scale; default off so the Direct drawer's reuse is unchanged). Pinned
+  by `test_cpa_goal_delta`.
 - **Direct LI end dates were a day late (UTC→ET fix).** The drawer's Flight cell
   showed a 6/30 flight ending **7/1**. `gam_client._ts_to_date` read GAM's
   line-item `end_time` in **UTC**, but GAM ends a line at 23:59 in the network
