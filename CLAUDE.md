@@ -597,12 +597,17 @@ Rules that survive any future restyle:
      shrink — all removed.
   2. **KPI tiles, tiered — kept as CARDS** (Roger: "we must keep the cards",
      2026-06-21; the first cut dissolved them into a borderless hero+hairline
-     band and was reverted). One wrapping flex row, `.nw-kpi-cards`, reusing the
+     band and was reverted). `.nw-kpi-cards`, reusing the
      original `.kpi-tile` anatomy: **Revenue · Avg pacing** are **double-width
-     `.nw-hero-tile`s** (`flex:2`, 40px value, 3px ink rule) and the other
+     `.nw-hero-tile`s** (40px value, 3px ink rule) and the other
      **seven** QA metrics — Impressions · Viewability · Attention · SIVT · GIVT ·
-     VCR · CTR — are standard tiles (`flex:1`). So the band reads **2 big + 7
-     small in one aligned row** on desktop and wraps cleanly on mobile. This
+     VCR · CTR — are standard tiles. **On desktop (≥1025px) it's a deterministic
+     11-column grid** (heroes `grid-column: span 2`, the 7 quality 1 each =
+     2×2 + 7) so the band is **one row that never wraps and CTR always sits next
+     to VCR** (Roger 2026-06-22 — the prior wrapping flex orphaned CTR onto a
+     second line). **Below 1025px it's a wrapping flex** (`flex:2` heroes /
+     `flex:1` quality), pinned 2-up heroes + ~3-up quality on mobile. So the band
+     reads **2 big + 7 small** with hierarchy. This
      replaced the flat **9-up `.nw-kpi-row`** equal grid (the PMP tab still uses
      `.nw-kpi-row--pmp`). **All nine tiles use the shared `.kpi-spark`
      sparkline in the UNIFORM regime** (`_sparkline_svg(..., uniform=True)`,
