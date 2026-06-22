@@ -11,7 +11,13 @@ Throwaway — not wired into the app; safe to delete after we read the output.
 """
 from __future__ import annotations
 
+import os
+import sys
 from datetime import date, timedelta
+
+# Run as `python scripts/…`, so only scripts/ is on sys.path — add the repo root
+# so `gam_client` (at the root) imports.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google.ads import admanager_v1
 
