@@ -976,7 +976,10 @@ def ttd_cpa_summary(df: pd.DataFrame, start=None, end=None) -> dict:
     _c = df.columns.tolist()
     impr   = int(pd.to_numeric(df["impressions"], errors="coerce").fillna(0).sum()) if "impressions" in _c else 0
     clicks = int(pd.to_numeric(df["clicks"],      errors="coerce").fillna(0).sum()) if "clicks"      in _c else 0
-    spend  = float(pd.to_numeric(df["spend_usd"], errors="coerce").fillna(0.0).sum()) if "spend_usd"  in _c else 0.0
+    # Use Media Cost (media_spend_usd) to match the manual CPA reports; fall
+    # back to Advertiser Cost (spend_usd) only when the media column is absent.
+    _spend_col = "media_spend_usd" if "media_spend_usd" in _c else "spend_usd"
+    spend  = float(pd.to_numeric(df[_spend_col], errors="coerce").fillna(0.0).sum()) if _spend_col in _c else 0.0
     convs  = int(pd.to_numeric(df.get("attributed_conversions", pd.Series(dtype=float)),
                                errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
 
@@ -996,7 +999,7 @@ def ttd_cpa_summary(df: pd.DataFrame, start=None, end=None) -> dict:
                     continue
                 g_impr  = int(pd.to_numeric(grp.get("impressions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
                 g_clk   = int(pd.to_numeric(grp.get("clicks",      pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
-                g_spend = float(pd.to_numeric(grp.get("spend_usd", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+                g_spend = float(pd.to_numeric(grp.get(_spend_col, pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
                 g_conv  = int(pd.to_numeric(grp.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
                 out.append({
                     label_key:     str(key),
@@ -1022,7 +1025,7 @@ def ttd_cpa_summary(df: pd.DataFrame, start=None, end=None) -> dict:
             d = row["date"]
             if d not in day_agg:
                 day_agg[d] = {"spend": 0.0, "convs": 0}
-            day_agg[d]["spend"] += float(pd.to_numeric(row.get("spend_usd",  0), errors="coerce") or 0)
+            day_agg[d]["spend"] += float(pd.to_numeric(row.get(_spend_col, 0), errors="coerce") or 0)
             day_agg[d]["convs"] += int(pd.to_numeric(row.get("attributed_conversions", 0), errors="coerce") or 0) if "attributed_conversions" in _c else 0
         for d in sorted(day_agg):
             n = day_agg[d]["convs"]
@@ -1143,13 +1146,16 @@ def _ttd_cpa_aggregate(df):
     ``{cpa, conversions, spend_usd, daily_cpa: [(date, cpa), …]}`` — shared by
     the deal-id (`ttd_cpa_for_deal`) and name-token (`ttd_cpa_for_li`) joins."""
     conv  = int(pd.to_numeric(df.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
-    spend = float(pd.to_numeric(df.get("spend_usd", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+    # Use Media Cost (media_spend_usd) to match the manual CPA reports; fall
+    # back to Advertiser Cost (spend_usd) only when the media column is absent.
+    _sc = "media_spend_usd" if "media_spend_usd" in df.columns else "spend_usd"
+    spend = float(pd.to_numeric(df.get(_sc, pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
     daily_cpa: list[tuple] = []
     if "date" in df.columns:
         agg: dict[object, dict] = {}
         for _, r in df.iterrows():
             e = agg.setdefault(r["date"], {"spend": 0.0, "convs": 0})
-            e["spend"] += float(pd.to_numeric(r.get("spend_usd", 0), errors="coerce") or 0)
+            e["spend"] += float(pd.to_numeric(r.get(_sc, 0), errors="coerce") or 0)
             e["convs"] += int(pd.to_numeric(r.get("attributed_conversions", 0), errors="coerce") or 0)
         for d in sorted(agg):
             if agg[d]["convs"] > 0:
