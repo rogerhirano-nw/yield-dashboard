@@ -1173,10 +1173,9 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
 .nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
 .nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
-/* Hero tiles reuse the shared `.kpi-spark` sparkline (stretch regime, like
-   every other tile) so all nine end-dots render identically — an earlier
-   uniform-regime hero sparkline put the end-dot in a different spot from the
-   rest and read as "off". */
+/* Hero tiles reuse the shared `.kpi-spark` sparkline like every other tile,
+   so all nine render identically. All nine use the UNIFORM regime (round
+   end-dots); see the `.kpi-spark` rule below. */
 /* Priority-flight (TTD) cards are demoted + collapsed by default — opt out
    of the desktop force-open so the <details> toggle works at all widths. */
 @media (min-width: 641px) {
@@ -1202,7 +1201,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .kpi-value { font-family: var(--font-display); font-size: 23px; font-weight: 700;
              line-height: 1.05; margin: 7px 0 2px;
              color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.kpi-spark { display: block; width: 100%; height: 22px; margin-top: var(--space-2); }
+/* Uniform-regime sparkline: width-filled, height from the viewBox aspect
+   (proportional), so the round end-dot never elongates. height:auto +
+   viewBox intrinsic ratio = no anisotropic stretch. */
+.kpi-spark { display: block; width: 100%; height: auto; margin-top: var(--space-2); }
 .kpi-target{ font-size: 10.5px; color: var(--text-muted); }
 .kpi-delta-up    { color: var(--state-positive-muted); }
 .kpi-delta-down  { color: var(--state-critical); }
@@ -4300,19 +4302,26 @@ if st.session_state.active_view == "campaigns":
             # state never rides the trend stroke. Polarity/health still
             # surfaces in the delta subtitle (_trend_delta_label) and the
             # dashed target reference line drawn by _sparkline_svg.
-            _rev_spark  = _sparkline_svg(_rev_series)  if _rev_series  else ""
-            _impr_spark = _sparkline_svg(_impr_series) if _impr_series else ""
+            # All KPI-tile sparklines use the UNIFORM regime (proportional
+            # scaling), NOT the stretch regime. Stretch (preserveAspectRatio=
+            # "none") squishes the viewBox to the tile's aspect, which on iOS
+            # Safari elongates the round end-cap into a little horizontal dash
+            # (the "distorted dots", Roger 2026-06-22). Uniform scales x and y
+            # equally, so the end-dot stays a true circle — same as the drawer
+            # small-multiples. `.kpi-spark` (width:100%, height:auto) sizes them.
+            _rev_spark  = _sparkline_svg(_rev_series, uniform=True)  if _rev_series  else ""
+            _impr_spark = _sparkline_svg(_impr_series, uniform=True) if _impr_series else ""
             _pace_spark = _sparkline_svg(
-                _pace_series, target=float(_pacing_target),
+                _pace_series, target=float(_pacing_target), uniform=True,
             ) if _pace_series else ""
             # Viewability + CTR targets source from Configure → Benchmarks by
             # format → Display, so changing them in the Settings tab updates
             # both the sparkline reference line and the subtitle string.
             _view_target = _view_bench
             _view_spark = _sparkline_svg(
-                _view_series, target=_view_target,
+                _view_series, target=_view_target, uniform=True,
             ) if _view_series else ""
-            _ctr_spark = _sparkline_svg(_ctr_series) if _ctr_series else ""
+            _ctr_spark = _sparkline_svg(_ctr_series, uniform=True) if _ctr_series else ""
 
             # Attention sparkline + subtitle. Target = 100 (DV's industry
             # median, the same value used for the per-row column's color
@@ -4320,17 +4329,17 @@ if st.session_state.active_view == "campaigns":
             # but reads correctly as e.g. "▲ 2.1pp · target 100".
             _attn_target = 100.0
             _attn_spark = _sparkline_svg(
-                _attn_series, target=_attn_target,
+                _attn_series, target=_attn_target, uniform=True,
             ) if _attn_series else ""
 
             # SIVT + GIVT sparklines. Both target = 1% (industry tolerance,
             # top of green band) — drawn as the reference line.
             _ivt_target = 1.0
             _sivt_spark = _sparkline_svg(
-                _sivt_series, target=_ivt_target,
+                _sivt_series, target=_ivt_target, uniform=True,
             ) if _sivt_series else ""
             _givt_spark = _sparkline_svg(
-                _givt_series, target=_ivt_target,
+                _givt_series, target=_ivt_target, uniform=True,
             ) if _givt_series else ""
 
             # VCR sparkline. Target sources from Configure → Benchmarks by
@@ -4340,7 +4349,7 @@ if st.session_state.active_view == "campaigns":
                           .get("Video", {}) or {}).get("vcr_pct")
             _vcr_target = float(_vcr_bench) if _vcr_bench is not None else 70.0
             _vcr_spark = _sparkline_svg(
-                _vcr_series, target=_vcr_target,
+                _vcr_series, target=_vcr_target, uniform=True,
             ) if _vcr_series else ""
 
             _view_target_str = f"{_view_target:g}%"
