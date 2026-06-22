@@ -1171,6 +1171,14 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   margin: 4px 0 20px; align-items: stretch; }
 .nw-kpi-cards .kpi-tile { flex: 1 1 132px; }
 .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
+/* Desktop: lay the band as ONE deterministic row — heroes span two columns,
+   the seven quality tiles one each (2×2 + 7 = 11 columns) — so it never wraps
+   and CTR always sits right after VCR (Roger 2026-06-22). Below 1025px it
+   stays the wrapping flex above. */
+@media (min-width: 1025px) {
+  .nw-kpi-cards { display: grid; grid-template-columns: repeat(11, 1fr); }
+  .nw-kpi-cards .kpi-tile.nw-hero-tile { grid-column: span 2; }
+}
 .nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
 .nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
 /* Hero tiles reuse the shared `.kpi-spark` sparkline like every other tile,
