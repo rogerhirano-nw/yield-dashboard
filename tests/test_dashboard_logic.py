@@ -967,3 +967,26 @@ def test_ttd_cpa_summary_by_ad_size():
     assert abs(sizes[0]["cpa"] - 50.0) < 0.01       # 300 / 6
     # by_media_type still present + keyed on media_type (unchanged)
     assert {r["media_type"] for r in s["by_media_type"]} == {"Display", "Video"}
+
+
+def test_ttd_cpa_summary_ad_size_from_creative():
+    """When there's no creative_size column, ad size is parsed (WxH) from the
+    creative name; video creatives (a duration, no pixel size) are excluded."""
+    df = _ttd_df([
+        {"date": "2026-06-01",
+         "creative": "LuckylandCasino_ACQ_TTD_LC4_Celtra_PROG_DisplayBanner_300x250_May_Big Reels.",
+         "media_type": "Display", "impressions": 1000, "clicks": 20,
+         "spend_usd": 100.0, "attributed_conversions": 4},
+        {"date": "2026-06-02",
+         "creative": "LuckylandCasino_ACQ_TTD_LC4_Celtra_PROG_DisplayBanner_728x90_May_Best Seat.",
+         "media_type": "Display", "impressions": 2000, "clicks": 40,
+         "spend_usd": 300.0, "attributed_conversions": 6},
+        {"date": "2026-06-03",
+         "creative": "LuckylandCasino_ACQ_TTD_LC4_GenericEvergreen_Prog1_RT_30s",
+         "media_type": "Video", "impressions": 5000, "clicks": 10,
+         "spend_usd": 200.0, "attributed_conversions": 2},
+    ])
+    s = ttd_cpa_summary(df)
+    # spend desc; the video creative (no WxH) is dropped
+    assert [r["ad_size"] for r in s["by_ad_size"]] == ["728x90", "300x250"]
+    assert s["by_ad_size"][0]["conversions"] == 6

@@ -12,9 +12,12 @@ and why" index, keyed by PR. Newest first.
   the frame to that year+month before any aggregation, so totals/charts/
   breakdowns/date eyebrow are all month-to-date (the daily charts no longer cap
   at 14 days). And when a card is opened it now shows a **by-ad-size** breakdown
-  (`by_ad_size`, grouped on the `creative_size` column, blanks skipped) above the
-  by-format table. Logic in `dashboard_logic`, pinned by
-  `test_ttd_cpa_summary_month_of` / `_by_ad_size` (66/66 pass).
+  (`by_ad_size`) above the by-format table. Ad size is **parsed as a `WxH` token
+  from the `creative` name** — the TTD tables have no `creative_size` column, so
+  the first cut grouped on a column that didn't exist and showed nothing; size
+  actually lives in the creative string (`…_DisplayBanner_300x250_May_…`). Video
+  creatives (a duration, no pixel size) drop out. Logic in `dashboard_logic`,
+  pinned by `test_ttd_cpa_summary_*` (67/67 pass).
 - **TTD CPA cards → "Editorial scorecard."** The expanded Luckyland / Chumba
   priority-flight views were a 5-equal-tile row + two horizontal **bar-lists**
   (one row per day) + a media table — the one spot still reading like a raw
