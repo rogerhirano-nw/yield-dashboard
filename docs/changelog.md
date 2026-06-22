@@ -6,6 +6,22 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
+- **Gambling CPA join switched to `deal_id` (robust).** The per-LI CPA join is
+  now keyed on the **GAM/TTD shared `deal_id`** instead of brittle name tokens.
+  A throwaway GAM diagnostic confirmed GAM's report **`DEAL_ID` dimension equals
+  the TTD feed's `deal_id`** for our PG flights (live: LI 7328197875 → deal
+  4211124 = TTD Chumba; 7315575731 → 4215587 = TTD Luckyland) — exactly the VGW
+  Casino-Gamblers LI whose CPA block wasn't showing, because its name
+  (`Chumba-Casino-Gamblers` / `320x50`) couldn't reduce to the TTD ad_group via
+  `cpa_join_key`. `gam_campaigns` now carries a **`deal_id`** column
+  (`GAMClient.run_li_deal_map_report` — a separate `[LINE_ITEM_ID, DEAL_ID]`
+  report, since DEAL_ID is incompatible with the delivery report's metric set —
+  left-merged in `refresh_gam`), and `dl.ttd_cpa_for_deal` aggregates the
+  matching TTD rows. The name-token join (`cpa_join_key` / `ttd_cpa_for_li`) is
+  kept as a fallback. Prod backfilled for the live gambling LIs so the blocks
+  show immediately. Pinned by `test_ttd_cpa_for_deal`. (`PROGRAMMATIC_DEAL_ID`
+  isn't a valid v1 dimension; SOAP ProposalLineItem carries no deal-id field —
+  the report dimension is the only source.)
 - **Per-LI CPA in the Direct drawer.** The Direct LI drawer now shows a **CPA
   acquisition** block — CPA, conversions, and a **daily-CPA chart** — for the
   gambling LIs that map to a TTD ad_group. The TTD feed has no GAM

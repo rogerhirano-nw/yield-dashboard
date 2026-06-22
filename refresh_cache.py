@@ -426,6 +426,23 @@ def refresh_gam() -> int:
         logger.warning("GAM report came back empty — nothing to write")
         return 0
 
+    # Attach the programmatic DEAL_ID per LI (separate report — DEAL_ID is
+    # incompatible with the delivery report's metric set). GAM's DEAL_ID equals
+    # the TTD feed's deal_id for our PG flights, so the gambling CPA join keys
+    # LINE_ITEM ↔ TTD by deal id instead of brittle name tokens. Left-merge
+    # keeps every campaigns row; non-deal LIs get deal_id = NA.
+    if "deal_id" not in df.columns:
+        try:
+            deal_map = gam.run_li_deal_map_report(seven_days_ago, yesterday)
+        except Exception:
+            logger.exception("deal map report failed — gam_campaigns.deal_id left empty")
+            deal_map = pd.DataFrame(columns=["line_item_id", "deal_id"])
+        df["line_item_id"] = df["line_item_id"].astype(str)
+        if not deal_map.empty:
+            df = df.merge(deal_map, on="line_item_id", how="left")
+        else:
+            df["deal_id"] = pd.NA
+
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     df["source"] = "gam"
     df["campaign_type"] = "direct"

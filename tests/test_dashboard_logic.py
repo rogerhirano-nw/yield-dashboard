@@ -17,7 +17,8 @@ import pandas as pd
 
 from dashboard_logic import (LONG_PREROLL_FORMAT, band, bench_red_cut,
                              bench_target, bump_video_format, cpa_join_key,
-                             matches_long_preroll, ttd_cpa_for_li, ttd_cpa_summary)
+                             matches_long_preroll, ttd_cpa_for_deal,
+                             ttd_cpa_for_li, ttd_cpa_summary)
 
 # Mirrors the production benchmarks_by_format settings at the time of the
 # 2026-06-10 incident: long-form video green ≥35 / red <34.9, plain video
@@ -1037,3 +1038,32 @@ def test_ttd_cpa_for_li():
     # No match / no rows → None
     assert ttd_cpa_for_li(df, "casino|970x250") is None
     assert ttd_cpa_for_li(df, None) is None
+
+
+def test_ttd_cpa_for_deal():
+    # deal_id join — immune to the ad_group name drift cpa_join_key needs. The
+    # ad_group spellings here would NOT reduce to the LI's name key, but the
+    # shared deal_id binds them.
+    df = _ttd_df([
+        {"date": "2026-05-30", "deal_id": "4211124", "ad_group": "whatever",
+         "spend_usd": 100.0, "attributed_conversions": 5},     # before window → excluded
+        {"date": "2026-06-02", "deal_id": "4211124", "ad_group": "whatever",
+         "spend_usd": 200.0, "attributed_conversions": 4},
+        {"date": "2026-06-03", "deal_id": "4211124", "ad_group": "whatever",
+         "spend_usd": 100.0, "attributed_conversions": 0},     # no conv → not in daily_cpa
+        {"date": "2026-06-02", "deal_id": "4215587", "ad_group": "other",
+         "spend_usd": 999.0, "attributed_conversions": 9},     # different deal — must not leak
+    ])
+    info = ttd_cpa_for_deal(df, "4211124", start=datetime.date(2026, 6, 1))
+    assert info["conversions"] == 4
+    assert abs(info["spend_usd"] - 300.0) < 0.01
+    assert abs(info["cpa"] - 75.0) < 0.01
+    assert info["daily_cpa"] == [(datetime.date(2026, 6, 2), 50.0)]
+    # int deal_id and a float-suffixed ".0" id both normalize and match
+    assert ttd_cpa_for_deal(df, 4211124, start=datetime.date(2026, 6, 1))["conversions"] == 4
+    assert ttd_cpa_for_deal(df, "4211124.0", start=datetime.date(2026, 6, 1))["conversions"] == 4
+    # blank / 0 / missing deal, or a frame with no deal_id column → None
+    assert ttd_cpa_for_deal(df, None) is None
+    assert ttd_cpa_for_deal(df, "0") is None
+    assert ttd_cpa_for_deal(df, "9999999") is None
+    assert ttd_cpa_for_deal(_ttd_df([{"date": "2026-06-02", "spend_usd": 1.0}]), "4211124") is None
