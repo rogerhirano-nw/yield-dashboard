@@ -487,6 +487,55 @@ class GAMClient:
         )
         return agg[_cols]
 
+    def run_li_deal_map_report(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """Map each delivering line item to its programmatic DEAL_ID.
+
+        Pulled as a *separate* report because DEAL_ID is incompatible with the
+        main delivery report's metric set (same constraint that forces the
+        INVENTORY_FORMAT_NAME / VIDEO_AD_DURATION split) and, joined into the
+        delivery dimensions, would multiply rows LINE_ITEM × deal.
+
+        Returns DataFrame columns: line_item_id, deal_id — one row per LI, the
+        deal it delivered most impressions through (an LI normally maps to a
+        single PG deal; the impression sort just makes it deterministic if not).
+        Open-auction / no-deal rows (DEAL_ID 0 or blank) are dropped. Empty
+        frame on error or when the SDK lacks the DEAL_ID enum, so the downstream
+        merge is a no-op (deal_id simply stays NA).
+
+        GAM's DEAL_ID equals the TTD feed's deal_id for our PG flights (verified
+        2026-06-22 against the live Luckyland/Chumba test LIs), which is what
+        lets the gambling CPA join key LINE_ITEM ↔ TTD by deal id instead of
+        brittle name tokens.
+        """
+        _cols = ["line_item_id", "deal_id"]
+        if not hasattr(_D, "DEAL_ID"):
+            logger.info("run_li_deal_map_report: DEAL_ID not in SDK enum — skipping")
+            return pd.DataFrame(columns=_cols)
+        try:
+            df = self._run_report(
+                dimensions=["LINE_ITEM_ID", "DEAL_ID"],
+                metrics=["AD_SERVER_IMPRESSIONS"],
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception:
+            logger.exception("run_li_deal_map_report failed — skipping")
+            return pd.DataFrame(columns=_cols)
+        if df.empty or "line_item_id" not in df.columns or "deal_id" not in df.columns:
+            return pd.DataFrame(columns=_cols)
+        df["line_item_id"] = df["line_item_id"].astype(str).str.strip()
+        df["deal_id"] = df["deal_id"].astype(str).str.strip()
+        df = df[df["deal_id"].ne("") & df["deal_id"].ne("0")]
+        if df.empty:
+            return pd.DataFrame(columns=_cols)
+        if "ad_server_impressions" in df.columns:
+            df["ad_server_impressions"] = pd.to_numeric(
+                df["ad_server_impressions"], errors="coerce").fillna(0)
+            df = df.sort_values("ad_server_impressions", ascending=False)
+        agg = df.drop_duplicates(subset=["line_item_id"], keep="first")
+        logger.info("GAM LI→deal map: %d LIs with a deal id", len(agg))
+        return agg[_cols].reset_index(drop=True)
+
     def run_lifetime_delivery(self) -> pd.DataFrame:
         """
         Fetch cumulative delivery metrics per line item over a 2-year window.

@@ -5626,32 +5626,41 @@ if st.session_state.active_view == "campaigns":
                 chart_html = _drawer_delivery_chart(row)
                 sm_html = _drawer_small_multiples(row)
 
-                # CPA acquisition block — only the gambling LIs that map to a TTD
-                # ad_group (audience + ad-size) get one; dl.cpa_join_key returns
-                # None for every other line. Windowed from this LI's start_date,
-                # and routed to the right TTD frame by the order name.
+                # CPA acquisition block — only the gambling LIs with TTD data get
+                # one. Primary join is the GAM/TTD shared deal_id (robust against
+                # name drift); the cpa_join_key name-token match is the fallback
+                # for any LI still missing a deal_id (e.g. before the sweep
+                # populates it). Both windowed from this LI's start_date.
                 _cpa_html = ""
-                _cpa_key = dl.cpa_join_key(row.get("line_item_name"))
-                if _cpa_key:
-                    _cpa_ord = str(row.get("order_name") or "").lower()
-                    _cpa_src = (_ttd_df if "luckyland" in _cpa_ord
-                                else (_ttd_chumba_df if ("chumba" in _cpa_ord or "vgw" in _cpa_ord) else None))
-                    _cpa_info = (dl.ttd_cpa_for_li(_cpa_src, _cpa_key, start=row.get("start_date"))
-                                 if _cpa_src is not None else None)
-                    if _cpa_info:
-                        _cpa_v = f'${_cpa_info["cpa"]:,.2f}' if _cpa_info["cpa"] is not None else "—"
-                        _cpa_chart = _ttd_trend_svg(_cpa_info["daily_cpa"], "Daily CPA", kind="line")
-                        _cpa_html = (
-                            '<div class="nw-li-cpa">'
-                            '<div class="nw-li-cpa-head">CPA acquisition · TTD</div>'
-                            '<div class="nw-li-cpa-stats">'
-                            f'<div class="cell"><span class="k">CPA</span><span class="v">{_cpa_v}</span></div>'
-                            f'<div class="cell"><span class="k">Conversions</span>'
-                            f'<span class="v">{_cpa_info["conversions"]:,}</span></div>'
-                            '</div>'
-                            f'{_cpa_chart}'
-                            '</div>'
-                        )
+                _cpa_info = None
+                _deal_id = row.get("deal_id")
+                for _src in (_ttd_df, _ttd_chumba_df):
+                    if _src is not None and not _src.empty:
+                        _cpa_info = dl.ttd_cpa_for_deal(_src, _deal_id, start=row.get("start_date"))
+                        if _cpa_info:
+                            break
+                if _cpa_info is None:
+                    _cpa_key = dl.cpa_join_key(row.get("line_item_name"))
+                    if _cpa_key:
+                        _cpa_ord = str(row.get("order_name") or "").lower()
+                        _cpa_src = (_ttd_df if "luckyland" in _cpa_ord
+                                    else (_ttd_chumba_df if ("chumba" in _cpa_ord or "vgw" in _cpa_ord) else None))
+                        if _cpa_src is not None:
+                            _cpa_info = dl.ttd_cpa_for_li(_cpa_src, _cpa_key, start=row.get("start_date"))
+                if _cpa_info:
+                    _cpa_v = f'${_cpa_info["cpa"]:,.2f}' if _cpa_info["cpa"] is not None else "—"
+                    _cpa_chart = _ttd_trend_svg(_cpa_info["daily_cpa"], "Daily CPA", kind="line")
+                    _cpa_html = (
+                        '<div class="nw-li-cpa">'
+                        '<div class="nw-li-cpa-head">CPA acquisition · TTD</div>'
+                        '<div class="nw-li-cpa-stats">'
+                        f'<div class="cell"><span class="k">CPA</span><span class="v">{_cpa_v}</span></div>'
+                        f'<div class="cell"><span class="k">Conversions</span>'
+                        f'<span class="v">{_cpa_info["conversions"]:,}</span></div>'
+                        '</div>'
+                        f'{_cpa_chart}'
+                        '</div>'
+                    )
                 # Consolidated identity + spec card (Option C) — leads with the
                 # friendly name, GAM-ID chip, and the raw convention string, then
                 # hero pacing tiles + a tinted detail grid. The name + raw string

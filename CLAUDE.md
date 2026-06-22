@@ -652,16 +652,26 @@ Rules that survive any future restyle:
      `_ad_size_from_creative`.
      **Per-LI CPA in the Direct drawer** (2026-06-22): the Direct LI drawer shows
      a **CPA acquisition** block (CPA · conversions · daily-CPA chart) for the
-     gambling LIs that map to a TTD ad_group. There's no shared id (TTD has no
-     GAM `line_item_id`; `gam_campaigns` has no TTD `deal_id`), so the join is on
-     the two dimensions both names encode — **audience (Casino/Social) + ad
-     size** — via `dl.cpa_join_key` (`"casino|728x90-300x250"`), and
-     `dl.ttd_cpa_for_li(ttd_df, key, start=row.start_date)` aggregates that
-     ad_group from the LI's start. `dl.cpa_join_key` is None for every
-     non-gambling LI (and the video ad_groups with no pixel size), so only those
-     ~8 LIs get the block. `_ttd_trend_svg` is **hoisted** out of `_render_ttd_cpa`
-     so the drawer reuses the same chart. Pinned by `test_cpa_join_key` /
-     `test_ttd_cpa_for_li`.
+     gambling LIs with TTD data. **The join is the GAM/TTD shared `deal_id`.**
+     GAM's report **`DEAL_ID` dimension equals the TTD feed's `deal_id`** for our
+     PG flights (verified 2026-06-22: live LI 7328197875 → deal 4211124 = TTD
+     Chumba; 7315575731 → 4215587 = TTD Luckyland) — so `gam_campaigns` now
+     carries a **`deal_id`** column (`GAMClient.run_li_deal_map_report`, a
+     *separate* `[LINE_ITEM_ID, DEAL_ID]` report — DEAL_ID is incompatible with
+     the delivery report's metric set and would multiply rows — left-merged in
+     `refresh_gam`), and `dl.ttd_cpa_for_deal(ttd_df, row.deal_id,
+     start=row.start_date)` aggregates the matching TTD rows from the LI's start.
+     `PROGRAMMATIC_DEAL_ID` is **not** a valid v1 dimension; the SOAP
+     ProposalLineItem carries no deal-id field, so the report dimension is the
+     only source. The deal_id is normalized through `dl._norm_deal_id` (strips a
+     `.0` float suffix — the #151 hazard). **The old name-token join
+     (`dl.cpa_join_key` → `"casino|728x90-300x250"` → `dl.ttd_cpa_for_li`) is kept
+     as a fallback** for any LI still missing a deal_id; it's brittle precisely
+     because the GAM LI and TTD ad_group disagree on AE token (RShore↔ILee), the
+     `Casino-Gamblers` hyphen, and ad-size taxonomy — which is why deal_id is now
+     primary. `_ttd_trend_svg` is **hoisted** out of `_render_ttd_cpa` so the
+     drawer reuses the same chart. Pinned by `test_ttd_cpa_for_deal` /
+     `test_cpa_join_key` / `test_ttd_cpa_for_li`.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all

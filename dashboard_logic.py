@@ -1096,28 +1096,36 @@ def cpa_join_key(name):
     return f"{a.group(1).lower()}|{s.group(1)}"
 
 
-def ttd_cpa_for_li(df, key, start=None, end=None):
-    """Aggregate the TTD rows whose ad_group matches `key` (cpa_join_key) into a
-    per-LI CPA summary for the line-item drawer:
-    ``{cpa, conversions, spend_usd, daily_cpa: [(date, cpa), …]}``. Windowed to
-    [start, end] (dates; either may be None). None when `key` is None or no
-    matching rows fall in the window — so the drawer shows a CPA block only for
-    the gambling LIs that actually have TTD data."""
-    if df is None or df.empty or key is None or "ad_group" not in df.columns:
-        return None
+def _norm_deal_id(v) -> str:
+    """Normalize a deal id for joining — string, stripped, trailing ``.0`` gone
+    (the #151 float-suffix hazard: a numeric read of an int id stringifies as
+    ``"4211124.0"`` and never matches ``"4211124"``)."""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _ttd_cpa_window(df, start, end):
+    """Coerce `date` to dates and clamp to [start, end] (either may be None)."""
+    if "date" not in df.columns:
+        return df
     df = df.copy()
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
-        df = df.dropna(subset=["date"])
-        if start is not None:
-            df = df[df["date"].map(lambda d: d >= start)]
-        if end is not None:
-            df = df[df["date"].map(lambda d: d <= end)]
-    if df.empty:
-        return None
-    df = df[df["ad_group"].map(lambda n: cpa_join_key(n) == key)]
-    if df.empty:
-        return None
+    df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+    df = df.dropna(subset=["date"])
+    if start is not None:
+        df = df[df["date"].map(lambda d: d >= start)]
+    if end is not None:
+        df = df[df["date"].map(lambda d: d <= end)]
+    return df
+
+
+def _ttd_cpa_aggregate(df):
+    """Roll a filtered + windowed TTD frame into the per-LI CPA summary dict
+    ``{cpa, conversions, spend_usd, daily_cpa: [(date, cpa), …]}`` — shared by
+    the deal-id (`ttd_cpa_for_deal`) and name-token (`ttd_cpa_for_li`) joins."""
     conv  = int(pd.to_numeric(df.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
     spend = float(pd.to_numeric(df.get("spend_usd", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
     daily_cpa: list[tuple] = []
@@ -1136,3 +1144,43 @@ def ttd_cpa_for_li(df, key, start=None, end=None):
         "spend_usd":   spend,
         "daily_cpa":   daily_cpa,
     }
+
+
+def ttd_cpa_for_deal(df, deal_id, start=None, end=None):
+    """Per-LI CPA summary keyed by the GAM/TTD shared **DEAL_ID** — the robust
+    join. GAM's report DEAL_ID equals the TTD feed's `deal_id` for our PG
+    flights, so this sidesteps every failure mode of the name-token join
+    (`cpa_join_key`): RShore↔ILee re-trafficking, the `Casino-Gamblers` hyphen,
+    and the GAM-vs-TTD ad-size taxonomies. Same shape as `ttd_cpa_for_li`.
+    None when `deal_id` is blank/0, the frame has no `deal_id` column, or no
+    rows match the window."""
+    if df is None or df.empty or "deal_id" not in df.columns:
+        return None
+    key = _norm_deal_id(deal_id)
+    if not key or key.lower() in {"0", "nan", "none", "<na>"}:
+        return None
+    df = df[df["deal_id"].map(_norm_deal_id) == key]
+    if df.empty:
+        return None
+    df = _ttd_cpa_window(df, start, end)
+    if df.empty:
+        return None
+    return _ttd_cpa_aggregate(df)
+
+
+def ttd_cpa_for_li(df, key, start=None, end=None):
+    """Aggregate the TTD rows whose ad_group matches `key` (cpa_join_key) into a
+    per-LI CPA summary for the line-item drawer:
+    ``{cpa, conversions, spend_usd, daily_cpa: [(date, cpa), …]}``. Windowed to
+    [start, end] (dates; either may be None). None when `key` is None or no
+    matching rows fall in the window. **Name-token fallback** — used only when
+    the LI has no `deal_id` (`ttd_cpa_for_deal` is the primary join)."""
+    if df is None or df.empty or key is None or "ad_group" not in df.columns:
+        return None
+    df = _ttd_cpa_window(df.copy(), start, end)
+    if df.empty:
+        return None
+    df = df[df["ad_group"].map(lambda n: cpa_join_key(n) == key)]
+    if df.empty:
+        return None
+    return _ttd_cpa_aggregate(df)
