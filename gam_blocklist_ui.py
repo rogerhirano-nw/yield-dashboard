@@ -385,6 +385,17 @@ class GAMBlocklistBrowser:
         rewrote the page entirely" case that needs a human to update
         _PROTECTION_URL_CANDIDATES.
         """
+        # Per-candidate timeout for the "Advertiser URLs" element to appear.
+        # Replaces the previous 20s hardcoded sleep. Polls instead of waiting
+        # blindly — happy path returns as soon as the element is visible
+        # (typically 4-10s), and the candidate-rejection path waits up to
+        # this many seconds before deciding the URL is wrong. 45s comfortably
+        # covers the slow-GAM window that broke run #34 on 2026-06-22 at
+        # 04:04 EDT (transient: probe minutes later got the element back in
+        # ~7s on the same URL chain).
+        from playwright.sync_api import TimeoutError as PWTimeout
+        _PER_CANDIDATE_TIMEOUT_MS = 45_000
+
         for i, url_fmt in enumerate(_PROTECTION_URL_CANDIDATES):
             url = url_fmt.format(network_id=self.network_id,
                                  protection_id=protection_id)
@@ -392,8 +403,11 @@ class GAMBlocklistBrowser:
                 print(f"  [browser] trying URL candidate {i}: {url}",
                       file=sys.stderr)
             page.goto(url, wait_until="domcontentloaded")
-            # GAM is a heavy React SPA; let it hydrate.
-            self._sleep(f"post-nav settle (candidate {i})", 20.0)
+            # Short initial settle for the React shell to render the
+            # navigation chrome; if we landed on a wrong page (e.g.
+            # Delivery → Orders), the login-redirect-marker selector
+            # below will fire fast on signin redirects.
+            self._sleep(f"initial settle (candidate {i})", 3.0)
 
             # Login redirect check happens regardless of which candidate —
             # no URL fallback can recover from session expiry.
@@ -404,25 +418,32 @@ class GAMBlocklistBrowser:
                     f"establish the profile at {self.profile_dir}."
                 )
 
-            # Sanity check: does this page look like a Protection detail page?
+            # Sanity check: poll for "Advertiser URLs" text up to 45s.
+            # Playwright's wait_for returns the moment the element is
+            # visible; we're not paying the full timeout cost when the
+            # page renders normally. The wait fails fast on wrong pages
+            # too — there's no "Advertiser URLs" anywhere on Delivery →
+            # Orders, so the wait times out and we move to the next
+            # candidate without retrying the same wrong page.
             try:
-                body = page.inner_text("body")[:20000]
-            except Exception:
-                body = ""
-            if "Advertiser URLs" in body:
+                page.locator('text="Advertiser URLs"').first.wait_for(
+                    state="visible", timeout=_PER_CANDIDATE_TIMEOUT_MS,
+                )
                 if i > 0:
                     self.auto_recovered_url = url
                     print(f"  [browser] AUTO-RECOVERED via candidate {i}. "
                           f"Update GAM_PROTECTION_DETAIL_URL_FMT.",
                           file=sys.stderr)
                 return url
-            if self.debug:
-                page.screenshot(
-                    path=str(self.profile_dir / f"debug-url-candidate-{i}-failed.png"),
-                    full_page=True,
-                )
-            print(f"  [browser] candidate {i} didn't land on a Protection detail page "
-                  f"(no 'Advertiser URLs' heading) — trying next", file=sys.stderr)
+            except PWTimeout:
+                if self.debug:
+                    page.screenshot(
+                        path=str(self.profile_dir / f"debug-url-candidate-{i}-failed.png"),
+                        full_page=True,
+                    )
+                print(f"  [browser] candidate {i}: 'Advertiser URLs' didn't "
+                      f"appear within {_PER_CANDIDATE_TIMEOUT_MS//1000}s — trying next",
+                      file=sys.stderr)
 
         raise RuntimeError(
             f"None of {len(_PROTECTION_URL_CANDIDATES)} known Protection URL "
