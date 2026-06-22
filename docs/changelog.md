@@ -6,6 +6,15 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
+- **Direct LI end dates were a day late (UTC→ET fix).** The drawer's Flight cell
+  showed a 6/30 flight ending **7/1**. `gam_client._ts_to_date` read GAM's
+  line-item `end_time` in **UTC**, but GAM ends a line at 23:59 in the network
+  tz (America/New_York) — so `2026-06-30T23:59 ET` = `…T03:59Z` took the UTC
+  date (7/1). Now converted to `America/New_York` before `.date()`. Only ends
+  rolled (starts are 00:00 ET, same UTC day); PMP deal dates were already fine
+  (SOAP path reads y/m/d directly). The derived Completed/Delivering status,
+  which uses the same date, was also a day late. Pinned by `tests/test_gam_dates.py`;
+  prod repopulated via a Direct refresh.
 - **Gambling CPA join switched to `deal_id` (robust).** The per-LI CPA join is
   now keyed on the **GAM/TTD shared `deal_id`** instead of brittle name tokens.
   A throwaway GAM diagnostic confirmed GAM's report **`DEAL_ID` dimension equals

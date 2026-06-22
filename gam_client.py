@@ -20,6 +20,7 @@ import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from google.ads import admanager_v1
@@ -101,14 +102,25 @@ def _enum_name(val) -> str:
     return name if name else str(val)
 
 
+# GAM's network timezone. Line-item start/end times are instants — GAM ends a
+# line item at 23:59 on the flight's last day *in this zone* — so the calendar
+# date must be read here, not in UTC. Reading in UTC rolled a 6/30 23:59 ET end
+# to 7/1 (and the derived status stayed "Delivering" a day too long).
+_GAM_TZ = ZoneInfo("America/New_York")
+
+
 def _ts_to_date(ts) -> Optional[str]:
-    """Convert a protobuf Timestamp or Python datetime to a YYYY-MM-DD string."""
+    """Convert a protobuf Timestamp or Python datetime to a YYYY-MM-DD string,
+    in GAM's network timezone (America/New_York) — see _GAM_TZ."""
     if ts is None:
         return None
     if isinstance(ts, datetime):
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(_GAM_TZ)
         return ts.date().isoformat()
     try:
-        return datetime.fromtimestamp(ts.seconds, tz=timezone.utc).date().isoformat()
+        return (datetime.fromtimestamp(ts.seconds, tz=timezone.utc)
+                .astimezone(_GAM_TZ).date().isoformat())
     except Exception:
         return None
 

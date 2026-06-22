@@ -917,6 +917,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   that creates the test LIs + creatives + LICAs and reduces the control goal).
 
 ## GAM facts (network 22541732127)
+- **Line-item `start_time`/`end_time` are instants in the network tz
+  (America/New_York), not UTC.** GAM ends a line at 23:59 ET on the flight's
+  last day, so `end_time` for a 6/30 flight is `2026-07-01T03:59Z` — reading the
+  date in UTC rolls it to 7/1 (and the date-derived Completed/Delivering status
+  lags a day). `gam_client._ts_to_date` converts to `_GAM_TZ` before `.date()`;
+  keep any new timestamp→date conversion on that path. (Starts are 00:00 ET, same
+  UTC day, so only ends rolled; PMP/proposal dates use the SOAP `_soap_date_to_iso`
+  path, which reads y/m/d directly and was never affected.)
 - The network has exactly **two yield groups**: `display` (id 680328) and
   `video` (id 680331). Both are **100% Open Bidding** — every ad source has
   `yieldIntegrationType: OPEN_BIDDING`. There is no Mediation traffic, so any
