@@ -1,0 +1,54 @@
+name: Refresh TTD (Luckyland + Chumba)
+
+# Triggered manually for ad-hoc TTD-only refreshes (e.g. backfilling
+# missed days) without running the full sweep.
+# Runs in ~30s (agentmail poll + XLSX download + parse).
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  refresh-ttd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - run: python refresh_cache.py --mode=ttd
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+
+      - run: python refresh_cache.py --mode=ttd-chumba
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+
+      - name: Check DB (row counts + date ranges)
+        run: |
+          python - <<'PYEOF'
+          import os, sqlalchemy
+          url = os.environ["DATABASE_URL"]
+          engine = sqlalchemy.create_engine(url)
+          with engine.connect() as conn:
+              for tbl in ("ttd_luckyland", "ttd_chumba"):
+                  try:
+                      n = conn.execute(sqlalchemy.text(f'SELECT COUNT(*) FROM "{tbl}"')).scalar()
+                      r = conn.execute(sqlalchemy.text(f'SELECT MIN(date), MAX(date) FROM "{tbl}"')).fetchone()
+                      print(f"{tbl}: {n} rows | {r[0]} to {r[1]}")
+                  except Exception as e:
+                      print(f"{tbl}: ERROR — {e}")
+          PYEOF
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
