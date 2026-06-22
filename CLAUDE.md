@@ -622,7 +622,13 @@ Rules that survive any future restyle:
      Luckyland + Chumba TTD CPA accordions, **demoted + collapsed** via
      `.nw-na--collapsible` (a modifier that opts out of the desktop force-open
      so the `<details>` toggle works at all widths). They used to render
-     force-open and dominate the "overall" view.
+     force-open and dominate the "overall" view. **Expanded, each is the
+     "Editorial scorecard" layout** (`_render_ttd_cpa`, 2026-06-22; chosen from a
+     3-direction mock): a **CPA hero** figure + a quiet 4-stat grid
+     (Conversions/Spend/Conv. rate/Clicks), two **SVG trend charts**
+     (`_ttd_trend_svg` — area = daily conversions, line = daily CPA, uniform
+     regime so the end-dot stays round), then the media-type table. Replaced the
+     old 5-equal-tiles + horizontal-bar-lists.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all

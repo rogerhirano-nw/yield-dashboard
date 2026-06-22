@@ -1226,11 +1226,7 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-ttd-date { font-size: 10px; letter-spacing: var(--track-eyebrow);
                text-transform: uppercase; color: var(--text-muted);
                margin-bottom: 4px; }
-.nw-ttd-kpi-row { display: grid; gap: 8px; margin-bottom: 12px;
-                  grid-template-columns: repeat(5, 1fr); }
-.nw-ttd-kpi-row .kpi-value { font-size: 17px; white-space: nowrap; overflow: hidden;
-                              text-overflow: ellipsis; }
-/* bar chart container */
+/* trend chart container (area conversions + line CPA, side by side) */
 .nw-ttd-charts { display: grid; grid-template-columns: 1fr 1fr;
                  gap: 10px; margin-bottom: 12px; }
 .nw-ttd-chart { background: var(--surface-1); border: 1px solid var(--border);
@@ -1238,16 +1234,26 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-ttd-chart-title { font-size: 10px; letter-spacing: var(--track-eyebrow);
                       text-transform: uppercase; color: var(--text-secondary);
                       font-weight: 600; margin-bottom: 6px; }
-.nw-ttd-bars { display: flex; flex-direction: column; gap: 3px; }
-.nw-ttd-bar-row { display: flex; align-items: center; gap: 6px;
-                  font-size: 10.5px; color: var(--text-secondary); }
-.nw-ttd-bar-label { flex: 0 0 32px; text-align: right;
-                    font-variant-numeric: tabular-nums; }
-.nw-ttd-bar-track { flex: 1; height: 7px; background: var(--surface-2);
-                    border-radius: 3px; overflow: hidden; }
-.nw-ttd-bar-fill  { display: block; height: 100%; border-radius: 3px;
-                    background: var(--text-secondary); }
-.nw-ttd-bar-val   { flex: 0 0 50px; font-variant-numeric: tabular-nums; }
+/* Editorial scorecard: CPA hero + supporting stat grid + SVG trend charts
+   (replaces the 5-tile row and the horizontal bar-lists). */
+.nw-ttd-hero { display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
+               margin-bottom: 14px; }
+.nw-ttd-cpa-l { font-size: 10px; letter-spacing: var(--track-eyebrow);
+                text-transform: uppercase; color: var(--text-secondary); }
+.nw-ttd-cpa-v { font-family: var(--font-display); font-weight: 700; font-size: 42px;
+                line-height: 1.02; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.nw-ttd-cpa-s { font-size: 11.5px; color: var(--text-muted); }
+.nw-ttd-stats { display: grid; grid-template-columns: repeat(2, auto); gap: 8px 26px; }
+.nw-ttd-st-l { font-size: 9.5px; letter-spacing: var(--track-eyebrow);
+               text-transform: uppercase; color: var(--text-muted); }
+.nw-ttd-st-v { font-family: var(--font-display); font-size: 19px; font-weight: 700;
+               font-variant-numeric: tabular-nums; }
+.nw-ttd-st-d { font-size: 10px; }
+/* SVG trend chart: UNIFORM scaling (no preserveAspectRatio) so the end-dot
+   stays round — same regime as the KPI/drawer charts. */
+.nw-ttd-trend { display: block; width: 100%; height: auto; }
+.nw-ttd-xax { display: flex; justify-content: space-between; font-size: 9px;
+              color: var(--text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
 /* breakdown table */
 .nw-ttd-table { width: 100%; border-collapse: collapse; font-size: 11.5px;
                 margin-top: 4px; }
@@ -1262,8 +1268,8 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-ttd-table td:first-child { text-align: left; color: var(--text-secondary); }
 .nw-ttd-table tr:last-child td { border-bottom: none; }
 @media (max-width: 640px) {
-  .nw-ttd-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .nw-ttd-charts  { grid-template-columns: 1fr; }
+  .nw-ttd-hero    { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 /* Sentence-case helper class (utility — applied selectively). */
 .nw-sentence::first-letter { text-transform: uppercase; }
@@ -4038,11 +4044,15 @@ if st.session_state.active_view == "campaigns":
                 summary: dict,
                 title: str = "Luckyland Casino · TTD Acquisition",
             ) -> None:
-                """Render a TTD CPA accordion.
+                """Render a TTD CPA accordion — the "Editorial scorecard" layout.
 
-                Uses the .nw-na shell (collapsible on mobile, force-open on tablet+)
-                with 5 KPI tiles, two mini bar charts (daily conversions / daily CPA),
-                and a media-type breakdown table.
+                Uses the .nw-na shell (collapsible) with a **CPA hero** figure
+                (the campaign's optimization target) + a supporting stat grid
+                (Conversions / Spend / Conv. rate / Clicks), two **SVG trend
+                charts** (area = daily conversions, line = daily CPA; uniform
+                regime so the end-dot stays round), and a media-type breakdown
+                table. Replaced the 5-equal-tiles + horizontal-bar-lists layout
+                (Roger 2026-06-22; chosen from a 3-direction mock).
                 """
                 def _fmt_money_cpa(v):
                     if v is None or pd.isna(v): return "—"
@@ -4072,33 +4082,49 @@ if st.session_state.active_view == "campaigns":
                         body = f"{arrow} {abs(v):.1f}%"
                     return f' <span class="{cls}">{body}</span>'
 
-                def _bar_chart_html(series, title, fmt_val, color_css="var(--text-secondary)"):
-                    """Mini horizontal bar chart for a daily series [(date, val), ...]."""
-                    if not series:
+                def _ttd_trend_svg(series, title, kind="area"):
+                    """Compact SVG trend chart for a daily [(date, val), …] series —
+                    replaces the old horizontal bar-list. Neutral ink line + faint
+                    area wash + baseline + round end-dot, in the UNIFORM regime (no
+                    preserveAspectRatio) so the dot never distorts (same as the KPI
+                    /drawer charts); colors ride on style= so var() resolves.
+                    Wrapped in the .nw-ttd-chart panel with a 3-point date axis."""
+                    pts = [(d, float(v)) for d, v in (series or []) if v is not None]
+                    if len(pts) < 2:
                         return ""
-                    vals = [v for _, v in series]
-                    max_v = max(vals) if vals else 1
-                    if max_v == 0:
-                        max_v = 1
-                    bars = ""
-                    for d, v in series:
-                        pct = v / max_v * 100
-                        label = d.strftime("%m/%d") if hasattr(d, "strftime") else str(d)
-                        bars += (
-                            f'<div class="nw-ttd-bar-row">'
-                            f'<span class="nw-ttd-bar-label">{label}</span>'
-                            f'<span class="nw-ttd-bar-track">'
-                            f'<span class="nw-ttd-bar-fill" style="width:{pct:.1f}%;background:{color_css}"></span>'
-                            f'</span>'
-                            f'<span class="nw-ttd-bar-val">{fmt_val(v)}</span>'
-                            f'</div>'
-                        )
-                    return (
-                        f'<div class="nw-ttd-chart">'
-                        f'<div class="nw-ttd-chart-title">{title}</div>'
-                        f'<div class="nw-ttd-bars">{bars}</div>'
-                        f'</div>'
-                    )
+                    vals = [v for _, v in pts]
+                    mx = max(vals) or 1
+                    W, H, top, bot, pad = 600, 116, 12, 22, 8
+                    n = len(pts)
+                    xs = [pad + i / (n - 1) * (W - 2 * pad) for i in range(n)]
+                    ys = [(H - bot) - (v / mx) * ((H - bot) - top) for v in vals]
+                    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                    area = ""
+                    if kind == "area":
+                        area = (f'<path d="M{xs[0]:.1f},{H - bot:.1f} L'
+                                + " L".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                                + f' L{xs[-1]:.1f},{H - bot:.1f} Z" '
+                                'style="fill:var(--text-secondary);fill-opacity:.10"/>')
+                    dot = (f'<path d="M{xs[-1]:.1f} {ys[-1]:.1f}h0" fill="none" '
+                           'style="stroke:var(--text-secondary)" stroke-width="5.5" '
+                           'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+                    svg = (f'<svg viewBox="0 0 {W} {H}" class="nw-ttd-trend" '
+                           f'xmlns="http://www.w3.org/2000/svg">{area}'
+                           f'<line x1="{pad}" y1="{H - bot:.1f}" x2="{W - pad}" y2="{H - bot:.1f}" '
+                           'style="stroke:var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+                           f'<polyline points="{poly}" fill="none" style="stroke:var(--text-secondary)" '
+                           'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" '
+                           f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
+                    def _lab(d): return d.strftime("%m/%d") if hasattr(d, "strftime") else str(d)
+                    labs = [pts[0][0], pts[n // 2][0], pts[-1][0]]
+                    xax = "".join(f"<span>{_lab(d)}</span>" for d in labs)
+                    return (f'<div class="nw-ttd-chart"><div class="nw-ttd-chart-title">{title}</div>'
+                            f'{svg}<div class="nw-ttd-xax">{xax}</div></div>')
+
+                def _ttd_stat(label, value, delta=""):
+                    d = f'<div class="nw-ttd-st-d">{delta}</div>' if delta else ""
+                    return (f'<div class="nw-ttd-st"><div class="nw-ttd-st-l">{label}</div>'
+                            f'<div class="nw-ttd-st-v">{value}</div>{d}</div>')
 
                 s = summary
                 empty = not s["impressions"] and not s["conversions"]
@@ -4124,53 +4150,33 @@ if st.session_state.active_view == "campaigns":
                 if s["delta_spend"] is not None:
                     spend_sub = _delta_html(s["delta_spend"], fmt="pct")
 
-                tiles_html = (
-                    f'<div class="kpi-tile">'
-                    f'<div class="kpi-label">CPA</div>'
-                    f'<div class="kpi-value">{_fmt_money_cpa(s["cpa"])}</div>'
-                    f'<div class="kpi-target">{cpa_sub}</div>'
-                    f'</div>'
-                    f'<div class="kpi-tile">'
-                    f'<div class="kpi-label">Conversions</div>'
-                    f'<div class="kpi-value">{_fmt_int(s["conversions"])}</div>'
-                    f'<div class="kpi-target">{conv_sub}</div>'
-                    f'</div>'
-                    f'<div class="kpi-tile">'
-                    f'<div class="kpi-label">Spend</div>'
-                    f'<div class="kpi-value">{_fmt_money_cpa(s["spend_usd"]) if s["spend_usd"] else "—"}</div>'
-                    f'<div class="kpi-target">{spend_sub}</div>'
-                    f'</div>'
-                    f'<div class="kpi-tile">'
-                    f'<div class="kpi-label">Conv. Rate</div>'
-                    f'<div class="kpi-value">{_fmt_pct(s["conv_rate"], dp=3)}</div>'
-                    f'</div>'
-                    f'<div class="kpi-tile">'
-                    f'<div class="kpi-label">Clicks</div>'
-                    f'<div class="kpi-value">{_fmt_int(s["clicks"])}</div>'
-                    f'</div>'
+                # CPA hero + supporting stat grid (Editorial scorecard): CPA is
+                # the campaign's optimization target, so it leads as the hero
+                # figure; Conversions / Spend / Conv. rate / Clicks sit quiet
+                # beside it.
+                cpa_s = f'{cpa_sub} vs prior period' if cpa_sub else ''
+                hero_html = (
+                    '<div class="nw-ttd-hero">'
+                    '<div class="nw-ttd-cpa"><div class="nw-ttd-cpa-l">Cost per acquisition</div>'
+                    f'<div class="nw-ttd-cpa-v">{_fmt_money_cpa(s["cpa"])}</div>'
+                    f'<div class="nw-ttd-cpa-s">{cpa_s}</div></div>'
+                    '<div class="nw-ttd-stats">'
+                    + _ttd_stat("Conversions", _fmt_int(s["conversions"]), conv_sub)
+                    + _ttd_stat("Spend", _fmt_money_cpa(s["spend_usd"]) if s["spend_usd"] else "—", spend_sub)
+                    + _ttd_stat("Conv. rate", _fmt_pct(s["conv_rate"], dp=3))
+                    + _ttd_stat("Clicks", _fmt_int(s["clicks"]))
+                    + '</div></div>'
                 )
 
-                # Bar charts (show last 14 days max to keep bars readable)
+                # Trend charts (last 14 days): area for conversions, line for CPA.
                 daily_convs = s["daily_conversions"][-14:]
                 daily_cpa   = s["daily_cpa"][-14:]
                 charts_html = ""
                 if daily_convs or daily_cpa:
-                    conv_chart = _bar_chart_html(
-                        daily_convs, "Daily Conversions",
-                        lambda v: str(int(v)),
-                        "var(--text-secondary)",
-                    )
-                    cpa_chart = _bar_chart_html(
-                        daily_cpa, "Daily CPA",
-                        lambda v: f"${v:.0f}",
-                        "var(--text-muted)",
-                    )
+                    conv_chart = _ttd_trend_svg(daily_convs, "Daily conversions", kind="area")
+                    cpa_chart  = _ttd_trend_svg(daily_cpa, "Daily CPA", kind="line")
                     if conv_chart or cpa_chart:
-                        charts_html = (
-                            f'<div class="nw-ttd-charts">'
-                            f'{conv_chart}{cpa_chart}'
-                            f'</div>'
-                        )
+                        charts_html = f'<div class="nw-ttd-charts">{conv_chart}{cpa_chart}</div>'
 
                 # Media type breakdown table
                 table_html = ""
@@ -4207,7 +4213,7 @@ if st.session_state.active_view == "campaigns":
                 else:
                     body_inner = (
                         (f'<div class="nw-ttd-date">{date_label}</div>' if date_label else "")
-                        + f'<div class="nw-ttd-kpi-row">{tiles_html}</div>'
+                        + hero_html
                         + charts_html
                         + table_html
                     )

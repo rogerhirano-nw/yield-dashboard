@@ -4,6 +4,27 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-22 — Editorial landing polish
+
+- **TTD CPA cards → "Editorial scorecard."** The expanded Luckyland / Chumba
+  priority-flight views were a 5-equal-tile row + two horizontal **bar-lists**
+  (one row per day) + a media table — the one spot still reading like a raw
+  export. Reworked (`_render_ttd_cpa`) to a **CPA hero** figure (the campaign's
+  optimization target) + a quiet 4-stat grid (Conversions / Spend / Conv. rate /
+  Clicks), two **SVG trend charts** (`_ttd_trend_svg` — area = daily
+  conversions, line = daily CPA, uniform regime so the end-dot stays round),
+  then the media-type table. Chosen from a 3-direction mock
+  (`docs/ttd_card_options.html`); presentation only, same `summary` data.
+- **#297** — **CTR card sits next to VCR on desktop.** The nine KPI tiles were a
+  wrapping flex row, so CTR orphaned onto a second line. On ≥1025px the band is
+  now a deterministic 11-column grid (heroes span 2, the 7 quality tiles 1 each)
+  — one row, no wrap. Below 1025px keeps the wrapping flex.
+- **#296** — **Round KPI sparkline dots.** The tile sparklines used the stretch
+  regime (`preserveAspectRatio="none"`), which elongated the round end-cap into a
+  dash on iOS Safari. Switched all nine tiles to the uniform regime
+  (`.kpi-spark` → `height:auto`) so x/y scale equally and the dot is a true
+  circle. (#295 first made the tiles consistent; #296 fixed the actual stretch.)
+
 ## 2026-06-21 — Campaigns "Editorial" landing
 
 - **#294** — **Campaigns landing redesigned to the "Editorial" layout; the
