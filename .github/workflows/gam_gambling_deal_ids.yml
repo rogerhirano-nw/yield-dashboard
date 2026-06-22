@@ -1,0 +1,37 @@
+name: GAM gambling deal IDs (one-off)
+
+# Throwaway diagnostic: pull the GAM deal IDs for the Luckyland/Chumba PG line
+# items to compare against the TTD feed's deal_id. Triggers on push to the
+# working branch (GAM creds are CI-only secrets); read the result in the run log.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/determined-heisenberg-55g09j]
+    paths:
+      - 'scripts/gam_gambling_deal_ids.py'
+      - '.github/workflows/gam_gambling_deal_ids.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install google-ads-admanager google-auth pandas googleads zeep
+
+      - name: Gather GAM deal IDs
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/gam_gambling_deal_ids.py 2>&1 | tee /tmp/output.txt
