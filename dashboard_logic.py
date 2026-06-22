@@ -917,9 +917,11 @@ def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
       conv_rate            — conversions / clicks × 100 (None when 0 clicks)
       by_media_type        — list of dicts {media_type, impressions, clicks,
                              conversions, spend_usd, cpa, conv_rate}
-      by_ad_size           — same shape keyed on `ad_size` (the creative_size
-                             column) — the ad-size breakdown shown when the card
-                             is opened; empty when the report carries no sizes
+      by_ad_size           — same shape keyed on `ad_size`, parsed as a WxH
+                             token from the creative name (or a creative_size
+                             column if a future report adds one) — the ad-size
+                             breakdown shown when the card is opened; empty when
+                             no creative carries a size (e.g. video-only)
       daily_conversions    — list of (date, n) sorted by date
       daily_cpa            — list of (date, cpa_float) sorted by date (only
                              days with conversions > 0)
@@ -953,6 +955,19 @@ def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
                 lambda d: d.year == month_of.year and d.month == month_of.month)]
     if df.empty:
         return empty
+
+    # Derive ad size for the breakdown. The TTD tables have no creative_size
+    # column — size is encoded in the creative name (e.g.
+    # "…_DisplayBanner_300x250_May_…"), so parse a WxH token from `creative`
+    # (fall back to a real creative_size column if a future report adds one).
+    # No match — video creatives carry a duration (RT_30s), not a pixel size —
+    # yields NaN, which groupby drops, so those rows just don't appear in the
+    # size table.
+    if "creative_size" in df.columns:
+        df["_ad_size"] = df["creative_size"]
+    elif "creative" in df.columns:
+        df["_ad_size"] = df["creative"].astype(str).str.extract(
+            r"(\d{2,4}x\d{2,4})", expand=False)
 
     _c = df.columns.tolist()
     impr   = int(pd.to_numeric(df["impressions"], errors="coerce").fillna(0).sum()) if "impressions" in _c else 0
@@ -992,7 +1007,7 @@ def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
         return out
 
     by_media = _breakdown("media_type", "media_type")
-    by_size  = _breakdown("creative_size", "ad_size")
+    by_size  = _breakdown("_ad_size", "ad_size")
 
     # ── daily series (summed across all ad groups / media types) ──
     daily_convs: list[tuple] = []

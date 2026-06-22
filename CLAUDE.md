@@ -628,8 +628,13 @@ Rules that survive any future restyle:
      (Conversions/Spend/Conv. rate/Clicks), two **SVG trend charts**
      (`_ttd_trend_svg` — area = daily conversions, line = daily CPA, uniform
      regime so the end-dot stays round), then **two breakdown tables — by ad
-     size (the `creative_size` column) and by format** (`s["by_ad_size"]` /
-     `s["by_media_type"]`). Replaced the old 5-equal-tiles + horizontal-bar-lists.
+     size and by format** (`s["by_ad_size"]` / `s["by_media_type"]`). **Ad size
+     is parsed as a `WxH` token from the `creative` name** — the TTD tables have
+     no `creative_size` column; size lives in the creative string (e.g.
+     `…_DisplayBanner_300x250_May_…`). Video creatives carry a duration (`RT_30s`)
+     not a pixel size, so they drop out of the size table. On prod June data the
+     sizes are 300x250 / 320x50 / 728x90. Replaced the old 5-equal-tiles +
+     horizontal-bar-lists.
      **Both cards are scoped to the CURRENT CALENDAR MONTH**
      (`dl.ttd_cpa_summary(df, month_of=date.today())`, Roger 2026-06-22): the
      `month_of` arg filters the frame to that year+month before any aggregation,
