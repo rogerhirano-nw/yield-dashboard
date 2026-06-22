@@ -924,8 +924,8 @@ def test_ttd_cpa_summary_daily_cpa_only_nonzero():
     assert s["daily_cpa"][0][1] == 20.0      # $100 / 5 conv
 
 
-def test_ttd_cpa_summary_month_of():
-    """month_of restricts the summary to that calendar month; None = whole frame."""
+def test_ttd_cpa_summary_window():
+    """start/end restrict the summary to [start, end]; both None = whole frame."""
     df = _ttd_df([
         {"date": "2026-05-30", "impressions": 1000, "clicks": 10,
          "spend_usd": 50.0, "attributed_conversions": 5},
@@ -934,19 +934,24 @@ def test_ttd_cpa_summary_month_of():
         {"date": "2026-06-10", "impressions": 3000, "clicks": 30,
          "spend_usd": 120.0, "attributed_conversions": 6},
     ])
-    s = ttd_cpa_summary(df, month_of=datetime.date(2026, 6, 15))
+    # start only — the LI-start window the dashboard uses (drops the May row)
+    s = ttd_cpa_summary(df, start=datetime.date(2026, 6, 1))
     assert s["impressions"] == 5000          # only the two June rows
     assert s["conversions"] == 10
     assert abs(s["spend_usd"] - 200.0) < 0.01
     assert s["date_min"] == datetime.date(2026, 6, 2)
     assert s["date_max"] == datetime.date(2026, 6, 10)
     assert len(s["daily_conversions"]) == 2
-    # A month with no rows → empty summary, all keys present
-    s2 = ttd_cpa_summary(df, month_of=datetime.date(2026, 7, 1))
-    assert s2["impressions"] == 0
-    assert s2["date_min"] is None
-    assert s2["by_ad_size"] == []
-    # Default (None) keeps the whole frame — unchanged behavior
+    # start + end both bound the window
+    s2 = ttd_cpa_summary(df, start=datetime.date(2026, 6, 1), end=datetime.date(2026, 6, 5))
+    assert s2["conversions"] == 4            # only 2026-06-02
+    assert s2["date_max"] == datetime.date(2026, 6, 2)
+    # A window with no rows → empty summary, all keys present
+    s3 = ttd_cpa_summary(df, start=datetime.date(2026, 7, 1))
+    assert s3["impressions"] == 0
+    assert s3["date_min"] is None
+    assert s3["by_ad_size"] == []
+    # Default (no window) keeps the whole frame — unchanged behavior
     assert ttd_cpa_summary(df)["impressions"] == 6000
 
 

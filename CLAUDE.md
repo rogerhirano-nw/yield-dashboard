@@ -635,13 +635,21 @@ Rules that survive any future restyle:
      not a pixel size, so they drop out of the size table. On prod June data the
      sizes are 300x250 / 320x50 / 728x90. Replaced the old 5-equal-tiles +
      horizontal-bar-lists.
-     **Both cards are scoped to the CURRENT CALENDAR MONTH**
-     (`dl.ttd_cpa_summary(df, month_of=date.today())`, Roger 2026-06-22): the
-     `month_of` arg filters the frame to that year+month before any aggregation,
-     so totals / charts / breakdowns / date-range eyebrow are all month-to-date
-     (charts no longer cap at 14 days). `ttd_cpa_summary` returns `empty` when
-     the month has no rows yet (early in the month). Both behaviors pinned by
-     `test_ttd_cpa_summary_month_of` / `_by_ad_size`.
+     **Each card's date window follows the dashboard's Status filter**
+     (Roger 2026-06-22). `ttd_cpa_summary(df, start=…, end=…)` filters rows to
+     `[start, end]`; the dashboard passes **`start` = the earliest `start_date`
+     among that campaign's GAM LIs that pass the active filters**, looked up from
+     the already-filtered `view_gam` by an `order_name` token (`_ttd_li_start`,
+     "Luckyland" / "Chumba"). So with **Status = Delivering** (the default) only
+     the active LIs count — and since those started this month, last month's
+     now-*Completed* flight drops out; widen Status to include Completed and the
+     window extends back. (These orders are `Newsweek_PG_Gambling_…`, which reach
+     `view_gam` because `included_order_patterns` is `["Newsweek_Direct%",
+     "Newsweek_PG%"]`.) No matching LI in the filtered view → `start=None` →
+     flight-to-date (whole frame). **The summaries are therefore computed in the
+     Priority-flights render** (after `view_gam` is filtered), not at load time.
+     Pinned by `test_ttd_cpa_summary_window` / `_by_ad_size` /
+     `_ad_size_from_creative`.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all
