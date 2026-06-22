@@ -71,6 +71,18 @@ def main() -> None:
         except Exception as e:
             print(f"\n[report] {deal_dim} report failed: {type(e).__name__}: {e}")
 
+    # 1b) Durable LI→deal map (validates gam_client.run_li_deal_map_report and
+    #     produces the backfill map). Wide window so every recently-delivering
+    #     deal LI shows. Printed as `DEALMAP <li> <deal>` for easy extraction.
+    try:
+        wide_start = end - timedelta(days=60)
+        dm = client.run_li_deal_map_report(wide_start, end)
+        print(f"\n=== LI→deal map (run_li_deal_map_report, {wide_start}..{end}) — {len(dm)} LIs ===")
+        for _, r in dm.iterrows():
+            print(f"DEALMAP {r['line_item_id']} {r['deal_id']}")
+    except Exception as e:
+        print(f"\n[map] run_li_deal_map_report failed: {type(e).__name__}: {e}")
+
     # 2) SOAP ProposalLineItemService — PG inventory lives here. Dump the fields
     #    + a full serialization of the first gambling PLI so we can spot whatever
     #    field carries the deal id.
