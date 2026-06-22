@@ -6,12 +6,18 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
-- **TTD cards: current-month scope + ad-size breakdown.** Both Luckyland +
-  Chumba cards now show **only the current calendar month** —
-  `dl.ttd_cpa_summary(df, month_of=date.today())`; the new `month_of` arg filters
-  the frame to that year+month before any aggregation, so totals/charts/
-  breakdowns/date eyebrow are all month-to-date (the daily charts no longer cap
-  at 14 days). And when a card is opened it now shows a **by-ad-size** breakdown
+- **TTD cards: date window follows the Status filter + ad-size breakdown.** Each
+  Luckyland / Chumba card now windows to **`start` = the earliest `start_date`
+  among that campaign's GAM LIs that pass the active filters** (`_ttd_li_start`
+  reads the already-filtered `view_gam` by `order_name` token;
+  `ttd_cpa_summary` gained `start`/`end`). So the cards follow the dashboard's
+  **Status filter**: with "Delivering" selected, only the active LIs count — and
+  since those started this month, last month's now-*Completed* flight drops out;
+  include Completed and the window extends back. (Went through current-month and
+  flight-to-date on the way; this filter-driven version is the one that actually
+  matches the Direct campaigns. The orders are `Newsweek_PG_…`, included in the
+  Direct view via `included_order_patterns`.) And when a card is opened it now
+  shows a **by-ad-size** breakdown
   (`by_ad_size`) above the by-format table. Ad size is **parsed as a `WxH` token
   from the `creative` name** — the TTD tables have no `creative_size` column, so
   the first cut grouped on a column that didn't exist and showed nothing; size

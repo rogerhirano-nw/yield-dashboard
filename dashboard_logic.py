@@ -904,7 +904,7 @@ def landing_at_risk(days_left, projected_pct,
 
 # ── TTD Luckyland CPA ────────────────────────────────────────────────────
 
-def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
+def ttd_cpa_summary(df: pd.DataFrame, start=None, end=None) -> dict:
     """Summarise a `ttd_luckyland` DataFrame for the CPA accordion.
 
     Returns a dict:
@@ -930,9 +930,12 @@ def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
       delta_cpa            — absolute CPA change (recent − prior; None same)
       delta_spend          — % spend change (None same)
 
-    `month_of` — optional datetime.date; when set, the summary is restricted to
-    rows in THAT calendar month (year + month), so the card can show just the
-    current month. None = the whole frame (default).
+    `start` / `end` — optional datetime.date window; rows are kept where
+    `start <= date <= end` (either bound may be None for open-ended). The
+    dashboard passes `start` = the earliest start_date of the campaign's LIs
+    that pass the active Status filter, so each card's window follows the
+    dashboard filter (e.g. "Delivering" → starts this month, dropping last
+    month's now-inactive flight). Both None = the whole frame (flight-to-date).
     All keys are always present; missing/filtered-out data becomes 0/None/[].
     """
     empty = {
@@ -950,9 +953,10 @@ def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
         df = df.dropna(subset=["date"])
-        if month_of is not None:
-            df = df[df["date"].map(
-                lambda d: d.year == month_of.year and d.month == month_of.month)]
+        if start is not None:
+            df = df[df["date"].map(lambda d: d >= start)]
+        if end is not None:
+            df = df[df["date"].map(lambda d: d <= end)]
     if df.empty:
         return empty
 

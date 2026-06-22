@@ -3217,13 +3217,13 @@ if st.session_state.active_view == "campaigns":
         _ttd_df = load("ttd_luckyland")
     except Exception:
         _ttd_df = pd.DataFrame()
-    _ttd_summary = dl.ttd_cpa_summary(_ttd_df, month_of=date.today())
-
     try:
         _ttd_chumba_df = load("ttd_chumba")
     except Exception:
         _ttd_chumba_df = pd.DataFrame()
-    _ttd_chumba_summary = dl.ttd_cpa_summary(_ttd_chumba_df, month_of=date.today())
+    # The CPA summaries are computed later, in the Priority-flights render — the
+    # date window is derived from the (Status-)filtered view_gam there, so each
+    # card follows the dashboard filter.
 
     if gam_df.empty:
         st.info("No GAM data yet. Run refresh_cache.py to populate gam_campaigns.")
@@ -4169,8 +4169,9 @@ if st.session_state.active_view == "campaigns":
                     + '</div></div>'
                 )
 
-                # Trend charts over the current month (the summary is already
-                # month-scoped): area for conversions, line for CPA.
+                # Trend charts over the card's window (the summary is already
+                # scoped to the campaign's filtered LI start → now): area for
+                # conversions, line for CPA.
                 daily_convs = s["daily_conversions"]
                 daily_cpa   = s["daily_cpa"]
                 charts_html = ""
@@ -4475,9 +4476,22 @@ if st.session_state.active_view == "campaigns":
             # out of the desktop force-open).
             st.markdown('<div class="nw-section-eyebrow">Priority flights</div>',
                         unsafe_allow_html=True)
-            _render_ttd_cpa(_ttd_summary)
+            # Window each card from the earliest start_date of that campaign's
+            # LIs that pass the active filters — view_gam is already filtered
+            # (Status etc.), so the card follows the dashboard filter. With
+            # "Delivering" selected, only the active LIs count (they started this
+            # month), so last month's now-inactive flight drops out; widen Status
+            # to include Completed and the window extends back. No matching LI in
+            # the filtered view → None → flight-to-date (whole frame).
+            def _ttd_li_start(order_token):
+                if "order_name" not in view_gam.columns or "start_date" not in view_gam.columns:
+                    return None
+                _m = view_gam["order_name"].astype(str).str.contains(order_token, case=False, na=False)
+                _s = pd.to_datetime(view_gam.loc[_m, "start_date"], errors="coerce").dropna()
+                return _s.min().date() if not _s.empty else None
+            _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")))
             _render_ttd_cpa(
-                _ttd_chumba_summary,
+                dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
                 title="VGW Chumba Casino · TTD Acquisition",
             )
 
