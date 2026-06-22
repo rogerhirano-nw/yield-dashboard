@@ -6,6 +6,15 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
+- **TTD cards: current-month scope + ad-size breakdown.** Both Luckyland +
+  Chumba cards now show **only the current calendar month** —
+  `dl.ttd_cpa_summary(df, month_of=date.today())`; the new `month_of` arg filters
+  the frame to that year+month before any aggregation, so totals/charts/
+  breakdowns/date eyebrow are all month-to-date (the daily charts no longer cap
+  at 14 days). And when a card is opened it now shows a **by-ad-size** breakdown
+  (`by_ad_size`, grouped on the `creative_size` column, blanks skipped) above the
+  by-format table. Logic in `dashboard_logic`, pinned by
+  `test_ttd_cpa_summary_month_of` / `_by_ad_size` (66/66 pass).
 - **TTD CPA cards → "Editorial scorecard."** The expanded Luckyland / Chumba
   priority-flight views were a 5-equal-tile row + two horizontal **bar-lists**
   (one row per day) + a media table — the one spot still reading like a raw

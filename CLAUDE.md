@@ -627,8 +627,16 @@ Rules that survive any future restyle:
      3-direction mock): a **CPA hero** figure + a quiet 4-stat grid
      (Conversions/Spend/Conv. rate/Clicks), two **SVG trend charts**
      (`_ttd_trend_svg` — area = daily conversions, line = daily CPA, uniform
-     regime so the end-dot stays round), then the media-type table. Replaced the
-     old 5-equal-tiles + horizontal-bar-lists.
+     regime so the end-dot stays round), then **two breakdown tables — by ad
+     size (the `creative_size` column) and by format** (`s["by_ad_size"]` /
+     `s["by_media_type"]`). Replaced the old 5-equal-tiles + horizontal-bar-lists.
+     **Both cards are scoped to the CURRENT CALENDAR MONTH**
+     (`dl.ttd_cpa_summary(df, month_of=date.today())`, Roger 2026-06-22): the
+     `month_of` arg filters the frame to that year+month before any aggregation,
+     so totals / charts / breakdowns / date-range eyebrow are all month-to-date
+     (charts no longer cap at 14 days). `ttd_cpa_summary` returns `empty` when
+     the month has no rows yet (early in the month). Both behaviors pinned by
+     `test_ttd_cpa_summary_month_of` / `_by_ad_size`.
   - **PMP signals** moved out of the rail into the **PMP section's normal flow**
     (`_pmp_sig_slot = st.empty()`), so PMP triage sits with the PMP content.
   - Same values/subtitles/series as before — **only presentation changed**; all

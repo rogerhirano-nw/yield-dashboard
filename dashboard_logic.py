@@ -904,7 +904,7 @@ def landing_at_risk(days_left, projected_pct,
 
 # ── TTD Luckyland CPA ────────────────────────────────────────────────────
 
-def ttd_cpa_summary(df: pd.DataFrame) -> dict:
+def ttd_cpa_summary(df: pd.DataFrame, month_of=None) -> dict:
     """Summarise a `ttd_luckyland` DataFrame for the CPA accordion.
 
     Returns a dict:
@@ -917,6 +917,9 @@ def ttd_cpa_summary(df: pd.DataFrame) -> dict:
       conv_rate            — conversions / clicks × 100 (None when 0 clicks)
       by_media_type        — list of dicts {media_type, impressions, clicks,
                              conversions, spend_usd, cpa, conv_rate}
+      by_ad_size           — same shape keyed on `ad_size` (the creative_size
+                             column) — the ad-size breakdown shown when the card
+                             is opened; empty when the report carries no sizes
       daily_conversions    — list of (date, n) sorted by date
       daily_cpa            — list of (date, cpa_float) sorted by date (only
                              days with conversions > 0)
@@ -925,21 +928,31 @@ def ttd_cpa_summary(df: pd.DataFrame) -> dict:
       delta_cpa            — absolute CPA change (recent − prior; None same)
       delta_spend          — % spend change (None same)
 
-    All keys are always present; missing data becomes 0/None/[].
+    `month_of` — optional datetime.date; when set, the summary is restricted to
+    rows in THAT calendar month (year + month), so the card can show just the
+    current month. None = the whole frame (default).
+    All keys are always present; missing/filtered-out data becomes 0/None/[].
     """
+    empty = {
+        "date_min": None, "date_max": None,
+        "impressions": 0, "clicks": 0, "conversions": 0,
+        "spend_usd": 0.0, "cpa": None, "conv_rate": None,
+        "by_media_type": [], "by_ad_size": [],
+        "daily_conversions": [], "daily_cpa": [],
+        "delta_conversions": None, "delta_cpa": None, "delta_spend": None,
+    }
     if df.empty:
-        return {
-            "date_min": None, "date_max": None,
-            "impressions": 0, "clicks": 0, "conversions": 0,
-            "spend_usd": 0.0, "cpa": None, "conv_rate": None,
-            "by_media_type": [], "daily_conversions": [], "daily_cpa": [],
-            "delta_conversions": None, "delta_cpa": None, "delta_spend": None,
-        }
+        return empty
 
     df = df.copy()
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
         df = df.dropna(subset=["date"])
+        if month_of is not None:
+            df = df[df["date"].map(
+                lambda d: d.year == month_of.year and d.month == month_of.month)]
+    if df.empty:
+        return empty
 
     _c = df.columns.tolist()
     impr   = int(pd.to_numeric(df["impressions"], errors="coerce").fillna(0).sum()) if "impressions" in _c else 0
@@ -953,24 +966,33 @@ def ttd_cpa_summary(df: pd.DataFrame) -> dict:
     date_min   = df["date"].min() if "date" in _c else None
     date_max   = df["date"].max() if "date" in _c else None
 
-    # ── by media type ──
-    by_media: list[dict] = []
-    if "media_type" in _c and "date" in _c:
-        for mt, grp in df.groupby("media_type"):
-            g_impr  = int(pd.to_numeric(grp.get("impressions",   pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
-            g_clk   = int(pd.to_numeric(grp.get("clicks",        pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
-            g_spend = float(pd.to_numeric(grp.get("spend_usd",   pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
-            g_conv  = int(pd.to_numeric(grp.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
-            by_media.append({
-                "media_type":  str(mt),
-                "impressions": g_impr,
-                "clicks":      g_clk,
-                "conversions": g_conv,
-                "spend_usd":   g_spend,
-                "cpa":         round(g_spend / g_conv, 2) if g_conv > 0 else None,
-                "conv_rate":   round(g_conv / g_clk * 100, 3) if g_clk > 0 else None,
-            })
-        by_media.sort(key=lambda r: r["spend_usd"], reverse=True)
+    # ── breakdowns: by media type and by ad size (creative_size) ──
+    # Same shape, one helper; sorted by spend desc. Blank/NaN group keys
+    # (e.g. video rows that carry no creative size) are skipped.
+    def _breakdown(col, label_key):
+        out: list[dict] = []
+        if col in _c and "date" in _c:
+            for key, grp in df.groupby(col):
+                if key is None or (isinstance(key, float) and pd.isna(key)) or str(key).strip() == "":
+                    continue
+                g_impr  = int(pd.to_numeric(grp.get("impressions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+                g_clk   = int(pd.to_numeric(grp.get("clicks",      pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+                g_spend = float(pd.to_numeric(grp.get("spend_usd", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+                g_conv  = int(pd.to_numeric(grp.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()) if "attributed_conversions" in _c else 0
+                out.append({
+                    label_key:     str(key),
+                    "impressions": g_impr,
+                    "clicks":      g_clk,
+                    "conversions": g_conv,
+                    "spend_usd":   g_spend,
+                    "cpa":         round(g_spend / g_conv, 2) if g_conv > 0 else None,
+                    "conv_rate":   round(g_conv / g_clk * 100, 3) if g_clk > 0 else None,
+                })
+            out.sort(key=lambda r: r["spend_usd"], reverse=True)
+        return out
+
+    by_media = _breakdown("media_type", "media_type")
+    by_size  = _breakdown("creative_size", "ad_size")
 
     # ── daily series (summed across all ad groups / media types) ──
     daily_convs: list[tuple] = []
@@ -1022,6 +1044,7 @@ def ttd_cpa_summary(df: pd.DataFrame) -> dict:
         "cpa":                cpa,
         "conv_rate":          conv_rate,
         "by_media_type":      by_media,
+        "by_ad_size":         by_size,
         "daily_conversions":  daily_convs,
         "daily_cpa":          daily_cpa_s,
         "delta_conversions":  delta_convs,
