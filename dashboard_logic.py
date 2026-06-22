@@ -1070,3 +1070,69 @@ def ttd_cpa_summary(df: pd.DataFrame, start=None, end=None) -> dict:
         "delta_cpa":          delta_cpa_v,
         "delta_spend":        delta_spend,
     }
+
+
+# ── TTD CPA ↔ GAM line-item linkage ───────────────────────────────────────
+# The TTD feed has no GAM line_item_id, and gam_campaigns has no TTD deal_id,
+# but both names encode the same two dimensions for the gambling CPA flights —
+# audience (Casino/Social) + ad size — so we join on those. The TTD ad_group
+# (`LC_ACQ_TTD_US_Display_..._728x90-300x250_CasinoGamblers`) and the GAM LI
+# name (`..._Display-CasinoGamblers-JUNE-728x90-300x250_...`) both carry them.
+_CPA_AUD_RE = re.compile(r"(casino|social)gamblers", re.I)
+_CPA_SIZE_RE = re.compile(r"(\d{2,4}x\d{2,4}(?:-\d{2,4}x\d{2,4})*)")
+
+
+def cpa_join_key(name):
+    """Key linking a TTD ad_group ↔ a GAM line-item name for the gambling CPA
+    flights: ``"<audience>|<size>"`` (e.g. ``"casino|728x90-300x250"``). None
+    when the name carries neither token (most LIs, and the video ad_groups that
+    have no pixel size) — those simply don't get a CPA block."""
+    if not isinstance(name, str):
+        return None
+    a = _CPA_AUD_RE.search(name)
+    s = _CPA_SIZE_RE.search(name)
+    if not a or not s:
+        return None
+    return f"{a.group(1).lower()}|{s.group(1)}"
+
+
+def ttd_cpa_for_li(df, key, start=None, end=None):
+    """Aggregate the TTD rows whose ad_group matches `key` (cpa_join_key) into a
+    per-LI CPA summary for the line-item drawer:
+    ``{cpa, conversions, spend_usd, daily_cpa: [(date, cpa), …]}``. Windowed to
+    [start, end] (dates; either may be None). None when `key` is None or no
+    matching rows fall in the window — so the drawer shows a CPA block only for
+    the gambling LIs that actually have TTD data."""
+    if df is None or df.empty or key is None or "ad_group" not in df.columns:
+        return None
+    df = df.copy()
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        df = df.dropna(subset=["date"])
+        if start is not None:
+            df = df[df["date"].map(lambda d: d >= start)]
+        if end is not None:
+            df = df[df["date"].map(lambda d: d <= end)]
+    if df.empty:
+        return None
+    df = df[df["ad_group"].map(lambda n: cpa_join_key(n) == key)]
+    if df.empty:
+        return None
+    conv  = int(pd.to_numeric(df.get("attributed_conversions", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+    spend = float(pd.to_numeric(df.get("spend_usd", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+    daily_cpa: list[tuple] = []
+    if "date" in df.columns:
+        agg: dict[object, dict] = {}
+        for _, r in df.iterrows():
+            e = agg.setdefault(r["date"], {"spend": 0.0, "convs": 0})
+            e["spend"] += float(pd.to_numeric(r.get("spend_usd", 0), errors="coerce") or 0)
+            e["convs"] += int(pd.to_numeric(r.get("attributed_conversions", 0), errors="coerce") or 0)
+        for d in sorted(agg):
+            if agg[d]["convs"] > 0:
+                daily_cpa.append((d, round(agg[d]["spend"] / agg[d]["convs"], 2)))
+    return {
+        "cpa":         round(spend / conv, 2) if conv > 0 else None,
+        "conversions": conv,
+        "spend_usd":   spend,
+        "daily_cpa":   daily_cpa,
+    }

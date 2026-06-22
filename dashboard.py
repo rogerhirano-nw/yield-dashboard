@@ -1561,6 +1561,17 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
   color: var(--text-muted); display: block; margin-bottom: 2px; }
 .nw-li-grid .v { color: var(--text-primary); font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere; }
+/* CPA acquisition block in the Direct LI drawer (gambling LIs joined to TTD). */
+.nw-li-cpa { margin-top: 16px; }
+.nw-li-cpa-head { font-size: 10px; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
+  color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; }
+.nw-li-cpa-stats { display: flex; gap: 10px; margin-bottom: 10px; }
+.nw-li-cpa-stats .cell { background: var(--surface-1); border: 1px solid var(--border);
+  border-top: 2px solid var(--text-primary); border-radius: var(--radius-sm); padding: 8px 12px; flex: 1; }
+.nw-li-cpa-stats .k { display: block; font-size: 10px; letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--text-muted); }
+.nw-li-cpa-stats .v { font-family: var(--font-display); font-size: 20px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
 .nw-warn {
   margin-top: 14px; padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -4041,6 +4052,46 @@ if st.session_state.active_view == "campaigns":
                     txt += f' · target {suffix_target}'
                 return (txt, cls)
 
+            # Hoisted out of _render_ttd_cpa so the Direct LI drawer's CPA block
+            # can reuse it too (same uniform-regime line/area chart).
+            def _ttd_trend_svg(series, title, kind="area"):
+                """Compact SVG trend chart for a daily [(date, val), …] series —
+                neutral ink line + faint area wash + baseline + round end-dot, in
+                the UNIFORM regime (no preserveAspectRatio) so the dot never
+                distorts; colors ride on style= so var() resolves. Wrapped in the
+                .nw-ttd-chart panel with a 3-point date axis."""
+                pts = [(d, float(v)) for d, v in (series or []) if v is not None]
+                if len(pts) < 2:
+                    return ""
+                vals = [v for _, v in pts]
+                mx = max(vals) or 1
+                W, H, top, bot, pad = 600, 116, 12, 22, 8
+                n = len(pts)
+                xs = [pad + i / (n - 1) * (W - 2 * pad) for i in range(n)]
+                ys = [(H - bot) - (v / mx) * ((H - bot) - top) for v in vals]
+                poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                area = ""
+                if kind == "area":
+                    area = (f'<path d="M{xs[0]:.1f},{H - bot:.1f} L'
+                            + " L".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                            + f' L{xs[-1]:.1f},{H - bot:.1f} Z" '
+                            'style="fill:var(--text-secondary);fill-opacity:.10"/>')
+                dot = (f'<path d="M{xs[-1]:.1f} {ys[-1]:.1f}h0" fill="none" '
+                       'style="stroke:var(--text-secondary)" stroke-width="5.5" '
+                       'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+                svg = (f'<svg viewBox="0 0 {W} {H}" class="nw-ttd-trend" '
+                       f'xmlns="http://www.w3.org/2000/svg">{area}'
+                       f'<line x1="{pad}" y1="{H - bot:.1f}" x2="{W - pad}" y2="{H - bot:.1f}" '
+                       'style="stroke:var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+                       f'<polyline points="{poly}" fill="none" style="stroke:var(--text-secondary)" '
+                       'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" '
+                       f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
+                def _lab(d): return d.strftime("%m/%d") if hasattr(d, "strftime") else str(d)
+                labs = [pts[0][0], pts[n // 2][0], pts[-1][0]]
+                xax = "".join(f"<span>{_lab(d)}</span>" for d in labs)
+                return (f'<div class="nw-ttd-chart"><div class="nw-ttd-chart-title">{title}</div>'
+                        f'{svg}<div class="nw-ttd-xax">{xax}</div></div>')
+
             def _render_ttd_cpa(
                 summary: dict,
                 title: str = "Luckyland Casino · TTD Acquisition",
@@ -4082,45 +4133,6 @@ if st.session_state.active_view == "campaigns":
                     else:
                         body = f"{arrow} {abs(v):.1f}%"
                     return f' <span class="{cls}">{body}</span>'
-
-                def _ttd_trend_svg(series, title, kind="area"):
-                    """Compact SVG trend chart for a daily [(date, val), …] series —
-                    replaces the old horizontal bar-list. Neutral ink line + faint
-                    area wash + baseline + round end-dot, in the UNIFORM regime (no
-                    preserveAspectRatio) so the dot never distorts (same as the KPI
-                    /drawer charts); colors ride on style= so var() resolves.
-                    Wrapped in the .nw-ttd-chart panel with a 3-point date axis."""
-                    pts = [(d, float(v)) for d, v in (series or []) if v is not None]
-                    if len(pts) < 2:
-                        return ""
-                    vals = [v for _, v in pts]
-                    mx = max(vals) or 1
-                    W, H, top, bot, pad = 600, 116, 12, 22, 8
-                    n = len(pts)
-                    xs = [pad + i / (n - 1) * (W - 2 * pad) for i in range(n)]
-                    ys = [(H - bot) - (v / mx) * ((H - bot) - top) for v in vals]
-                    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
-                    area = ""
-                    if kind == "area":
-                        area = (f'<path d="M{xs[0]:.1f},{H - bot:.1f} L'
-                                + " L".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
-                                + f' L{xs[-1]:.1f},{H - bot:.1f} Z" '
-                                'style="fill:var(--text-secondary);fill-opacity:.10"/>')
-                    dot = (f'<path d="M{xs[-1]:.1f} {ys[-1]:.1f}h0" fill="none" '
-                           'style="stroke:var(--text-secondary)" stroke-width="5.5" '
-                           'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
-                    svg = (f'<svg viewBox="0 0 {W} {H}" class="nw-ttd-trend" '
-                           f'xmlns="http://www.w3.org/2000/svg">{area}'
-                           f'<line x1="{pad}" y1="{H - bot:.1f}" x2="{W - pad}" y2="{H - bot:.1f}" '
-                           'style="stroke:var(--border)" stroke-width="1" vector-effect="non-scaling-stroke"/>'
-                           f'<polyline points="{poly}" fill="none" style="stroke:var(--text-secondary)" '
-                           'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" '
-                           f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
-                    def _lab(d): return d.strftime("%m/%d") if hasattr(d, "strftime") else str(d)
-                    labs = [pts[0][0], pts[n // 2][0], pts[-1][0]]
-                    xax = "".join(f"<span>{_lab(d)}</span>" for d in labs)
-                    return (f'<div class="nw-ttd-chart"><div class="nw-ttd-chart-title">{title}</div>'
-                            f'{svg}<div class="nw-ttd-xax">{xax}</div></div>')
 
                 def _ttd_stat(label, value, delta=""):
                     d = f'<div class="nw-ttd-st-d">{delta}</div>' if delta else ""
@@ -5613,6 +5625,33 @@ if st.session_state.active_view == "campaigns":
                 status_html = _drawer_status_banner(row)
                 chart_html = _drawer_delivery_chart(row)
                 sm_html = _drawer_small_multiples(row)
+
+                # CPA acquisition block — only the gambling LIs that map to a TTD
+                # ad_group (audience + ad-size) get one; dl.cpa_join_key returns
+                # None for every other line. Windowed from this LI's start_date,
+                # and routed to the right TTD frame by the order name.
+                _cpa_html = ""
+                _cpa_key = dl.cpa_join_key(row.get("line_item_name"))
+                if _cpa_key:
+                    _cpa_ord = str(row.get("order_name") or "").lower()
+                    _cpa_src = (_ttd_df if "luckyland" in _cpa_ord
+                                else (_ttd_chumba_df if ("chumba" in _cpa_ord or "vgw" in _cpa_ord) else None))
+                    _cpa_info = (dl.ttd_cpa_for_li(_cpa_src, _cpa_key, start=row.get("start_date"))
+                                 if _cpa_src is not None else None)
+                    if _cpa_info:
+                        _cpa_v = f'${_cpa_info["cpa"]:,.2f}' if _cpa_info["cpa"] is not None else "—"
+                        _cpa_chart = _ttd_trend_svg(_cpa_info["daily_cpa"], "Daily CPA", kind="line")
+                        _cpa_html = (
+                            '<div class="nw-li-cpa">'
+                            '<div class="nw-li-cpa-head">CPA acquisition · TTD</div>'
+                            '<div class="nw-li-cpa-stats">'
+                            f'<div class="cell"><span class="k">CPA</span><span class="v">{_cpa_v}</span></div>'
+                            f'<div class="cell"><span class="k">Conversions</span>'
+                            f'<span class="v">{_cpa_info["conversions"]:,}</span></div>'
+                            '</div>'
+                            f'{_cpa_chart}'
+                            '</div>'
+                        )
                 # Consolidated identity + spec card (Option C) — leads with the
                 # friendly name, GAM-ID chip, and the raw convention string, then
                 # hero pacing tiles + a tinted detail grid. The name + raw string
@@ -5648,6 +5687,7 @@ if st.session_state.active_view == "campaigns":
                     f'{_cdur_cell}'
                     '</div>'
                     '</div>'
+                    f'{_cpa_html}'
                     f'{actions}'
                     '</div>'
                 )

@@ -6,6 +6,17 @@ and why" index, keyed by PR. Newest first.
 
 ## 2026-06-22 — Editorial landing polish
 
+- **Per-LI CPA in the Direct drawer.** The Direct LI drawer now shows a **CPA
+  acquisition** block — CPA, conversions, and a **daily-CPA chart** — for the
+  gambling LIs that map to a TTD ad_group. The TTD feed has no GAM
+  `line_item_id` and `gam_campaigns` has no TTD `deal_id`, so the join is on the
+  two dimensions both names encode — **audience (Casino/Social) + ad size**
+  (`dl.cpa_join_key` → `"casino|728x90-300x250"`, matching the TTD ad_group and
+  the GAM LI name alike). `dl.ttd_cpa_for_li` aggregates that ad_group's rows
+  from the LI's `start_date`. Only the ~8 gambling LIs match (every other LI's
+  key is None → no block); `_ttd_trend_svg` was hoisted so the drawer reuses the
+  card chart. Verified on prod (e.g. Luckyland 728x90-300x250 Casino → CPA
+  $174.02 / 26 conv in June). Pinned by `test_cpa_join_key` / `test_ttd_cpa_for_li`.
 - **TTD cards: date window follows the Status filter + ad-size breakdown.** Each
   Luckyland / Chumba card now windows to **`start` = the earliest `start_date`
   among that campaign's GAM LIs that pass the active filters** (`_ttd_li_start`
