@@ -166,6 +166,7 @@
   .cell .d2 { font-size:11px; margin-top:2px; }
   .d2.up { color:var(--pos); } .d2.dn { color:var(--ink-40); }
   .rev .v { font-weight:700; }
+  .cell .gap { font-size:10px; color:var(--ink-40); margin-top:2px; font-feature-settings:var(--tnum); }
   .band { display:inline-block; padding:3px 8px; border-radius:4px; font-weight:600; font-size:13px; }
   .band.under { background:var(--crit-bg); color:var(--crit); }
   .band.off { background:var(--warn-bg); color:var(--warn); }
@@ -327,6 +328,12 @@
     { nm:"Infiniti — Newsmakers Custom Audience Pre-roll June", ord:"5", meta:"Video · $22.09 CPM", rev:"$1,345", revd:["▲21.9%","up"], del:"53.8K", deld:["▲22.0%","up"], pace:"75%", paceB:"off", view:"86.1%", viewB:"healthy", attn:"140", sivt:"0.55%", givt:"0.04%", ctr:"0.56%", ctrB:"under", seller:"Theresa Hern", prog:48 },
   ];
   const metric=(val,b)=>b?`<span class="band ${b}">${val}</span>`:`<span class="${val==='—'?'muted':''}">${val}</span>`;
+  // banded cell + distance-to-target subtext (parity with PMP eCPM-vs-floor)
+  const PACE_TGT=100, VIEW_TGT=70;
+  const metricGap=(val,b,gapTxt)=>{
+    const cell=metric(val,b);
+    return (b&&b!=="healthy"&&gapTxt)?`${cell}<div class="gap">${gapTxt}</div>`:cell;
+  };
   const delta=d=>d?`<div class="d2 ${d[1]}">${d[0]}</div>`:"";
   const fill={healthy:"var(--pos)",off:"var(--warn)",under:"var(--crit)"};
   document.getElementById("rows").innerHTML = R.map(r=>{
@@ -335,8 +342,8 @@
       <div class="li"><div class="nm">${r.ord?`<span class="ord">#${r.ord}</span>`:""}${r.nm}</div><div class="meta">${r.meta}</div></div>
       <div class="cell rev"><div class="v">${r.rev}</div>${delta(r.revd)}</div>
       <div class="cell"><div class="v">${r.del}</div>${delta(r.deld)}</div>
-      <div class="cell">${metric(r.pace,r.paceB)}</div>
-      <div class="cell">${metric(r.view,r.viewB)}</div>
+      <div class="cell">${metricGap(r.pace,r.paceB, r.paceB&&r.paceB!=='healthy'?(PACE_TGT-parseInt(r.pace))+'pp below tgt':'')}</div>
+      <div class="cell">${metricGap(r.view,r.viewB, r.viewB&&r.viewB!=='healthy'?(VIEW_TGT-parseFloat(r.view)).toFixed(1)+'pp below tgt':'')}</div>
       <div class="cell"><span class="${r.attn==='—'?'muted':''}">${r.attn}</span></div>
       <div class="cell">${metric(r.sivt,r.sivtB)}</div>
       <div class="cell">${metric(r.givt,r.givtB)}</div>

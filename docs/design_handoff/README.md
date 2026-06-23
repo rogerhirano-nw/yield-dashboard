@@ -84,12 +84,44 @@ is `Campaigns Full Redesign (compact).html` (desktop) + `Campaigns Mobile.html` 
 **Daily-monitor data note (not styling):** the two flights run different date windows (Jun 03–21 vs
 Jun 01–21). For a true side-by-side, normalize both to the same window or label the mismatch.
 
+**Distance-to-threshold subtext (Direct campaigns table).** Breaching banded cells carry a small
+gap annotation under the value — Pace "12pp below tgt", Viewable "0.9pp below tgt" — the same idea
+as PMP's "$X below floor". Show it only on non-healthy cells (`.cell .gap` / quantify vs the metric's
+target). Healthy cells stay clean.
+
+## Structural redesign — PMP deals section (same patterns, programmatic-specific)
+The PMP (Programmatic) section reuses the same building blocks; reference build is `PMP Deals Redesign.html`.
+The one new idea is **eCPM banded against the rate floor** (the programmatic equivalent of CPA-vs-goal).
+
+1. **eCPM is the lead KPI.** For programmatic, yield is the headline — make Avg eCPM the `.nw-tile--lead`
+   tile and surface the floor ($14.00) in its subtitle.
+2. **Band eCPM cells against the floor** (`.nw-ecpm` + `.nw-ecpm__band--above/--near/--below`): at/above
+   floor = healthy (no fill), within 10% = warning tint, below floor = critical tint, with a small
+   “$X below floor” annotation. This makes the money-leaking deals scannable at a glance.
+3. **Deal-type pills** (`.nw-tpill--pg/--pd/--pa`) replace bare gray TYPE text, with a small key.
+4. **Floor banner** uses `.nw-banner--warning` and names the worst offender + dollars left on the table.
+5. **PMP signals box**: the “No delivery” row takes `.nw-signal--crit` (critical tint) since dead deals
+   are the actionable item; “spend momentum” splits gaining/losing green/red.
+
+The same eCPM-floor banding extends to the other programmatic views (By DSP, Magnite, Pubmatic).
+
+### PMP signals drill-downs (Spend momentum / No delivery)
+These two expandable signals were already well-structured — apply the **token pass** (serif figures,
+tabular numerals, severity reds split from brand red, warm hairlines) rather than a restructure.
+Reference: `PMP Signals Redesign.html`. Two specific notes:
+- **Band inactivity age in 3 severity steps** in the "No delivery" dead-deal rows: long (>~180d) =
+  critical, mid (~30–180d) = warning, recent (<~30d) = muted. The live app shows them all in one red,
+  so the most-stale deals don't stand out — the banding fixes that.
+- **Copy (app logic, flag to user):** "ACTIVE · 503d inactive" reads as a contradiction. Prefer
+  "Enabled · 503d no spend" or similar — the deal is enabled but not delivering.
+
 ## Mobile
 Streamlit’s native `st.dataframe`/columns collapse on their own, but the **custom-HTML** blocks need
 the `@media (max-width:700px)` rules in `newsweek-dashboard.css`:
 - KPI strip → 2-up grid, Revenue lead spans full width.
 - Tabs + triage pills → horizontal swipe rows (`overflow-x:auto`), not wrapping.
 - Priority-Flight rows → stack into cards.
+- Signals drill-downs → deal/seller rows stack; the open deal stacks ID + yield + full-width charts + 2-up stat grid; dead-deal rows carry the inactivity-age severity rail on the left edge.
 - **Direct campaigns table → one condensed card per line item** (Revenue/Pace/Progress up front, rest
   behind an “All 9 metrics” expander). Do **not** horizontal-scroll an 11-column table on a phone.
   This likely needs custom HTML rendering rather than a native `st.dataframe` — flag the added effort.
@@ -118,6 +150,9 @@ table below is the wiring guide.
 | Priority-Flight monitor row | `.nw-flight` (+ `--crit/--pos`) | slim row: name · CPA · goal pill · stats · sparkline · detail link |
 | Flight goal pill | `.nw-flight__goal--crit/--pos` | over/under $150 CPA goal |
 | Goal-banded CPA cell | `.nw-cpa-band--over/--ok` | CPA tinted red when over goal |
+| eCPM-vs-floor cell | `.nw-ecpm` + `.nw-ecpm__band--above/--near/--below` | eCPM tinted by distance to rate floor |
+| Deal-type pill | `.nw-tpill--pg/--pd/--pa` | programmatic deal-type tag |
+| PMP signal row | `.nw-signal` (+ `--crit`) | spend-momentum / no-delivery; crit tint on dead deals |
 
 ## Design tokens
 All values are defined as CSS variables in `newsweek-dashboard.css` (`:root`). Summary:
@@ -150,5 +185,8 @@ amber=warn, red=breach) is preserved.
 - `newsweek-dashboard.css` — token block + component CSS to install (includes Campaigns-view layout + mobile rules)
 - `Campaigns Full Redesign (compact).html` — **canonical desktop reference** for the assembled Campaigns view
 - `Campaigns Mobile.html` — phone reflow reference (annotated)
+- `PMP Deals Redesign.html` — PMP / programmatic section reference (eCPM-vs-floor banding)
+- `PMP Signals Redesign.html` — expanded Spend-momentum / No-delivery drill-downs (token pass + age banding)
+- `PMP Signals Mobile.html` — signals drill-downs, phone reflow (severity-rail dead-deal rows)
 - `Dashboard Brand Audit.html` — Before/After + token findings (reference)
 - `audit.css` — styles for the audit doc (reference only; not for the app)

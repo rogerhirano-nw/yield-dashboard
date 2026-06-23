@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PMP signals — expanded</title>
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/colors.css" />
+<style>
+  :root {
+    --paper:#fefcf6; --raised:#ffffff; --sunk:#f6f2e6;
+    --ink:#1f1e19; --ink-60:#57564f; --ink-40:#8c887b;
+    --hair:#e7e0c9; --rule:#1f1e19;
+    --brand:#e91d0c; --brand-strong:#c41608;
+    --pos:#3c6b14;  --pos-bg:#eef3e3;
+    --warn:#8a6d00; --warn-bg:#f6eecd;
+    --crit:#c41608; --crit-bg:#fbe6e2;
+    --sans:"Franklin Gothic","Helvetica Neue",Arial,sans-serif;
+    --serif:"Benton Modern Display",Georgia,"Times New Roman",serif;
+    --tnum:"tnum" 1;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1040px; margin:0 auto; padding:34px 32px 70px; }
+  .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); }
+  .eyebrow::before { content:""; width:9px; height:9px; background:var(--brand); }
+  h2.sec { margin:10px 0 22px; font-family:var(--serif); font-weight:800; font-size:26px; letter-spacing:-.015em; }
+  .note { font-size:14px; color:var(--ink-60); line-height:1.55; max-width:62em; margin:-12px 0 26px; }
+
+  .box { background:var(--raised); border:1px solid var(--hair); border-radius:8px; overflow:hidden; margin-bottom:26px; }
+  /* group header row */
+  .ghead { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--hair); cursor:pointer; }
+  .ghead.crit { background:var(--crit-bg); }
+  .ghead .led { width:9px; height:9px; border-radius:999px; }
+  .ghead.crit .led { background:var(--crit); } .ghead.neu .led { background:var(--ink-40); }
+  .ghead .cnt { font-family:var(--serif); font-weight:800; font-size:22px; font-feature-settings:var(--tnum); }
+  .ghead.crit .cnt { color:var(--crit); }
+  .ghead .nm { font-size:14px; font-weight:600; }
+  .ghead .meta { font-size:12.5px; color:var(--ink-60); font-feature-settings:var(--tnum); }
+  .ghead .meta .up { color:var(--pos); } .ghead .meta .dn { color:var(--brand-strong); }
+
+  /* spend-momentum deal rows */
+  .deal { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:13px 18px 13px 30px; border-bottom:1px solid var(--hair); cursor:pointer; }
+  .deal:hover { background:var(--sunk); }
+  .deal .who .n { font-size:13.5px; }
+  .deal .who .n b { font-weight:600; } .deal .who .n span { color:var(--ink-40); }
+  .deal .who .flow { font-size:11.5px; color:var(--ink-40); margin-top:2px; font-feature-settings:var(--tnum); }
+  .deal .chg { font-size:14px; font-weight:700; font-feature-settings:var(--tnum); white-space:nowrap; }
+  .deal .chg.up { color:var(--pos); } .deal .chg.dn { color:var(--brand-strong); }
+  .deal .chg .pct { font-weight:400; font-size:12px; color:var(--ink-40); }
+
+  /* expanded deal detail */
+  .detail { padding:18px 18px 20px 30px; border-bottom:1px solid var(--hair); background:var(--sunk); }
+  .detail .idstr { display:inline-block; font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:12px; background:var(--raised); border:1px solid var(--hair); border-radius:4px; padding:7px 11px; color:var(--ink-60); margin-bottom:14px; }
+  .yield { display:flex; gap:10px; padding:12px 14px; border-radius:8px; background:var(--pos-bg); border-left:3px solid var(--pos); margin-bottom:16px; font-size:13.5px; }
+  .yield b { color:var(--pos); letter-spacing:.04em; text-transform:uppercase; }
+  .yield span { color:var(--ink-60); }
+  .chart { background:var(--raised); border:1px solid var(--hair); border-radius:6px; padding:13px 14px 8px; margin-bottom:12px; }
+  .chart .ct { display:flex; justify-content:space-between; font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-60); margin-bottom:6px; }
+  .chart .ct .g { color:var(--ink-40); font-weight:400; letter-spacing:0; text-transform:none; }
+  .chart svg { display:block; width:100%; height:72px; }
+  .axis { display:flex; justify-content:space-between; font-size:9.5px; color:var(--ink-40); margin-top:3px; font-feature-settings:var(--tnum); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px 18px; margin-top:14px; padding-top:14px; border-top:1px solid var(--hair); }
+  .stat .l { font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); }
+  .stat .v { font-size:14px; font-weight:600; margin-top:3px; font-feature-settings:var(--tnum); }
+  .ticket { display:inline-flex; align-items:center; gap:7px; margin-top:16px; padding:8px 14px; border:1px solid var(--hair); border-radius:4px; background:var(--raised); font-size:13px; font-weight:600; cursor:pointer; }
+
+  /* no-delivery: seller groups */
+  .seller { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--hair); cursor:pointer; }
+  .seller:last-child { border-bottom:0; }
+  .seller:hover { background:var(--sunk); }
+  .seller.open { background:var(--sunk); }
+  .seller .av { width:30px; height:30px; border-radius:999px; background:var(--ink); color:var(--paper); display:flex; align-items:center; justify-content:center; font-family:var(--serif); font-weight:700; font-size:13px; }
+  .seller .nm { font-size:14px; font-weight:600; }
+  .seller .meta { font-size:12.5px; color:var(--ink-60); font-feature-settings:var(--tnum); }
+  .seller .meta b { color:var(--crit); }
+  .seller .chev { color:var(--ink-40); }
+
+  /* dead-deal sub-rows */
+  .dead { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center; padding:12px 18px 12px 64px; border-bottom:1px solid var(--hair); background:var(--paper); }
+  .dead .nm { font-size:13px; } .dead .nm b { font-weight:600; } .dead .nm span { color:var(--ink-40); }
+  .dead .status { font-size:11px; }
+  .dead .status .lab { font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); font-size:9.5px; }
+  .dead .status .age { font-weight:700; font-feature-settings:var(--tnum); }
+  .age.sev3 { color:var(--crit); } .age.sev2 { color:var(--warn); } .age.sev1 { color:var(--ink-40); }
+  .dead .right { text-align:right; }
+  .dead .tpill { display:inline-block; padding:2px 6px; border-radius:4px; background:var(--sunk); color:var(--ink-60); font-size:10px; font-weight:700; }
+  .dead .floor { font-size:11px; color:var(--ink-40); margin-top:3px; font-feature-settings:var(--tnum); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="eyebrow">Programmatic · PMP signals</span>
+  <h2 class="sec">Expanded signals — on the system</h2>
+  <p class="note">These two drill-downs were already well-structured; this is a token pass plus a few refinements: severity reds split from brand red, tabular numerals, serif figures, warm hairlines, and inactivity age banded into three severity steps so the worst dead deals jump out.</p>
+
+  <!-- SPEND MOMENTUM -->
+  <div class="box">
+    <div class="ghead neu">
+      <span class="led"></span>
+      <div><span class="cnt">13</span> &nbsp;<span class="nm">Spend momentum</span></div>
+      <div class="meta"><span class="up">3 gaining</span> · <span class="dn">10 losing</span></div>
+    </div>
+
+    <!-- one deal expanded -->
+    <div class="deal" style="background:var(--sunk)">
+      <div class="who"><div class="n"><b>Amazon</b> <span>— RMI</span></div><div class="flow">$1,536 → $3,229</div></div>
+      <div class="chg up">+$1,693 <span class="pct">+110%</span></div>
+    </div>
+    <div class="detail">
+      <span class="idstr">Newsweek_PA_Tech_Magnite_Amazon_NA_Omnicom_Amazon_RMI_US_Display_$3_Team–USA_ILee</span>
+      <div class="yield"><b>✓ Strong yield</b><span>$31.63 clearing — 954% above the $3.00 Private Auction floor.</span></div>
+      <div class="chart">
+        <div class="ct"><span>7-day revenue</span><span class="g">$3.2K total · $227/day latest</span></div>
+        <svg id="rev" viewBox="0 0 600 72" preserveAspectRatio="none"></svg>
+        <div class="axis"><span>Tue 16</span><span>Wed 17</span><span>Thu 18</span><span>Fri 19</span><span>Sat 20</span><span>Sun 21</span><span>Mon 22</span></div>
+      </div>
+      <div class="two">
+        <div class="chart"><div class="ct"><span>Total requests</span><span class="g">20.8M</span></div><svg id="req" viewBox="0 0 290 60" preserveAspectRatio="none"></svg></div>
+        <div class="chart"><div class="ct"><span>Bid responses</span><span class="g">248.9K</span></div><svg id="bid" viewBox="0 0 290 60" preserveAspectRatio="none"></svg></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="l">Win rate</div><div class="v">0.5%</div></div>
+        <div class="stat"><div class="l">Total requests</div><div class="v">20.80M</div></div>
+        <div class="stat"><div class="l">Bid responses</div><div class="v">248.9K</div></div>
+        <div class="stat"><div class="l">Response rate</div><div class="v">1.2%</div></div>
+        <div class="stat"><div class="l">SSP</div><div class="v">Magnite</div></div>
+        <div class="stat"><div class="l">Deal type</div><div class="v">Private Auction</div></div>
+        <div class="stat"><div class="l">DSP</div><div class="v">Amazon</div></div>
+        <div class="stat"><div class="l">Format</div><div class="v">Display</div></div>
+        <div class="stat"><div class="l">Seller</div><div class="v">Ivy Lee</div></div>
+        <div class="stat"><div class="l">Deal source</div><div class="v">Publisher</div></div>
+        <div class="stat"><div class="l">Team</div><div class="v">USA</div></div>
+        <div class="stat"><div class="l">Configured floor</div><div class="v">$3.00</div></div>
+      </div>
+      <button class="ticket">▤ AirTable ticket</button>
+    </div>
+
+    <!-- collapsed deals -->
+    <div class="deal"><div class="who"><div class="n"><b>Amazon</b> <span>— RMI</span></div><div class="flow">$1,843 → $1,563</div></div><div class="chg dn">−$280 <span class="pct">−15%</span></div></div>
+    <div class="deal"><div class="who"><div class="n"><b>T Mobile</b> <span>— Mobile</span></div><div class="flow">$1,558 → $931</div></div><div class="chg dn">−$627 <span class="pct">−40%</span></div></div>
+    <div class="deal"><div class="who"><div class="n"><b>Basis Miles</b> <span>— TourTravCVB</span></div><div class="flow">$715 → $858</div></div><div class="chg up">+$143 <span class="pct">+20%</span></div></div>
+    <div class="deal"><div class="who"><div class="n"><b>Demandbase</b> <span>— AlwaysOn</span></div><div class="flow">$270 → $578</div></div><div class="chg up">+$308 <span class="pct">+114%</span></div></div>
+  </div>
+
+  <!-- NO DELIVERY -->
+  <div class="box">
+    <div class="ghead crit">
+      <span class="led"></span>
+      <div><span class="cnt">29</span> &nbsp;<span class="nm">No delivery</span></div>
+      <div class="meta">28 active · $0 spend today</div>
+    </div>
+
+    <!-- Ivy Lee expanded -->
+    <div class="seller open"><span class="av">IL</span><span class="nm">Ivy Lee</span><span class="meta"><b>11</b> dead · worst 503d</span></div>
+    <div class="dead"><div class="nm"><b>Apple</b> <span>— Always On</span></div><div class="status"><span class="lab">Active · </span><span class="age sev3">503d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$6.00 floor</div></div></div>
+    <div class="dead"><div class="nm"><b>Apple</b> <span>— Always On</span></div><div class="status"><span class="lab">Active · </span><span class="age sev3">503d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$16.00 floor</div></div></div>
+    <div class="dead"><div class="nm"><b>Paypal</b> <span>— Always On</span></div><div class="status"><span class="lab">Active · </span><span class="age sev3">503d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$6.00 floor</div></div></div>
+    <div class="dead"><div class="nm"><b>Amazon Business</b> <span>— Desktop</span></div><div class="status"><span class="lab">Active · </span><span class="age sev3">442d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$11.00 floor</div></div></div>
+    <div class="dead"><div class="nm"><b>Meta</b> <span>— AlwaysOn</span></div><div class="status"><span class="lab">Active · </span><span class="age sev2">116d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$11.00 floor</div></div></div>
+    <div class="dead"><div class="nm"><b>Meta</b> <span>— AlwaysOn</span></div><div class="status"><span class="lab">Active · </span><span class="age sev1">57d inactive</span></div><div class="right"><span class="tpill">PA</span><div class="floor">$3.00 floor</div></div></div>
+
+    <!-- collapsed sellers -->
+    <div class="seller"><span class="av">BR</span><span class="nm">Brian Robinson</span><span class="meta"><b>5</b> dead · worst 520d <span class="chev">›</span></span></div>
+    <div class="seller"><span class="av">BK</span><span class="nm">Ben Karetny</span><span class="meta"><b>4</b> dead · worst 118d <span class="chev">›</span></span></div>
+    <div class="seller"><span class="av">DV</span><span class="nm">Danielle Varvaro</span><span class="meta"><b>3</b> dead · worst 347d <span class="chev">›</span></span></div>
+  </div>
+
+</div>
+
+<script>
+  function area(id, series, color){
+    const svg=document.getElementById(id); const vb=svg.viewBox.baseVal; const W=vb.width,H=vb.height,pad=5;
+    const min=Math.min(...series),max=Math.max(...series),span=(max-min)||1;
+    const x=i=>pad+i*(W-2*pad)/(series.length-1), y=v=>pad+(H-2*pad)*(1-(v-min)/span);
+    const pts=series.map((v,i)=>[x(i),y(v)]);
+    const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    const fill=line+` L ${x(series.length-1).toFixed(1)} ${H-pad} L ${x(0).toFixed(1)} ${H-pad} Z`;
+    svg.innerHTML=`<path d="${fill}" fill="${color}" opacity="0.08"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${pts[pts.length-1][0].toFixed(1)}" cy="${pts[pts.length-1][1].toFixed(1)}" r="2.6" fill="${color}"/>`;
+  }
+  area("rev",[180,260,300,250,210,235,227],"var(--ink)");
+  area("req",[1.6,1.9,2.0,1.7,1.8,1.95,1.9],"var(--ink-60)");
+  area("bid",[14,17,19,15,16,17.5,17.2],"var(--ink-60)");
+</script>
+</body>
+</html>

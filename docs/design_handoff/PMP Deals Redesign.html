@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PMP deals — redesign</title>
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/colors.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/color-sets.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/semantic.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/typography.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/spacing.css" />
+<style>
+  :root {
+    --paper:#fefcf6; --raised:#ffffff; --sunk:#f6f2e6;
+    --ink:#1f1e19; --ink-60:#57564f; --ink-40:#8c887b;
+    --hair:#e7e0c9; --rule:#1f1e19;
+    --brand:#e91d0c; --brand-strong:#c41608;
+    --pos:#3c6b14;  --pos-bg:#eef3e3;
+    --warn:#8a6d00; --warn-bg:#f6eecd;
+    --crit:#c41608; --crit-bg:#fbe6e2;
+    --info:#1f5fa8; --info-bg:#e4edf7;
+    --sans:"Franklin Gothic","Helvetica Neue",Arial,sans-serif;
+    --serif:"Benton Modern Display",Georgia,"Times New Roman",serif;
+    --tnum:"tnum" 1;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1360px; margin:0 auto; padding:30px 32px 70px; }
+
+  /* section header */
+  .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); }
+  .eyebrow::before { content:""; width:9px; height:9px; background:var(--brand); }
+  h2.sec { margin:10px 0 0; font-family:var(--serif); font-weight:800; font-size:26px; letter-spacing:-.015em; }
+
+  .filters { display:flex; gap:10px; margin:18px 0 22px; }
+  .chip { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border:1px solid var(--hair); border-radius:4px; background:var(--raised); font-size:13px; font-weight:600; }
+  .chip.brand { border-color:var(--ink); }
+  .chip .x { color:var(--ink-40); }
+
+  /* critical floor banner */
+  .banner { display:flex; align-items:flex-start; gap:12px; padding:14px 18px; border-radius:8px; margin-bottom:24px; background:var(--warn-bg); border-left:3px solid var(--warn); }
+  .banner .ic { color:var(--warn); font-weight:700; }
+  .banner b { display:block; font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--warn); }
+  .banner span { font-size:13px; color:var(--ink-60); }
+  .banner b .n { font-feature-settings:var(--tnum); }
+
+  /* KPI cards — eCPM is the lead (yield) metric here */
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+  .kpi { background:var(--raised); border:1px solid var(--hair); border-top:2px solid var(--ink); border-radius:6px; padding:16px 18px; }
+  .kpi.lead { border-top:3px solid var(--brand); }
+  .kpi .l { font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-40); }
+  .kpi .v { font-family:var(--serif); font-weight:800; font-size:30px; margin:8px 0 4px; line-height:1; font-feature-settings:var(--tnum); }
+  .kpi.lead .v { font-size:34px; }
+  .kpi .t { font-size:11.5px; color:var(--ink-40); font-feature-settings:var(--tnum); }
+  .kpi .t b { color:var(--ink); }
+
+  /* PMP signals */
+  .signals { background:var(--raised); border:1px solid var(--hair); border-radius:8px; overflow:hidden; margin-bottom:30px; }
+  .signals .sh { display:flex; justify-content:space-between; padding:12px 18px; border-bottom:1px solid var(--hair); background:var(--sunk); }
+  .signals .sh .l { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-60); }
+  .sig { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--hair); }
+  .sig:last-child { border-bottom:0; }
+  .sig.crit { background:var(--crit-bg); }
+  .sig .cnt { font-family:var(--serif); font-weight:800; font-size:22px; font-feature-settings:var(--tnum); }
+  .sig.crit .cnt { color:var(--crit); }
+  .sig .nm { font-size:14px; font-weight:600; }
+  .sig .meta { font-size:12.5px; color:var(--ink-60); font-feature-settings:var(--tnum); }
+  .sig .led { width:9px; height:9px; border-radius:999px; }
+  .sig.crit .led { background:var(--crit); } .sig.neu .led { background:var(--ink-40); }
+
+  /* deals table */
+  .tbl-head { display:flex; align-items:baseline; justify-content:space-between; margin:0 0 12px; }
+  .tbl-head .t { font-family:var(--serif); font-weight:700; font-size:18px; }
+  .tbl-head .t span { font-family:var(--sans); font-weight:400; font-size:13px; color:var(--ink-40); margin-left:8px; }
+  .keys { display:flex; gap:14px; font-size:11.5px; color:var(--ink-60); align-items:center; }
+  .keys .k { display:inline-flex; align-items:center; gap:6px; }
+  .tpill { display:inline-flex; align-items:center; justify-content:center; min-width:24px; padding:2px 6px; border-radius:4px; font-size:10.5px; font-weight:700; letter-spacing:.03em; }
+  .tpill.pg { background:#e4edf7; color:#1f5fa8; } .tpill.pd { background:#ece4f5; color:#6b3fa0; } .tpill.pa { background:var(--sunk); color:var(--ink-60); }
+
+  .table { background:var(--raised); border:1px solid var(--hair); border-radius:8px; overflow:hidden; }
+  .grid { display:grid; grid-template-columns:2.3fr 0.55fr 0.9fr 0.85fr 0.9fr 0.95fr 1fr 0.95fr 0.75fr 0.75fr 1.1fr; gap:10px; align-items:center; }
+  .ghead { padding:12px 18px; border-bottom:2px solid var(--rule); background:var(--sunk); }
+  .ghead span { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-60); }
+  .ghead .r { text-align:right; }
+  .grow { padding:13px 18px; border-bottom:1px solid var(--hair); font-feature-settings:var(--tnum); }
+  .grow:last-child { border-bottom:0; }
+  .grow:hover { background:var(--sunk); }
+  .deal .nm { font-weight:600; font-size:13.5px; line-height:1.2; }
+  .deal .buyer { font-size:11.5px; color:var(--ink-40); margin-top:2px; }
+  .cell { text-align:right; font-size:13.5px; }
+  .cell.l { text-align:left; }
+  .cell .v { font-weight:600; }
+  .rev .v { font-weight:700; }
+  .muted { color:var(--ink-40); }
+  .seller { font-size:13px; color:var(--ink-60); }
+
+  /* eCPM banded against $14 floor */
+  .ecpm { display:inline-flex; flex-direction:column; align-items:flex-end; }
+  .ecpm .band { display:inline-block; padding:3px 8px; border-radius:4px; font-weight:700; font-size:13.5px; }
+  .ecpm .band.below { background:var(--crit-bg); color:var(--crit); }
+  .ecpm .band.near  { background:var(--warn-bg); color:var(--warn); }
+  .ecpm .band.above { color:var(--pos); }
+  .ecpm .fl { font-size:10px; color:var(--ink-40); margin-top:2px; }
+
+  .attn { display:inline-flex; flex-direction:column; align-items:flex-end; }
+  .attn .d { font-size:10.5px; margin-top:2px; font-feature-settings:var(--tnum); }
+  .attn .d.up { color:var(--pos); } .attn .d.dn { color:var(--brand-strong); }
+
+  .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:18px; font-size:13px; color:var(--ink-60); }
+  .pager button { width:34px; height:34px; border:1px solid var(--hair); background:var(--raised); border-radius:4px; cursor:pointer; font-size:15px; }
+  .pager .pg b { color:var(--ink); }
+  .floor-note { margin-top:14px; font-size:12px; color:var(--ink-40); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  .floor-note .sw { display:inline-flex; align-items:center; gap:5px; }
+  .floor-note .sw i { width:10px; height:10px; border-radius:2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="eyebrow">Programmatic</span>
+  <h2 class="sec">PMP deals</h2>
+
+  <div class="filters">
+    <div class="chip">⛃ Filters · 1 <span style="color:var(--ink-40)">▾</span></div>
+    <div class="chip brand">Deal type: Private Auction +2 <span class="x">×</span></div>
+  </div>
+
+  <div class="banner">
+    <span class="ic">⚠</span>
+    <div><b><span class="n">86</span> PD deals below floor eCPM</b><span>Worst: Google — Evergreen · $12.60 vs $14.00 floor — leaving ~$1.40 CPM on the table across 511.2K imps.</span></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="l">Revenue</div><div class="v">$27.1K</div><div class="t">vs <b>$63.9K</b> direct</div></div>
+    <div class="kpi"><div class="l">Paid Impressions</div><div class="v">3.18M</div><div class="t">across 302 active deals</div></div>
+    <div class="kpi lead"><div class="l">Avg eCPM · yield</div><div class="v">$8.53</div><div class="t">vs <b>$1.86</b> direct · floor $14.00</div></div>
+    <div class="kpi"><div class="l">Active Deals</div><div class="v">302</div><div class="t">PD <b>57</b> · PA <b>147</b> · PMP <b>98</b></div></div>
+  </div>
+
+  <div class="signals">
+    <div class="sh"><span class="l">PMP signals</span><span class="l">2 signals</span></div>
+    <div class="sig neu">
+      <span class="cnt">13</span>
+      <div><div class="nm">Spend momentum</div></div>
+      <div class="meta"><span style="color:var(--pos)">3 gaining</span> · <span style="color:var(--brand-strong)">10 losing</span></div>
+    </div>
+    <div class="sig crit">
+      <span class="cnt">29</span>
+      <div><div class="nm">No delivery</div></div>
+      <div class="meta">28 active · $0 spend today</div>
+    </div>
+  </div>
+
+  <div class="tbl-head">
+    <div class="t">PMP deals <span>8 of 302 shown · 294 under $100/day hidden · sorted by revenue</span></div>
+    <div class="keys">
+      <span class="k"><span class="tpill pg">PG</span> Guaranteed</span>
+      <span class="k"><span class="tpill pd">PD</span> Preferred</span>
+      <span class="k"><span class="tpill pa">PA</span> Private auction</span>
+    </div>
+  </div>
+
+  <div class="table">
+    <div class="grid ghead">
+      <span>Deal</span><span>Type</span><span>DSP</span><span>SSP</span><span>Format</span>
+      <span class="r">Revenue</span><span class="r">Impr.</span><span class="r">eCPM</span>
+      <span class="r">Attention</span><span class="r">SIVT</span><span>Seller</span>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="pager"><button>‹</button><span class="pg">Page <b>1</b> of 2 · 8 of 302 shown</span><button>›</button></div>
+
+  <div class="floor-note">
+    <span>eCPM vs $14.00 floor:</span>
+    <span class="sw"><i style="background:var(--pos)"></i>At / above floor</span>
+    <span class="sw"><i style="background:var(--warn)"></i>Within 10% of floor</span>
+    <span class="sw"><i style="background:var(--crit)"></i>Below floor</span>
+  </div>
+
+</div>
+
+<script>
+  const FLOOR = 14.00;
+  const R = [
+    { nm:"Google — Evergreen", buyer:"Media Futures Group · WPP", type:"pd", dsp:"DV360", ssp:"GAM", fmt:"Video", rev:"$6,441", impr:"511.2K", ecpm:12.60, attn:"139", attnD:["▲ 0.19pp","up"], sivt:"0.10%", seller:"I. Lee" },
+    { nm:"Amazon — RMI", buyer:"Omnicom", type:"pa", dsp:"Amazon", ssp:"Magnite", fmt:"Display", rev:"$3,229", impr:"101.8K", ecpm:31.63, attn:"—", sivt:"—", seller:"I. Lee" },
+    { nm:"Mediaforce — Comparisons.org", buyer:"", type:"pd", dsp:"Mediaforce", ssp:"GAM", fmt:"Display", rev:"$2,462", impr:"456.0K", ecpm:5.40, attn:"144", attnD:["▼ 0.34pp","dn"], sivt:"0.16%", seller:"B. Karetny" },
+    { nm:"Amazon — RMI", buyer:"", type:"pa", dsp:"Amazon", ssp:"Magnite", fmt:"Video", rev:"$1,563", impr:"34.4K", ecpm:45.44, attn:"—", sivt:"—", seller:"I. Lee" },
+    { nm:"The Trade Desk — Premium", buyer:"GroupM", type:"pg", dsp:"TTD", ssp:"Magnite", fmt:"Video", rev:"$1,402", impr:"98.7K", ecpm:14.20, attn:"151", attnD:["▲ 0.08pp","up"], sivt:"0.09%", seller:"I. Lee" },
+    { nm:"PubMatic — Identity PMP", buyer:"Dentsu", type:"pa", dsp:"PubMatic", ssp:"PubMatic", fmt:"Display", rev:"$1,121", impr:"187.3K", ecpm:7.80, attn:"118", attnD:["▲ 0.22pp","up"], sivt:"0.21%", seller:"B. Karetny" },
+    { nm:"DV360 — Politics PG", buyer:"Publicis", type:"pg", dsp:"DV360", ssp:"GAM", fmt:"Display", rev:"$986", impr:"84.1K", ecpm:11.60, attn:"127", attnD:["▼ 0.11pp","dn"], sivt:"0.14%", seller:"I. Lee" },
+    { nm:"Magnite — Open Web", buyer:"", type:"pa", dsp:"Magnite", ssp:"Magnite", fmt:"Display", rev:"$742", impr:"151.4K", ecpm:4.90, attn:"—", sivt:"0.31%", seller:"B. Karetny" },
+  ];
+
+  const ecpmBand = v => {
+    if (v >= FLOOR) return "above";
+    if (v >= FLOOR * 0.9) return "near";
+    return "below";
+  };
+
+  document.getElementById("rows").innerHTML = R.map(r => {
+    const b = ecpmBand(r.ecpm);
+    const showFloor = b !== "above";
+    return `<div class="grid grow">
+      <div class="deal"><div class="nm">${r.nm}</div>${r.buyer?`<div class="buyer">${r.buyer}</div>`:""}</div>
+      <div><span class="tpill ${r.type}">${r.type.toUpperCase()}</span></div>
+      <div class="cell l">${r.dsp}</div>
+      <div class="cell l">${r.ssp}</div>
+      <div class="cell l">${r.fmt}</div>
+      <div class="cell rev"><span class="v">${r.rev}</span></div>
+      <div class="cell">${r.impr}</div>
+      <div class="cell"><span class="ecpm"><span class="band ${b}">$${r.ecpm.toFixed(2)}</span>${showFloor?`<span class="fl">${(FLOOR-r.ecpm).toFixed(2)} below floor</span>`:""}</span></div>
+      <div class="cell"><span class="attn"><span class="${r.attn==='—'?'muted':''}">${r.attn}</span>${r.attnD?`<span class="d ${r.attnD[1]}">${r.attnD[0]}</span>`:""}</span></div>
+      <div class="cell"><span class="${r.sivt==='—'?'muted':''}">${r.sivt}</span></div>
+      <div class="cell l seller">${r.seller}</div>
+    </div>`;
+  }).join("");
+</script>
+</body>
+</html>

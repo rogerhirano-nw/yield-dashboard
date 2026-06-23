@@ -220,6 +220,27 @@
 .nw-cpa-band--over { background: var(--state-critical-surface); color: var(--state-critical); }  /* CPA > goal */
 .nw-cpa-band--ok   { color: var(--state-positive); }                                              /* CPA <= goal */
 
+/* ---- d) PMP deals — eCPM banded against floor + type pills ---- */
+/* eCPM cell: above floor = healthy, within 10% = warn, below = breach.
+   Pair the band with a small "$X below floor" annotation. */
+.nw-ecpm { display: inline-flex; flex-direction: column; align-items: flex-end; }
+.nw-ecpm__band { display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); font-weight: 700; font-feature-settings: var(--num-feature); }
+.nw-ecpm__band--above { color: var(--state-positive); }
+.nw-ecpm__band--near  { background: var(--state-warning-surface); color: var(--state-warning); }
+.nw-ecpm__band--below { background: var(--state-critical-surface); color: var(--state-critical); }
+.nw-ecpm__floor { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+/* deal-type pills */
+.nw-tpill { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; padding: 2px 6px; border-radius: var(--radius-sm); font: 700 10.5px/1.4 var(--font-sans); letter-spacing: .03em; }
+.nw-tpill--pg { background: #e4edf7; color: #1f5fa8; }   /* programmatic guaranteed */
+.nw-tpill--pd { background: #ece4f5; color: #6b3fa0; }   /* preferred deal */
+.nw-tpill--pa { background: var(--surface-2); color: var(--text-secondary); }  /* private auction */
+/* PMP signals box — the "no delivery" row takes a critical tint */
+.nw-signal { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.nw-signal:last-child { border-bottom: 0; }
+.nw-signal--crit { background: var(--state-critical-surface); }
+.nw-signal__cnt { font: 800 22px/1 var(--font-display); font-feature-settings: var(--num-feature); }
+.nw-signal--crit .nw-signal__cnt { color: var(--state-critical); }
+
 /* ============================================================
    4) RESPONSIVE  — phone reflow (<= 700px). Streamlit's native
    dataframe/columns collapse on their own; these rules cover the
