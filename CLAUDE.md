@@ -254,6 +254,46 @@ whenever the type had no settings entry. On prod, **229 of 271** distinct PMP
 deals (~85%) carry a parseable `$`-floor at token 11; the rest fall back.
 Pinned by `test_pmp_deal_floor` (real prod-shaped names).
 
+**eCPM-vs-floor banding is 3-step** (`dl.ecpm_floor_band(ecpm, floor)`, 2026-06-23
+handoff; the programmatic equivalent of CPA-vs-goal): **`below`** (eCPM < floor —
+money leaking, critical tint) / **`near`** (floor ≤ eCPM < floor×1.1 — precarious,
+warning tint) / **`above`** (≥ floor×1.1 — healthy, plain) / `None` when no floor.
+Replaced the prior 2-step `_ecpm_cell` (under-floor amber / ≥2×-floor green). The
+PMP custom-HTML table's `_ecpm_cell(ecpm, floor, gap=True)` adds a **"$X below
+floor"** annotation on `below` and "near floor" on `near` (gap=False on the mobile
+card, which already shows the eCPM-vs-floor bar). Pinned by `test_ecpm_floor_band`.
+
+**PMP deals section redesign** (2026-06-23 handoff — `docs/design_handoff/PMP
+Deals Redesign.html`):
+- **Avg eCPM is the LEAD KPI tile** (`_pmp_tile(..., lead=True)` → `.nw-tile--lead`,
+  reused from the Direct strip) — yield is the programmatic headline. Its subtitle
+  carries the floor signal: `vs $X direct · N below floor`.
+- **Floor-breach banner** names the **worst** offender (furthest below floor) and
+  the **dollars left on the table** = Σ (floor − eCPM) × paid-impr / 1000 over the
+  breaching deals, across the displayed window.
+- Deal-type pills (`_dt_pill` → `pill-dt-*`) in the TYPE column already existed.
+- **No-delivery signal**: 3-step inactivity-age band (`dl.inactivity_band` —
+  `crit` >180d / `warn` 30-180d / `muted` <30d; **distinct from `idle_band`'s
+  90/180** used by stale-deals) drives the text color + a left-edge severity rail.
+  **Copy fix**: "ACTIVE · 503d inactive" → **"Enabled · 503d no spend"** (the deal
+  is enabled, just not delivering). Pinned by `test_inactivity_band_boundaries`.
+
+**eCPM-vs-floor banding rolled out to the SSP deal tables** (Magnite + Pubmatic,
+2026-06-23). Those are native `st.dataframe`s, so banding goes through a pandas
+**`_ecpm_floor_styler(df, deal_col, ecpm_col, fmt)`** (module-level): per-row floor
+from `dl.pmp_deal_floor(deal_name)` → `dl.ecpm_floor_band` → literal-hex cell CSS
+(the canvas can't resolve CSS vars). **Gotcha:** once a Styler is passed to
+`st.dataframe`, Streamlit **ignores `column_config`'s `format=`** (only labels +
+hiding still apply) — so the styler must re-apply the number formats via `.format()`
+(the `fmt` dict mirrors each table's column_config). **By DSP is intentionally NOT
+rolled out** — it aggregates by DSP partner, which has no per-deal floor to band
+against.
+
+**Direct table distance-to-target subtext** (`_gap_html`, 2026-06-23): breaching
+**Pace** and **Viewable** cells carry a small "Npp below tgt" (red/amber) /
+"Npp over tgt" (overpacing) line under the value; healthy (green) cells stay clean.
+The same idea as PMP's "$X below floor".
+
 ## Dashboard design system (Newsweek "Paper", 2026-06)
 The dashboard is skinned to the Newsweek design system: **light warm-paper
 canvas** (`--surface-0 #fefcf6`, ink text `#1f1e19`), Benton Modern
@@ -518,8 +558,9 @@ Rules that survive any future restyle:
     **eCPM-vs-floor bar** + a **7-day revenue sparkline**; the right column is
     the **deal-type pill** (`.m-dt`, top, fixed spot) over revenue / eCPM /
     impressions. The bar scales eCPM against `2 × floor` so the floor sits
-    at the **50% tick**, and bands like `_ecpm_cell` (under floor amber,
-    ≥2× floor green, otherwise neutral). The sparkline (`_pmp_spark_svg`,
+    at the **50% tick** (the bar's own banding is unchanged; the eCPM *cell*
+    now uses the 3-step `dl.ecpm_floor_band` — see the eCPM-vs-floor convention
+    above). The sparkline (`_pmp_spark_svg`,
     "revenue 7d" eyebrow) sits under the bar — both are kept (the bar is the
     yield-health signal, the sparkline is the trend). The type pill is pinned
     **top-right** rather than inline after the name: deal names vary in length

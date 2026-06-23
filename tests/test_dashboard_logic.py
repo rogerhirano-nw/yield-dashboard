@@ -176,6 +176,32 @@ def test_idle_band_boundaries():
     assert idle_band(365) == "red"
 
 
+def test_inactivity_band_boundaries():
+    from dashboard_logic import inactivity_band
+    assert inactivity_band(0) == "muted"
+    assert inactivity_band(29) == "muted"
+    assert inactivity_band(30) == "warn"     # mid band starts at 30
+    assert inactivity_band(180) == "warn"    # inclusive top of mid band
+    assert inactivity_band(181) == "crit"    # long-dead beyond 180
+    assert inactivity_band(503) == "crit"
+    assert inactivity_band("x") == "muted"   # non-numeric → muted
+
+
+def test_ecpm_floor_band():
+    from dashboard_logic import ecpm_floor_band
+    assert ecpm_floor_band(4.10, 5.00) == "below"   # money leaking
+    assert ecpm_floor_band(5.00, 5.00) == "near"    # exactly at floor = precarious
+    assert ecpm_floor_band(5.49, 5.00) == "near"    # within 10% above
+    assert ecpm_floor_band(5.50, 5.00) == "above"   # 10% above = healthy
+    assert ecpm_floor_band(12.0, 5.00) == "above"
+    # missing / invalid → no band
+    assert ecpm_floor_band(None, 5.00) is None
+    assert ecpm_floor_band(8.0, None) is None
+    assert ecpm_floor_band(8.0, 0) is None
+    import numpy as np
+    assert ecpm_floor_band(np.nan, 5.0) is None
+
+
 # ── choose_join_col ────────────────────────────────────────────────────────
 
 def test_choose_join_col_prefers_ids_when_present():

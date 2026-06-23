@@ -152,6 +152,24 @@ def idle_band(days) -> str:
     return "amber" if v >= 90 else ""
 
 
+def inactivity_band(days) -> str:
+    """3-step severity for a **No-delivery** deal's days-inactive (set up but
+    never winning impressions): ``"crit"`` > 180d (long dead), ``"warn"``
+    30-180d, ``"muted"`` < 30d (recently set up). Distinct from `idle_band`
+    (stale-deals, 90/180 cutoffs) — a deal that is *enabled but never
+    delivering* is notable sooner, so the most-stale dead deals stand out
+    instead of all reading one red. Non-numeric → ``"muted"``."""
+    try:
+        v = float(days)
+    except (TypeError, ValueError):
+        return "muted"
+    if v > 180:
+        return "crit"
+    if v >= 30:
+        return "warn"
+    return "muted"
+
+
 # ── DV / IVT aggregation ───────────────────────────────────────────────
 
 
@@ -639,6 +657,29 @@ def pmp_deal_floor(name):
     except ValueError:
         return None
     return val if val > 0 else None
+
+
+def ecpm_floor_band(ecpm, floor):
+    """3-step eCPM-vs-rate-floor band for programmatic yield cells — the
+    programmatic equivalent of CPA-vs-goal:
+      ``"below"`` eCPM < floor          (money leaking, critical)
+      ``"near"``  floor ≤ eCPM < floor×1.1 (precarious, warning)
+      ``"above"`` eCPM ≥ floor×1.1      (healthy)
+    ``None`` when either value is missing/NaN or the floor isn't positive —
+    no floor, no band (cell renders plain). Centralized so the PMP table and
+    the rolled-out SSP tables (Magnite/Pubmatic) band identically."""
+    try:
+        e = float(ecpm)
+        f = float(floor)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(e) or pd.isna(f) or f <= 0:
+        return None
+    if e < f:
+        return "below"
+    if e < f * 1.1:
+        return "near"
+    return "above"
 
 
 # ── Pacing ──────────────────────────────────────────────────────────────

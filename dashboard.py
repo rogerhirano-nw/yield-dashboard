@@ -647,6 +647,46 @@ DEAL_TYPE_NAMES = _cfg["deal_type_codes"]
 
 KNOWN_FORMATS = {"Display", "Native", "Video", "CTV", "OLV", "Banner"}
 
+# Literal token hexes for pandas-Styler cell styles — the canvas dataframe
+# can't resolve CSS vars, so these mirror --state-*-surface / --state-* (kept
+# in sync with the :root token tier). Used by the eCPM-vs-floor roll-out.
+_STYLE_CRIT_BG, _STYLE_CRIT_FG = "rgba(233,29,12,.10)", "#c41608"   # --state-critical(-surface)
+_STYLE_WARN_BG, _STYLE_WARN_FG = "rgba(214,170,0,.18)", "#8a6d00"   # --state-warning(-surface)
+
+
+def _ecpm_floor_styler(df, deal_col="deal", ecpm_col="ecpm", fmt=None):
+    """Band the eCPM column of a native (`st.dataframe`) SSP deal table vs each
+    deal's rate floor — the 2026-06-23 eCPM-vs-floor banding rolled out from the
+    PMP table to the Magnite / Pubmatic deal tables. Per `dl.ecpm_floor_band`:
+    below floor = critical tint, within 10% above = warning tint, else plain.
+    The floor is parsed from the deal NAME (`dl.pmp_deal_floor`), so deals with
+    no convention floor (open market, bare numeric IDs) get no band. Returns a
+    pandas Styler (pass straight to `st.dataframe`). No-op (returns df) if the
+    columns are absent. By DSP is intentionally NOT rolled out — it aggregates by
+    DSP partner, which has no per-deal floor to band against.
+
+    `fmt` mirrors the table's `column_config` NUMBER formats (e.g.
+    ``{"ecpm": "${:,.2f}", "impressions": "{:,.0f}"}``): Streamlit ignores
+    `column_config`'s `format=` once a Styler is passed (only labels/hiding still
+    apply), so without this the numeric columns would render as raw floats. Keys
+    not present in `df` are skipped."""
+    if deal_col not in df.columns or ecpm_col not in df.columns:
+        return df
+
+    def _row(row):
+        out = [""] * len(row)
+        band = dl.ecpm_floor_band(row.get(ecpm_col), dl.pmp_deal_floor(row.get(deal_col)))
+        if band in ("below", "near"):
+            bg, fg = ((_STYLE_CRIT_BG, _STYLE_CRIT_FG) if band == "below"
+                      else (_STYLE_WARN_BG, _STYLE_WARN_FG))
+            out[row.index.get_loc(ecpm_col)] = f"background-color:{bg};color:{fg};font-weight:600"
+        return out
+
+    sty = df.style.apply(_row, axis=1)
+    if fmt:
+        sty = sty.format({k: v for k, v in fmt.items() if k in df.columns}, na_rep="—")
+    return sty
+
 # GAM orders to exclude from the Direct campaigns view entirely (table + KPIs).
 # Internal test / QA orders per Roger (2026-06-15):
 #   3648897741 — GMC "Terrain Diverse Owned TEST PAGE" / CITIQ3 test setups.
@@ -1393,6 +1433,11 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .pace-delta  { font-size: 11px; margin-top: 4px; color: var(--state-critical); }
 .pace-delta.up { color: var(--state-positive-muted); }
 .pace-delta.amber { color: var(--state-warning); }
+/* Distance-to-target subtext on breaching Pace / Viewable cells (2026-06-23
+   handoff) — "Npp below tgt". Healthy cells stay clean. */
+.cell-gap { font-size: 9.5px; font-weight: 600; margin-top: 2px; letter-spacing: 0.02em; }
+.cell-gap-crit { color: var(--state-critical); }
+.cell-gap-warn { color: var(--state-warning); }
 /* Progress cell: bar + inline % label. Wrapper puts them side-by-side
    with a small gap so the number sits flush right of the bar without
    wrapping. Track is the sunk paper tone; fills carry the state scale. */
@@ -1809,10 +1854,18 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .pill-dt-pd  { background: var(--accent-info-surface); color: var(--accent-info); }
 .pill-dt-pa  { background: var(--surface-2); color: var(--text-secondary); }
 .pill-dt-pmp { background: var(--cat-purple-surface); color: var(--cat-purple); }
-/* eCPM threshold colors — under floor amber, well above green. */
-.ecpm-under { background: var(--state-warning-surface); color: var(--state-warning);
+/* eCPM-vs-floor banding (3-step, 2026-06-23 handoff) — the programmatic
+   equivalent of CPA-vs-goal. Below floor = critical (money leaking), within
+   10% above = warning (precarious), ≥10% above = healthy (plain). The
+   below/near cells carry a small "$X below floor" / "near floor" annotation. */
+.ecpm-below { background: var(--state-critical-surface); color: var(--state-critical);
               padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
-.ecpm-over  { color: var(--state-positive-muted); font-weight: 600; }
+.ecpm-near  { background: var(--state-warning-surface); color: var(--state-warning);
+              padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
+.ecpm-gap   { display: block; font-size: 9.5px; font-weight: 600; margin-top: 1px;
+              letter-spacing: 0.02em; }
+.ecpm-below .ecpm-gap, .nw-ecpm-gap--below { color: var(--state-critical); }
+.ecpm-near  .ecpm-gap, .nw-ecpm-gap--near  { color: var(--state-warning); }
 /* PMP table — same grid pattern as Direct but different column proportions. */
 .nw-pmp-rows .nw-row-header,
 .nw-pmp-rows .nw-pmp-row {
@@ -2612,7 +2665,15 @@ if st.session_state.active_view == "magnite":
             st.bar_chart(ae_rev, height=280, horizontal=True, color="#4b62e0")  # --viz-1
 
         st.dataframe(
-            view.sort_values("publisher_gross_revenue", ascending=False),
+            # eCPM-vs-floor banding rolled out from the PMP table (floor parsed
+            # from the convention deal name; Open Market / unnamed deals unbanded).
+            _ecpm_floor_styler(
+                view.sort_values("publisher_gross_revenue", ascending=False),
+                deal_col="deal", ecpm_col="ecpm",
+                fmt={"bid_requests": "{:,.0f}", "bid_responses": "{:,.0f}",
+                     "impressions": "{:,.0f}", "paid_impression": "{:,.0f}",
+                     "auctions": "{:,.0f}", "publisher_gross_revenue": "${:,.2f}",
+                     "seller_net_revenue": "${:,.2f}", "ecpm": "${:,.2f}"}),
             use_container_width=True,
             column_config={
                 "_pulled_at": None,
@@ -2832,7 +2893,14 @@ if st.session_state.active_view == "pubmatic":
             st.warning(f"⚠️ {len(no_resp)} deal(s) with 0 paid impressions and 0 bid responses.")
 
         st.dataframe(
-            view.sort_values("revenue", ascending=False),
+            # eCPM-vs-floor banding rolled out from the PMP table (floor parsed
+            # from the convention deal name; unnamed / ID-only deals unbanded).
+            _ecpm_floor_styler(
+                view.sort_values("revenue", ascending=False),
+                deal_col="deal", ecpm_col="ecpm",
+                fmt={"paid_impressions": "{:,.0f}", "non_zero_bid_responses": "{:,.0f}",
+                     "total_requests": "{:,.0f}", "win_rate": "{:,.2f}",
+                     "revenue": "${:,.2f}", "ecpm": "${:,.2f}"}),
             use_container_width=True,
             column_config={
                 "_pulled_at": None,
@@ -4910,6 +4978,22 @@ if st.session_state.active_view == "campaigns":
                 bits = [b for b in (fmt, cpm_str) if b]
                 return " · ".join(bits)
 
+            def _gap_html(value, target, band, dp=0):
+                """Distance-to-target subtext for a breaching banded cell
+                (2026-06-23 handoff): "Npp below tgt" on red/amber (under target),
+                "Npp over tgt" on overpacing. Healthy (green) cells stay clean
+                (returns ""). The same idea as PMP's "$X below floor"."""
+                if value is None or target is None or pd.isna(value) or pd.isna(target):
+                    return ""
+                if band == "over":
+                    return (f'<div class="cell-gap cell-gap-warn">'
+                            f'{float(value) - float(target):.{dp}f}pp over tgt</div>')
+                if band in ("red", "amber"):
+                    sev = "crit" if band == "red" else "warn"
+                    return (f'<div class="cell-gap cell-gap-{sev}">'
+                            f'{float(target) - float(value):.{dp}f}pp below tgt</div>')
+                return ""
+
             def _pace_html(p, p_prior, is_new=False):
                 """Pace cell: a banded pill in every state + variance below.
                 On-pace uses the quiet green tier (pill-green) so the cell is
@@ -4930,6 +5014,8 @@ if st.session_state.active_view == "campaigns":
                     cell = f'<div class="pill pill-green">{pct_int}%</div>'
                 else:  # "amber" (underpacing) and "over" (overpacing) render alike
                     cell = f'<div class="pill pill-amber">{pct_int}%</div>'
+                # Distance-to-target subtext on breaching cells (handoff).
+                cell += _gap_html(p, _pacing_target, _b, dp=0)
                 if is_new:
                     cell += '<div class="pace-delta" style="font-style:italic">new line item</div>'
                 elif pd.notna(p_prior):
@@ -4977,6 +5063,8 @@ if st.session_state.active_view == "campaigns":
                     cell = f'<div class="txt-amber">{p:.1f}%</div>'
                 else:
                     cell = f'<div class="txt-green">{p:.1f}%</div>'
+                # Distance-to-target subtext on breaching cells (handoff), 1dp.
+                cell += _gap_html(p, target, _b, dp=1)
                 if p_prior is not None and not pd.isna(p_prior):
                     cell += _delta_below_html(p - float(p_prior), lower_is_worse=True)
                 return cell
@@ -6743,9 +6831,12 @@ if st.session_state.active_view == "campaigns":
             if abs(v) >= 1_000:     return f"{v/1_000:.1f}K"
             return f"{int(v):,}"
 
-        def _pmp_tile(label, value, sub=None):
+        def _pmp_tile(label, value, sub=None, lead=False):
+            # `lead=True` → `.nw-tile--lead` (brand-red top rule + 30px serif).
+            # For programmatic, yield is the headline, so Avg eCPM leads.
             sub_html = f'<div class="kpi-target">{_pmp_esc(sub)}</div>' if sub else ''
-            return (f'<div class="kpi-tile">'
+            cls = "kpi-tile nw-tile--lead" if lead else "kpi-tile"
+            return (f'<div class="{cls}">'
                     f'<div class="kpi-label">{_pmp_esc(label)}</div>'
                     f'<div class="kpi-value">{value}</div>'
                     f'{sub_html}'
@@ -6762,14 +6853,21 @@ if st.session_state.active_view == "campaigns":
             code, cls = code_map.get(dt, (dt[:3].upper(), "pill-dt-pa"))
             return f'<span class="pill-dt {cls}">{code}</span>'
 
-        def _ecpm_cell(ecpm, floor):
+        def _ecpm_cell(ecpm, floor, gap=True):
+            # 3-step eCPM-vs-floor band (dl.ecpm_floor_band): below floor =
+            # critical + "$X below floor", within 10% above = warning + "near
+            # floor", ≥10% above (or no floor) = plain. `gap=False` drops the
+            # annotation (the mobile card already shows the eCPM-vs-floor bar).
             if ecpm is None or pd.isna(ecpm):
                 return '<span class="cell-dash">—</span>'
-            if floor is not None and not pd.isna(floor):
-                if ecpm < floor:
-                    return f'<span class="ecpm-under">${ecpm:.2f}</span>'
-                if ecpm >= floor * 2:
-                    return f'<span class="ecpm-over">${ecpm:.2f}</span>'
+            band = dl.ecpm_floor_band(ecpm, floor)
+            if band == "below":
+                ann = (f'<span class="ecpm-gap nw-ecpm-gap--below">${float(floor) - float(ecpm):.2f} below floor</span>'
+                       if gap else "")
+                return f'<span class="ecpm-below">${ecpm:.2f}</span>{ann}'
+            if band == "near":
+                ann = '<span class="ecpm-gap nw-ecpm-gap--near">near floor</span>' if gap else ""
+                return f'<span class="ecpm-near">${ecpm:.2f}</span>{ann}'
             return f"${ecpm:.2f}"
 
         def _rev_cell(v):
@@ -6873,18 +6971,29 @@ if st.session_state.active_view == "campaigns":
         _banners = []
         if not _breach_rows.empty:
             _n_breach = len(_breach_rows)
-            _ex = _breach_rows.iloc[0]
+            # Worst offender = the deal furthest below its floor.
+            _gap_b = (pd.to_numeric(_breach_rows["_floor"], errors="coerce")
+                      - pd.to_numeric(_breach_rows["eCPM"], errors="coerce"))
+            _ex = _breach_rows.loc[_gap_b.idxmax()] if _gap_b.notna().any() else _breach_rows.iloc[0]
             _ex_primary = dl.pmp_deal_display_name(_ex.get("Deal") or "")[0]
             _ex_ecpm = float(_ex.get("eCPM")) if pd.notna(_ex.get("eCPM")) else 0.0
             _ex_floor = float(_ex.get("_floor")) if pd.notna(_ex.get("_floor")) else 0.0
             _ex_dt_code = {"Programmatic Guaranteed": "PG", "Preferred Deal": "PD",
                            "Private Auction": "PA", "Private Marketplace": "PMP"
                            }.get(_ex.get("Deal Type"), "")
+            # Dollars left on the table = Σ (floor − eCPM) × paid impressions /
+            # 1000 over the breaching deals (the revenue the floor would have
+            # captured), across the displayed window.
+            _imp_b   = pd.to_numeric(_breach_rows.get("Paid Impressions"), errors="coerce").fillna(0)
+            _ecpm_b  = pd.to_numeric(_breach_rows.get("eCPM"), errors="coerce").fillna(0)
+            _floor_b = pd.to_numeric(_breach_rows.get("_floor"), errors="coerce").fillna(0)
+            _dollars_left = float(((_floor_b - _ecpm_b).clip(lower=0) * _imp_b / 1000).sum())
             _hd = f"{_n_breach} {_ex_dt_code} deal{'s' if _n_breach != 1 else ''} below floor eCPM".strip()
+            _left_s = f" · ~${_dollars_left:,.0f} left on the table" if _dollars_left >= 1 else ""
             _banners.append(
                 f'<div class="nw-banner sev-amber">'
-                f'<div class="nw-banner-head">⚠ {_hd}</div>'
-                f'<div>{_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor</div>'
+                f'<div class="nw-banner-head">⚠ {_hd}{_left_s}</div>'
+                f'<div>Worst: {_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor</div>'
                 f'</div>'
             )
         # No-delivery is folded into the "PMP signals" accordion below the KPIs.
@@ -6895,14 +7004,21 @@ if st.session_state.active_view == "campaigns":
                 unsafe_allow_html=True,
             )
 
-        # ── KPI strip — 4 tiles (4-column grid override). ──
+        # ── KPI strip — 4 tiles (4-column grid override). For programmatic,
+        # yield is the headline: Avg eCPM is the LEAD tile (2026-06-23 handoff),
+        # and its subtitle carries the floor signal — how many deals are below
+        # their rate floor (the actionable, money-leaking count).
         _rev_sub  = f"vs ${_d_rev/1000:,.1f}K direct" if _d_rev else None
         _ecpm_sub = f"vs ${_d_ecpm:.2f} direct" if _d_ecpm else None
+        if not _breach_rows.empty:
+            _bn = len(_breach_rows)
+            _ecpm_sub = (f"{_ecpm_sub} · {_bn} below floor" if _ecpm_sub
+                         else f"{_bn} below floor")
         st.markdown(
             '<div class="nw-kpi-row nw-kpi-row--pmp">'
             + _pmp_tile("Revenue", _pmp_fmt_money(_pmp_rev), _rev_sub)
             + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr))
-            + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub)
+            + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub, lead=True)
             + _pmp_tile("Active deals", f"{_pmp_count:,}", _mix_sub or None)
             + '</div>',
             unsafe_allow_html=True,
@@ -7020,18 +7136,28 @@ if st.session_state.active_view == "campaigns":
                         _fv = _ri.get("floor_price_usd")
                         _fs = f"${float(_fv):.2f} floor" if pd.notna(_fv) else "no floor"
                         _st_cls = "nd-st nd-pending" if _ri["_st"] == "PENDING" else "nd-st"
+                        # Copy fix (2026-06-23 handoff): "ACTIVE · 503d inactive"
+                        # reads as a contradiction — the deal IS enabled, it just
+                        # isn't delivering. Show "Enabled · 503d no spend".
+                        _st_lbl = {"ACTIVE": "Enabled", "PENDING": "Pending"}.get(
+                            _ri["_st"], _ri["_st"].title())
                         _tok = (str(_ri.get("auction_name") or "").split("_") + ["", ""])[1]
                         _pill = _dt_pill(_dt_full.get(_tok, _tok))
                         _idle = int(_ri["_idle"])
-                        _ib = dl.idle_band(_idle)
+                        # 3-step inactivity age band (crit >180 / warn 30-180 /
+                        # muted <30) so the most-stale dead deals stand out,
+                        # instead of all reading one red (idle_band stays for the
+                        # stale-deals signal). Drives the text color + the
+                        # left-edge severity rail on the row.
+                        _ib = dl.inactivity_band(_idle)
                         _nd_html = (
-                            '<div class="sp-row">'
+                            f'<div class="sp-row nd-rail nd-age-{_ib}">'
                             '<div class="nd-top">'
                             f'<div class="sp-nm"><span class="sp-adv">{_pmp_esc(_adv)}</span>{_camp_html}</div>'
                             f'{_pill}</div>'
                             '<div class="sp-met"><span>'
-                            f'<span class="{_st_cls}">{_pmp_esc(_ri["_st"].title())}</span>'
-                            f' · <span class="nd-idle idle-{_ib}">{_idle}d inactive</span></span>'
+                            f'<span class="{_st_cls}">{_pmp_esc(_st_lbl)}</span>'
+                            f' · <span class="nd-idle nd-age-{_ib}">{_idle}d no spend</span></span>'
                             f'<span class="sp-flow">{_pmp_esc(_fs)}</span></div>'
                             '</div>'
                         )
@@ -7041,7 +7167,7 @@ if st.session_state.active_view == "campaigns":
                             '<div class="nw-sig-nodata" style="margin-bottom:8px">'
                             'Set up but not winning impressions — no delivery to chart.</div>'
                             '<div class="nw-meta-grid">'
-                            f'<div><span class="lbl">Status</span><span class="val">{_pmp_esc(_ri["_st"].title())}</span></div>'
+                            f'<div><span class="lbl">Status</span><span class="val">{_pmp_esc(_st_lbl)}</span></div>'
                             f'<div><span class="lbl">Deal type</span><span class="val">{_pmp_esc(_dt_full.get(_tok, _tok))}</span></div>'
                             f'<div><span class="lbl">Floor</span><span class="val">{_fval}</span></div>'
                             f'<div><span class="lbl">Days inactive</span><span class="val">{_idle}d</span></div>'
@@ -7174,6 +7300,15 @@ if st.session_state.active_view == "campaigns":
                     '.nd-idle{font-weight:700;color:var(--text-secondary)}'
                     '.nd-idle.idle-amber{color:var(--state-warning)}'
                     '.nd-idle.idle-red{color:var(--state-critical)}'
+                    # No-delivery age band (3-step): text color + a left-edge
+                    # severity rail so the most-stale dead deals stand out.
+                    '.nd-idle.nd-age-crit{color:var(--state-critical)}'
+                    '.nd-idle.nd-age-warn{color:var(--state-warning)}'
+                    '.nd-idle.nd-age-muted{color:var(--text-muted)}'
+                    '.sp-row.nd-rail{border-left:3px solid var(--border);padding-left:9px}'
+                    '.sp-row.nd-rail.nd-age-crit{border-left-color:var(--state-critical)}'
+                    '.sp-row.nd-rail.nd-age-warn{border-left-color:var(--state-warning)}'
+                    '.sp-row.nd-rail.nd-age-muted{border-left-color:var(--border)}'
                     # Expandable signal deal: the row stays as the <summary>;
                     # tapping reveals the same drawer the main PMP table opens.
                     '.nw-sig-deal>summary{list-style:none;cursor:pointer}'
@@ -7666,7 +7801,7 @@ if st.session_state.active_view == "campaigns":
                 '<div class="m-right">'
                 f'<div class="m-dt">{_dt_pill(_dt)}</div>'
                 f'<div class="m-rev">{_rev_cell(row.get("Revenue"))}</div>'
-                f'<div class="m-ecpm">{_ecpm_cell(row.get("eCPM"), _floor_val)} eCPM</div>'
+                f'<div class="m-ecpm">{_ecpm_cell(row.get("eCPM"), _floor_val, gap=False)} eCPM</div>'
                 f'<div class="m-impr">{_impr_cell(row.get("Paid Impressions"))} impr</div>'
                 '</div></div>'
             )
