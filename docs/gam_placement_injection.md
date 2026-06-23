@@ -91,6 +91,17 @@ Mitigations, by rigor:
    position the carrier over a spacer at the target location instead of
    writing a separate iframe. Active View native, no beacon needed.
 
+**You cannot self-test Active View by throwing traffic at the page.**
+Automated/headless/datacenter loads are IVT-filtered out of AV's `measurable`
++`viewable` counts, so they read **0 regardless of whether the carrier
+geometry is right** — and on a live flight they're invalid traffic that
+pollutes the buyer's metrics (and trips any DV/IVT exclusion on the LI). The
+only valid AV read comes from **organic human impressions** (next-day, AV lags
+~1 day). For pre-data confidence, measure the carrier iframe's
+**IntersectionObserver in-view ratio** on the live served creative — that's the
+exact geometry AV computes, and it's how the 2026-06-22 un-clip was validated
+(0.16 clipped → 1.00 un-clipped) across mobile/tablet/desktop.
+
 ## Worked example: Apple FITO top banner (2026-06-11)
 
 `scripts/setup_fito_top_banner.py` (dry-run by default, lookup-first).
