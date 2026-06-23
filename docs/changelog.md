@@ -4,6 +4,29 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-23 — RLS hygiene canary in the health check (#322)
+
+- **New source tables kept drifting into Supabase RLS-disabled; the daily
+  health check now catches and auto-fixes it.** Supabase's security advisor
+  flagged 17 public tables (TTD, DV, `gam_deal_bid_daily`, the `*_metadata`
+  tables, `opensincera_*`, `pmp_last_bid_date`, the GAM rollups) with
+  Row-Level Security off. They were **not** actually readable — the 2026-05
+  `docs/supabase_rls_lockdown.sql` had already `REVOKE`d all anon/authenticated
+  grants, and an anon REST probe returns `42501 permission denied` — so this
+  was a **defense-in-depth gap, not an open door** (the advisor checks RLS
+  only, not grants). Root cause is drift: the lockdown's `ALTER DEFAULT
+  PRIVILEGES` auto-revokes grants on new tables but nothing auto-enables RLS,
+  so every new source arrives RLS-off. **Fixes:** (1) enabled RLS on the 17
+  tables in prod (migration `enable_rls_on_remaining_17_public_tables`);
+  (2) added a fifth health-check invariant — **`public RLS hygiene`**: any
+  public table with RLS off or an anon/authenticated grant fails it, and
+  (unlike the freshness/sweep checks) it is auto-remediated **in-place**
+  (enable RLS + revoke grants, mirroring the lockdown SQL) rather than by a
+  refresh sweep — a sweep can't fix RLS and in fact creates the tables that
+  drift. Reported in the daily digest; `HEALTH_AUTO_REMEDIATE=0` disables it
+  like the sweep path. Pinned by `test_rls_hygiene_*` in
+  `tests/test_health_check.py`.
+
 ## 2026-06-22 — Sponsor-logo Active View un-clip (#313)
 
 - **Article sponsor-logo viewability was a measurement artifact, now fixed in

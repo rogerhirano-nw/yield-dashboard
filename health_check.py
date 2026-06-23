@@ -21,16 +21,27 @@ that check failing, never as a crash of the whole run):
   4. Sweep liveness     — the latest completed "Refresh cache" workflow run
                           (refresh.yml) succeeded within the last 26h.
                           Requires GITHUB_TOKEN; skipped when absent (local).
+  5. RLS hygiene        — every public table has RLS enabled and no
+                          anon/authenticated grants, so the Supabase REST
+                          API can't reach the cache. Canaries the lockdown
+                          (docs/supabase_rls_lockdown.sql) against drift: new
+                          source tables (TTD, DV, …) arrive RLS-off and
+                          silently re-open the REST surface. Fixed in-place
+                          (see below), not by a sweep.
 
 Auto-remediation: when a *remediable* check fails (freshness / sweep
 liveness — i.e. things a re-pull can fix), the script re-dispatches
 refresh.yml via the GitHub API, waits for it to complete, re-runs every
 check, and reports the final state — so a transient upstream failure heals
-itself without anyone touching Actions. Code-level failures (DV id format,
-join rate) are NOT remediable by re-running and are reported as such. One
-remediation attempt per run, never loops. Requires `actions: write` on the
-workflow's GITHUB_TOKEN; GITHUB_TOKEN-created workflow_dispatch events are
-exempt from GitHub's recursive-trigger guard, so the dispatch works.
+itself without anyone touching Actions. RLS-hygiene drift is fixed *in-place*
+instead — enable RLS + revoke anon/authenticated grants on the offending
+tables (mirrors docs/supabase_rls_lockdown.sql) — because a sweep can't fix
+it and in fact creates the tables that drift. Code-level failures (DV id
+format, join rate) are NOT remediable by re-running and are reported as such.
+At most one of each remediation kind per run, never loops. Requires
+`actions: write` on the workflow's GITHUB_TOKEN; GITHUB_TOKEN-created
+workflow_dispatch events are exempt from GitHub's recursive-trigger guard,
+so the dispatch works.
 
 Sends via agentmail.to, same outbound pattern as betting_daily_update.py.
 Exits non-zero when any check still fails so the Actions run goes red too.
@@ -113,6 +124,32 @@ PULLED_AT_CHECKS = [
     ("opensincera_adsystems pulled",  "opensincera_adsystems",  "_pulled_at", SWEEP_MAX_AGE_HOURS),
     ("opensincera_modules pulled",    "opensincera_modules",    "_pulled_at", SWEEP_MAX_AGE_HOURS),
 ]
+
+# RLS hygiene: the dashboard/refresh reach the cache only through DATABASE_URL
+# (the postgres role, which bypasses RLS), never the Supabase REST API — so
+# every public table should have RLS enabled with no anon/authenticated grants,
+# i.e. the PostgREST surface is closed. docs/supabase_rls_lockdown.sql sets that
+# up; this canaries it. The hazard is drift: a new source table is created
+# RLS-off (ALTER DEFAULT PRIVILEGES revokes its grants automatically, but
+# nothing auto-enables RLS), silently re-opening the REST surface for it.
+RLS_CHECK_NAME = "public RLS hygiene"
+# anon/authenticated holding any of these on a public table = REST-reachable.
+_ANON_AUTH_GRANT_PRED = " OR ".join(
+    f"has_table_privilege('{role}', c.oid, '{priv}')"
+    for role in ("anon", "authenticated")
+    for priv in ("SELECT", "INSERT", "UPDATE", "DELETE")
+)
+# Offending public tables: RLS off, or any anon/authenticated DML grant.
+_RLS_OFFENDERS_SQL = f"""
+SELECT c.relname AS table_name,
+       NOT c.relrowsecurity AS rls_off,
+       ({_ANON_AUTH_GRANT_PRED}) AS has_grants
+FROM pg_class c
+WHERE c.relnamespace = 'public'::regnamespace
+  AND c.relkind = 'r'
+  AND (NOT c.relrowsecurity OR {_ANON_AUTH_GRANT_PRED})
+ORDER BY c.relname
+"""
 
 
 @dataclass
@@ -221,6 +258,35 @@ def _check_pulled_at(conn, name: str, table: str, col: str,
     )
 
 
+def _eval_rls_hygiene(offenders: list[tuple[str, bool, bool]],
+                      name: str = RLS_CHECK_NAME) -> CheckResult:
+    """Pure verdict from the offender rows (table, rls_off, has_grants) —
+    split from the query so it's unit-testable.
+
+    Deliberately NOT remediable: the `remediable` flag triggers a refresh
+    sweep, which can't enable RLS (and creates the very tables that drift).
+    RLS drift is fixed in-place by remediate_rls() instead."""
+    if not offenders:
+        return CheckResult(
+            name, True, "all public tables RLS-on, no anon/authenticated grants")
+    bits = []
+    for table, rls_off, has_grants in offenders:
+        why = ", ".join(w for w in (
+            "RLS off" if rls_off else "",
+            "anon/authenticated grant" if has_grants else "") if w)
+        bits.append(f"{table} ({why})")
+    return CheckResult(
+        name, False,
+        f"{len(offenders)} public table(s) reachable via the REST API — "
+        + "; ".join(bits) + " (run docs/supabase_rls_lockdown.sql)")
+
+
+def _check_rls_hygiene(conn) -> CheckResult:
+    rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
+    return _eval_rls_hygiene(
+        [(r.table_name, r.rls_off, r.has_grants) for r in rows])
+
+
 def _check_sweep_workflow() -> CheckResult:
     """Latest completed refresh.yml run succeeded within SWEEP_MAX_AGE_HOURS."""
     name = "refresh sweep run"
@@ -323,6 +389,41 @@ def remediate_with_sweep() -> tuple[bool, str]:
     return False, f"refresh sweep still running after {REMEDIATION_TIMEOUT_MINUTES}min ({run['html_url']})"
 
 
+def remediate_rls() -> tuple[bool, str]:
+    """Close any RLS drift in-place: enable RLS + revoke anon/authenticated
+    grants on the offending public tables (the same end-state as
+    docs/supabase_rls_lockdown.sql). Instant local DDL — no sweep.
+
+    Safe to auto-apply: the dashboard/refresh connect as the postgres owner
+    (BYPASSRLS, and RLS is never FORCEd here), so deny-all RLS can't block
+    them — proven by the core tables already locked this way. Idempotent
+    (ENABLE on an already-RLS table and REVOKE of an absent grant are no-ops).
+    Returns (succeeded, human-readable description)."""
+    try:
+        engine = sqlalchemy.create_engine(
+            os.environ["DATABASE_URL"], pool_size=1, max_overflow=0,
+            connect_args={"connect_timeout": 10},
+        )
+        with engine.begin() as conn:
+            rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
+            if not rows:
+                return True, "RLS hygiene: nothing to fix"
+            for r in rows:
+                # relname comes from pg_class (our own catalog); double-quote
+                # defensively rather than interpolate it bare.
+                ident = 'public."' + r.table_name.replace('"', '""') + '"'
+                if r.rls_off:
+                    conn.execute(text(
+                        f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
+                conn.execute(text(
+                    f"REVOKE ALL ON {ident} FROM anon, authenticated"))
+        tables = ", ".join(sorted(r.table_name for r in rows))
+        return True, (f"locked down {len(rows)} drifted table(s) "
+                      f"(enabled RLS + revoked anon/authenticated): {tables}")
+    except Exception as e:  # noqa: BLE001 — report, don't crash the run
+        return False, f"RLS auto-lockdown failed: {e}"
+
+
 def run_checks() -> list[CheckResult]:
     """Run every check, isolating failures so one bad table can't hide the rest."""
     results: list[CheckResult] = []
@@ -361,6 +462,7 @@ def run_checks() -> list[CheckResult]:
         for name, table, col, hours in PULLED_AT_CHECKS:
             _guard(name, lambda n=name, t=table, c=col, h=hours:
                    _check_pulled_at(conn, n, t, c, h))
+        _guard(RLS_CHECK_NAME, lambda: _check_rls_hygiene(conn))
     _guard("refresh sweep run", _check_sweep_workflow)
     return results
 
@@ -472,21 +574,29 @@ def main(argv: list[str]) -> int:
 
     results = run_checks()
 
-    # Auto-remediate: a failing *remediable* check (stale table / failed
-    # sweep) triggers one sweep re-run, then a full re-check. Code-level
-    # failures (id format, join rate) skip straight to the report — a
-    # re-pull can't fix those.
+    # Auto-remediate, then re-check once. Two independent fix paths:
+    #   • RLS-hygiene drift   → fixed in-place (instant DDL); a sweep can't.
+    #   • stale table / sweep → re-run refresh.yml (the *remediable* checks).
+    # Code-level failures (id format, join rate) have neither path and skip
+    # straight to the report. At most one of each per run, never loops.
     remediation = None
     remediate_enabled = (os.environ.get("HEALTH_AUTO_REMEDIATE") or "1").lower() \
         not in ("0", "false", "no")
-    if (not dry_run and remediate_enabled
-            and any(not r.ok and r.remediable for r in results)):
+    if not dry_run and remediate_enabled:
+        notes: list[str] = []
         failing_before = {r.name for r in results if not r.ok}
-        _, remediation = remediate_with_sweep()
-        results = run_checks()
-        recovered = failing_before - {r.name for r in results if not r.ok}
-        if recovered:
-            remediation += f"; recovered: {', '.join(sorted(recovered))}"
+        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
+            _, note = remediate_rls()
+            notes.append(note)
+        if any(not r.ok and r.remediable for r in results):
+            _, note = remediate_with_sweep()
+            notes.append(note)
+        if notes:
+            results = run_checks()
+            recovered = failing_before - {r.name for r in results if not r.ok}
+            if recovered:
+                notes.append(f"recovered: {', '.join(sorted(recovered))}")
+            remediation = "; ".join(notes)
 
     subject, body, all_ok = build_report(
         results, datetime.now(timezone.utc).date(), remediation=remediation)
