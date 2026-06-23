@@ -4,6 +4,33 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-22 — Sponsor-logo Active View un-clip (#313)
+
+- **Article sponsor-logo viewability was a measurement artifact, now fixed in
+  GAM.** LI 7336465381 (Infiniti Newsmakers "Presented by" strip, oop1) read
+  **~1% viewable / mostly 0% measurable** for weeks. Root cause, found by
+  inspecting the live JT Batson article (`article_id=12010430`) in headless
+  Playwright: the oop1 GPT iframe **survives** and the carrier-reposition
+  **works** (the long-held "hydration destroys the iframe" theory was wrong) —
+  but GPT forces that iframe to **~150px** while the carrier clipped it
+  (`overflow:hidden`) to the logo's **~24px**. Active View is
+  IntersectionObserver-based and respects the ancestor clip, so it saw only
+  **16%** in view — under the 50% bar — and booked every impression
+  not-viewable. **Fix:** size the carrier to the iframe's real height
+  (`overflow:visible`), so AV measures the whole in-view iframe. Verified live
+  with an IntersectionObserver (AV's own geometry): in-view ratio **0.16
+  clipped → 1.00 un-clipped**, logo render unchanged, then re-verified on a
+  fresh serve of the deployed creative. Impressions (`AD_SERVER_IMPRESSIONS`)
+  **and** viewability (Active View) now both come from the one creative on the
+  one LI via GAM's normal report — no beacon, no second counter (OMD declined
+  to provide a viewable pixel, so GAM AV is the measurement of record). New
+  snippet `docs/snippets/article_sponsor_logo_creative.html` (only `syncCarrier`
+  changed); applied via `scripts/apply_sponsor_logo_av_fix.py` (dry-run default,
+  `APPLY=true`) / `apply_sponsor_logo_av_fix.yml`; read-only diagnostics
+  `scripts/inspect_sponsor_logo_{creative,li}.py`. Confirm on the next day's
+  `gam_campaigns.viewable_imps_1d` for LI 7336465381 (AV lags ~1 day). The
+  dashboard needs no change — it already reads the AV columns.
+
 ## 2026-06-22 — Editorial landing polish
 
 - **Priority-flights cards: side-by-side + $150 CPA goal.** The two TTD
