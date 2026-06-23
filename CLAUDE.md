@@ -583,60 +583,68 @@ Rules that survive any future restyle:
   Needs-attention card keeps its collapsed-on-mobile default since `open` is
   per-element). The other tabs (By site / size, By DSP, Pubmatic, Magnite)
   still use plain `st.columns` filter rows.
-- **Campaigns landing = "Editorial" layout: briefing lede → two serif heroes
-  → hairline quality line.** (Replaces the sticky-rail "Cockpit", 2026-06-21 —
-  the fixed rail was `position:fixed` and **overlapped the KPI strip**, hiding
-  the 9th tile; the editorial layout fixes that *structurally* by putting
-  everything in normal flow.) Reading order, top to bottom:
-  1. **Briefing lede** (`.nw-brief`): triage is the first thing on the page, in
-     normal flow — an editorial **"Needs you today"** header (`.nw-brief-lede`,
-     eyebrow + `_na_head_cnt`) over the existing Needs-attention category rows
-     (`_na_cats`, unchanged) in `.nw-brief-cats`. On desktop (`@media
-     min-width:641px`) the categories sit in a compact **auto-fit grid** and are
-     **collapsed by default, tap-to-expand** to offenders (the briefing
-     overrides the `.nw-na`-on-desktop force-open so the lede stays short); on
-     mobile they stack. No `_rail`, no `position:fixed`, no block-container
-     shrink — all removed.
-  2. **KPI tiles, tiered — kept as CARDS** (Roger: "we must keep the cards",
-     2026-06-21; the first cut dissolved them into a borderless hero+hairline
-     band and was reverted). `.nw-kpi-cards`, reusing the
-     original `.kpi-tile` anatomy: **Revenue · Avg pacing** are **double-width
-     `.nw-hero-tile`s** (40px value, 3px ink rule) and the other
-     **seven** QA metrics — Impressions · Viewability · Attention · SIVT · GIVT ·
-     VCR · CTR — are standard tiles. **On desktop (≥1025px) it's a deterministic
-     11-column grid** (heroes `grid-column: span 2`, the 7 quality 1 each =
-     2×2 + 7) so the band is **one row that never wraps and CTR always sits next
-     to VCR** (Roger 2026-06-22 — the prior wrapping flex orphaned CTR onto a
-     second line). **Below 1025px it's a wrapping flex** (`flex:2` heroes /
-     `flex:1` quality), pinned 2-up heroes + ~3-up quality on mobile. So the band
-     reads **2 big + 7 small** with hierarchy. This
-     replaced the flat **9-up `.nw-kpi-row`** equal grid (the PMP tab still uses
-     `.nw-kpi-row--pmp`). **All nine tiles use the shared `.kpi-spark`
-     sparkline in the UNIFORM regime** (`_sparkline_svg(..., uniform=True)`,
-     `.kpi-spark` = `width:100%; height:auto`) so every end-dot renders as a
-     true circle. The **stretch** regime (`preserveAspectRatio="none"`) squishes
-     the viewBox to the tile aspect, which on iOS Safari elongates the round
-     end-cap into a little horizontal dash — the "distorted dots" (Roger,
-     2026-06-22). Uniform scales x/y equally, so no anisotropic distortion (same
-     as the drawer small-multiples). Same values / subtitles / series as the old
-     strip — only the tiering + sparkline regime changed.
-  3. **Priority flights** (`.nw-section-eyebrow` + the two TTD cards): the
-     Luckyland + Chumba TTD CPA accordions, **demoted + collapsed** via
-     `.nw-na--collapsible` (a modifier that opts out of the desktop force-open
-     so the `<details>` toggle works at all widths). They used to render
-     force-open and dominate the "overall" view. **Expanded, each is the
-     "Editorial scorecard" layout** (`_render_ttd_cpa`, 2026-06-22; chosen from a
-     3-direction mock): a **CPA hero** figure + a quiet 4-stat grid
-     (Conversions/Spend/Conv. rate/Clicks), two **SVG trend charts**
-     (`_ttd_trend_svg` — area = daily conversions, line = daily CPA, uniform
-     regime so the end-dot stays round), then **two breakdown tables — by ad
-     size and by format** (`s["by_ad_size"]` / `s["by_media_type"]`). **Ad size
-     is parsed as a `WxH` token from the `creative` name** — the TTD tables have
-     no `creative_size` column; size lives in the creative string (e.g.
+- **Campaigns landing = triage filter strip → single Revenue lead → slim flight
+  monitor.** (2026-06-23 handoff redesign — `docs/design_handoff/`; the refreshed
+  mockups are `Campaigns Full Redesign (compact).html` + `Campaigns Mobile.html`.
+  Supersedes the 2026-06-21 "Editorial" layout's briefing-lede accordion +
+  two-hero KPI band + side-by-side scorecards. Still all normal flow, no
+  `position:fixed`.) Reading order, top to bottom:
+  1. **Triage filter strip** (`.nw-triage` / `.nw-fpill`): the **"Needs you
+     today"** row is now **single-select filter pills that scope the Direct table
+     below**, not an expand-in-place accordion. Pills: **All flagged · Ending
+     soon · Underpacing · Overpacing · Viewability**, each a count + severity dot.
+     They're **query-param `<a>` links** (same nav as the tab row): a category
+     sets `?view=campaigns&triage=<key>`; **"All flagged" (no param, default)
+     shows the full book** — its count is the **distinct union** of all flagged
+     LIs, *not* a filter target. Clicking a category narrows **only the table** —
+     KPIs and pill counts stay on the full (popover-)filtered `view_gam`. Counts
+     are the **TRUE uncapped offender counts** (`_under_idx`/`_over_idx`/`_vw_idx`
+     from the same pacing-band + viewability-benchmark thresholds; `_ending_idx`
+     from `dl.landing_at_risk`); `_triage_sets` maps key→index set. A **0-count
+     category pill renders disabled** (can't filter to empty); the active pill
+     stays clickable. The active key is read from `?triage=` and folded into
+     `_direct_filter_sig` (so switching pills resets the page to 0); the table is
+     sliced from **`_direct_view`** = `view_gam` narrowed to the active index set
+     — the per-row `_vw_rate`/`_ctr_rate` `index.get_loc` lookups stay keyed on
+     the **full** `view_gam`, so they still resolve — and the table subtitle names
+     the category (`<Category> · N of M line items`). Two-reds rule holds: the
+     **"All flagged" dot is ink** (not brand-red); only Ending/Underpacing dots
+     are severity red. The dead briefing builders (`_na_row` / `_na_subrows` /
+     `_lr_rows_html` / `_*_detail` + the `.nw-brief*` / `.nw-na-srow` / `.nw-lr-*`
+     CSS) were removed; the **`.nw-na-*` shell is kept** — the PMP-signals
+     accordion still uses it.
+  2. **KPI band — 9-up grid with ONE lead metric** (2026-06-23 handoff):
+     **Revenue is the lead tile** (`.nw-tile--lead` — brand-red 3px top rule +
+     30px serif number) so the page totals out-rank the Priority-Flight CPA; the
+     other **eight** (Avg pacing now among them) are standard 23px tiles
+     (`_kpi_tile(..., lead=…)`). This **replaced the two double-width
+     `.nw-hero-tile` heroes** (Revenue + Avg pacing at 40px) from the 2026-06-21
+     cut. Layout: base is a wrapping `auto-fit minmax(120px,1fr)` grid (so 9 tiles
+     never crush on tablet), **desktop (≥1025px) pins `repeat(9,1fr)`** (one row),
+     **≤640px is 2-up with the Revenue lead spanning full width**. All nine still
+     use the shared `.kpi-spark` **UNIFORM-regime** sparkline (round end-dots; the
+     stretch regime distorted the dot on iOS Safari — Roger 2026-06-22). Same
+     values / subtitles / series as before — only the tiering changed.
+  3. **Priority flights = slim MONITOR rows** (`.nw-flight`, 2026-06-23 handoff):
+     each flight is **one slim full-width row** that *is* the `<summary>` of the
+     collapsible `.nw-na` card — name · date · **CPA + goal pill** (✓ under / ✗
+     over) · 4 stats (Conv · Spend · CVR · % of goal) · a **breach-shaded
+     daily-CPA sparkline** (`_ttd_cpa_spark` — state-colored line + dashed goal
+     line + red tint over the above-goal breach zone; uniform regime) · **"View
+     detail →"**. The **full editorial scorecard stays one tap away** in the
+     `<details>` body, **collapsed by default** (the cards now **stack** full-width
+     — no longer `st.columns(2)` side-by-side — and no longer render `open`). The
+     left border / line / pill read **crit when over goal / pos when under**
+     (`dl.cpa_goal_delta`, two-reds rule). Expanded, the body is the 2026-06-22
+     **"Editorial scorecard"** (`_render_ttd_cpa`): a **CPA hero** figure + a quiet
+     4-stat grid, two **SVG trend charts** (`_ttd_trend_svg` — area = daily
+     conversions, line = daily CPA, uniform regime), then **two breakdown tables —
+     by ad size and by format** (`s["by_ad_size"]` / `s["by_media_type"]`). **Ad
+     size is parsed as a `WxH` token from the `creative` name** — the TTD tables
+     have no `creative_size` column; size lives in the creative string (e.g.
      `…_DisplayBanner_300x250_May_…`). Video creatives carry a duration (`RT_30s`)
      not a pixel size, so they drop out of the size table. On prod June data the
-     sizes are 300x250 / 320x50 / 728x90. Replaced the old 5-equal-tiles +
-     horizontal-bar-lists.
+     sizes are 300x250 / 320x50 / 728x90.
      **Each card's date window follows the dashboard's Status filter**
      (Roger 2026-06-22). `ttd_cpa_summary(df, start=…, end=…)` filters rows to
      `[start, end]`; the dashboard passes **`start` = the earliest `start_date`
@@ -652,12 +660,12 @@ Rules that survive any future restyle:
      Priority-flights render** (after `view_gam` is filtered), not at load time.
      Pinned by `test_ttd_cpa_summary_window` / `_by_ad_size` /
      `_ad_size_from_creative`.
-     **The two cards render side-by-side** (`st.columns(2)`, 2026-06-22) — the
-     `.nw-ttd-wrap .nw-na` rule lifts the shared `.nw-na` 760px cap so each fills
-     its column (the cap stays for the single-column Needs-attention / PMP-signals
-     cards); `st.columns` collapses to stacked on mobile. **Each is graded against
-     a CPA goal** (`ttd_cpa_goal` setting, default **$150**, editable in Settings →
-     Direct): the CPA hero shows a `✓ under` (green) / `✗ over` (red) verdict via
+     **The two cards STACK full-width** (2026-06-23 — was `st.columns(2)`
+     side-by-side until the slim-monitor redesign; the `.nw-ttd-wrap .nw-na` rule
+     still lifts the shared `.nw-na` 760px cap so each fills the width). **Each is
+     graded against a CPA goal** (`ttd_cpa_goal` setting, default **$150**, editable
+     in Settings → Direct): the slim row's goal pill + the scorecard CPA hero show
+     a `✓ under` (green) / `✗ over` (red) verdict via
      `dl.cpa_goal_delta`, and `_ttd_trend_svg` draws a dashed reference line at the
      goal on the Daily CPA chart (`ref=` param, folded into the y-scale so it stays
      on-canvas; default `None` leaves the drawer's reuse of the helper untouched).
@@ -695,40 +703,19 @@ Rules that survive any future restyle:
     throwaway SQLite DB (`DATABASE_URL=sqlite:///…`) with the Campaigns tables
     so the dashboard renders on synthetic data — DV tables fall back to empty on
     SQLite (Postgres-only date SQL), so Attention/SIVT/GIVT show "—".
-- **Campaigns alerts are a "Needs attention" accordion, not three stacked
-  banners.** The pacing/viewability exceptions render as one `.nw-na`
-  card with a row per category. A category with offenders is a native
-  HTML `<details>`/`<summary>` row (browser-native expand/collapse, **no
-  Streamlit rerun** — the markdown sanitizer passes `<details>`), and
-  expanding it reveals that alert's line items inline (worst-first, a
-  **two-tier label** — advertiser bold over the muted campaign
-  (`dl.line_item_display_name` split on ` — `), metric as colored text on
-  the right, **no bar** — so sibling LIs (3 Pateks differing only in the
-  campaign tail Male/Female/Added-value) are identifiable and match the
-  table; `_short_advertiser` alone collapsed them). Clear categories render as a static `sev-ok`
-  row; rows default collapsed. Counts keep the existing
-  `head(4)`/`head(6)` display cap (so the count matches the revealed
-  rows). Bars/dots/counts inherit the row's `sev-*` and obey the
-  two-reds rule (`--state-critical` / `--state-warning` only). The PMP
-  tab still uses the simpler `.nw-banner` strip. The builder
-  (`_na_row` / `_na_subrows`) is rendering, not decision logic — the
-  offender sets (`_under_rows` / `_over_rows` / `_vw_anom_rows`) are still
-  computed upstream from the configured benchmarks.
-  **The whole card is a `<details class="nw-na nw-na--always" open>`** (when
-  there are flags), **forced open at ALL widths** including mobile (Roger,
-  2026-06): the triage categories stay visible rather than collapsing to a
-  header line. This reverses the 2026-06-14 mobile-collapse (added because the
-  card "was dominating the first screen above the KPIs") — the domination is
-  avoided instead by keeping only the **~4 category rows** open while each
-  category's **line-item list stays independently tap-to-expand**, so the open
-  card is short. The `--always` modifier forces `.nw-na-body { display:block
-  !important }` + hides the chevron + makes the header non-interactive at every
-  width (paired with the `open` attribute, since CSS can't toggle `open`); it is
-  the mobile opt-out of the generic `@media min-width:641px` rule that only
-  desktop/tablet otherwise get. **Only the Needs-attention card carries
-  `--always`** — the **ending-soon** and **PMP-signals** `.nw-na` cards keep the
-  default mobile collapse (one-line header, tap to open). The all-clear state
-  stays a plain `<div>` (three static ✓ rows, nothing to collapse).
+- **Campaigns alerts = the triage filter strip** (landing layout point 1
+  above), **not** a Needs-attention accordion anymore (2026-06-23). Until then
+  the pacing/viewability/ending-soon exceptions rendered as one forced-open
+  `.nw-na` card (`<details … nw-na--always open>`) with a tap-to-expand row per
+  category — the `_na_row` / `_na_subrows` builders over the (head-capped)
+  `_under_rows` / `_over_rows` / `_vw_anom_rows` offender sets. **That card, its
+  builders, and the `.nw-na--always` modifier were all removed.** The exceptions
+  are now **filter pills that scope the Direct table** (uncapped offender *index*
+  sets — `_under_idx` / `_over_idx` / `_vw_idx` / `_ending_idx` — from the same
+  configured benchmark thresholds). The **`.nw-na` accordion shell survives** and
+  is still used by the **PMP-signals** card and the **priority-flight monitor**
+  cards (both collapse to a one-line header on mobile, forced-open on desktop via
+  `@media min-width:641px`). The PMP tab still uses the simpler `.nw-banner` strip.
 - **PMP signals accordion** (under the PMP KPI strip, 2026-06-14). One
   `.nw-na` card (reuses the Needs-attention CSS, so it collapses to a
   one-line header on mobile and is forced-open on desktop) titled "PMP
@@ -787,24 +774,18 @@ Rules that survive any future restyle:
     meta line (SSP · last bid · `.nd-idle` days-idle). Folded in here
     2026-06-14; the archive action was removed.
 
-## Direct tab — "Ending soon · at risk" landing-risk band
+## Direct tab — "Ending soon" triage (landing-risk)
 Surfaces Direct line items whose flight ends soon AND that are projected,
 at the current daily pace, to finish under goal — the under-delivery the
-Cartier line hit (ended at 99%). **Unified into the Needs-attention card
-as its first, most-severe band** (Roger 2026-06-17 — was briefly a
-separate side-by-side card, then merged into one box): the "Ending soon"
-category leads (revenue/time risk on top), then Underpacing / Overpacing /
-Viewability. Its subrows carry the landing detail — two-tier
-`Advertiser — Campaign` + meta (days left · ends · % delivered) + a compact
-projected-vs-goal bar (faint = projected, solid = delivered; the unfilled
-track to the bar's end is the shortfall) + projected % and `~Nk short`.
-Band severity: any line projected <90% = red, else amber; the band is
-omitted entirely (no ✓ row) when nothing is ending-at-risk, and its count
-folds into the card's `_na_total` header total.
-On desktop every category's offenders show **inline** (`.nw-na-row >
-.nw-na-sub { display:block !important }` + per-category severity tint),
-no click; ≤640px the card collapses to a one-line header and categories
-stay tap-to-expand.
+Cartier line hit (ended at 99%). **As of 2026-06-23 this is the "Ending soon"
+triage pill** (landing layout point 1): clicking it filters the Direct table
+to the at-risk lines (`_ending_idx`), and the pill count is how many there are.
+(History: briefly a separate side-by-side card, then 2026-06-17 the first,
+most-severe **band inside the Needs-attention accordion** with rich
+projected-vs-goal subrows — two-tier name + days-left + a faint-vs-solid
+landing bar + `~Nk short`. The accordion was replaced by the triage strip, so
+that per-line landing detail is gone; the pill + the table's own pace/progress
+columns carry it now.)
 Decision logic is `dl.landing_projection` (projected = delivered +
 daily×days_left, daily from `impressions_1d`) and `dl.landing_at_risk`
 (ending within window AND projected < threshold), tested in

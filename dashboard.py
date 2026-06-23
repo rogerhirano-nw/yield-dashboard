@@ -1058,15 +1058,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   .nw-na-row.sev-red   > summary { background: var(--state-critical-surface); }
   .nw-na-row.sev-amber > summary { background: var(--state-warning-surface); }
 }
-/* `--always` opt-out of the mobile collapse: this card stays expanded at
-   ALL widths (Roger wants Needs-attention's triage categories never a tap
-   away, even on mobile). Only the per-category line-item lists underneath
-   stay independently collapsible, so the open card is the ~4 category rows,
-   not a screenful. Applied to the Needs-attention card only; the
-   ending-soon and PMP-signals cards keep the default mobile collapse. */
-.nw-na--always .nw-na-body { display: block !important; }
-.nw-na--always > summary.nw-na-head .nw-na-h-chev { display: none; }
-.nw-na--always > summary.nw-na-head { cursor: default; }
+/* (The `.nw-na--always` modifier was removed with the Campaigns Needs-attention
+   card — the only card that used it — when the 2026-06-23 triage strip replaced
+   it. The `.nw-na` shell below is still used by the PMP-signals card and the
+   priority-flight monitor cards, which collapse on mobile by default.) */
 .nw-na-row { border-bottom: 1px solid var(--border); }
 .nw-na-row:last-child { border-bottom: none; }
 .nw-na-row > summary, .nw-na-static { list-style: none; display: flex;
@@ -1093,36 +1088,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-na-row.sev-ok    .nw-na-dot { background: var(--state-positive-muted); }
 .nw-na-row.sev-ok    .nw-na-n   { color: var(--state-positive-muted); font-size: 14px; }
 .nw-na-sub { padding: 2px 13px 9px 37px; background: var(--surface-2); }
-/* Flagged line-item row: two-tier identifiable label (advertiser bold over
-   muted campaign) + the metric as colored text on the right. No proportional
-   bar — the metric value + category tint carry severity. */
-.nw-na-srow { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0;
-              font-size: 11.5px; border-top: 1px solid var(--border); }
-.nw-na-srow:first-child { border-top: none; }
-.nw-na-srow .nm { flex: 1 1 auto; min-width: 0; }
-.nw-na-srow .nm .adv { display: block; font-weight: 700; color: var(--text-primary);
-                       line-height: 1.3; }
-.nw-na-srow .nm .camp { display: block; font-size: 10px; color: var(--text-muted);
-                        line-height: 1.25; margin-top: 1px; }
-.nw-na-srow .pct { flex: 0 0 auto; text-align: right; font-weight: 700;
-                   font-variant-numeric: tabular-nums; }
-.nw-na-srow.sev-red   .pct { color: var(--state-critical); }
-.nw-na-srow.sev-amber .pct { color: var(--state-warning); }
-/* Landing-risk row: meta line (days left · ends · delivered) + a compact
-   projected-vs-goal bar. Faint fill = projected at current pace, solid =
-   delivered, tick at right = goal. The gap to the tick is the shortfall. */
-.nw-lr-meta { display: block; font-size: 10px; color: var(--text-muted);
-              line-height: 1.25; margin-top: 1px; }
-.nw-lr-bar { display: block; position: relative; height: 6px; border-radius: 999px;
-             background: var(--surface-2); margin-top: 5px; max-width: 420px; }
-.nw-lr-proj { position: absolute; left: 0; top: 0; height: 100%;
-              border-radius: 999px; opacity: .38; }
-.nw-lr-done { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
-.nw-na-srow.sev-red   .nw-lr-proj, .nw-na-srow.sev-red   .nw-lr-done { background: var(--state-critical); }
-.nw-na-srow.sev-amber .nw-lr-proj, .nw-na-srow.sev-amber .nw-lr-done { background: var(--state-warning); }
-.nw-lr-short { display: block; font-size: 10px; margin-top: 1px; }
-.nw-na-srow.sev-red   .nw-lr-short { color: var(--state-critical); }
-.nw-na-srow.sev-amber .nw-lr-short { color: var(--text-muted); }
+/* (The flagged line-item subrow styles — .nw-na-srow / .nw-lr-* — were removed
+   with the briefing-lede accordion: the "Needs you today" triage now scopes the
+   table instead of expanding offenders inline. The .nw-na-row/-sub/-dot/-n/-l/-d
+   shell above is retained — the PMP-signals accordion still uses it.) */
 /* KPI strip — single grid so all nine tiles render at exactly the same
    height. Tile = white card with a 2px ink top rule and a serif number;
    the sparkline runs full-width under the figures (neutral stroke —
@@ -1144,51 +1113,58 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 /* Section eyebrow (e.g. "Priority flights"). */
 .nw-section-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
   font-weight: 700; color: var(--text-secondary); margin: 14px 0 8px; }
-/* Briefing lede — triage as the first thing on the page, in normal flow. */
-.nw-brief { background: var(--surface-1); border: 1px solid var(--border);
-  border-left: 3px solid var(--brand-red); border-radius: var(--radius-md);
-  margin: 2px 0 18px; overflow: hidden; }
-.nw-brief-lede { display: flex; align-items: baseline; gap: 12px;
-  padding: 11px 16px; border-bottom: 1px solid var(--border); }
-.nw-brief-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-  font-weight: 700; color: var(--text-secondary); }
-.nw-brief-count { font-family: var(--font-display); font-size: 17px; font-weight: 700;
-  color: var(--text-primary); margin-left: auto; }
-.nw-brief-cats { padding: 4px 8px; }
-.nw-brief .nw-na-row { border-bottom: none; }
-@media (min-width: 641px) {
-  /* Category rows sit in a compact auto-fit grid (the horizontal "briefing
-     bar"), each tap-to-expand to its offenders — overrides the always-open
-     desktop rule so the lede stays compact, and restores the chevron. */
-  .nw-brief-cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
-    gap: 2px 12px; align-items: start; padding: 6px 12px; }
-  .nw-brief .nw-na-row:not([open]) > .nw-na-sub { display: none !important; }
-  .nw-brief .nw-na-row > summary { cursor: pointer; }
-  .nw-brief .nw-na-row > summary .nw-na-chev { display: inline-block !important; }
-}
-/* KPI cards — the editorial HIERARCHY is kept (Revenue + Avg pacing as
-   double-width hero tiles, the other seven QA metrics as standard tiles) but
-   every metric stays a CARD (Roger: "we must keep the cards"). One wrapping
-   flex row: hero tiles grow 2×, quality tiles 1×, so desktop reads as 2 big +
-   7 small in one aligned band and wraps cleanly on narrow screens. Reuses the
-   original `.kpi-tile` anatomy. */
-.nw-kpi-cards { display: flex; flex-wrap: wrap; gap: var(--space-2);
-  margin: 4px 0 20px; align-items: stretch; }
-.nw-kpi-cards .kpi-tile { flex: 1 1 132px; }
-.nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 2 1 286px; border-top-width: 3px; }
-/* Desktop: lay the band as ONE deterministic row — heroes span two columns,
-   the seven quality tiles one each (2×2 + 7 = 11 columns) — so it never wraps
-   and CTR always sits right after VCR (Roger 2026-06-22). Below 1025px it
-   stays the wrapping flex above. */
+/* Triage strip ("Needs you today") — single-select filter pills that scope the
+   Direct table below (2026-06-23 handoff; replaces the briefing-lede accordion).
+   Pills are query-param <a> links styled as toggles. The active pill inverts to
+   ink; a 0-count category pill is muted + non-interactive. */
+.nw-triage { display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap; margin: 8px 0 16px; }
+.nw-triage__lab { font-size: 11px; font-weight: 600; letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--text-secondary); }
+.nw-fpill { display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); font-size: 13px; font-weight: 600;
+  color: var(--text-primary); text-decoration: none; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s; }
+.nw-fpill:hover { border-color: var(--text-muted); }
+.nw-fpill:link, .nw-fpill:visited { color: var(--text-primary); }
+.nw-fpill--on, .nw-fpill--on:link, .nw-fpill--on:visited {
+  background: var(--text-primary); color: var(--surface-0); border-color: var(--text-primary); }
+.nw-fpill--off { opacity: 0.5; cursor: default; }
+.nw-fpill .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: 0 0 auto; }
+.nw-fpill .ct { font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Severity dots — data severity (allowed): crit red / warn amber / info blue.
+   The "All flagged" dot is INK, not brand-red: brand-red is chrome-only, so a
+   data pill keeps clear of it (the two-reds rule). */
+.nw-fpill--all  .dot { background: var(--text-primary); }
+.nw-fpill--crit .dot { background: var(--state-critical); }
+.nw-fpill--warn .dot { background: var(--state-warning); }
+.nw-fpill--info .dot { background: #1f5fa8; }            /* --viz info blue */
+.nw-fpill--on .dot { background: var(--surface-0); }
+.nw-triage__right { margin-left: auto; font-family: var(--font-display);
+  font-weight: 700; font-size: 15px; color: var(--text-primary);
+  font-variant-numeric: tabular-nums; }
+.nw-triage__right b { color: var(--brand-red-strong); }
+.nw-triage__right--ok { color: var(--state-positive); }
+/* KPI cards — a 9-up grid with ONE lead metric (2026-06-23 handoff). Revenue
+   is the lead tile (`.nw-tile--lead`: brand-red 3px top rule + 30px serif
+   number) so the page totals out-rank the Priority-Flight CPA numbers; the
+   other eight tiles stay standard weight (23px). A single lead replaced the
+   prior two double-width heroes — one clear first read, the monitor recedes.
+   Reuses the original `.kpi-tile` anatomy. Base is a wrapping auto-fit grid so
+   nine tiles never crush on tablet; desktop pins the canonical one-row 9-up. */
+.nw-kpi-cards { display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2); margin: 4px 0 20px; align-items: stretch; }
+.nw-tile--lead { border-top: 3px solid var(--brand-red); }
+.nw-tile--lead .kpi-value { font-size: 30px; line-height: 1.06; }
 @media (min-width: 1025px) {
-  .nw-kpi-cards { display: grid; grid-template-columns: repeat(11, 1fr); }
-  .nw-kpi-cards .kpi-tile.nw-hero-tile { grid-column: span 2; }
+  /* Desktop: the canonical one-row 9-up strip (handoff reference). The lead
+     tile sits in the same 1fr column — emphasized by weight, not width. */
+  .nw-kpi-cards { grid-template-columns: repeat(9, 1fr); }
 }
-.nw-hero-tile .kpi-label { font-size: 11px; color: var(--text-secondary); }
-.nw-hero-tile .kpi-value { font-size: 40px; line-height: 1.06; }
-/* Hero tiles reuse the shared `.kpi-spark` sparkline like every other tile,
-   so all nine render identically. All nine use the UNIFORM regime (round
-   end-dots); see the `.kpi-spark` rule below. */
+/* All nine tiles share the `.kpi-spark` sparkline (UNIFORM regime, round
+   end-dots) — see the `.kpi-spark` rule below. */
 /* Priority-flight (TTD) cards are demoted + collapsed by default — opt out
    of the desktop force-open so the <details> toggle works at all widths. */
 @media (min-width: 641px) {
@@ -1197,10 +1173,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   details.nw-na.nw-na--collapsible > summary.nw-na-head .nw-na-h-chev { display: inline-block; }
 }
 @media (max-width: 640px) {
-  /* Two hero tiles share the top row; quality tiles wrap ~3-up below. */
-  .nw-kpi-cards .kpi-tile.nw-hero-tile { flex: 1 1 44%; }
-  .nw-kpi-cards .kpi-tile { flex: 1 1 28%; }
-  .nw-hero-tile .kpi-value { font-size: 32px; }
+  /* Phone: 2-up tiles, the Revenue lead spans the full width (handoff). */
+  .nw-kpi-cards { grid-template-columns: 1fr 1fr; }
+  .nw-tile--lead { grid-column: 1 / -1; }
+  .nw-tile--lead .kpi-value { font-size: 32px; }
 }
 .kpi-tile  { display: flex; flex-direction: column; justify-content: flex-start;
              padding: var(--space-3); position: relative; overflow: hidden;
@@ -1280,6 +1256,56 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 @media (max-width: 640px) {
   .nw-ttd-charts  { grid-template-columns: 1fr; }
   .nw-ttd-hero    { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+/* ── Priority-flight compact MONITOR row (2026-06-23 handoff) ──────────
+   The slim row IS the <summary> of the collapsible .nw-na card: name ·
+   CPA + goal pill · 4 key stats · breach-shaded daily-CPA sparkline ·
+   "View detail →". The full editorial scorecard stays one tap away in the
+   <details> body. Left border carries the over/under-goal state color. */
+summary.nw-flight {
+  display: grid; grid-template-columns: 1.9fr 1.5fr 1.6fr 150px 112px;
+  gap: 18px; align-items: center;
+  padding: 14px 18px; border-left: 4px solid var(--c, var(--border));
+  cursor: pointer; list-style: none; }
+summary.nw-flight::-webkit-details-marker { display: none; }
+summary.nw-flight::marker { content: ""; }
+.nw-flight:hover { background: var(--surface-2); }
+.nw-flight--crit { --c: var(--state-critical); }
+.nw-flight--pos  { --c: var(--state-positive); }
+.nw-flight__nm { font-size: 14px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nw-flight__dr { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.nw-flight__cpa-cell { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.nw-flight__cpa-l { font-size: 10px; font-weight: 600; letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--text-muted); }
+.nw-flight__cpa { font-family: var(--font-display); font-weight: 700; font-size: 23px;
+  letter-spacing: -0.01em; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.nw-flight__goal { display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+.nw-flight__goal--crit { background: var(--state-critical-surface); color: var(--state-critical); }
+.nw-flight__goal--pos  { background: var(--state-positive-surface);  color: var(--state-positive); }
+.nw-flight__stats { display: flex; gap: 16px; }
+.nw-flight__m .l { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-muted); display: block; }
+.nw-flight__m .v { font-size: 14px; font-weight: 600; color: var(--text-primary);
+  font-variant-numeric: tabular-nums; margin-top: 2px; display: block; }
+.nw-flight__spark { min-width: 0; }
+.nw-flight__cap { display: flex; justify-content: space-between; font-size: 9.5px;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.nw-flight-spark { display: block; width: 100%; height: auto; }
+.nw-flight__go { text-align: right; }
+.nw-flight__detail { font-size: 13px; font-weight: 600; color: var(--brand-red-strong); }
+.nw-flight:hover .nw-flight__detail { text-decoration: underline; }
+/* Goal-banded CPA cell (flight detail + by-size/by-format breakdown tables). */
+.nw-cpa-band { display: inline-block; padding: 2px 7px; border-radius: var(--radius-sm);
+  font-weight: 600; font-variant-numeric: tabular-nums; }
+.nw-cpa-band--over { background: var(--state-critical-surface); color: var(--state-critical); }
+.nw-cpa-band--ok   { color: var(--state-positive); }
+@media (max-width: 640px) {
+  /* Phone: the monitor row stacks into a card. */
+  summary.nw-flight { grid-template-columns: 1fr; gap: 12px; }
 }
 /* Sentence-case helper class (utility — applied selectively). */
 .nw-sentence::first-letter { text-transform: uppercase; }
@@ -1944,6 +1970,13 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
                -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .nw-tabrow::-webkit-scrollbar { display: none; }
   .nw-tab { white-space: nowrap; flex: 0 0 auto; }
+  /* Triage pills swipe horizontally too (don't wrap into a tall stack). The
+     "N of M need attention" tail drops below the row on a phone. */
+  .nw-triage { flex-wrap: nowrap; overflow-x: auto;
+               -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .nw-triage::-webkit-scrollbar { display: none; }
+  .nw-fpill, .nw-triage__lab { white-space: nowrap; flex: 0 0 auto; }
+  .nw-triage__right { margin-left: 0; flex-basis: 100%; }
   /* Any remaining dense grid table keeps the horizontal swipe by default. */
   .nw-tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   /* Direct table → compact "graph card" rows (Solution 3): swap each row's
@@ -3560,12 +3593,27 @@ if st.session_state.active_view == "campaigns":
             view_gam = view_gam[view_gam["team"].isin(selected_teams)]
         view_gam = _apply_am_filter(view_gam, "seller_ae")
 
+        # Triage filter ("Needs you today" strip) — single-select over the
+        # Direct table via ?triage=<key>. "All flagged" (no param) shows the
+        # full book; a category narrows the table to its offenders. Read here so
+        # it feeds the pagination-reset signature below.
+        _TRIAGE_KEYS = ("ending", "underpacing", "overpacing", "viewability")
+        _triage = None
+        try:
+            _tq = st.query_params.get("triage")
+            if isinstance(_tq, str) and _tq in _TRIAGE_KEYS:
+                _triage = _tq
+        except Exception:
+            _triage = None
+
         # Reset Direct-table pagination whenever the filter set changes, so a
         # narrower filter can't strand you on a now-out-of-range page (mirror
-        # of the PMP table's _pmp_filter_sig guard).
+        # of the PMP table's _pmp_filter_sig guard). Triage is part of the
+        # filter set, so switching pills also resets to page 0.
         _direct_filter_sig = str((
             selected_seller, sorted(selected_advertisers), sorted(selected_formats),
             sorted(selected_statuses), sorted(selected_teams), sorted(selected_ams),
+            _triage,
         ))
         if st.session_state.get("_direct_filter_sig") != _direct_filter_sig:
             st.session_state["direct_page"] = 0
@@ -3649,62 +3697,37 @@ if st.session_state.active_view == "campaigns":
             _ctr_bench     = (_bench_display.get("ctr_pct"))
             _ctr_bench     = float(_ctr_bench) if _ctr_bench is not None else None
 
-            # ── Exception banners — list the specific offenders, not just counts.
-            def _short_advertiser(name):
-                if not isinstance(name, str): return "—"
-                # Take a recognizable mid-name token (advertiser slot, position 7).
-                parts = name.split("_")
-                for idx in (7, 6, 8, 2):
-                    if len(parts) > idx and parts[idx] and parts[idx] not in ("NA", "N/A"):
-                        return parts[idx].replace("-", " ")
-                return parts[0]
-
-            _under_rows  = (view_gam[view_gam["pacing_pct"] < _pacing_critical][["line_item_name", "pacing_pct"]].head(4)
-                            if "pacing_pct" in view_gam.columns else pd.DataFrame())
-            _over_rows   = (view_gam[view_gam["pacing_pct"] > _pacing_warn_high][["line_item_name", "pacing_pct"]].head(6)
-                            if "pacing_pct" in view_gam.columns else pd.DataFrame())
-            # Viewability anomaly threshold sources from the configured
-            # benchmark (Configure → Section 3 → Benchmarks by format →
-            # Display viewability). Previously hardcoded at 40 — confusing
-            # when users set the benchmark to 70 and wondered why the
-            # banner referenced 40.
+            # ── Triage offender index sets (uncapped) for the "Needs you today"
+            # strip. Each pill scopes the Direct table to one alert category;
+            # the pill counts are the TRUE offender counts over the (popover-)
+            # filtered view_gam. Decision logic (pacing bands / viewability
+            # benchmark / landing projection) is unchanged — this only buckets
+            # line items by index. Pacing: under = below the critical band,
+            # over = above the high-warn band.
+            _pace_num = (pd.to_numeric(view_gam["pacing_pct"], errors="coerce")
+                         if "pacing_pct" in view_gam.columns else None)
+            _under_idx = (view_gam.loc[_pace_num < _pacing_critical].index
+                          if _pace_num is not None else view_gam.index[:0])
+            _over_idx  = (view_gam.loc[_pace_num > _pacing_warn_high].index
+                          if _pace_num is not None else view_gam.index[:0])
+            # Viewability anomaly threshold sources from the configured benchmark
+            # (Configure → Benchmarks by format → Display viewability).
             _vw_target = _view_bench
-            _vw_anom_rows = pd.DataFrame()
+            _vw_idx = view_gam.index[:0]
             if "lifetime_viewable_imps" in view_gam.columns and "lifetime_measurable_imps" in view_gam.columns:
-                _v_rate = pd.to_numeric(view_gam["lifetime_viewable_imps"], errors="coerce") / \
-                          pd.to_numeric(view_gam["lifetime_measurable_imps"], errors="coerce") * 100
-                _vw_anom_rows = (view_gam.assign(_v=_v_rate)
-                                 .loc[_v_rate < _vw_target, ["line_item_name", "_v"]].head(4))
+                _vwf = pd.to_numeric(view_gam["lifetime_viewable_imps"], errors="coerce")
+                _mbf = pd.to_numeric(view_gam["lifetime_measurable_imps"], errors="coerce")
+                _vrate = (_vwf / _mbf * 100).where(_mbf > 0)
+                _vw_idx = view_gam.loc[_vrate < _vw_target].index
 
-            def _under_detail(rows):
-                if rows.empty: return f"All line items at or above {_pacing_critical:g}% pacing"
-                advs = rows["line_item_name"].apply(_short_advertiser).unique().tolist()
-                paces = " &amp; ".join(f"{p:.0f}%" for p in rows["pacing_pct"].head(2))
-                return f"{advs[0]} · {paces} pace" if len(advs) == 1 else f"{', '.join(advs[:3])}"
-            def _over_detail(rows):
-                if rows.empty: return "No overpacers"
-                advs = rows["line_item_name"].apply(_short_advertiser).unique().tolist()
-                return ", ".join(advs[:4])
-            def _vw_detail(rows):
-                if rows.empty:
-                    return f"All line items at or above {_vw_target:g}% viewability"
-                first = rows.iloc[0]
-                return f"{_short_advertiser(first['line_item_name'])} · {first['_v']:.1f}% viewable"
-
-            def _na_esc(s):
-                return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-            # ── "Ending soon · at risk" card — lines whose flight ends within
-            # the configured window AND that are projected, at the current
-            # daily pace, to finish under goal. Decision logic + tests live in
-            # dashboard_logic (landing_projection / landing_at_risk); this
-            # block only builds the rows. Sits above Needs-attention so a
-            # looming under-delivery (the Cartier problem) is the first thing
-            # seen. Worst projected % first.
+            # ── "Ending soon" set — lines whose flight ends within the configured
+            # window AND projected, at the current daily pace, to finish under
+            # goal (the Cartier under-delivery). Decision logic + tests live in
+            # dashboard_logic (landing_projection / landing_at_risk).
             _lr_window = int(_cfg.get("landing_window_days", 7) or 7)
             _lr_thresh = float(_cfg.get("landing_threshold_pct", 100.0) or 100.0)
             _lr_today = date.today()
-            _lr_items = []
+            _ending_idx = []
             if {"impressions_goal", "lifetime_impressions_delivered", "end_date"}.issubset(view_gam.columns):
                 for _, _lr in view_gam.iterrows():
                     _ed = pd.to_datetime(_lr.get("end_date"), errors="coerce")
@@ -3719,144 +3742,50 @@ if st.session_state.active_view == "campaigns":
                     if _proj is None or not dl.landing_at_risk(
                             _days, _proj["projected_pct"], _lr_window, _lr_thresh):
                         continue
-                    _goal = float(_lr.get("impressions_goal"))
-                    _deliv = pd.to_numeric(_lr.get("lifetime_impressions_delivered"), errors="coerce")
-                    _lr_items.append({
-                        "name": _lr.get("line_item_name"),
-                        "days": _days,
-                        "end": _ed.date(),
-                        "pct_done": (float(_deliv) / _goal * 100) if pd.notna(_deliv) and _goal else 0.0,
-                        "proj_pct": _proj["projected_pct"],
-                        "short": _proj["short"],
-                    })
-            _lr_items.sort(key=lambda d: d["proj_pct"])
+                    _ending_idx.append(_lr.name)
+            _ending_idx = pd.Index(_ending_idx)
 
-            def _lr_short_fmt(n):
-                n = float(n)
-                if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
-                if n >= 1_000:     return f"{n/1_000:.0f}k"
-                return f"{int(n):,}"
+            # ── Triage strip render. Pills are query-param links (the same nav
+            # pattern as the tab row): clicking a category sets ?triage=<key>;
+            # "All flagged" clears it (shows the full book). A 0-count category
+            # pill renders disabled — it can't filter to an empty table. This
+            # replaces the old briefing-lede accordion; clicking a pill now
+            # scopes the Direct table below instead of expanding offenders inline.
+            _triage_sets = {
+                "ending": _ending_idx,
+                "underpacing": _under_idx,
+                "overpacing": _over_idx,
+                "viewability": _vw_idx,
+            }
+            _flagged_idx = _under_idx.union(_over_idx).union(_vw_idx).union(_ending_idx)
+            _flagged_n = len(_flagged_idx)
+            _total_n = len(view_gam)
 
-            def _lr_rows_html(items):
-                cells = []
-                for it in items:
-                    sev = "sev-red" if it["proj_pct"] < 90 else "sev-amber"
-                    full = dl.line_item_display_name(it["name"])
-                    adv, camp = (full.split(" — ", 1) + [""])[:2] if " — " in full else (full, "")
-                    camp_html = f'<span class="camp">{_na_esc(camp)}</span>' if camp else ""
-                    proj = max(min(it["proj_pct"], 100.0), 0.0)
-                    done = max(min(it["pct_done"], 100.0), 0.0)
-                    end_s = it["end"].strftime("%b %-d")
-                    days_s = "ends today" if it["days"] == 0 else (
-                        "1 day left" if it["days"] == 1 else f'{it["days"]} days left')
-                    cells.append(
-                        f'<div class="nw-na-srow {sev}">'
-                        f'<span class="nm"><span class="adv">{_na_esc(adv)}</span>{camp_html}'
-                        f'<span class="nw-lr-meta">{days_s} · ends {end_s} · {it["pct_done"]:.0f}% delivered</span>'
-                        f'<span class="nw-lr-bar"><span class="nw-lr-proj" style="width:{proj:.0f}%"></span>'
-                        f'<span class="nw-lr-done" style="width:{done:.0f}%"></span></span>'
-                        f'</span>'
-                        f'<span class="pct">{it["proj_pct"]:.0f}%'
-                        f'<span class="nw-lr-short">~{_lr_short_fmt(it["short"])} short</span></span>'
-                        f'</div>')
-                return "".join(cells)
+            def _fpill(key, label, sev, count):
+                # `key=None` is the "All flagged" reset pill (always clickable);
+                # a category pill with 0 offenders renders disabled.
+                _on = (_triage == key) if key else (_triage is None)
+                _inner = f'<span class="dot"></span>{label} <span class="ct">{count}</span>'
+                if key is not None and count == 0 and not _on:
+                    return f'<span class="nw-fpill nw-fpill--{sev} nw-fpill--off">{_inner}</span>'
+                _href = "?view=campaigns" if key is None else f"?view=campaigns&triage={key}"
+                _on_cls = " nw-fpill--on" if _on else ""
+                return (f'<a class="nw-fpill nw-fpill--{sev}{_on_cls}" '
+                        f'href="{_href}" target="_self">{_inner}</a>')
 
-            # Ending-soon is folded into the Needs-attention card as its
-            # first (most severe) category band — revenue/time risk leads.
-            # _lr_n / _lr_worst / _lr_subrows feed the _na_row build below.
-            _lr_n = len(_lr_items)
-            _lr_worst = ("sev-red" if any(i["proj_pct"] < 90 for i in _lr_items)
-                         else "sev-amber") if _lr_items else "sev-amber"
-            _lr_subrows = _lr_rows_html(_lr_items) if _lr_items else ""
-            def _lr_detail(items):
-                if not items:
-                    return "All current lines on track to finish"
-                w = items[0]  # already sorted worst projected-% first
-                adv = dl.line_item_display_name(w["name"]).split(" — ", 1)[0]
-                return f"{_na_esc(adv)} · proj {w['proj_pct']:.0f}%"
-
-            # ── "Needs attention" panel: one card, a row per alert category.
-            # Categories with offenders render as a native <details> accordion
-            # — tap the row to reveal the specific line items inline (worst
-            # first, severity-tinted bar + value); browser-native toggle, no
-            # Streamlit rerun. Clear categories render as a static sev-ok row.
-            # Counts keep the existing head(4)/head(6) display cap.
-            # (_na_esc defined above, with the landing-risk card.)
-
-            def _na_subrows(rows, sev, metric_col, fmt):
-                # Two-tier identifiable label: advertiser (bold) over the muted
-                # campaign — the same `Advertiser — Campaign` name the table
-                # shows, split so sibling LIs (3 Pateks, 4 GMCs) read distinctly
-                # and you can find the exact row. Metric is colored text, right.
-                cells = []
-                for _, _r in rows.iterrows():
-                    _val = float(_r[metric_col])
-                    _full = dl.line_item_display_name(_r["line_item_name"])
-                    _adv, _camp = (_full.split(" — ", 1) + [""])[:2] if " — " in _full else (_full, "")
-                    _camp_html = f'<span class="camp">{_na_esc(_camp)}</span>' if _camp else ""
-                    cells.append(
-                        f'<div class="nw-na-srow {sev}">'
-                        f'<span class="nm"><span class="adv">{_na_esc(_adv)}</span>{_camp_html}</span>'
-                        f'<span class="pct">{fmt(_val)}</span></div>'
-                    )
-                return "".join(cells)
-
-            def _na_row(n, sev, label, detail, subrows_html):
-                if not n:
-                    return ('<div class="nw-na-row sev-ok"><div class="nw-na-static">'
-                            '<span class="nw-na-dot"></span><span class="nw-na-n">✓</span>'
-                            f'<span class="nw-na-l">{label}</span>'
-                            f'<span class="nw-na-d">{detail}</span></div></div>')
-                return (f'<details class="nw-na-row {sev}">'
-                        '<summary><span class="nw-na-dot"></span>'
-                        f'<span class="nw-na-n">{n}</span>'
-                        f'<span class="nw-na-l">{label}</span>'
-                        f'<span class="nw-na-d">{detail}</span>'
-                        '<span class="nw-na-chev">&rsaquo;</span></summary>'
-                        f'<div class="nw-na-sub">{subrows_html}</div></details>')
-
-            _u_n, _o_n, _v_n = len(_under_rows), len(_over_rows), len(_vw_anom_rows)
-            _na_total = _lr_n + _u_n + _o_n + _v_n
-            _under_sub = _na_subrows(
-                _under_rows.sort_values("pacing_pct"), "sev-red", "pacing_pct",
-                lambda v: f"{v:.0f}%") if _u_n else ""
-            _over_sub = _na_subrows(
-                _over_rows.sort_values("pacing_pct", ascending=False), "sev-amber", "pacing_pct",
-                lambda v: f"{v:.0f}%") if _o_n else ""
-            _view_sub = _na_subrows(
-                _vw_anom_rows.sort_values("_v"), "sev-amber", "_v",
-                lambda v: f"{v:.1f}%") if _v_n else ""
-
-            _na_head_cnt = f"{_na_total} flagged" if _na_total else "All clear"
-            # One unified card. Ending soon (revenue/time risk) leads as the
-            # first, most-severe band, then the pacing/viewability quality
-            # flags. The ending-soon band's subrows carry the landing detail
-            # (projected-vs-goal bar + days left + ~Nk short) via _lr_rows_html;
-            # it's only emitted when there are at-risk lines (no ✓ row for it).
-            _na_cats = (
-                (_na_row(_lr_n, _lr_worst, "Ending soon", _lr_detail(_lr_items), _lr_subrows)
-                 if _lr_items else "")
-                + _na_row(_u_n, "sev-red", "Underpacing", _under_detail(_under_rows), _under_sub)
-                + _na_row(_o_n, "sev-amber", "Overpacing", _over_detail(_over_rows), _over_sub)
-                + _na_row(_v_n, "sev-amber", "Viewability", _vw_detail(_vw_anom_rows), _view_sub)
-            )
-            # ── Briefing lede (Editorial layout): triage is the first thing on
-            # the page, in NORMAL FLOW — not a floating rail. The old cockpit
-            # rail was `position:fixed` and overlapped the KPI strip; rendering
-            # the triage as a full-width "Needs you today" lede here fixes that
-            # structurally (nothing is fixed-positioned, so it can't collide).
-            # On desktop the category rows sit in a compact auto-fit grid, each
-            # tap-to-expand to its offenders; on mobile they stack. `_na_cats`
-            # already builds both the flagged rows and the all-clear ✓ rows, so
-            # one render covers both states. PMP signals render in the PMP
-            # section below (also normal flow), keeping PMP triage with the PMP
-            # content rather than hoisting it into a shared rail.
+            _right = (f'<span class="nw-triage__right"><b>{_flagged_n}</b> of {_total_n} '
+                      'need attention</span>' if _flagged_n else
+                      '<span class="nw-triage__right nw-triage__right--ok">✓ All clear</span>')
             st.markdown(
-                '<div class="nw-brief">'
-                '<div class="nw-brief-lede">'
-                '<span class="nw-brief-eyebrow">Needs you today</span>'
-                f'<span class="nw-brief-count">{_na_head_cnt}</span></div>'
-                f'<div class="nw-brief-cats">{_na_cats}</div></div>',
+                '<div class="nw-triage">'
+                '<span class="nw-triage__lab">Needs you today</span>'
+                + _fpill(None, "All flagged", "all", _flagged_n)
+                + _fpill("ending", "Ending soon", "crit", len(_ending_idx))
+                + _fpill("underpacing", "Underpacing", "crit", len(_under_idx))
+                + _fpill("overpacing", "Overpacing", "warn", len(_over_idx))
+                + _fpill("viewability", "Viewability", "info", len(_vw_idx))
+                + _right
+                + '</div>',
                 unsafe_allow_html=True,
             )
 
@@ -4118,6 +4047,53 @@ if st.session_state.active_view == "campaigns":
                 return (f'<div class="nw-ttd-chart"><div class="nw-ttd-chart-title">{title}</div>'
                         f'{svg}<div class="nw-ttd-xax">{xax}</div></div>')
 
+            def _ttd_cpa_spark(series, goal, over):
+                """Breach-shaded daily-CPA sparkline for the monitor row's slim
+                summary: state-colored line (red over goal / green under) + faint
+                area wash + dashed goal line + a tint over the breach zone ABOVE
+                the goal (data severity, so --state-critical is sanctioned).
+                UNIFORM regime (no preserveAspectRatio) at a ~4:1 viewBox so the
+                round end-dot never distorts in the narrow column. `series` is the
+                daily [(date, cpa), …] list; <2 points renders nothing."""
+                pts = [float(v) for _, v in (series or []) if v is not None]
+                if len(pts) < 2:
+                    return ""
+                g = None
+                try:
+                    g = float(goal) if goal and float(goal) > 0 else None
+                except (TypeError, ValueError):
+                    g = None
+                lo = min(pts + ([g] if g is not None else []))
+                hi = max(pts + ([g] if g is not None else []))
+                span = (hi - lo) or 1
+                W, H, pad = 200, 48, 5
+                n = len(pts)
+                xs = [pad + i / (n - 1) * (W - 2 * pad) for i in range(n)]
+                ys = [(H - pad) - (v - lo) / span * (H - 2 * pad) for v in pts]
+                poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                col = "var(--state-critical)" if over else "var(--state-positive)"
+                area = (f'<path d="M{xs[0]:.1f},{H - pad:.1f} L'
+                        + " L".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys))
+                        + f' L{xs[-1]:.1f},{H - pad:.1f} Z" '
+                        f'style="fill:{col};fill-opacity:.08"/>')
+                breach = goal_line = ""
+                if g is not None:
+                    gy = (H - pad) - (g - lo) / span * (H - 2 * pad)
+                    gy = max(pad, min(H - pad, gy))
+                    breach = (f'<rect x="0" y="0" width="{W}" height="{gy:.1f}" '
+                              'style="fill:var(--state-critical);fill-opacity:.07"/>')
+                    goal_line = (f'<line x1="{pad}" y1="{gy:.1f}" x2="{W - pad}" y2="{gy:.1f}" '
+                                 'style="stroke:var(--text-muted)" stroke-width="1" '
+                                 'stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>')
+                dot = (f'<path d="M{xs[-1]:.1f} {ys[-1]:.1f}h0" fill="none" '
+                       f'style="stroke:{col}" stroke-width="5.5" '
+                       'stroke-linecap="round" vector-effect="non-scaling-stroke"/>')
+                return (f'<svg viewBox="0 0 {W} {H}" class="nw-flight-spark" '
+                        f'xmlns="http://www.w3.org/2000/svg">{breach}{area}{goal_line}'
+                        f'<polyline points="{poly}" fill="none" style="stroke:{col}" '
+                        'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" '
+                        f'vector-effect="non-scaling-stroke"/>{dot}</svg>')
+
             def _render_ttd_cpa(
                 summary: dict,
                 title: str = "Luckyland Casino · TTD Acquisition",
@@ -4284,15 +4260,76 @@ if st.session_state.active_view == "campaigns":
                         + table_html
                     )
 
-                count_label = f"{s['conversions']:,} conv." if s["conversions"] else "no data"
+                # ── Slim MONITOR row (the <details> summary) — name · CPA + goal
+                # pill · 4 key stats · breach-shaded daily-CPA sparkline · "View
+                # detail →". The full editorial scorecard (body_inner) stays one
+                # tap away in the collapsed body (2026-06-23 handoff). When the
+                # flight is over goal the row reads critical (red left border +
+                # red line/pill); under goal it reads positive (green).
+                gd = dl.cpa_goal_delta(s["cpa"], _gv) if _gv else None
+                _over = bool(gd and gd["over"])
+                if empty:
+                    summary_html = (
+                        '<summary class="nw-flight">'
+                        f'<div class="nw-flight__who"><div class="nw-flight__nm">{title}</div>'
+                        '<div class="nw-flight__dr">No data</div></div>'
+                        '<div class="nw-flight__cpa-cell">'
+                        '<span class="nw-flight__cpa-l">CPA</span>'
+                        '<span class="nw-flight__cpa">—</span></div>'
+                        '<div class="nw-flight__stats"></div>'
+                        '<div class="nw-flight__spark"></div>'
+                        '<div class="nw-flight__go"><span class="nw-flight__detail">View detail →</span></div>'
+                        '</summary>'
+                    )
+                else:
+                    _state_cls = "nw-flight--crit" if _over else ("nw-flight--pos" if gd else "")
+                    _dr = date_label
+                    if s["conversions"]:
+                        _conv_s = f'{s["conversions"]:,} conv.'
+                        _dr = f"{date_label} · {_conv_s}" if date_label else _conv_s
+                    # Goal pill — under = green (✓) / over = red (✗); obeys the
+                    # two-reds rule (severity, not chrome).
+                    _goal_pill = ""
+                    if gd:
+                        _goal_pill = (
+                            f'<span class="nw-flight__goal nw-flight__goal--crit">✗ ${gd["delta"]:,.2f} over</span>'
+                            if _over else
+                            f'<span class="nw-flight__goal nw-flight__goal--pos">✓ ${gd["delta"]:,.2f} under</span>')
+                    # % of goal stat, colored by state.
+                    if _gv and s["cpa"] is not None and not pd.isna(s["cpa"]):
+                        _pg = s["cpa"] / _gv * 100
+                        _pgcol = "var(--state-critical)" if _over else "var(--state-positive)"
+                        _pct_goal_v = f'<span class="v" style="color:{_pgcol}">{_pg:.0f}%</span>'
+                    else:
+                        _pct_goal_v = '<span class="v">—</span>'
+                    _spark_svg = _ttd_cpa_spark(s["daily_cpa"], _gv, _over)
+                    if _spark_svg:
+                        _cap_goal = f"goal ${_gv:,.0f}" if _gv else ""
+                        _spark_html = ('<div class="nw-flight__spark"><div class="nw-flight__cap">'
+                                       f'<span>Daily CPA</span><span>{_cap_goal}</span></div>{_spark_svg}</div>')
+                    else:
+                        _spark_html = '<div class="nw-flight__spark"></div>'
+                    summary_html = (
+                        f'<summary class="nw-flight {_state_cls}">'
+                        f'<div class="nw-flight__who"><div class="nw-flight__nm">{title}</div>'
+                        f'<div class="nw-flight__dr">{_dr}</div></div>'
+                        '<div class="nw-flight__cpa-cell">'
+                        '<span class="nw-flight__cpa-l">CPA</span>'
+                        f'<span class="nw-flight__cpa">{_fmt_money_cpa(s["cpa"])}</span>{_goal_pill}</div>'
+                        '<div class="nw-flight__stats">'
+                        f'<div class="nw-flight__m"><span class="l">Conv.</span><span class="v">{_fmt_int(s["conversions"])}</span></div>'
+                        f'<div class="nw-flight__m"><span class="l">Spend</span><span class="v">{_fmt_money_cpa(s["spend_usd"]) if s["spend_usd"] else "—"}</span></div>'
+                        f'<div class="nw-flight__m"><span class="l">CVR</span><span class="v">{_fmt_pct(s["conv_rate"], dp=2)}</span></div>'
+                        f'<div class="nw-flight__m"><span class="l">% of goal</span>{_pct_goal_v}</div>'
+                        '</div>'
+                        f'{_spark_html}'
+                        '<div class="nw-flight__go"><span class="nw-flight__detail">View detail →</span></div>'
+                        '</summary>'
+                    )
                 st.markdown(
                     f'<div class="nw-ttd-wrap">'
-                    f'<details class="nw-na nw-na--collapsible" open>'
-                    f'<summary class="nw-na-head">'
-                    f'{title}'
-                    f'<span class="nw-na-h-chev">›</span>'
-                    f'<span class="cnt">{count_label}</span>'
-                    f'</summary>'
+                    f'<details class="nw-na nw-na--collapsible">'
+                    f'{summary_html}'
                     f'<div class="nw-na-body" style="padding:12px 13px 4px">'
                     f'{body_inner}'
                     f'</div>'
@@ -4301,15 +4338,18 @@ if st.session_state.active_view == "campaigns":
                     unsafe_allow_html=True,
                 )
 
-            def _kpi_tile(label, value, target=None, spark=None):
+            def _kpi_tile(label, value, target=None, spark=None, lead=False):
                 """Render one KPI card: label / serif number / target subtitle,
                 with the (neutral) sparkline running full-width underneath —
                 the Newsweek tile anatomy. `target` is the subtitle text.
-                `spark` is the pre-rendered SVG markup (or '' for text-only)."""
+                `spark` is the pre-rendered SVG markup (or '' for text-only).
+                `lead=True` adds the `.nw-tile--lead` modifier (Revenue anchor —
+                brand-red top rule + 30px serif number; 2026-06-23 handoff)."""
                 target_html = f'<div class="kpi-target">{target}</div>' if target else ""
                 spark_html = spark or ""
+                cls = "kpi-tile nw-tile--lead" if lead else "kpi-tile"
                 return (
-                    f'<div class="kpi-tile">'
+                    f'<div class="{cls}">'
                     f'<div class="kpi-label">{label}</div>'
                     f'<div class="kpi-value">{value}</div>'
                     f'{target_html}'
@@ -4490,26 +4530,19 @@ if st.session_state.active_view == "campaigns":
                 if v < 1:     return f"{v:.2f}%"
                 if v < 10:    return f"{v:.1f}%"
                 return f"{v:.0f}%"
-            # ── Editorial KPI band — kept as CARDS (Roger: "we must keep the
-            # cards"): Revenue + Avg pacing as double-width hero tiles, the other
-            # seven QA metrics as standard tiles, all in one wrapping flex row so
-            # the page has a clear first read (the two big tiles) while every
-            # metric keeps its box. Reuses the original `_kpi_tile` + per-metric
-            # sparkline vars; hero tiles reuse the SAME `.kpi-spark` (stretch)
-            # sparkline as the other tiles so all nine end-dots render
-            # identically (an earlier uniform-regime hero sparkline placed the
-            # end-dot differently and read as "off").
-            def _hero_tile(label, value, sub, spark):
-                sub_html = f'<div class="kpi-target">{sub}</div>' if sub else ""
-                return (f'<div class="kpi-tile nw-hero-tile"><div class="kpi-label">{label}</div>'
-                        f'<div class="kpi-value">{value}</div>{sub_html}{spark or ""}</div>')
-
+            # ── KPI band — a 9-up grid with ONE lead metric (2026-06-23
+            # handoff): Revenue leads (`.nw-tile--lead` — brand-red top rule,
+            # 30px serif number) so the page totals are the clear first read and
+            # out-rank the Priority-Flight CPA numbers; the other eight metrics
+            # (Avg pacing now among them) are standard 23px tiles. Reuses the
+            # original `_kpi_tile` + per-metric sparkline vars; all nine share
+            # the SAME `.kpi-spark` sparkline so the end-dots render identically.
             st.markdown(
                 '<div class="nw-kpi-cards">'
-                + _hero_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark)
-                + _hero_tile("Avg pacing",
-                             f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                             _pace_sub, _pace_spark)
+                + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark, lead=True)
+                + _kpi_tile("Avg pacing",
+                            f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
+                            _pace_sub, _pace_spark)
                 + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
                 + _kpi_tile("Viewability",
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
@@ -4546,20 +4579,19 @@ if st.session_state.active_view == "campaigns":
                 _m = view_gam["order_name"].astype(str).str.contains(order_token, case=False, na=False)
                 _s = pd.to_datetime(view_gam.loc[_m, "start_date"], errors="coerce").dropna()
                 return _s.min().date() if not _s.empty else None
-            # Side-by-side on desktop (st.columns collapses to stacked on mobile);
-            # the .nw-ttd-wrap override lifts the shared .nw-na 760px cap so each
-            # card fills its column. Both graded against the configured CPA goal.
+            # One slim MONITOR row per flight, stacked full-width (2026-06-23
+            # handoff): each row is the always-visible summary (name · CPA · goal
+            # pill · stats · breach sparkline) and the full editorial scorecard is
+            # one tap away in the collapsed body. Both graded against the
+            # configured CPA goal.
             _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
-            _pf_cols = st.columns(2)
-            with _pf_cols[0]:
-                _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")),
-                                goal=_ttd_goal)
-            with _pf_cols[1]:
-                _render_ttd_cpa(
-                    dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
-                    title="VGW Chumba Casino · TTD Acquisition",
-                    goal=_ttd_goal,
-                )
+            _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")),
+                            goal=_ttd_goal)
+            _render_ttd_cpa(
+                dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
+                title="VGW Chumba Casino · TTD Acquisition",
+                goal=_ttd_goal,
+            )
 
             # ---------- Campaign table ----------
             # Remaining impressions (None when no goal is set)
@@ -5768,15 +5800,30 @@ if st.session_state.active_view == "campaigns":
                 _imp = pd.to_numeric(view_gam["lifetime_impressions_delivered"], errors="coerce")
                 _ctr_rate = (_clk / _imp * 100).where(_imp > 0, other=None)
 
+            # ── Triage scope: narrow the table to the active "Needs you today"
+            # category (its offender index set), if any. `_direct_view` is a
+            # view of view_gam restricted to those index labels — used for the
+            # count, pager and row iteration. The per-row _vw_rate / _ctr_rate
+            # lookups stay keyed on the FULL view_gam (they're positionally
+            # aligned to it), and the triage rows' labels are a subset of
+            # view_gam.index, so index.get_loc still resolves.
+            if _triage:
+                # Honest scope even if the category is now empty (only reachable
+                # via a stale URL — live 0-count pills render disabled): show
+                # 0 rows + "<Category> · 0 of N", never the full book mislabeled.
+                _direct_view = view_gam.loc[view_gam.index.isin(_triage_sets[_triage])]
+            else:
+                _direct_view = view_gam
+
             # ── Pagination (mirrors the PMP table) ──────────────────────────
             # The Direct list renders into a single custom HTML grid; at a few
             # hundred filtered LIs that's a lot of DOM built per rerun. Page it
             # at 25 like the PMP table, with the same ← Prev / Page X of N /
-            # Next → control above and below. view_gam is already sorted A–Z;
+            # Next → control above and below. _direct_view is already sorted A–Z;
             # slicing by position preserves the index labels, so the per-row
             # _vw_rate / _ctr_rate lookups (by index.get_loc) still resolve.
             _DIRECT_PAGE_SIZE = 25
-            _direct_count = len(view_gam)
+            _direct_count = len(_direct_view)
             _direct_total_pages = max(1, math.ceil(_direct_count / _DIRECT_PAGE_SIZE))
             _direct_cur_page = max(0, min(int(st.session_state.get("direct_page", 0)),
                                           _direct_total_pages - 1))
@@ -5787,7 +5834,7 @@ if st.session_state.active_view == "campaigns":
             def _direct_go_next():
                 st.session_state["direct_page"] = min(_direct_total_pages - 1, _direct_cur_page + 1)
 
-            _direct_page_slice = view_gam.iloc[
+            _direct_page_slice = _direct_view.iloc[
                 _direct_cur_page * _DIRECT_PAGE_SIZE : (_direct_cur_page + 1) * _DIRECT_PAGE_SIZE
             ]
 
@@ -5942,9 +5989,15 @@ if st.session_state.active_view == "campaigns":
                     '</details>'
                 )
 
-            _direct_tbl_sub = (
-                f"· {_direct_count} line item{'s' if _direct_count != 1 else ''} · sorted A–Z"
-            )
+            if _triage:
+                _triage_label = {"ending": "Ending soon", "underpacing": "Underpacing",
+                                 "overpacing": "Overpacing", "viewability": "Viewability"}[_triage]
+                _direct_tbl_sub = (f"· {_triage_label} · {_direct_count} of {_total_n} "
+                                   f"line item{'s' if _total_n != 1 else ''} · sorted A–Z")
+            else:
+                _direct_tbl_sub = (
+                    f"· {_direct_count} line item{'s' if _direct_count != 1 else ''} · sorted A–Z"
+                )
             if _direct_total_pages > 1:
                 _direct_tbl_sub += f" · page {_direct_cur_page + 1}/{_direct_total_pages}"
             _table_html = (
