@@ -2,6 +2,7 @@
 
 See `README.md` for project overview, files, and quickstart.
 See `docs/changelog.md` for the dated "what changed when, and why" index (keyed by PR).
+See `docs/seller_comms.md` for seller/AM email templates (Chumba delivery-issue outreach, how to pull LI goals + deal IDs from GAM).
 
 ## Conventions
 - Python (Streamlit dashboard + per-source clients). Cache layer is SQLite locally, Postgres in prod (`DATABASE_URL` Supabase).
