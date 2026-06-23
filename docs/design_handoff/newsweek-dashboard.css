@@ -255,7 +255,50 @@
 .nw-signal--crit .nw-signal__cnt { color: var(--state-critical); }
 
 /* ============================================================
-   4) RESPONSIVE  — phone reflow (<= 700px). Streamlit's native
+   5) SECTION HEADERS, BLOCK LABELS & SPACING RHYTHM
+   Fixes title-less sections + tightens vertical rhythm so the
+   page reads as deliberate editorial spacing, not Streamlit's
+   default loose stack.
+   ============================================================ */
+
+/* --- View header: red kicker eyebrow + serif headline (section_header()) --- */
+.nw-secthead { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4);
+  margin: 0 0 var(--space-5); }
+.nw-secthead__kicker { font: 600 12px/1 var(--font-sans); letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--brand-red); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px; }
+.nw-secthead__kicker::before { content: ""; width: 9px; height: 9px; background: var(--brand-red); flex: 0 0 auto; }
+.nw-secthead__title { margin: 0; font: 800 30px/1.05 var(--font-display); letter-spacing: -.015em; color: var(--text-primary); }
+.nw-secthead__meta { font: 400 12.5px/1.4 var(--font-sans); color: var(--text-muted);
+  text-align: right; white-space: nowrap; padding-bottom: 4px; }
+
+/* --- Block label: uppercase sub-section marker (block_label()) --- */
+.nw-blocklabel { font: 600 11px/1 var(--font-sans); letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase; color: var(--text-secondary);
+  margin: var(--space-5) 0 var(--space-3); display: flex; align-items: center; gap: 8px; }
+.nw-blocklabel::before { content: ""; width: 8px; height: 8px; background: var(--brand-red); flex: 0 0 auto; }
+.nw-blocklabel__ct { color: var(--text-muted); font-weight: 700; font-feature-settings: var(--num-feature); }
+
+/* --- SPACING RHYTHM: tame Streamlit's default gaps; consistent vertical scale --- */
+/* Streamlit stacks every element with a fixed gap; collapse it so OUR margins rule. */
+.stApp [data-testid="stVerticalBlock"] { gap: var(--space-3) !important; }
+.stApp .block-container { padding-top: var(--space-6) !important; max-width: 1240px; }
+/* KPI strip breathes above/below; tiles hug content (kills the empty-box void) */
+.nw-kpis { margin: var(--space-2) 0 var(--space-5); }
+.nw-tile { padding: 14px 16px !important; min-height: 0 !important;
+  display: flex; flex-direction: column; }
+.nw-tile__num { margin: 6px 0 3px; }
+.nw-tile__spark { margin-top: auto; padding-top: 10px; }   /* pin spark to bottom of wide tiles */
+/* lead tile (Revenue) — brand-red rule + larger figure, robust to base-class order */
+.nw-tile--lead { border-top: 3px solid var(--brand-red) !important; }
+.nw-tile--lead .nw-tile__num { font-size: 30px; }
+/* tables + monitor get a touch more air between blocks */
+.nw-flight:first-of-type { margin-top: var(--space-2); }
+.nw-grid { margin-top: var(--space-3); }
+.nw-rule { margin: var(--space-5) 0; }
+
+/* ============================================================
+   6) RESPONSIVE  — phone reflow (<= 700px). Streamlit's native
    dataframe/columns collapse on their own; these rules cover the
    CUSTOM-HTML blocks (KPI strip, triage, flights, direct cards).
    NOTE: the 11-col Direct-campaigns grid must become one
@@ -264,12 +307,22 @@
    an "All 9 metrics" expander.
    ============================================================ */
 @media (max-width: 700px) {
-  .nw-kpis { grid-template-columns: 1fr 1fr; }
+  .nw-kpis { grid-template-columns: 1fr 1fr; align-items: start; }   /* start = don't stretch short cards to tallest sibling */
   .nw-tile--lead { grid-column: 1 / -1; }
+  /* KPI tiles must hug content on mobile — kills the giant empty boxes
+     seen on sparkline-less tiles (AVG ECPM, ACTIVE DEALS). */
+  .nw-tile, .kpi-tile { min-height: 0 !important; height: auto !important; align-self: start !important; }
+  .nw-tile__spark, .kpi-tile svg { height: 22px !important; margin-top: 10px !important; }
+  /* tiles WITHOUT a spark must not reserve spark space */
+  .nw-tile:not(:has(.nw-tile__spark)) { padding-bottom: 14px !important; }
   .nw-triage, .nw-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .nw-triage::-webkit-scrollbar, .nw-tabs::-webkit-scrollbar { height: 0; }
   .nw-fpill, .nw-tab { white-space: nowrap; flex: 0 0 auto; }
   .nw-flight { grid-template-columns: 1fr; gap: 12px; }   /* stack into a card */
+  /* dense secondary tables (BY AD SIZE / BY FORMAT) — scroll, don't clip columns */
+  .nw-subtable-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nw-subtable-wrap table, .nw-subtable-wrap .nw-grid { min-width: 560px; }
+  .nw-secthead__title { font-size: 25px; }
 }
 
 /* ============================================================
