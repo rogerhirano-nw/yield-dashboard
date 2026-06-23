@@ -7010,6 +7010,10 @@ if st.session_state.active_view == "campaigns":
         # their rate floor (the actionable, money-leaking count).
         _rev_sub  = f"vs ${_d_rev/1000:,.1f}K direct" if _d_rev else None
         _ecpm_sub = f"vs ${_d_ecpm:.2f} direct" if _d_ecpm else None
+        # Every tile carries a sub-line so the row reads even — Paid impressions
+        # was the one ragged tile (no context line). Mirror Revenue's "vs …
+        # direct" comparison (2026-06-23 handoff "even fill").
+        _impr_sub = f"vs {_pmp_fmt_count(_d_impr)} direct" if _d_impr else None
         if not _breach_rows.empty:
             _bn = len(_breach_rows)
             _ecpm_sub = (f"{_ecpm_sub} · {_bn} below floor" if _ecpm_sub
@@ -7017,7 +7021,7 @@ if st.session_state.active_view == "campaigns":
         st.markdown(
             '<div class="nw-kpi-row nw-kpi-row--pmp">'
             + _pmp_tile("Revenue", _pmp_fmt_money(_pmp_rev), _rev_sub)
-            + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr))
+            + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr), _impr_sub)
             + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub, lead=True)
             + _pmp_tile("Active deals", f"{_pmp_count:,}", _mix_sub or None)
             + '</div>',
