@@ -197,6 +197,19 @@
 .nw-tile--lead { border-top: 3px solid var(--brand-red); }
 .nw-tile--lead .nw-tile__num { font-size: 30px; }   /* vs 23px on standard tiles */
 
+/* DEFENSIVE — KPI tiles must hug their content. The live build regressed by
+   wrapping st.metric in st.container(border=True), which renders a ~150px
+   rounded box with a huge empty void below the number. Do NOT do that.
+   Render the .nw-tile markup below as raw HTML. This guard caps the height
+   and kills the dead space if a Streamlit container slips through. */
+.nw-tile { min-height: 0; }
+.nw-kpis [data-testid="stMetric"],
+.nw-kpis [data-testid="stVerticalBlockBorderWrapper"] {
+  min-height: 0 !important; padding: 0 !important;
+}
+/* Every tile MUST carry a sub-line (.nw-tile__tgt) so the row reads even —
+   no tile left half-empty. */
+
 /* ---- c) Priority-Flight compact monitor row ---- */
 .nw-flight {
   display: grid; grid-template-columns: 1.9fr 1.5fr 1.5fr 150px 118px; gap: 18px; align-items: center;

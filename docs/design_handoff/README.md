@@ -73,6 +73,21 @@ is `Campaigns Full Redesign (compact).html` (desktop) + `Campaigns Mobile.html` 
 2. **Give the KPI strip a lead metric.** All nine tiles are equal weight, so the Priority-Flight CPA
    numbers out-read the page totals. Make **Revenue** the lead tile (`.nw-tile--lead`: brand-red top
    rule, 30px serif number); keep the other eight at 23px. Page totals must out-rank the monitor.
+
+   > **⚠ KNOWN REGRESSION (live build, Jun 23) — fix the KPI cards first.** The deployed
+   > "Overall performance" view renders the four top cards (Revenue / Paid Impressions / Avg eCPM /
+   > Active Deals) as ~150px tall rounded boxes with the number floating at top-left and a large empty
+   > void below. Three things are wrong and must be corrected:
+   > 1. **Height** — they're wrapped in `st.container(border=True)` (or `st.metric` in a bordered
+   >    container), which forces the tall box + dead space. **Render the `.nw-tile` markup as raw HTML
+   >    instead** (`st.markdown(..., unsafe_allow_html=True)`). Tiles must hug content (~90px). The CSS
+   >    now has a defensive `min-height:0` guard, but the real fix is dropping the container wrapper.
+   > 2. **Card treatment** — they show a full rounded-box border (the "container + shadow" pattern the
+   >    system explicitly avoids). Use the editorial **2px ink top-rule**, near-square `--radius-sm`
+   >    corners, no full box.
+   > 3. **Even fill** — every tile MUST carry a `.nw-tile__tgt` sub-line. Right now Avg eCPM and Revenue
+   >    have one but **Paid Impressions has none**, so the row reads ragged. Give Paid Impressions a
+   >    context line (e.g. "vs 3.0M last week") to match.
 3. **Collapse the two Priority-Flight panels into a compact monitor.** Two full detail panels in the
    middle of the page bury the table and shout louder than the totals. Replace with one slim row per
    flight (`.nw-flight`): name · CPA + goal pill · 4 key stats · breach-shaded daily-CPA sparkline ·
@@ -186,6 +201,7 @@ amber=warn, red=breach) is preserved.
 - `Campaigns Full Redesign (compact).html` — **canonical desktop reference** for the assembled Campaigns view
 - `Campaigns Mobile.html` — phone reflow reference (annotated)
 - `PMP Deals Redesign.html` — PMP / programmatic section reference (eCPM-vs-floor banding)
+- `PMP Deals Mobile.html` — PMP deals table, phone reflow (eCPM-vs-floor card per deal)
 - `PMP Signals Redesign.html` — expanded Spend-momentum / No-delivery drill-downs (token pass + age banding)
 - `PMP Signals Mobile.html` — signals drill-downs, phone reflow (severity-rail dead-deal rows)
 - `Dashboard Brand Audit.html` — Before/After + token findings (reference)
