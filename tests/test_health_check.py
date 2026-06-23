@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from health_check import (CheckResult, _data_day, _eval_freshness,
-                          build_report, should_send)
+                          _eval_rls_hygiene, build_report, should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -84,3 +84,24 @@ def test_should_send_matrix():
     assert should_send(True, True, "remediated")   # auto-fix outcome sends
     assert should_send(True, False, None)          # green morning verdict sends
     assert not should_send(True, True, None)       # quiet green follow-up
+
+
+def test_rls_hygiene_passes_when_no_offenders():
+    r = _eval_rls_hygiene([])
+    assert r.ok
+    # Must NOT be remediable: the sweep can't enable RLS (it's fixed in-place),
+    # and marking it remediable would dispatch a pointless refresh.
+    assert not r.remediable
+    assert "all public tables" in r.detail.lower()
+
+
+def test_rls_hygiene_fails_and_lists_each_offender_reason():
+    r = _eval_rls_hygiene([("ttd_luckyland", True, False),
+                           ("dv_ivt", False, True),
+                           ("gam_creatives", True, True)])
+    assert not r.ok
+    assert not r.remediable
+    assert "3 public table(s)" in r.detail
+    assert "ttd_luckyland (RLS off)" in r.detail
+    assert "dv_ivt (anon/authenticated grant)" in r.detail
+    assert "gam_creatives (RLS off, anon/authenticated grant)" in r.detail

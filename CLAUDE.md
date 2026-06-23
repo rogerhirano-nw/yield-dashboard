@@ -96,10 +96,18 @@ The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
 rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
 Pubmatic +1 day, DV may lag 3; OpenSincera's four tables by `_pulled_at`
-within 26h), and that the latest `refresh.yml` run succeeded within 26h. **Auto-remediation:** when a *remediable* check fails
+within 26h), that the latest `refresh.yml` run succeeded within 26h, and
+**`public RLS hygiene`** — every public table has RLS enabled and no
+anon/authenticated grants, so the Supabase REST API can't reach the cache
+(`docs/supabase_rls_lockdown.sql` is the lockdown; this canaries it against
+drift, since new source tables arrive RLS-off — see the memory note
+`project_yield_dashboard_ops`). **Auto-remediation:** when a *remediable* check fails
 (stale table / failed sweep), the script re-dispatches `refresh.yml` itself,
 waits for it, re-checks everything, and reports the final state — transient
-upstream failures heal hands-free. Code-level failures (id format, join
+upstream failures heal hands-free. **RLS-hygiene drift is fixed *in-place*
+instead** — it enables RLS + revokes anon/authenticated grants on the
+offending tables (a sweep can't fix RLS, and re-running it creates the very
+tables that drift), then re-checks. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients

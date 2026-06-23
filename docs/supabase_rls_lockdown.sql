@@ -19,8 +19,23 @@
 --
 -- Verification:
 --   - After running, hit https://ltavpsikmmqmracvjtvk.supabase.co/rest/v1/gam_campaigns
---     with the anon key — should return [] (empty), not the table.
+--     with the anon key — should return permission denied / [] (empty), not the
+--     table.
 --   - Reload the dashboard — should still render data as before.
+--
+-- History / drift:
+--   First applied 2026-05. Re-applied 2026-06-23 for 17 newer source tables
+--   (TTD, DV, gam_deal_bid_daily, the *_metadata tables, opensincera_*, …) that
+--   had drifted in RLS-OFF — the ALTER DEFAULT PRIVILEGES below auto-revokes
+--   GRANTS on future tables, but nothing auto-enables RLS on them, so each new
+--   source needs RLS turned on. That drift is now CANARIED DAILY by
+--   health_check.py's "public RLS hygiene" check, which auto-fixes it in-place
+--   (enable RLS + revoke grants) and reports it in the digest — so this script
+--   is the manual / first-deploy form and the canary keeps it enforced.
+--   NB the Supabase rls_disabled_in_public advisor checks RLS only, not grants:
+--   with grants revoked, anon already gets 42501 permission denied even on an
+--   RLS-off table, so that "anyone can read your data" alert overstates a
+--   grants-revoked table (defense-in-depth gap, not an open door).
 -- ============================================================================
 
 -- Enable RLS on every existing user table in the public schema, all in one go.
