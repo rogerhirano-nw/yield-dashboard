@@ -1,0 +1,156 @@
+<script>
+(function () {
+  try {
+    var W = window.top, D = W.document;
+    if (D.getElementById('nw-sponsor-logo-boot')) return;
+    var SLOTID = '';
+    try {
+      var _fe = window.frameElement;
+      var _sd = _fe && _fe.closest('[id^="dfp-ad-"]');
+      SLOTID = _sd ? _sd.id : '';
+    } catch (e) {}
+    var CFG = {
+      slotId: SLOTID,
+      label: 'Sponsored by',
+      logo: '%%VIEW_URL_UNESC%%%%FILE:PNG1%%',
+      href: '%%CLICK_URL_UNESC%%%%DEST_URL%%',
+      viewUrl: '',
+      css: "#nw-sponsor-logo{display:flex;align-items:center;gap:10px;text-decoration:none}#nw-sponsor-logo.sl-bc{position:absolute;right:0;top:50%;transform:translateY(-50%)}@media(max-width:767px){#nw-sponsor-logo.sl-bc{position:static;transform:none;width:100%;justify-content:flex-end;margin-top:8px}}#nw-sponsor-logo.sl-wrap{position:static;transform:none;width:100%;justify-content:flex-end;margin-top:6px}#nw-sponsor-logo .sl-label{font-family:system-ui,-apple-system,sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;color:#68645a;text-transform:uppercase;white-space:nowrap}#nw-sponsor-logo .sl-logo{display:block;height:24px;width:auto;max-width:200px;object-fit:contain}"
+    };
+    function watcher(cfg) {
+      var d = document;
+      /* MRC display viewability: >=50% in view for 1 continuous second.
+         Fires once per pageview: dataLayer event + cfg.viewUrl tracker
+         (set it to the agency's DCM viewable-impression URL when provided). */
+      function armViewability(el) {
+        try {
+          var timer = null;
+          var io = new IntersectionObserver(function (entries) {
+            var e = entries[entries.length - 1];
+            if (e.intersectionRatio >= 0.5) {
+              if (!timer) timer = setTimeout(function () {
+                io.disconnect();
+                if (window.__nwSponsorViewable) return;
+                window.__nwSponsorViewable = 1;
+                try {
+                  (window.dataLayer = window.dataLayer || []).push(
+                    {event: 'nw_sponsor_logo_viewable', placement: 'breadcrumb'});
+                } catch (x) {}
+                if (cfg.viewUrl) {
+                  var im = d.createElement('img');
+                  im.src = cfg.viewUrl;
+                  im.style.display = 'none';
+                  im.width = im.height = 1;
+                  d.body.appendChild(im);
+                }
+                var m = d.createElement('span');
+                m.id = 'nw-sponsor-logo-viewed';
+                m.style.display = 'none';
+                d.body.appendChild(m);
+              }, 1000);
+            } else if (timer) { clearTimeout(timer); timer = null; }
+          }, {threshold: [0, 0.5, 1]});
+          io.observe(el);
+        } catch (e) {}
+      }
+      /* Active View honesty: glue the carrier slot div (whose iframe GAM
+         measures) onto the strip with position:fixed, synced on scroll and
+         resize. CSS-only — the GPT iframe never detaches, never reloads.
+         Transparent + pointer-events:none, so clicks reach the strip. */
+      var carrierSynced = false;
+      function syncCarrier() {
+        try {
+          var slot = cfg.slotId && d.getElementById(cfg.slotId);
+          var a = d.getElementById('nw-sponsor-logo');
+          if (!slot || !a) return;
+          var r = a.getBoundingClientRect();
+          var ifr = slot.querySelector('iframe');
+          /* Active View measures the GPT iframe element, and GAM forces the
+             out-of-page iframe to a fixed height (~150px) regardless of the
+             1x1 placeholder. Clipping the carrier to the logo's ~24px left
+             only ~16% of that iframe in view -- under AV's 50% bar -- so every
+             impression booked not-viewable (verified live 2026-06-22:
+             IntersectionObserver ratio 0.16 clipped vs 1.00 un-clipped).
+             Size the carrier to the iframe's real height (no overflow clip),
+             pinned to the logo's top, so AV measures the whole in-view iframe.
+             Still transparent + pointer-events:none -- nothing visible/clickable. */
+          var ih = Math.max(ifr ? (ifr.offsetHeight || 0) : 0, Math.round(r.height), 2);
+          slot.style.cssText = 'position:fixed;left:' + r.left + 'px;top:' + r.top +
+            'px;width:' + Math.max(2, r.width) + 'px;height:' + ih +
+            'px;margin:0;padding:0;overflow:visible;pointer-events:none;z-index:1;background:transparent';
+          if (ifr) ifr.style.cssText = 'width:100%;height:' + ih + 'px;border:0;display:block;background:transparent';
+          if (!carrierSynced) {
+            carrierSynced = true;
+            var pend = false;
+            var onmove = function () {
+              if (pend) return;
+              pend = true;
+              requestAnimationFrame(function () { pend = false; syncCarrier(); });
+            };
+            window.addEventListener('scroll', onmove, {passive: true});
+            window.addEventListener('resize', onmove, {passive: true});
+          }
+        } catch (e) {}
+      }
+      function ensure() {
+        try {
+          if (d.getElementById('nw-sponsor-logo')) return;
+          var bc = d.querySelector('[class*="ResponsiveBreadcrumbs"][class*="__container"]');
+          if (!bc) return;
+          if (!d.getElementById('nw-sponsor-logo-css')) {
+            var st = d.createElement('style');
+            st.id = 'nw-sponsor-logo-css';
+            st.textContent = cfg.css;
+            d.head.appendChild(st);
+          }
+          var a = d.createElement('a');
+          a.id = 'nw-sponsor-logo';
+          a.className = 'sl-bc';
+          a.href = cfg.href;
+          a.target = '_blank';
+          a.rel = 'noopener sponsored';
+          a.innerHTML = '<span class="sl-label"></span><img class="sl-logo" alt="Sponsor logo">';
+          a.querySelector('.sl-label').textContent = cfg.label;
+          a.querySelector('.sl-logo').src = cfg.logo;
+          if (getComputedStyle(bc).position === 'static') bc.style.position = 'relative';
+          bc.appendChild(a);
+          if (getComputedStyle(a).position === 'absolute') {
+            var kw = bc.querySelector('[class*="keywords"]');
+            var kr = kw && kw.getBoundingClientRect();
+            var sr = a.getBoundingClientRect();
+            if (kr && kr.right > sr.left - 12) { a.className = 'sl-bc sl-wrap'; }
+          }
+          armViewability(a);
+          syncCarrier();
+          try {
+            a.querySelector('.sl-logo').addEventListener('load', syncCarrier);
+            setTimeout(syncCarrier, 1000);
+            setTimeout(syncCarrier, 3000);
+          } catch (e) {}
+          if (window.__nwSponsorPx) return;
+          window.__nwSponsorPx = 1;
+          var px = d.createElement('span');
+          px.id = 'nw-sponsor-logo-px';
+          px.style.display = 'none';
+          px.innerHTML =
+            '<img src="https://secure.insightexpressai.com/adServer/adServerESI.aspx?script=false&bannerID=12965842&rnd=%%CACHEBUSTER%%&redir=https://secure.insightexpressai.com/adserver/1pixel.gif">' +
+            '<img src="https://ad.doubleclick.net/ddm/trackimp/N3340.nw/B35487199.449033895;dc_trk_aid=642658786;dc_trk_cid=255044674;ord=%%CACHEBUSTER%%;dc_lat=;dc_rdid=;tag_for_child_directed_treatment=;tfua=;ltd=;dc_tdv=1?" attributionsrc border="0" height="1" width="1" alt="Advertisement">' +
+            '<img src="https://track.activemetering.com/pixel/v1/all/pixel.gif?cid=3b23cb73-2a89-44f6-b54b-1bea90c73575&creativeId=255044674&placementId=449033895&campaignId=35487199&adId=642658786" width="0" height="0">' +
+            '<img src="https://ml314.com/utsync.ashx?eid=70139&et=0&dc=Newsweek_Direct_Automotive_NA_NA_Omnicom_OMD_Infinity_Infiniti-Qx65-2026_US_Multi_SO01104_Team-USA_THearn&cb=%%CACHEBUSTER%%&gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_163}">';
+          bc.appendChild(px);
+        } catch (e) {}
+      }
+      ensure();
+      var n = 0;
+      var iv = setInterval(function () {
+        ensure();
+        if (++n >= 400) clearInterval(iv);
+      }, 300);
+    }
+    var s = D.createElement('script');
+    s.id = 'nw-sponsor-logo-boot';
+    s.textContent = '(' + watcher.toString() + ')(' + JSON.stringify(CFG) + ');';
+    (D.head || D.documentElement).appendChild(s);
+  } catch (e) { /* safeframed or cross-origin: do nothing */ }
+})();
+</script>
