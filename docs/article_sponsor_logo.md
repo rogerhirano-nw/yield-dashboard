@@ -44,6 +44,23 @@ the measurement of record).
 > `scripts/apply_sponsor_logo_av_fix.py` (dry-run default, `APPLY=true`) or
 > the `apply_sponsor_logo_av_fix.yml` workflow. Confirm on the next day's
 > `gam_campaigns.viewable_imps_1d` for LI 7336465381 (AV lags ~1 day).
+>
+> **Cross-viewport verification (2026-06-23).** On the served creative the
+> iframe box == logo box with `overflow:visible` at every width, and the
+> in-view ratio clears AV's 50% bar everywhere: **mobile 390px = 1.00,
+> desktop 1200px = 1.00, tablet 768px = 0.66.** The 768 dip is a
+> *pre-existing* quirk — the logo's `sl-wrap` fallback overhangs the right
+> viewport edge by ~58px on this long-keyword breadcrumb; the carrier
+> faithfully tracks the logo, so it's the logo layout (untouched by this fix),
+> and it still clears 50%. Worth a separate look only if iPad-portrait polish
+> matters.
+>
+> **You cannot self-test Active View by generating impressions.**
+> Automated/headless/datacenter traffic is IVT-filtered out of `measurable`
+> +`viewable` (so it reads 0 regardless of the fix), and it would be invalid
+> traffic on a live billable flight (this LI carries a DV `ids IS_NOT 1`
+> exclusion). Only **organic human traffic** yields a valid AV read; pre-data
+> confidence comes from the IntersectionObserver geometry proof above.
 
 Everything below is the build history: the oop2 era (why it never rendered
 on articles), the carriers that were built and rolled back, and the gotchas
