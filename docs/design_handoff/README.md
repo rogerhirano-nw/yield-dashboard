@@ -58,6 +58,41 @@ copy in the references are placeholders — keep the dashboard's real data.
 6. **Tabular numerals everywhere.** Apply `font-feature-settings: var(--num-feature)` to every figure —
    KPI numbers, table cells, deltas, axis labels.
 7. **Run the red audit** from the acceptance rule above across all 7 views.
+8. **Apply the Campaigns-view structural changes** (next section) — these are layout edits, not just tokens.
+
+## Structural redesign — Campaigns view (do alongside the token pass)
+The live review surfaced three layout problems beyond color/type. Fix all three; the reference build
+is `Campaigns Full Redesign (compact).html` (desktop) + `Campaigns Mobile.html` (phone).
+
+1. **Collapse the “Needs you today” band into a triage filter strip.** Today it’s a 4-column band where
+   only the first column has content — three-quarters empty. Replace it with a row of filter pills
+   (`.nw-triage` / `.nw-fpill`): All flagged / Ending soon / Underpacing / Overpacing / Viewability,
+   each with a count + severity dot. Clicking a pill **filters the Direct campaigns table below** (set
+   the table’s existing filter state) rather than rendering a separate list. One canonical table, no
+   duplicated rows.
+2. **Give the KPI strip a lead metric.** All nine tiles are equal weight, so the Priority-Flight CPA
+   numbers out-read the page totals. Make **Revenue** the lead tile (`.nw-tile--lead`: brand-red top
+   rule, 30px serif number); keep the other eight at 23px. Page totals must out-rank the monitor.
+3. **Collapse the two Priority-Flight panels into a compact monitor.** Two full detail panels in the
+   middle of the page bury the table and shout louder than the totals. Replace with one slim row per
+   flight (`.nw-flight`): name · CPA + goal pill · 4 key stats · breach-shaded daily-CPA sparkline ·
+   “View detail →”. Move the full breakdown (both charts, gauge, by-size/by-format tables) behind that
+   link — its own view or an expander. The goal pill and the chart’s shaded over-goal zone make “is
+   this flight hitting its $150 CPA goal?” readable at a glance. CPA cells in the breakdown tables use
+   `.nw-cpa-band--over/--ok` (banded against the goal).
+
+**Daily-monitor data note (not styling):** the two flights run different date windows (Jun 03–21 vs
+Jun 01–21). For a true side-by-side, normalize both to the same window or label the mismatch.
+
+## Mobile
+Streamlit’s native `st.dataframe`/columns collapse on their own, but the **custom-HTML** blocks need
+the `@media (max-width:700px)` rules in `newsweek-dashboard.css`:
+- KPI strip → 2-up grid, Revenue lead spans full width.
+- Tabs + triage pills → horizontal swipe rows (`overflow-x:auto`), not wrapping.
+- Priority-Flight rows → stack into cards.
+- **Direct campaigns table → one condensed card per line item** (Revenue/Pace/Progress up front, rest
+  behind an “All 9 metrics” expander). Do **not** horizontal-scroll an 11-column table on a phone.
+  This likely needs custom HTML rendering rather than a native `st.dataframe` — flag the added effort.
 
 ## Component spec → class map
 Map each existing piece to the class in `newsweek-dashboard.css`. Exact values live in the CSS; the
@@ -78,6 +113,11 @@ table below is the wiring guide.
 | Ordinal / rank pill | `.nw-rank` | 20px pill, `--surface-2` |
 | Tab row | `.nw-tabs` / `.nw-tab` | active tab → 3px brand-red underline (chrome) |
 | Section divider | `.nw-rule` | 2px `--border-strong` |
+| Triage filter strip | `.nw-triage` / `.nw-fpill` (+ `--all/--crit/--warn/--info`) | filter pills that scope the table; count + severity dot |
+| KPI lead tile | `.nw-tile--lead` | Revenue anchor — brand-red top rule, 30px serif |
+| Priority-Flight monitor row | `.nw-flight` (+ `--crit/--pos`) | slim row: name · CPA · goal pill · stats · sparkline · detail link |
+| Flight goal pill | `.nw-flight__goal--crit/--pos` | over/under $150 CPA goal |
+| Goal-banded CPA cell | `.nw-cpa-band--over/--ok` | CPA tinted red when over goal |
 
 ## Design tokens
 All values are defined as CSS variables in `newsweek-dashboard.css` (`:root`). Summary:
@@ -103,9 +143,12 @@ amber=warn, red=breach) is preserved.
 - Streamlit hot-swaps classnames (`st-emotion-cache-*`); prefer `[data-testid]` selectors or wrap
   blocks in your own `.nw-*` containers rather than targeting generated classes.
 - The **Configure** view is utilitarian and lowest priority — apply surface/text/border tokens only.
-- Keep all interaction/behavior as-is; this is purely a visual-token pass.
+- Keep all interaction/behavior as-is; the token pass is visual-only. The Campaigns-view structural
+  changes (triage filter wiring, monitor drilldown, mobile cards) DO touch layout/state — see that section.
 
 ## Files
-- `newsweek-dashboard.css` — token block + component CSS to install
-- `Dashboard Brand Audit.html` — Before/After + findings (open in a browser; reference)
+- `newsweek-dashboard.css` — token block + component CSS to install (includes Campaigns-view layout + mobile rules)
+- `Campaigns Full Redesign (compact).html` — **canonical desktop reference** for the assembled Campaigns view
+- `Campaigns Mobile.html` — phone reflow reference (annotated)
+- `Dashboard Brand Audit.html` — Before/After + token findings (reference)
 - `audit.css` — styles for the audit doc (reference only; not for the app)

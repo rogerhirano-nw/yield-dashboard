@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campaigns — full redesign</title>
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/colors.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/color-sets.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/semantic.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/typography.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/spacing.css" />
+<style>
+  :root {
+    --paper:#fefcf6; --raised:#ffffff; --sunk:#f6f2e6;
+    --ink:#1f1e19; --ink-60:#57564f; --ink-40:#8c887b;
+    --hair:#e7e0c9; --rule:#1f1e19;
+    --brand:#e91d0c; --brand-strong:#c41608;
+    --pos:#3c6b14;  --pos-bg:#eef3e3;
+    --warn:#8a6d00; --warn-bg:#f6eecd;
+    --crit:#c41608; --crit-bg:#fbe6e2;
+    --info:#1f5fa8; --info-bg:#e4edf7;
+    --sans:"Franklin Gothic","Helvetica Neue",Arial,sans-serif;
+    --serif:"Benton Modern Display",Georgia,"Times New Roman",serif;
+    --tnum:"tnum" 1;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1360px; margin:0 auto; padding:26px 32px 70px; }
+
+  /* header */
+  .toprow { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+  .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); }
+  .eyebrow::before { content:""; width:9px; height:9px; background:var(--brand); }
+  h1.page { margin:10px 0 0; font-family:var(--serif); font-weight:800; font-size:30px; letter-spacing:-.015em; }
+  .topmeta { text-align:right; font-size:12.5px; color:var(--ink-40); padding-top:6px; line-height:1.5; }
+
+  /* tabs */
+  .tabs { display:flex; gap:30px; margin-top:22px; border-bottom:2px solid var(--rule); }
+  .tab { position:relative; padding:12px 0; font-size:14px; font-weight:600; color:var(--ink-40); cursor:pointer; }
+  .tab.active { color:var(--ink); }
+  .tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:var(--brand); }
+  .tabs .spacer { flex:1; }
+  .tab.config { font-weight:500; }
+
+  /* triage */
+  .triage { display:flex; align-items:center; gap:12px; margin:22px 0 8px; flex-wrap:wrap; }
+  .triage .lab { font-size:12px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-60); }
+  .fpill { display:inline-flex; align-items:center; gap:9px; padding:8px 14px; background:var(--raised); border:1px solid var(--hair); border-radius:999px; font-size:13px; font-weight:600; cursor:pointer; transition:border-color .12s, background .12s; }
+  .fpill:hover { border-color:var(--ink-40); }
+  .fpill.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .fpill .dot { width:8px; height:8px; border-radius:999px; background:var(--c); flex:0 0 auto; }
+  .fpill .ct { font-feature-settings:var(--tnum); font-weight:700; }
+  .fpill .who { font-weight:400; color:var(--ink-40); font-size:12px; }
+  .fpill.active .who { color:rgba(254,252,246,.6); }
+  .fpill.all { --c:var(--brand); } .fpill.c-crit { --c:var(--crit); } .fpill.c-warn { --c:var(--warn); } .fpill.c-info { --c:var(--info); }
+  .triage .right { margin-left:auto; font-family:var(--serif); font-weight:700; font-size:16px; }
+  .triage .right b { color:var(--brand-strong); }
+
+  /* section label */
+  .slab { font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-60); margin:34px 0 14px; display:flex; align-items:center; gap:8px; }
+  .slab::before { content:""; width:9px; height:9px; background:var(--brand); }
+
+  /* KPI strip */
+  .kpis { display:grid; grid-template-columns:repeat(9,1fr); gap:10px; }
+  .kpi { background:var(--raised); border:1px solid var(--hair); border-top:2px solid var(--ink); border-radius:5px; padding:12px 12px 10px; }
+  .kpi .l { font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); }
+  .kpi .v { font-family:var(--serif); font-weight:700; font-size:23px; margin:6px 0 2px; font-feature-settings:var(--tnum); line-height:1; }
+  .kpi.lead { border-top:3px solid var(--brand); }
+  .kpi.lead .v { font-size:30px; }
+  .kpi .d { font-size:10px; color:var(--pos); font-feature-settings:var(--tnum); }
+  .kpi .d.flat { color:var(--ink-40); }
+  .kpi svg { display:block; width:100%; height:20px; margin-top:7px; }
+  .kpi .t { font-size:9.5px; color:var(--ink-40); margin-top:5px; }
+
+  /* priority flights */
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .card { background:var(--raised); border:1px solid var(--hair); border-radius:8px; overflow:hidden; }
+  .card .ribbon { height:4px; background:var(--c); }
+  .card.crit { --c:var(--crit); } .card.pos { --c:var(--pos); }
+  .chead { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px 14px; border-bottom:1px solid var(--hair); }
+  .chead .title { font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+  .chead .conv { font-size:12px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); }
+  .cbody { padding:18px 20px 20px; }
+  .daterange { font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); margin-bottom:14px; }
+  .hero { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+  .hero .lab { font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-40); }
+  .hero .cpa { font-family:var(--serif); font-weight:800; font-size:44px; line-height:.95; letter-spacing:-.02em; margin-top:6px; font-feature-settings:var(--tnum); }
+  .hero .trend { font-size:12px; margin-top:7px; font-feature-settings:var(--tnum); }
+  .trend.good { color:var(--pos); } .trend.bad { color:var(--ink-40); }
+  .goalbox { text-align:right; flex:0 0 auto; }
+  .goalpill { display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:999px; font-size:12.5px; font-weight:700; letter-spacing:.02em; font-feature-settings:var(--tnum); }
+  .goalpill.crit { background:var(--crit-bg); color:var(--crit); }
+  .goalpill.pos { background:var(--pos-bg); color:var(--pos); }
+  .goalmeta { font-size:11.5px; color:var(--ink-40); margin-top:8px; font-feature-settings:var(--tnum); }
+  .goalmeta b { color:var(--ink); }
+  .gauge { width:160px; height:6px; background:var(--sunk); border-radius:3px; overflow:hidden; margin:8px 0 0 auto; position:relative; }
+  .gauge .fill { height:100%; border-radius:3px; }
+  .gauge .mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--hair); }
+  .stat .l { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); }
+  .stat .v { font-family:var(--serif); font-weight:700; font-size:20px; margin-top:4px; font-feature-settings:var(--tnum); }
+  .stat .d { font-size:11px; margin-top:2px; font-feature-settings:var(--tnum); }
+  .d.up { color:var(--pos); } .d.dn { color:var(--brand-strong); } .d.neutral { color:var(--ink-40); }
+  /* priority flights — compact monitor strip */
+  .monitor { display:flex; flex-direction:column; gap:10px; }
+  .mrow { display:grid; grid-template-columns:1.9fr 1.5fr 1.5fr 150px 118px; gap:18px; align-items:center;
+          background:var(--raised); border:1px solid var(--hair); border-left:4px solid var(--c); border-radius:8px; padding:15px 20px; }
+  .mrow.crit { --c:var(--crit); } .mrow.pos { --c:var(--pos); }
+  .mrow .who .nm { font-size:14px; font-weight:600; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow .who .dr { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); margin-top:3px; }
+  .mrow .cpa { display:flex; align-items:baseline; gap:10px; }
+  .mrow .cpa .big { font-family:var(--serif); font-weight:800; font-size:23px; letter-spacing:-.01em; font-feature-settings:var(--tnum); }
+  .mrow .cpa .lab { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); }
+  .mrow .pill { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font-size:12px; font-weight:700; font-feature-settings:var(--tnum); }
+  .mrow .pill.crit { background:var(--crit-bg); color:var(--crit); } .mrow .pill.pos { background:var(--pos-bg); color:var(--pos); }
+  .mrow .ms { display:flex; gap:16px; }
+  .mrow .ms .m .l { font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); }
+  .mrow .ms .m .v { font-size:14px; font-weight:600; font-feature-settings:var(--tnum); margin-top:2px; }
+  .mrow .spark svg { display:block; width:100%; height:38px; }
+  .mrow .spark .cap { font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); margin-bottom:3px; display:flex; justify-content:space-between; }
+  .mrow .go { text-align:right; }
+  .mrow .go a { font-size:13px; font-weight:600; color:var(--brand-strong); text-decoration:none; }
+  .mrow .go a:hover { text-decoration:underline; }
+  .mrow .go .conv { font-size:11px; color:var(--ink-40); margin-top:4px; }
+
+  .charts { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:20px; }
+  .chart { border:1px solid var(--hair); border-radius:6px; padding:12px 12px 8px; }
+  .chart .ct { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-60); margin-bottom:6px; display:flex; justify-content:space-between; }
+  .chart .ct .g { color:var(--ink-40); }
+  .chart svg { display:block; width:100%; height:78px; }
+  .axis { display:flex; justify-content:space-between; font-size:10px; color:var(--ink-40); margin-top:3px; font-feature-settings:var(--tnum); }
+  .mtbl { margin-top:20px; }
+  .mtbl h4 { margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-60); }
+  table.mini { width:100%; border-collapse:collapse; font-size:12.5px; font-feature-settings:var(--tnum); }
+  table.mini th { text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--rule); font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); }
+  table.mini th:first-child, table.mini td:first-child { text-align:left; }
+  table.mini td { padding:8px; border-bottom:1px solid var(--hair); text-align:right; }
+  table.mini tr:last-child td { border-bottom:0; }
+  .sz { font-weight:600; }
+  .cpa-band { display:inline-block; padding:2px 7px; border-radius:4px; font-weight:600; }
+  .cpa-band.over { background:var(--crit-bg); color:var(--crit); }
+  .cpa-band.ok { color:var(--pos); }
+
+  /* direct campaigns table */
+  .tbl-head { display:flex; align-items:baseline; justify-content:space-between; margin:0 0 12px; }
+  .tbl-head .t { font-family:var(--serif); font-weight:700; font-size:18px; }
+  .tbl-head .t span { font-family:var(--sans); font-weight:400; font-size:13px; color:var(--ink-40); margin-left:8px; }
+  .legend2 { display:flex; gap:14px; font-size:12px; color:var(--ink-60); align-items:center; }
+  .legend2 .sw { display:inline-flex; align-items:center; gap:5px; }
+  .legend2 .sw i { width:10px; height:10px; border-radius:2px; }
+  .muted { color:var(--ink-40); }
+  .table { background:var(--raised); border:1px solid var(--hair); border-radius:8px; overflow:hidden; }
+  .grid { display:grid; grid-template-columns:2.4fr 0.9fr 0.85fr 0.8fr 0.8fr 0.85fr 0.7fr 0.7fr 0.7fr 1fr 1.1fr; gap:10px; align-items:center; }
+  .ghead { padding:12px 18px; border-bottom:2px solid var(--rule); background:var(--sunk); }
+  .ghead span { font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-60); }
+  .ghead .r { text-align:right; }
+  .grow { padding:13px 18px; border-bottom:1px solid var(--hair); font-feature-settings:var(--tnum); }
+  .grow:last-child { border-bottom:0; }
+  .grow:hover { background:var(--sunk); }
+  .li .nm { font-weight:600; font-size:13.5px; line-height:1.25; }
+  .li .meta { font-size:11.5px; color:var(--ink-40); margin-top:2px; }
+  .li .ord { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 4px; border-radius:4px; background:var(--sunk); color:var(--ink-60); font-size:10.5px; font-weight:700; margin-right:6px; }
+  .cell { text-align:right; font-size:13.5px; }
+  .cell .v { font-weight:600; }
+  .cell .d2 { font-size:11px; margin-top:2px; }
+  .d2.up { color:var(--pos); } .d2.dn { color:var(--ink-40); }
+  .rev .v { font-weight:700; }
+  .band { display:inline-block; padding:3px 8px; border-radius:4px; font-weight:600; font-size:13px; }
+  .band.under { background:var(--crit-bg); color:var(--crit); }
+  .band.off { background:var(--warn-bg); color:var(--warn); }
+  .band.healthy { background:transparent; color:var(--pos); }
+  .prog { display:flex; align-items:center; gap:9px; justify-content:flex-end; }
+  .prog .track { width:80px; height:6px; background:var(--sunk); border-radius:3px; overflow:hidden; }
+  .prog .fill { height:100%; border-radius:3px; }
+  .prog .pc { font-size:12.5px; font-weight:600; color:var(--ink-60); min-width:34px; text-align:right; }
+  .seller { font-size:13px; color:var(--ink-60); text-align:left; }
+  .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:18px; font-size:13px; color:var(--ink-60); }
+  .pager button { width:34px; height:34px; border:1px solid var(--hair); background:var(--raised); border-radius:4px; cursor:pointer; font-size:15px; }
+  .pager .pg b { color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="toprow">
+    <div>
+      <span class="eyebrow">Yield &amp; Pacing</span>
+      <h1 class="page">Overall performance</h1>
+    </div>
+    <div class="topmeta">9:04 AM EDT · 39 line items<br><span style="color:var(--ink-60)">Updated just now</span></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active">Campaigns</div>
+    <div class="tab">By site / size</div>
+    <div class="tab">By DSP</div>
+    <div class="tab">Magnite deals</div>
+    <div class="tab">Pubmatic deals</div>
+    <div class="tab">OpenSincera</div>
+    <div class="spacer"></div>
+    <div class="tab config">⚙ Configure</div>
+  </div>
+
+  <div class="triage">
+    <span class="lab">Needs you today</span>
+    <button class="fpill all active"><span class="dot"></span>All flagged <span class="ct">32</span></button>
+    <button class="fpill c-crit"><span class="dot"></span>Ending soon <span class="ct">20</span> <span class="who">VGW, Luckyland</span></button>
+    <button class="fpill c-crit"><span class="dot"></span>Underpacing <span class="ct">4</span></button>
+    <button class="fpill c-warn"><span class="dot"></span>Overpacing <span class="ct">4</span></button>
+    <button class="fpill c-info"><span class="dot"></span>Viewability <span class="ct">4</span></button>
+    <span class="right"><b>32</b> of 39 need attention</span>
+  </div>
+
+  <div class="slab">Today’s totals</div>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="slab">Priority Flights · daily monitor <span style="font-family:var(--sans);font-weight:400;letter-spacing:0;text-transform:none;font-size:12px;color:var(--ink-40);margin-left:6px">2 betting flights · CPA goal $150</span></div>
+  <div class="monitor" id="monitor"></div>
+
+  <div class="slab">All direct campaigns</div>
+  <div class="tbl-head">
+    <div class="t">Direct campaigns <span>39 line items · sorted A–Z</span></div>
+    <div class="legend2">
+      <span class="sw"><i style="background:var(--crit)"></i>Under</span>
+      <span class="sw"><i style="background:var(--warn)"></i>Off-target</span>
+      <span class="sw"><i style="background:var(--pos)"></i>Healthy</span>
+      <span class="muted">— = N/A</span>
+    </div>
+  </div>
+  <div class="table">
+    <div class="grid ghead">
+      <span>Line item</span><span class="r">Revenue</span><span class="r">Delivered</span><span class="r">Pace</span>
+      <span class="r">Viewable</span><span class="r">Attention</span><span class="r">SIVT</span><span class="r">GIVT</span>
+      <span class="r">CTR</span><span class="seller">Seller</span><span class="r">Progress</span>
+    </div>
+    <div id="rows"></div>
+  </div>
+  <div class="pager">
+    <button>‹</button><span class="pg">Page <b>1</b> of 2 · 25 of 39 shown</span><button>›</button>
+  </div>
+
+</div>
+
+<script>
+  const GOAL = 150;
+
+  /* ---------- generic line chart ---------- */
+  function lineChart(series, { goal=null, color="var(--ink)", breach=false, h=78 } = {}) {
+    const W=300, H=h, pad=6;
+    const min=Math.min(...series, goal??Infinity), max=Math.max(...series, goal??-Infinity), span=(max-min)||1;
+    const x=i=>pad+i*(W-2*pad)/(series.length-1), y=v=>pad+(H-2*pad)*(1-(v-min)/span);
+    const pts=series.map((v,i)=>[x(i),y(v)]);
+    const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    const area=line+` L ${x(series.length-1).toFixed(1)} ${H-pad} L ${x(0).toFixed(1)} ${H-pad} Z`;
+    let shade=""; if(goal!=null&&breach){const gy=y(goal).toFixed(1); shade=`<rect x="0" y="0" width="${W}" height="${gy}" fill="var(--crit)" opacity="0.07"/>`;}
+    const gl=goal!=null?`<line x1="0" y1="${y(goal).toFixed(1)}" x2="${W}" y2="${y(goal).toFixed(1)}" stroke="var(--ink-40)" stroke-width="1" stroke-dasharray="4 3"/>`:"";
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${shade}${gl}
+      <path d="${area}" fill="${color}" opacity="0.08"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${pts[pts.length-1][0].toFixed(1)}" cy="${pts[pts.length-1][1].toFixed(1)}" r="2.6" fill="${color}"/></svg>`;
+  }
+  function spark(series){ return lineChart(series,{color:"var(--ink-40)",h:20}); }
+
+  /* ---------- KPI strip ---------- */
+  const kpis = [
+    { l:"Revenue", v:"$63.9K", d:["▲ 14.3%","up"], t:"vs 7-day avg", s:[40,42,41,45,47,46,52] },
+    { l:"Avg Pacing", v:"88.1%", d:["flat","flat"], t:"target 100%", s:[88,89,88,90,88,89,88] },
+    { l:"Impressions", v:"34.31M", d:["▲ 11.9%","up"], t:"vs 7-day avg", s:[28,30,29,31,33,32,34] },
+    { l:"Viewability", v:"87.7%", d:["flat","flat"], t:"target 70%", s:[86,87,86,88,87,88,87] },
+    { l:"Attention", v:"131", d:["▲ 3.3pp","up"], t:"target 100", s:[120,124,122,128,126,130,131] },
+    { l:"SIVT", v:"0.37%", d:["flat","flat"], t:"target ≤1%", s:[0.4,0.38,0.39,0.37,0.36,0.38,0.37] },
+    { l:"GIVT", v:"0.36%", d:["flat","flat"], t:"target ≤1%", s:[0.35,0.37,0.36,0.38,0.36,0.35,0.36] },
+    { l:"VCR", v:"48.6%", d:["▲ 2.8pp","up"], t:"target 70% · 9 video", s:[45,46,44,47,46,48,48.6] },
+    { l:"CTR", v:"2.30%", d:["flat","flat"], t:"target 0.1%", s:[2.2,2.3,2.25,2.35,2.3,2.28,2.3] },
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map((k,i)=>`<div class="kpi ${i===0?'lead':''}">
+    <div class="l">${k.l}</div><div class="v">${k.v}</div>
+    <div class="d ${k.d[1]==='flat'?'flat':''}">${k.d[0]}</div>${spark(k.s)}<div class="t">${k.t}</div></div>`).join("");
+
+  /* ---------- Priority Flights ---------- */
+  const flights = [
+    { cls:"crit", name:"Luckyland Casino · TTD Acquisition", conv:"22 CONV.", range:"Jun 03 – Jun 21, 2026",
+      cpa:"$406.58", trend:["▼ $420.55 vs prior period","good"], overUnder:"over", goalDelta:"$256.58", pctGoal:271,
+      stats:[{l:"Conversions",v:"22",d:["▲ 20.0%","up"]},{l:"Spend",v:"$8,944",d:["▼ 59.4%","dn"]},{l:"Conv. rate",v:"2.31%",d:["","neutral"]},{l:"Clicks",v:"951",d:["","neutral"]}],
+      convSeries:[2,1,2,3,2,4,7,5,3,2,4,6,3,2,4,3,2,1], cpaSeries:[520,480,440,470,410,380,360,330,300,290,310,270,250,230,260,210,190,205],
+      bySize:[{sz:"300x250",impr:"944.8K",clk:"653",conv:"15",spend:"$5,668.88",cpa:377.93,cvr:"2.297%"},{sz:"320x50",impr:"492.8K",clk:"281",conv:"6",spend:"$2,956.82",cpa:492.80,cvr:"2.135%"},{sz:"728x90",impr:"53.2K",clk:"17",conv:"1",spend:"$318.99",cpa:318.99,cvr:"5.882%"}],
+      byFmt:[{sz:"Display",impr:"1.5M",clk:"951",conv:"22",spend:"$8,944.69",cpa:406.58,cvr:"2.313%"}] },
+    { cls:"pos", name:"VGW Chumba Casino · TTD Acquisition", conv:"313 CONV.", range:"Jun 01 – Jun 21, 2026",
+      cpa:"$133.82", trend:["▲ $276.59 vs prior period","bad"], overUnder:"under", goalDelta:"$16.18", pctGoal:89,
+      stats:[{l:"Conversions",v:"313",d:["▼ 15.9%","dn"]},{l:"Spend",v:"$41,884",d:["▲ 3106%","up"]},{l:"Conv. rate",v:"5.80%",d:["","neutral"]},{l:"Clicks",v:"5.4K",d:["","neutral"]}],
+      convSeries:[9,11,10,13,12,15,14,12,16,15,13,18,16,14,17,19,18,16,20,24], cpaSeries:[120,125,118,130,128,140,132,126,135,160,148,138,145,170,150,142,138,148,130,122],
+      bySize:[{sz:"320x50",impr:"5.3M",clk:"4.1K",conv:"208",spend:"$31,678.35",cpa:152.30,cvr:"5.104%"},{sz:"300x250",impr:"1.6M",clk:"1.3K",conv:"101",spend:"$9,746.98",cpa:96.50,cvr:"8.074%"},{sz:"970x250",impr:"76.5K",clk:"68",conv:"4",spend:"$459.04",cpa:114.76,cvr:"5.882%"}],
+      byFmt:[{sz:"Display",impr:"7.0M",clk:"5.4K",conv:"313",spend:"$41,884.37",cpa:133.82,cvr:"5.803%"}] },
+  ];
+  const cpaCell = v => `<span class="cpa-band ${v>GOAL?'over':'ok'}">$${v.toFixed(2)}</span>`;
+  const buildFlight = d => {
+    const cpaColor=d.cls==="crit"?"var(--crit)":"var(--pos)";
+    return `<div class="mrow ${d.cls}">
+      <div class="who"><div class="nm">${d.name}</div><div class="dr">${d.range} · ${d.conv}</div></div>
+      <div class="cpa"><span class="lab">CPA</span><span class="big">${d.cpa}</span>
+        <span class="pill ${d.cls}">${d.overUnder==="over"?"✗ "+d.goalDelta+" over":"✓ "+d.goalDelta+" under"}</span></div>
+      <div class="ms">
+        <div class="m"><div class="l">Conv.</div><div class="v">${d.stats[0].v}</div></div>
+        <div class="m"><div class="l">Spend</div><div class="v">${d.stats[1].v}</div></div>
+        <div class="m"><div class="l">CVR</div><div class="v">${d.stats[2].v}</div></div>
+        <div class="m"><div class="l">% of goal</div><div class="v" style="color:${cpaColor}">${d.pctGoal}%</div></div>
+      </div>
+      <div class="spark"><div class="cap"><span>Daily CPA</span><span>goal $150</span></div>${lineChart(d.cpaSeries,{goal:GOAL,color:cpaColor,breach:true,h:38})}</div>
+      <div class="go"><a href="#">View detail →</a><div class="conv">${d.range.slice(0,6)}–Jun 21</div></div>
+    </div>`;
+  };
+  document.getElementById("monitor").innerHTML = flights.map(buildFlight).join("");
+  function _unusedDetail(d){ const x = `${cpaCell(0)}`; return x; }
+
+  /* ---------- Direct campaigns table ---------- */
+  const R = [
+    { nm:"Apple iPhone — Q326 Privacy7 Flight1", meta:"Interstitial · $16 CPM", rev:"$21,825", revd:["▲4.3%","up"], del:"1.52M", deld:["▲4.3%","up"], pace:"101%", paceB:"healthy", view:"87.4%", viewB:"healthy", attn:"331", sivt:"0.21%", givt:"0.02%", ctr:"4.84%", ctrB:"healthy", seller:"Ivy Lee", prog:81 },
+    { nm:"AppleTv Silo S3 Pre Avail — Q326", meta:"Interstitial · $16 CPM", rev:"$8,952", revd:["▲66.5%","up"], del:"621.7K", deld:["▲66.5%","up"], pace:"86%", paceB:"off", view:"88.0%", viewB:"healthy", attn:"333", sivt:"0.20%", givt:"0.01%", ctr:"3.95%", ctrB:"healthy", seller:"Ivy Lee", prog:34 },
+    { nm:"AppleTV — Q3'26 AppleTV Acquisition", meta:"Interstitial · $16 CPM", rev:"$193,923", revd:["▲0.35%","up"], del:"13.47M", deld:["▲0.35%","up"], pace:"104%", paceB:"healthy", view:"89.3%", viewB:"healthy", attn:"334", sivt:"0.01%", givt:"0.02%", ctr:"4.91%", ctrB:"healthy", seller:"Ivy Lee", prog:98 },
+    { nm:"BitDefender — MidFunnel June", meta:"Display · $8 CPM", rev:"$6,423", revd:["▲5.7%","up"], del:"892.1K", deld:["▲5.7%","up"], pace:"99%", paceB:"healthy", view:"92.7%", viewB:"healthy", attn:"171", sivt:"0.54%", givt:"0.02%", ctr:"0.08%", ctrB:"under", seller:"Ivy Lee", prog:75 },
+    { nm:"BitDefender — UpperFunnel June", meta:"Display · $6 CPM", rev:"$5,757", revd:["▲4.7%","up"], del:"1.07M", deld:["▲4.7%","up"], pace:"99%", paceB:"healthy", view:"92.2%", viewB:"healthy", attn:"175", sivt:"0.15%", givt:"0.02%", ctr:"0.11%", ctrB:"healthy", seller:"Ivy Lee", prog:75 },
+    { nm:"Cognizant — AI Summit", ord:"1", meta:"Display · $17 CPM", rev:"$1,972", revd:["▲6.0%","up"], del:"116.0K", deld:["▲6.0%","up"], pace:"99%", paceB:"healthy", view:"72.8%", viewB:"healthy", attn:"113", sivt:"1.1%", sivtB:"off", givt:"0.03%", ctr:"0.07%", ctrB:"under", seller:"Ivy Lee", prog:70 },
+    { nm:"Cognizant — AI Summit", ord:"2", meta:"Apple News · $0 CPM", rev:"$0", revd:null, del:"259.9K", deld:["▲4.8%","up"], pace:"99%", paceB:"healthy", view:"—", attn:"—", sivt:"—", givt:"—", ctr:"0.27%", ctrB:"off", seller:"Ivy Lee", prog:69 },
+    { nm:"Infiniti — Newsmakers 100%ArticleSponsorship", ord:"1", meta:"Display · $0 CPM", rev:"$0", revd:null, del:"10.1K", deld:["▲1.8%","up"], pace:"100%", paceB:"healthy", view:"52.9%", viewB:"under", attn:"109", sivt:"1.2%", sivtB:"off", givt:"4.4%", givtB:"under", ctr:"0.74%", ctrB:"healthy", seller:"Theresa Hern", prog:100 },
+    { nm:"Infiniti — Newsmakers Custom Audience Display June", ord:"4", meta:"Display · $13.70 CPM", rev:"$1,522", revd:["▲10.4%","up"], del:"101.7K", deld:["▲10.7%","up"], pace:"88%", paceB:"off", view:"69.1%", viewB:"off", attn:"122", sivt:"1.4%", sivtB:"off", givt:"0.04%", ctr:"0.10%", ctrB:"healthy", seller:"Theresa Hern", prog:56 },
+    { nm:"Infiniti — Newsmakers Custom Audience Pre-roll June", ord:"5", meta:"Video · $22.09 CPM", rev:"$1,345", revd:["▲21.9%","up"], del:"53.8K", deld:["▲22.0%","up"], pace:"75%", paceB:"off", view:"86.1%", viewB:"healthy", attn:"140", sivt:"0.55%", givt:"0.04%", ctr:"0.56%", ctrB:"under", seller:"Theresa Hern", prog:48 },
+  ];
+  const metric=(val,b)=>b?`<span class="band ${b}">${val}</span>`:`<span class="${val==='—'?'muted':''}">${val}</span>`;
+  const delta=d=>d?`<div class="d2 ${d[1]}">${d[0]}</div>`:"";
+  const fill={healthy:"var(--pos)",off:"var(--warn)",under:"var(--crit)"};
+  document.getElementById("rows").innerHTML = R.map(r=>{
+    const pcol=r.prog>=85?fill.healthy:r.prog>=55?fill.off:fill.under;
+    return `<div class="grid grow">
+      <div class="li"><div class="nm">${r.ord?`<span class="ord">#${r.ord}</span>`:""}${r.nm}</div><div class="meta">${r.meta}</div></div>
+      <div class="cell rev"><div class="v">${r.rev}</div>${delta(r.revd)}</div>
+      <div class="cell"><div class="v">${r.del}</div>${delta(r.deld)}</div>
+      <div class="cell">${metric(r.pace,r.paceB)}</div>
+      <div class="cell">${metric(r.view,r.viewB)}</div>
+      <div class="cell"><span class="${r.attn==='—'?'muted':''}">${r.attn}</span></div>
+      <div class="cell">${metric(r.sivt,r.sivtB)}</div>
+      <div class="cell">${metric(r.givt,r.givtB)}</div>
+      <div class="cell">${metric(r.ctr,r.ctrB)}</div>
+      <div class="seller">${r.seller}</div>
+      <div class="prog"><div class="track"><div class="fill" style="width:${r.prog}%;background:${pcol}"></div></div><span class="pc">${r.prog}%</span></div>
+    </div>`;
+  }).join("");
+</script>
+</body>
+</html>

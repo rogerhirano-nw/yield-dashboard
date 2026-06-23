@@ -166,6 +166,79 @@
 .nw-rule { height: 0; border: 0; border-top: 2px solid var(--border-strong); margin: var(--space-6) 0; }
 
 /* ============================================================
+   3) CAMPAIGNS-VIEW LAYOUT  — structural redesign components
+   (added after the live-dashboard review). Three moves:
+   a) collapse the empty 4-col "Needs you today" band into a
+      triage filter strip that scopes the table below;
+   b) give the KPI strip a clear lead metric (Revenue) so the
+      page totals out-rank the Priority-Flight CPA numbers;
+   c) collapse the two full Priority-Flight panels into a slim
+      monitor strip, full detail one tap away.
+   ============================================================ */
+
+/* ---- a) Triage filter strip (replaces the 4-col exception band) ---- */
+.nw-triage { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin: var(--space-4) 0 var(--space-2); }
+.nw-triage__lab { font: 600 12px/1 var(--font-sans); letter-spacing: var(--track-eyebrow); text-transform: uppercase; color: var(--text-secondary); }
+.nw-fpill {
+  display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px; cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  font: 600 13px/1 var(--font-sans); color: var(--text-primary); transition: border-color .12s, background .12s;
+}
+.nw-fpill:hover { border-color: var(--text-muted); }
+.nw-fpill[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-0); border-color: var(--text-primary); }
+.nw-fpill .dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
+.nw-fpill .ct { font-weight: 700; font-feature-settings: var(--num-feature); }
+.nw-fpill--crit .dot { background: var(--state-critical); }
+.nw-fpill--warn .dot { background: var(--state-warning); }
+.nw-fpill--info .dot { background: #1f5fa8; }
+.nw-fpill--all  .dot { background: var(--brand-red); }
+
+/* ---- b) KPI lead metric ---- */
+.nw-tile--lead { border-top: 3px solid var(--brand-red); }
+.nw-tile--lead .nw-tile__num { font-size: 30px; }   /* vs 23px on standard tiles */
+
+/* ---- c) Priority-Flight compact monitor row ---- */
+.nw-flight {
+  display: grid; grid-template-columns: 1.9fr 1.5fr 1.5fr 150px 118px; gap: 18px; align-items: center;
+  background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--c);
+  border-radius: var(--radius-md); padding: 15px 20px; margin-bottom: var(--space-2);
+}
+.nw-flight--crit { --c: var(--state-critical); }
+.nw-flight--pos  { --c: var(--state-positive); }
+.nw-flight__nm { font: 600 14px/1.2 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nw-flight__dr { font: 400 11px/1 var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin-top: 3px; }
+.nw-flight__cpa { font: 800 23px/1 var(--font-display); letter-spacing: -.01em; font-feature-settings: var(--num-feature); }
+.nw-flight__goal { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--radius-pill); font: 700 12px/1 var(--font-sans); font-feature-settings: var(--num-feature); }
+.nw-flight__goal--crit { background: var(--state-critical-surface); color: var(--state-critical); }
+.nw-flight__goal--pos  { background: var(--state-positive-surface); color: var(--state-positive); }
+/* the daily-CPA sparkline shades the area ABOVE the goal line — see lineChart() note */
+.nw-flight__detail { font: 600 13px/1 var(--font-sans); color: var(--brand-red-strong); text-decoration: none; }
+.nw-flight__detail:hover { text-decoration: underline; }
+
+/* goal-banded CPA cell (used in flight detail + by-size/by-format tables) */
+.nw-cpa-band { display: inline-block; padding: 2px 7px; border-radius: var(--radius-sm); font-weight: 600; font-feature-settings: var(--num-feature); }
+.nw-cpa-band--over { background: var(--state-critical-surface); color: var(--state-critical); }  /* CPA > goal */
+.nw-cpa-band--ok   { color: var(--state-positive); }                                              /* CPA <= goal */
+
+/* ============================================================
+   4) RESPONSIVE  — phone reflow (<= 700px). Streamlit's native
+   dataframe/columns collapse on their own; these rules cover the
+   CUSTOM-HTML blocks (KPI strip, triage, flights, direct cards).
+   NOTE: the 11-col Direct-campaigns grid must become one
+   condensed card per line item on mobile — do NOT horizontal-
+   scroll it. Render Revenue/Pace/Progress up front, rest behind
+   an "All 9 metrics" expander.
+   ============================================================ */
+@media (max-width: 700px) {
+  .nw-kpis { grid-template-columns: 1fr 1fr; }
+  .nw-tile--lead { grid-column: 1 / -1; }
+  .nw-triage, .nw-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nw-triage::-webkit-scrollbar, .nw-tabs::-webkit-scrollbar { height: 0; }
+  .nw-fpill, .nw-tab { white-space: nowrap; flex: 0 0 auto; }
+  .nw-flight { grid-template-columns: 1fr; gap: 12px; }   /* stack into a card */
+}
+
+/* ============================================================
    FALLBACK — warm-ink DARK ramp, if base="dark" must return.
    Re-declare only these tokens inside a [data-theme="dark"] (or
    the .stApp) scope; everything else inherits unchanged.

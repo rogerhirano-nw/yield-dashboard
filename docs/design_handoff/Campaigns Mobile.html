@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campaigns — mobile</title>
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/fonts.css" />
+<link rel="stylesheet" href="_ds/newsweek-design-system-99e1226d-712b-4692-b508-a49088431e78/tokens/colors.css" />
+<style>
+  :root {
+    --paper:#fefcf6; --raised:#ffffff; --sunk:#f6f2e6;
+    --ink:#1f1e19; --ink-60:#57564f; --ink-40:#8c887b;
+    --hair:#e7e0c9; --rule:#1f1e19;
+    --brand:#e91d0c; --brand-strong:#c41608;
+    --pos:#3c6b14;  --pos-bg:#eef3e3;
+    --warn:#8a6d00; --warn-bg:#f6eecd;
+    --crit:#c41608; --crit-bg:#fbe6e2;
+    --info:#1f5fa8; --info-bg:#e4edf7;
+    --sans:"Franklin Gothic","Helvetica Neue",Arial,sans-serif;
+    --serif:"Benton Modern Display",Georgia,"Times New Roman",serif;
+    --tnum:"tnum" 1;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#d9d4c6; color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; padding:30px 0 60px; }
+  .stage { display:flex; gap:34px; justify-content:center; align-items:flex-start; flex-wrap:wrap; }
+
+  /* phone frame */
+  .phone { width:390px; flex:0 0 auto; background:var(--paper); border-radius:34px; box-shadow:0 22px 60px rgba(16,16,14,.28); border:9px solid #1a1915; overflow:hidden; position:relative; }
+  .phone .notch { height:30px; background:#1a1915; position:relative; }
+  .phone .notch::after { content:""; position:absolute; left:50%; top:9px; transform:translateX(-50%); width:110px; height:7px; border-radius:99px; background:#3a382f; }
+  .screen { height:760px; overflow-y:auto; overflow-x:hidden; }
+  .screen::-webkit-scrollbar { width:0; }
+  .caption { width:300px; flex:0 0 auto; padding-top:30px; }
+  .caption h2 { font-family:var(--serif); font-weight:800; font-size:24px; letter-spacing:-.01em; margin:0 0 12px; }
+  .caption .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); margin-bottom:14px; }
+  .caption .eyebrow::before { content:""; width:8px; height:8px; background:var(--brand); }
+  .caption ul { margin:0; padding:0; list-style:none; }
+  .caption li { padding:11px 0 11px 22px; border-top:1px solid #c8c2b0; font-size:13.5px; line-height:1.5; color:var(--ink-60); position:relative; }
+  .caption li::before { content:""; position:absolute; left:0; top:17px; width:9px; height:9px; border-radius:2px; background:var(--brand); }
+  .caption li b { color:var(--ink); }
+
+  /* ---- mobile content ---- */
+  .m { padding:16px 14px 30px; }
+  .head .eyebrow { display:inline-flex; align-items:center; gap:7px; font-size:10.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); }
+  .head .eyebrow::before { content:""; width:8px; height:8px; background:var(--brand); }
+  .head h1 { margin:7px 0 0; font-family:var(--serif); font-weight:800; font-size:23px; letter-spacing:-.015em; }
+  .head .meta { font-size:11px; color:var(--ink-40); margin-top:3px; }
+
+  .tabscroll { display:flex; gap:18px; margin:14px -14px 0; padding:0 14px 10px; overflow-x:auto; border-bottom:2px solid var(--rule); }
+  .tabscroll::-webkit-scrollbar { height:0; }
+  .tabscroll .tab { white-space:nowrap; font-size:13.5px; font-weight:600; color:var(--ink-40); padding-bottom:8px; position:relative; }
+  .tabscroll .tab.active { color:var(--ink); }
+  .tabscroll .tab.active::after { content:""; position:absolute; left:0; right:0; bottom:-2px; height:3px; background:var(--brand); }
+
+  .pillscroll { display:flex; gap:8px; margin:14px -14px 0; padding:0 14px 2px; overflow-x:auto; }
+  .pillscroll::-webkit-scrollbar { height:0; }
+  .fp { white-space:nowrap; display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border:1px solid var(--hair); border-radius:999px; background:var(--raised); font-size:12.5px; font-weight:600; }
+  .fp.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .fp .dot { width:7px; height:7px; border-radius:999px; }
+  .dc { background:var(--crit); } .dw { background:var(--warn); } .di { background:var(--info); } .db { background:var(--brand); }
+
+  .slab { font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-60); margin:24px 0 11px; display:flex; align-items:center; gap:7px; }
+  .slab::before { content:""; width:8px; height:8px; background:var(--brand); }
+
+  /* KPI — 2 col, Revenue lead full-width */
+  .kpis { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .kpi { background:var(--raised); border:1px solid var(--hair); border-top:2px solid var(--ink); border-radius:6px; padding:11px 12px; }
+  .kpi.lead { grid-column:1 / -1; border-top:3px solid var(--brand); display:flex; align-items:baseline; justify-content:space-between; }
+  .kpi .l { font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); }
+  .kpi .v { font-family:var(--serif); font-weight:700; font-size:22px; margin-top:4px; font-feature-settings:var(--tnum); line-height:1; }
+  .kpi.lead .v { font-size:34px; margin:0; }
+  .kpi.lead .r { text-align:right; }
+  .kpi .d { font-size:10px; color:var(--pos); margin-top:3px; font-feature-settings:var(--tnum); }
+  .kpi .d.flat { color:var(--ink-40); }
+
+  /* Priority flight — stacked card */
+  .pf { background:var(--raised); border:1px solid var(--hair); border-left:4px solid var(--c); border-radius:8px; padding:14px 15px; margin-bottom:11px; }
+  .pf.crit { --c:var(--crit); } .pf.pos { --c:var(--pos); }
+  .pf .nm { font-size:13.5px; font-weight:600; }
+  .pf .dr { font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-40); margin-top:2px; }
+  .pf .row1 { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-top:11px; }
+  .pf .cpa { font-family:var(--serif); font-weight:800; font-size:30px; font-feature-settings:var(--tnum); letter-spacing:-.01em; }
+  .pf .cpa small { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-40); display:block; }
+  .pf .pill { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px; font-size:12px; font-weight:700; font-feature-settings:var(--tnum); }
+  .pf .pill.crit { background:var(--crit-bg); color:var(--crit); } .pf .pill.pos { background:var(--pos-bg); color:var(--pos); }
+  .pf .ms { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:13px; padding-top:12px; border-top:1px solid var(--hair); }
+  .pf .ms .l { font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-40); }
+  .pf .ms .v { font-size:13px; font-weight:600; font-feature-settings:var(--tnum); margin-top:2px; }
+  .pf .spark { margin-top:13px; }
+  .pf .spark .cap { font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-40); display:flex; justify-content:space-between; margin-bottom:3px; }
+  .pf .spark svg { display:block; width:100%; height:46px; }
+  .pf .go { margin-top:11px; text-align:right; }
+  .pf .go a { font-size:12.5px; font-weight:600; color:var(--brand-strong); text-decoration:none; }
+
+  /* Direct campaigns — condensed cards */
+  .legend { display:flex; gap:11px; font-size:10.5px; color:var(--ink-60); margin-bottom:10px; flex-wrap:wrap; }
+  .legend .sw { display:inline-flex; align-items:center; gap:4px; }
+  .legend .sw i { width:9px; height:9px; border-radius:2px; }
+  .dcard { background:var(--raised); border:1px solid var(--hair); border-radius:8px; padding:13px 14px; margin-bottom:9px; }
+  .dcard .top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .dcard .nm { font-size:13.5px; font-weight:600; line-height:1.25; }
+  .dcard .meta { font-size:10.5px; color:var(--ink-40); margin-top:2px; }
+  .dcard .rev { font-family:var(--serif); font-weight:700; font-size:16px; font-feature-settings:var(--tnum); white-space:nowrap; }
+  .dcard .mets { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:11px; padding-top:11px; border-top:1px solid var(--hair); }
+  .dcard .mets .l { font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-40); margin-bottom:3px; }
+  .band { display:inline-block; padding:2px 7px; border-radius:4px; font-weight:600; font-size:12.5px; font-feature-settings:var(--tnum); }
+  .band.under { background:var(--crit-bg); color:var(--crit); }
+  .band.off { background:var(--warn-bg); color:var(--warn); }
+  .band.healthy { color:var(--pos); font-size:12.5px; font-weight:600; }
+  .prog { display:flex; align-items:center; gap:7px; }
+  .prog .track { flex:1; height:5px; background:var(--sunk); border-radius:3px; overflow:hidden; }
+  .prog .fill { height:100%; border-radius:3px; }
+  .prog .pc { font-size:11.5px; font-weight:600; color:var(--ink-60); font-feature-settings:var(--tnum); }
+  .more { font-size:12px; font-weight:600; color:var(--brand-strong); margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="caption">
+    <span class="eyebrow">Responsive · 390px</span>
+    <h2>How it reflows on a phone</h2>
+    <ul>
+      <li><b>KPI strip</b> → Revenue becomes a full-width lead card; the other 8 totals drop to a 2-up grid. No 9-across squeeze.</li>
+      <li><b>Tabs &amp; triage pills</b> → horizontal swipe rows instead of wrapping or truncating.</li>
+      <li><b>Priority Flights</b> → each flight stacks into its own card: CPA + goal pill, a 4-up stat grid, then the breach-shaded sparkline full width.</li>
+      <li><b>Direct campaigns</b> → the 11-column table becomes one condensed card per line item (Revenue, Pace, Progress up front) with the rest behind <b>“All 9 metrics →”</b>. No horizontal-scroll spreadsheet.</li>
+      <li>Same tokens, same severity grammar, same serif/sans — just re-stacked.</li>
+    </ul>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="m">
+        <div class="head">
+          <span class="eyebrow">Yield &amp; Pacing</span>
+          <h1>Overall performance</h1>
+          <div class="meta">9:04 AM EDT · 39 line items</div>
+        </div>
+
+        <div class="tabscroll">
+          <span class="tab active">Campaigns</span>
+          <span class="tab">By site / size</span>
+          <span class="tab">By DSP</span>
+          <span class="tab">Magnite</span>
+          <span class="tab">Pubmatic</span>
+          <span class="tab">OpenSincera</span>
+        </div>
+
+        <div class="pillscroll">
+          <span class="fp active"><span class="dot db"></span>All flagged 32</span>
+          <span class="fp"><span class="dot dc"></span>Ending soon 20</span>
+          <span class="fp"><span class="dot dc"></span>Underpacing 4</span>
+          <span class="fp"><span class="dot dw"></span>Overpacing 4</span>
+          <span class="fp"><span class="dot di"></span>Viewability 4</span>
+        </div>
+
+        <div class="slab">Today’s totals</div>
+        <div class="kpis" id="kpis"></div>
+
+        <div class="slab">Priority Flights · daily monitor</div>
+        <div id="pf"></div>
+
+        <div class="slab">All direct campaigns · 39</div>
+        <div class="legend">
+          <span class="sw"><i style="background:var(--crit)"></i>Under</span>
+          <span class="sw"><i style="background:var(--warn)"></i>Off-target</span>
+          <span class="sw"><i style="background:var(--pos)"></i>Healthy</span>
+        </div>
+        <div id="dc"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const GOAL=150;
+  function lineChart(series,{goal=null,color="var(--ink)",breach=false,h=46}={}){
+    const W=320,H=h,pad=5;
+    const min=Math.min(...series,goal??Infinity),max=Math.max(...series,goal??-Infinity),span=(max-min)||1;
+    const x=i=>pad+i*(W-2*pad)/(series.length-1),y=v=>pad+(H-2*pad)*(1-(v-min)/span);
+    const pts=series.map((v,i)=>[x(i),y(v)]);
+    const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    const area=line+` L ${x(series.length-1).toFixed(1)} ${H-pad} L ${x(0).toFixed(1)} ${H-pad} Z`;
+    let sh=""; if(goal!=null&&breach){const gy=y(goal).toFixed(1); sh=`<rect x="0" y="0" width="${W}" height="${gy}" fill="var(--crit)" opacity="0.07"/>`;}
+    const gl=goal!=null?`<line x1="0" y1="${y(goal).toFixed(1)}" x2="${W}" y2="${y(goal).toFixed(1)}" stroke="var(--ink-40)" stroke-width="1" stroke-dasharray="4 3"/>`:"";
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${sh}${gl}<path d="${area}" fill="${color}" opacity="0.08"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${pts[pts.length-1][0].toFixed(1)}" cy="${pts[pts.length-1][1].toFixed(1)}" r="2.6" fill="${color}"/></svg>`;
+  }
+
+  const kpis=[
+    {l:"Revenue",v:"$63.9K",d:["▲ 14.3% vs 7-day avg","up"],lead:true},
+    {l:"Avg Pacing",v:"88.1%",d:["target 100%","flat"]},
+    {l:"Impressions",v:"34.31M",d:["▲ 11.9%","up"]},
+    {l:"Viewability",v:"87.7%",d:["target 70%","flat"]},
+    {l:"Attention",v:"131",d:["▲ 3.3pp","up"]},
+    {l:"SIVT",v:"0.37%",d:["target ≤1%","flat"]},
+    {l:"GIVT",v:"0.36%",d:["target ≤1%","flat"]},
+    {l:"VCR",v:"48.6%",d:["▲ 2.8pp","up"]},
+    {l:"CTR",v:"2.30%",d:["target 0.1%","flat"]},
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(k=> k.lead
+    ? `<div class="kpi lead"><div><div class="l">${k.l}</div><div class="d ${k.d[1]==='flat'?'flat':''}">${k.d[0]}</div></div><div class="r"><div class="v">${k.v}</div></div></div>`
+    : `<div class="kpi"><div class="l">${k.l}</div><div class="v">${k.v}</div><div class="d ${k.d[1]==='flat'?'flat':''}">${k.d[0]}</div></div>`
+  ).join("");
+
+  const flights=[
+    {cls:"crit",name:"Luckyland Casino · TTD Acq.",range:"Jun 03–21 · 22 conv.",cpa:"$406.58",ou:"over",gd:"$256.58",pct:271,
+     ms:[["Conv","22"],["Spend","$8,944"],["CVR","2.31%"],["% goal","271%"]],
+     cpaSeries:[520,480,440,470,410,380,360,330,300,290,310,270,250,230,260,210,190,205]},
+    {cls:"pos",name:"VGW Chumba Casino · TTD Acq.",range:"Jun 01–21 · 313 conv.",cpa:"$133.82",ou:"under",gd:"$16.18",pct:89,
+     ms:[["Conv","313"],["Spend","$41.9K"],["CVR","5.80%"],["% goal","89%"]],
+     cpaSeries:[120,125,118,130,128,140,132,126,135,160,148,138,145,170,150,142,138,148,130,122]},
+  ];
+  document.getElementById("pf").innerHTML = flights.map(d=>{
+    const c=d.cls==="crit"?"var(--crit)":"var(--pos)";
+    const ms=d.ms.map((m,i)=>`<div><div class="l">${m[0]}</div><div class="v" ${i===3?`style="color:${c}"`:""}>${m[1]}</div></div>`).join("");
+    return `<div class="pf ${d.cls}">
+      <div class="nm">${d.name}</div><div class="dr">${d.range}</div>
+      <div class="row1"><div class="cpa"><small>Cost per acq.</small>${d.cpa}</div>
+        <span class="pill ${d.cls}">${d.ou==="over"?"✗ "+d.gd+" over":"✓ "+d.gd+" under"}</span></div>
+      <div class="ms">${ms}</div>
+      <div class="spark"><div class="cap"><span>Daily CPA</span><span>goal $150</span></div>${lineChart(d.cpaSeries,{goal:GOAL,color:c,breach:true})}</div>
+      <div class="go"><a href="#">View full breakdown →</a></div>
+    </div>`;
+  }).join("");
+
+  const band=(v,b)=> b? `<span class="band ${b}">${v}</span>` : `<span style="color:var(--ink-40)">${v}</span>`;
+  const dcs=[
+    {nm:"Apple iPhone — Q326 Privacy7 Flight1",meta:"Interstitial · $16 CPM",rev:"$21,825",pace:"101%",paceB:"healthy",prog:81},
+    {nm:"AppleTv Silo S3 Pre Avail — Q326",meta:"Interstitial · $16 CPM",rev:"$8,952",pace:"86%",paceB:"off",prog:34},
+    {nm:"AppleTV — Q3'26 AppleTV Acquisition",meta:"Interstitial · $16 CPM",rev:"$193,923",pace:"104%",paceB:"healthy",prog:98},
+    {nm:"BitDefender — MidFunnel June",meta:"Display · $8 CPM",rev:"$6,423",pace:"99%",paceB:"healthy",prog:75},
+    {nm:"Cognizant — AI Summit",meta:"Display · $17 CPM",rev:"$1,972",pace:"99%",paceB:"healthy",prog:70},
+  ];
+  const fill={healthy:"var(--pos)",off:"var(--warn)",under:"var(--crit)"};
+  document.getElementById("dc").innerHTML = dcs.map(r=>{
+    const pcol=r.prog>=85?fill.healthy:r.prog>=55?fill.off:fill.under;
+    return `<div class="dcard">
+      <div class="top"><div><div class="nm">${r.nm}</div><div class="meta">${r.meta}</div></div><div class="rev">${r.rev}</div></div>
+      <div class="mets">
+        <div><div class="l">Pace</div>${band(r.pace,r.paceB)}</div>
+        <div><div class="l">Progress</div><div class="prog"><div class="track"><div class="fill" style="width:${r.prog}%;background:${pcol}"></div></div><span class="pc">${r.prog}%</span></div></div>
+        <div><div class="l">Status</div><span class="band ${r.paceB}">${r.paceB==="healthy"?"On track":r.paceB==="off"?"Watch":"Under"}</span></div>
+      </div>
+      <div class="more">All 9 metrics →</div>
+    </div>`;
+  }).join("");
+</script>
+</body>
+</html>
