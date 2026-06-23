@@ -4,7 +4,7 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-06-23 — RLS hygiene canary in the health check (#PR)
+## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily
   health check now catches and auto-fixes it.** Supabase's security advisor
