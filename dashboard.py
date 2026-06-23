@@ -4396,7 +4396,7 @@ if st.session_state.active_view == "campaigns":
                     )
                 st.markdown(
                     f'<div class="nw-ttd-wrap">'
-                    f'<details class="nw-na nw-na--collapsible">'
+                    f'<details class="nw-na nw-na--collapsible" open>'
                     f'{summary_html}'
                     f'<div class="nw-na-body" style="padding:12px 13px 4px">'
                     f'{body_inner}'
