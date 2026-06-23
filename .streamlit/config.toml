@@ -36,30 +36,12 @@ chartCategoricalColors = ["#4b62e0", "#2d8d92", "#824dd7", "#d84f86", "#b08900",
 font = "Franklin Gothic, Helvetica Neue, Arial, sans-serif"
 headingFont = "Benton Modern Display, Georgia, Times New Roman, serif"
 
-[[theme.fontFaces]]
-family = "Franklin Gothic"
-url = "app/static/fonts/FranklinGothic.ttf"
-weight = 400
-
-[[theme.fontFaces]]
-family = "Franklin Gothic"
-url = "app/static/fonts/FranklinGothicDemi.ttf"
-weight = 600
-
-[[theme.fontFaces]]
-family = "Benton Modern Display"
-url = "app/static/fonts/BentonModDisp-Regular.otf"
-weight = 400
-
-[[theme.fontFaces]]
-family = "Benton Modern Display"
-url = "app/static/fonts/BentonModDisp-Bold.otf"
-weight = 700
-
-[[theme.fontFaces]]
-family = "Benton Modern Display"
-url = "app/static/fonts/BentonModDisp-Black.otf"
-weight = 800
+# Brand faces (Benton Modern Display + Franklin Gothic) are now self-hosted via
+# base64-embedded @font-face in static/newsweek_fonts_embedded.css, injected once
+# at the top of dashboard.py (2026-06-23). The previous [[theme.fontFaces]] here
+# pointed at app/static/fonts/*.otf|ttf, which never existed in the repo — so they
+# only registered erroring/never-loading faces and the app fell back to Georgia /
+# Helvetica. Removed to leave the embedded CSS as the single, working source.
 
 [server]
 # Serves ./static at /app/static — required for the self-hosted font

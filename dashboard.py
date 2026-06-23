@@ -780,6 +780,19 @@ AE_NAMES = _cfg["ae_names"]
 st.set_page_config(page_title="Overall performance", layout="wide")
 
 # ──────────────────────────────────────────────────────────────────────────
+# Self-host the licensed Newsweek brand faces (Benton Modern Display +
+# Franklin Gothic) via base64-embedded @font-face — injected ONCE, before the
+# main style block, so the faces are defined before any component uses them.
+# config.toml points [[theme.fontFaces]] at app/static/fonts/, which doesn't
+# resolve (no such dir), so without this the app silently falls back to
+# Georgia / Helvetica. Source: docs/design_handoff/newsweek-fonts-embedded.css
+# (2026-06-23 handoff). Missing file → silent fallback (pure enhancement).
+try:
+    _brand_fonts_css = (Path(__file__).parent / "static" / "newsweek_fonts_embedded.css").read_text()
+    st.markdown(f"<style>{_brand_fonts_css}</style>", unsafe_allow_html=True)
+except Exception:
+    pass
+
 # Global polish: typography, sentence case, tabular nums, tab underline,
 # eyebrow / timestamp affordances, border radius tokens. Streamlit honors
 # inline CSS via st.markdown(unsafe_allow_html=True).

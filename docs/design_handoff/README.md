@@ -141,6 +141,20 @@ the `@media (max-width:700px)` rules in `newsweek-dashboard.css`:
   behind an “All 9 metrics” expander). Do **not** horizontal-scroll an 11-column table on a phone.
   This likely needs custom HTML rendering rather than a native `st.dataframe` — flag the added effort.
 
+### ⚠ Mobile regressions observed in the live build (Jun 23, 6:14pm) — fix these
+The font + branding landed on mobile, but three things still need fixing:
+1. **KPI cards render as giant empty boxes**, worst on tiles with no sparkline (AVG ECPM, ACTIVE
+   DEALS): the value sits top-left with a large empty void below. Cause: the tiles stretch to match
+   their tallest grid sibling and aren't hugging content. **Fixed in CSS** via
+   `@media(max-width:700px){ .nw-kpis{align-items:start} .nw-tile,.kpi-tile{min-height:0;height:auto;align-self:start} }`.
+   If your KPI class isn't `.nw-tile`/`.kpi-tile`, add it to that selector. Verify there is no
+   explicit `height`/`min-height` on the tile or its Streamlit column wrapper.
+2. **Dense secondary tables overflow** (BY AD SIZE / BY FORMAT — the CVR column is clipped). Wrap each
+   in `<div class="nw-subtable-wrap">…</div>` so it scrolls horizontally instead of clipping. (This is
+   the ONE place horizontal-scroll is acceptable — these are dense reference tables, not the main list.)
+3. The black **“Manage app”** pill is Streamlit Cloud's owner-only deploy toolbar, NOT part of the
+   design — ignore it; it won't show for viewers.
+
 ## Component spec → class map
 Map each existing piece to the class in `newsweek-dashboard.css`. Exact values live in the CSS; the
 table below is the wiring guide.
