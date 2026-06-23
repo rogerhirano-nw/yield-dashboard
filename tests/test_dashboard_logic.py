@@ -1040,6 +1040,31 @@ def test_cpa_goal_delta():
     assert cpa_goal_delta(100, None) is None
 
 
+def test_trend_delta():
+    from dashboard_logic import trend_delta
+    # pct: latest vs mean of prior. [40,42,41,45,47,46,52] → base 43.5, +19.5%.
+    r = trend_delta([40, 42, 41, 45, 47, 46, 52], "pct")
+    assert r["cls"] == "up" and r["text"] == "▲ 19.5%" and r["basis"] == "vs 7-day avg"
+    # pp: no basis (tile shows its target instead).
+    r = trend_delta([60.0, 62.0, 64.0], "pp")
+    assert r["text"] == "▲ 3.0pp" and r["cls"] == "up" and r["basis"] is None
+    # flat noise band (|d| < 0.5) → neutral "flat".
+    assert trend_delta([88, 88, 88.2], "pp")["text"] == "flat"
+    assert trend_delta([88, 88, 88.2], "pp")["cls"] == "flat"
+    # invert: a RISE in fraud is worsening (not green); a FALL reads green.
+    assert trend_delta([0.3, 0.3, 1.0], "pp", invert=True)["cls"] != "up"
+    assert trend_delta([0.3, 0.3, 1.0], "pp", invert=True)["text"] == "▲ 0.7pp"
+    assert trend_delta([1.0, 1.0, 0.3], "pp", invert=True)["cls"] == "up"  # ▼ fraud = good
+    # worsening tiers (non-inverted drop): <2 neutral, <5 amber, ≥5 red.
+    assert trend_delta([100, 100, 98.5], "pp")["cls"] == "neutral"   # −1.5pp
+    assert trend_delta([100, 100, 97.0], "pp")["cls"] == "amber"     # −3.0pp
+    assert trend_delta([100, 100, 90.0], "pp")["cls"] == "down"      # −10pp
+    # guards: <2 points, and zero pct base → None.
+    assert trend_delta([5], "pct") is None
+    assert trend_delta([], "pp") is None
+    assert trend_delta([0, 0, 5], "pct") is None   # zero base
+
+
 def test_cpa_join_key():
     # Both the TTD ad_group and the GAM LI name reduce to the same key.
     assert cpa_join_key(

@@ -680,9 +680,19 @@ Rules that survive any future restyle:
      never crush on tablet), **desktop (≥1025px) pins `repeat(9,1fr)`** (one row),
      **≤640px is 2-up with the Revenue lead spanning full width**. All nine still
      use the shared `.kpi-spark` **UNIFORM-regime** sparkline (round end-dots; the
-     stretch regime distorted the dot on iOS Safari — Roger 2026-06-22). Same
-     values / subtitles / series as before — only the tiering changed.
-  3. **Priority flights = slim MONITOR rows** (`.nw-flight`, 2026-06-23 handoff):
+     stretch regime distorted the dot on iOS Safari — Roger 2026-06-22).
+     The strip carries a **"Today's totals"** `.nw-section-eyebrow` header, and
+     **every tile shows a trend chip** between the value and the sparkline
+     (`_kpi_delta_sub` → **`dl.trend_delta`**, tested): latest-vs-prior-avg as
+     `▲ 14.3%` (muted green, the design's improving tier) / `▼ …` (amber<5 / red≥5
+     when worsening) / `flat`, with the subtitle below the spark = **"vs 7-day
+     avg"** for the pct metrics (Revenue, Impressions) and **"target X"** for the
+     pp metrics. SIVT/GIVT pass `invert=True` so a *rise* reads as worsening, not
+     green. This is the image-2 tile anatomy (label / value / delta / spark / sub);
+     it replaced the single combined subtitle line. (2026-06-23 full-redesign pass.)
+  3. **Priority flights = slim MONITOR rows** (`.nw-flight`, 2026-06-23 handoff)
+     under a **"Priority flights · daily monitor"** `.nw-section-eyebrow` whose
+     trailing `.nw-section-sub` reads **"2 betting flights · CPA goal $<ttd_cpa_goal>"**:
      each flight is **one slim full-width row** that *is* the `<summary>` of the
      collapsible `.nw-na` card — name · date · **CPA + goal pill** (✓ under / ✗
      over) · 4 stats (Conv · Spend · CVR · % of goal) · a **breach-shaded

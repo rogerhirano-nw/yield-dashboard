@@ -1166,6 +1166,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 /* Section eyebrow (e.g. "Priority flights"). */
 .nw-section-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
   font-weight: 700; color: var(--text-secondary); margin: 14px 0 8px; }
+/* Eyebrow trailing subtitle (e.g. "· 2 betting flights · CPA goal $150") —
+   sans, sentence case, muted; rides on the same line as the eyebrow. */
+.nw-section-sub { font-family: var(--font-sans); font-weight: 400; letter-spacing: 0;
+  text-transform: none; font-size: 12px; color: var(--text-muted); margin-left: 8px; }
 /* Triage strip ("Needs you today") — single-select filter pills that scope the
    Direct table below (2026-06-23 handoff; replaces the briefing-lede accordion).
    Pills are query-param <a> links styled as toggles. The active pill inverts to
@@ -1247,7 +1251,11 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    (proportional), so the round end-dot never elongates. height:auto +
    viewBox intrinsic ratio = no anisotropic stretch. */
 .kpi-spark { display: block; width: 100%; height: auto; margin-top: var(--space-2); }
-.kpi-target{ font-size: 10.5px; color: var(--text-muted); }
+.kpi-target{ font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+/* Per-tile trend chip (▲ 14.3% / flat) — sits between the value and the
+   sparkline; the inner .kpi-delta-* span carries the color. */
+.kpi-delta { font-size: 11px; font-weight: 600; margin-top: 3px;
+  font-variant-numeric: tabular-nums; }
 .kpi-delta-up    { color: var(--state-positive-muted); }
 .kpi-delta-down  { color: var(--state-critical); }
 .kpi-delta-amber { color: var(--state-warning); }
@@ -4025,51 +4033,25 @@ if st.session_state.active_view == "campaigns":
                     series.append((sum_c / sum_e * 100) if sum_e else None)
                 return series
 
-            def _trend_delta_label(values, fmt="pct", suffix_target=None):
-                """Compare latest to 7-day average. Returns (text, class).
-                fmt: 'pct' for relative %, 'pp' for percentage-point delta.
-                Threshold tiers (apply to both formats):
-                  |d| < 0.5  → "flat" in neutral text (noise band)
-                  |d| < 2    → arrow + value in secondary text
-                  |d| < 5 & worsening → amber
-                  |d| ≥ 5 & worsening → red
-                Up-arrows always neutral/positive (no warning color on growth)."""
-                if not values:
-                    return (None, "")
-                non = [v for v in values if v is not None and not pd.isna(v)]
-                if len(non) < 2:
-                    return (None, "")
-                latest = non[-1]
-                prior_avg = sum(non[:-1]) / len(non[:-1])
-                if prior_avg == 0:
-                    return (None, "")
-                if fmt == "pct":
-                    d = (latest - prior_avg) / abs(prior_avg) * 100
-                    unit = "%"
-                    suffix = " vs 7-day avg"
+            def _kpi_delta_sub(series, fmt="pct", invert=False, target=None, no_data=None):
+                """(delta_html, sub_text) for a Today's-totals KPI tile.
+
+                delta_html is the colored trend chip from dl.trend_delta — '▲ 14.3%'
+                (muted green) / '▼ …' (amber/red worsening) / 'flat' — shown between
+                the value and the sparkline. sub_text is the line BELOW the spark:
+                the chip's basis ('vs 7-day avg' for pct metrics) or 'target <target>'
+                for the pp metrics, falling back to `no_data`. `invert=True` flips
+                good/bad so a RISE in SIVT/GIVT reads as worsening, not green."""
+                td = dl.trend_delta(series, fmt, invert) if series else None
+                delta_html = (f'<span class="kpi-delta-{td["cls"]}">{td["text"]}</span>'
+                              if td else "")
+                if td and td.get("basis"):
+                    sub = td["basis"]
+                elif target is not None:
+                    sub = f"target {target}"
                 else:
-                    d = latest - prior_avg
-                    unit = "pp"
-                    suffix = ""
-                ABS = abs(d)
-                if ABS < 0.5:
-                    cls = "kpi-delta-flat"
-                    body = "• flat"
-                else:
-                    arrow = "▲" if d > 0 else "▼"
-                    if d > 0:
-                        cls = "kpi-delta-neutral"
-                    elif ABS < 2:
-                        cls = "kpi-delta-neutral"
-                    elif ABS < 5:
-                        cls = "kpi-delta-amber"
-                    else:
-                        cls = "kpi-delta-down"
-                    body = f"{arrow} {ABS:.1f}{unit}"
-                txt = f'<span class="{cls}">{body}</span>{suffix}'
-                if suffix_target is not None:
-                    txt += f' · target {suffix_target}'
-                return (txt, cls)
+                    sub = no_data
+                return (delta_html, sub)
 
             # Hoisted out of _render_ttd_cpa so the Direct LI drawer's CPA block
             # can reuse it too (same uniform-regime line/area chart).
@@ -4419,22 +4401,24 @@ if st.session_state.active_view == "campaigns":
                     unsafe_allow_html=True,
                 )
 
-            def _kpi_tile(label, value, target=None, spark=None, lead=False):
-                """Render one KPI card: label / serif number / target subtitle,
-                with the (neutral) sparkline running full-width underneath —
-                the Newsweek tile anatomy. `target` is the subtitle text.
-                `spark` is the pre-rendered SVG markup (or '' for text-only).
-                `lead=True` adds the `.nw-tile--lead` modifier (Revenue anchor —
-                brand-red top rule + 30px serif number; 2026-06-23 handoff)."""
-                target_html = f'<div class="kpi-target">{target}</div>' if target else ""
+            def _kpi_tile(label, value, sub=None, spark=None, lead=False, delta=None):
+                """Render one KPI card — the Today's-totals tile anatomy (image-2):
+                label / serif number / **trend chip** (▲/flat, colored) /
+                sparkline / **subtitle** ('vs 7-day avg' or 'target X'). `delta` is
+                the pre-rendered colored chip; `sub` is the subtitle text; `spark`
+                the pre-rendered SVG. `lead=True` adds the `.nw-tile--lead` modifier
+                (Revenue anchor — brand-red top rule + 30px serif number)."""
+                delta_html = f'<div class="kpi-delta">{delta}</div>' if delta else ""
+                sub_html = f'<div class="kpi-target">{sub}</div>' if sub else ""
                 spark_html = spark or ""
                 cls = "kpi-tile nw-tile--lead" if lead else "kpi-tile"
                 return (
                     f'<div class="{cls}">'
                     f'<div class="kpi-label">{label}</div>'
                     f'<div class="kpi-value">{value}</div>'
-                    f'{target_html}'
+                    f'{delta_html}'
                     f'{spark_html}'
+                    f'{sub_html}'
                     f'</div>'
                 )
 
@@ -4555,45 +4539,33 @@ if st.session_state.active_view == "campaigns":
 
             _view_target_str = f"{_view_target:g}%"
             _ctr_bench_str   = f"{_ctr_bench:g}%" if _ctr_bench is not None else None
-            _rev_sub  = _trend_delta_label(_rev_series,  "pct")[0]
-            _impr_sub = _trend_delta_label(_impr_series, "pct")[0]
-            _pace_sub = _trend_delta_label(_pace_series, "pp", suffix_target=f"{int(_pacing_target)}%")[0] \
-                        if _pace_series else f"Target {int(_pacing_target)}%"
-            _view_sub = _trend_delta_label(_view_series, "pp", suffix_target=_view_target_str)[0] \
-                        if _view_series else f"Target {_view_target_str}"
-            _attn_sub = _trend_delta_label(_attn_series, "pp", suffix_target=f"{int(_attn_target)}")[0] \
-                        if _attn_series else f"Target {int(_attn_target)}"
-            # IVT subtitles. Target "≤1%" wording communicates the
-            # ceiling-not-floor semantics. _trend_delta_label's existing
-            # arrow polarity ("▲" = neutral) is technically backwards for
-            # IVT (rising IVT is bad) but at sub-1% baseline values the
-            # arrow movement is tiny — flagging in dv_attention memory
-            # note as a follow-up if it becomes a real problem.
-            _sivt_sub = _trend_delta_label(_sivt_series, "pp", suffix_target=f"≤{_ivt_target:g}%")[0] \
-                        if _sivt_series else f"Target ≤{_ivt_target:g}%"
-            _givt_sub = _trend_delta_label(_givt_series, "pp", suffix_target=f"≤{_ivt_target:g}%")[0] \
-                        if _givt_series else f"Target ≤{_ivt_target:g}%"
+            # Each KPI tile carries a colored trend chip (delta) + a subtitle:
+            # money/count metrics compare 'vs 7-day avg' (pct); rate metrics show
+            # their 'target X' (pp). SIVT/GIVT pass invert=True so a rise reads as
+            # worsening, not green (rising IVT is bad).
+            _rev_delta,  _rev_sub  = _kpi_delta_sub(_rev_series,  "pct")
+            _impr_delta, _impr_sub = _kpi_delta_sub(_impr_series, "pct")
+            _pace_delta, _pace_sub = _kpi_delta_sub(_pace_series, "pp", target=f"{int(_pacing_target)}%")
+            _view_delta, _view_sub = _kpi_delta_sub(_view_series, "pp", target=_view_target_str)
+            _attn_delta, _attn_sub = _kpi_delta_sub(_attn_series, "pp", target=f"{int(_attn_target)}")
+            _sivt_delta, _sivt_sub = _kpi_delta_sub(_sivt_series, "pp", invert=True, target=f"≤{_ivt_target:g}%")
+            _givt_delta, _givt_sub = _kpi_delta_sub(_givt_series, "pp", invert=True, target=f"≤{_ivt_target:g}%")
             if _ctr_bench_str:
-                _ctr_sub = _trend_delta_label(_ctr_series, "pp", suffix_target=_ctr_bench_str)[0] \
-                           if _ctr_series else f"Benchmark {_ctr_bench_str}"
+                _ctr_delta, _ctr_sub = _kpi_delta_sub(_ctr_series, "pp", target=_ctr_bench_str)
             else:
-                _ctr_sub = _trend_delta_label(_ctr_series, "pp")[0] if _ctr_series else "—"
+                _ctr_delta, _ctr_sub = _kpi_delta_sub(_ctr_series, "pp", no_data="—")
 
             if _video_li_count > 0 and pd.notna(avg_vcr):
                 _vcr_val = f"{avg_vcr:.1f}%"
-                # Match the Viewability/Attention/SIVT/GIVT subtitle pattern:
-                # trend-vs-prior-avg + target. Keep the video-line count too
-                # so the user knows the average is across N lines, not 1 —
-                # rendered as a parenthetical so the trend stays prominent.
+                # Keep the video-line count in the subtitle so the user knows the
+                # average spans N lines, not 1.
                 _vcr_target_str = f"{_vcr_target:g}%"
                 _lines_bit = f"{int(_video_li_count)} video line{'s' if _video_li_count != 1 else ''}"
-                _vcr_trend = _trend_delta_label(
-                    _vcr_series, "pp",
-                    suffix_target=f"{_vcr_target_str} · {_lines_bit}",
-                )[0] if _vcr_series else f"Target {_vcr_target_str} · {_lines_bit}"
-                _vcr_sub = _vcr_trend
+                _vcr_delta, _vcr_sub = _kpi_delta_sub(
+                    _vcr_series, "pp", target=f"{_vcr_target_str} · {_lines_bit}")
             else:
                 _vcr_val = "—"
+                _vcr_delta = ""
                 _vcr_sub = "No video"
                 _vcr_spark = ""  # no sparkline when no video data
             # Single grid container so all nine tiles stretch to equal
@@ -4618,23 +4590,25 @@ if st.session_state.active_view == "campaigns":
             # (Avg pacing now among them) are standard 23px tiles. Reuses the
             # original `_kpi_tile` + per-metric sparkline vars; all nine share
             # the SAME `.kpi-spark` sparkline so the end-dots render identically.
+            st.markdown('<div class="nw-section-eyebrow">Today’s totals</div>',
+                        unsafe_allow_html=True)
             st.markdown(
                 '<div class="nw-kpi-cards">'
-                + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark, lead=True)
+                + _kpi_tile("Revenue", _fmt_money(total_rev), _rev_sub or None, _rev_spark, lead=True, delta=_rev_delta)
                 + _kpi_tile("Avg pacing",
                             f"{avg_pacing:.1f}%" if pd.notna(avg_pacing) else "—",
-                            _pace_sub, _pace_spark)
-                + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark)
+                            _pace_sub, _pace_spark, delta=_pace_delta)
+                + _kpi_tile("Impressions", _fmt_count(total_impr), _impr_sub or None, _impr_spark, delta=_impr_delta)
                 + _kpi_tile("Viewability",
                             f"{avg_viewability:.1f}%" if pd.notna(avg_viewability) else "—",
-                            _view_sub, _view_spark)
-                + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark)
-                + _kpi_tile("SIVT", _ivt_disp(_sivt_total), _sivt_sub, _sivt_spark)
-                + _kpi_tile("GIVT", _ivt_disp(_givt_total), _givt_sub, _givt_spark)
-                + _kpi_tile("VCR", _vcr_val, _vcr_sub, _vcr_spark)
+                            _view_sub, _view_spark, delta=_view_delta)
+                + _kpi_tile("Attention", _attn_disp, _attn_sub, _attn_spark, delta=_attn_delta)
+                + _kpi_tile("SIVT", _ivt_disp(_sivt_total), _sivt_sub, _sivt_spark, delta=_sivt_delta)
+                + _kpi_tile("GIVT", _ivt_disp(_givt_total), _givt_sub, _givt_spark, delta=_givt_delta)
+                + _kpi_tile("VCR", _vcr_val, _vcr_sub, _vcr_spark, delta=_vcr_delta)
                 + _kpi_tile("CTR",
                             f"{avg_ctr:.2f}%" if pd.notna(avg_ctr) else "—",
-                            _ctr_sub, _ctr_spark)
+                            _ctr_sub, _ctr_spark, delta=_ctr_delta)
                 + '</div>',
                 unsafe_allow_html=True,
             )
@@ -4645,8 +4619,12 @@ if st.session_state.active_view == "campaigns":
             # collapsed "Priority flights" section below the headline numbers,
             # expandable on demand (the `nw-na--collapsible` modifier opts them
             # out of the desktop force-open).
-            st.markdown('<div class="nw-section-eyebrow">Priority flights</div>',
-                        unsafe_allow_html=True)
+            _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
+            st.markdown(
+                '<div class="nw-section-eyebrow">Priority flights · daily monitor'
+                f'<span class="nw-section-sub">2 betting flights · CPA goal ${_ttd_goal:,.0f}</span>'
+                '</div>',
+                unsafe_allow_html=True)
             # Window each card from the earliest start_date of that campaign's
             # LIs that pass the active filters — view_gam is already filtered
             # (Status etc.), so the card follows the dashboard filter. With
@@ -4664,8 +4642,7 @@ if st.session_state.active_view == "campaigns":
             # handoff): each row is the always-visible summary (name · CPA · goal
             # pill · stats · breach sparkline) and the full editorial scorecard is
             # one tap away in the collapsed body. Both graded against the
-            # configured CPA goal.
-            _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
+            # configured CPA goal (_ttd_goal, computed above for the eyebrow).
             _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")),
                             goal=_ttd_goal)
             _render_ttd_cpa(
