@@ -5142,14 +5142,19 @@ if st.session_state.active_view == "campaigns":
                     return f'<span class="{cls}">${v:,.0f}</span>'
                 return f'<span class="{cls}">${v:,.0f}</span>'
 
-            def _progress_html(p):
+            def _progress_html(p, pace=None):
                 if pd.isna(p): return ""
                 pct = max(0.0, min(1.0, p)) * 100
-                # Bar color is muted gray-green (the existing pace pill
-                # already communicates red/amber/green by-band; making the
-                # bar match the pace band too would be visual repetition).
-                # Inline % label sits flush-right of the bar.
-                cls = "prog-green"
+                # Bar color follows the row's PACE band so it matches the Pace
+                # pill and the under/off-target/healthy legend: green = on-pace,
+                # amber = off-target OR overpacing, red = under. The bar WIDTH is
+                # delivery completion; the COLOR is pacing health (was always
+                # green, which read as "healthy" even for off-target lines).
+                # No pace data → neutral green default. Inline % label flush-right.
+                _pn = pd.to_numeric(pace, errors="coerce")
+                _band = dl.pace_band(_pn, _pacing_target) if pd.notna(_pn) else None
+                cls = {"red": "prog-red", "amber": "prog-amber",
+                       "over": "prog-amber"}.get(_band, "prog-green")
                 return (
                     '<div class="nw-prog-wrap">'
                     f'<div class="nw-prog-bar"><div class="nw-prog-fill {cls}" style="width:{pct:.0f}%"></div></div>'
@@ -6083,7 +6088,7 @@ if st.session_state.active_view == "campaigns":
                     f'<div class="num center">{_ctr_html(_ctr, _fmt_str, p_prior=_ctr_prior)}</div>'
                     f'<div class="num center">{_vcr_html(_vcr_val, _is_video, _fmt_str, p_prior=_vcr_prior)}</div>'
                     f'<div>{_seller_html}</div>'
-                    f'<div>{_progress_html(_progress)}</div>'
+                    f'<div>{_progress_html(_progress, _pace)}</div>'
                     + _row_m +
                     '</summary>'
                     + _drawer_html(row) +

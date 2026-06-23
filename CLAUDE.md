@@ -351,12 +351,19 @@ Rules that survive any future restyle:
 - **Green is asymmetric** (the green-overwhelm rule, 2026-05-25; muted
   tier added 2026-06-12 after the first themed deploy glowed green):
   high-frequency "fine/improving" signals — per-cell ▲ deltas, in-range
-  pace/eCPM text, progress bars, all-clear banners, on-track chart
-  lines, gaining momentum rows — use `--state-positive-muted`
+  pace/eCPM text, the drawer delivery progress bar, all-clear banners,
+  on-track chart lines, gaining momentum rows — use `--state-positive-muted`
   (`#6f8f56` on paper); the all-clear banner tint runs quieter than
   red/amber. Saturated `--state-positive #3c6b14` is reserved for
   green-as-a-signal: status chips/pills, enabled badges. Amber/red are
   always loud — healthy recedes, exceptions own the page.
+  **Exception — the Direct table PROGRESS bar follows the row's pace band**
+  (`_progress_html(p, pace)` → `dl.pace_band`): green on-pace / amber
+  off-target or overpacing / red under, so the bar's color matches the Pace
+  pill and the under/off-target/healthy legend. The bar **width** is delivery
+  completion; the **color** is pacing health. It was previously always
+  muted-green, which read as "healthy" even on off-target lines (Roger flagged
+  a 34%-pace line with a green bar, 2026-06-23). No pace data → neutral green.
 - **Sparklines are neutral** (`--text-secondary`) — trend shape only;
   severity belongs to bands/banners. The drawer 7-day delivery chart is
   the one state-colored line (it *is* a pace-health signal) and carries a
