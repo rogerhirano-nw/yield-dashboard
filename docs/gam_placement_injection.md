@@ -62,18 +62,30 @@ Mitigations, by rigor:
    in GTM/GA4) and requests `cfg.viewUrl` if set — **put the agency's DCM
    viewable-impression tracker there when they provide one**. Verification
    marker: `#nw-sponsor-logo-viewed` appears in the DOM on fire.
-2. **Carrier-reposition (LIVE on the Infiniti logo, 2026-06-11 evening)** —
-   makes GAM Active View honest: the watcher glues the carrier slot div
-   (whose iframe GAM measures) onto the injected element with
-   `position:fixed`, rAF-synced on scroll/resize plus img-load and delayed
-   re-syncs. CSS-only, so the GPT iframe never detaches/reloads;
+2. **Carrier-reposition (LIVE on the Infiniti logo, 2026-06-11 evening;
+   un-clip fix 2026-06-22)** — makes GAM Active View honest: the watcher
+   glues the carrier slot div (whose iframe GAM measures) onto the injected
+   element with `position:fixed`, rAF-synced on scroll/resize plus img-load
+   and delayed re-syncs. CSS-only, so the GPT iframe never detaches/reloads;
    transparent + `pointer-events:none`, so clicks pass through to the
    content. Verified: carrier and strip geometry identical at rest and
-   while scrolling off-viewport. Empirical basis: the flight was already
-   99.5% Active-View-*measurable* but ~1% viewable because the iframe sat
-   at the page bottom — after this patch GAM's viewable% tracks the strip.
-   (The incumbent-era creatives measured 0% measurable — older render
-   path; this stack's friendly-iframe render is measurable.)
+   while scrolling off-viewport.
+   **Size the carrier to the iframe's REAL height, never the visible
+   element's.** GPT forces the out-of-page iframe to a fixed height
+   (**~150px** for this slot) regardless of a 1x1 placeholder. Active View
+   measures that iframe element and **respects ancestor `overflow:hidden`
+   clipping** (it's IntersectionObserver-based), so a carrier clipped to the
+   logo's ~24px leaves only ~16% of the iframe in view — under the 50% bar —
+   and books every impression **not-viewable**. This is exactly what bit the
+   sponsor logo: it ran ~1% viewable / mostly 0% measurable for weeks despite
+   the glue working, until the carrier was sized to the iframe's full height
+   (`overflow:visible`, `height = max(iframe.offsetHeight, …)`). Confirmed
+   live 2026-06-22 by reading the iframe's IntersectionObserver ratio:
+   **0.16 clipped → 1.00 un-clipped**. The carrier stays transparent +
+   `pointer-events:none`, so the oversized (but empty) carrier is invisible;
+   AV then credits the in-view geometry where the logo actually sits. (The
+   incumbent-era creatives measured 0% measurable — older render path; this
+   stack's friendly-iframe render is measurable.)
 3. **Full reposition variant (build before selling banner-size
    injections)**: same idea but the GPT iframe IS the visible ad —
    position the carrier over a spacer at the target location instead of

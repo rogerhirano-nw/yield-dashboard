@@ -16,12 +16,34 @@ view**, certified live: oop1 iframe rendering the watcher creative
 one logo, impression pixels exactly once, MRC viewability beacon firing,
 lazy interstitial returns "no ad" on scroll. The original goal — always
 through the eager OOP unit, everything in GAM, nothing else on the page —
-is achieved. GAM Active View was then made **honest** the same evening via
-the carrier-reposition patch (the watcher glues the carrier slot onto the
+is achieved. GAM Active View was then wired to track the strip via the
+carrier-reposition patch (the watcher glues the carrier slot onto the
 strip with position:fixed scroll-synced CSS — see
-`docs/gam_placement_injection.md`), so GAM's viewable% tracks the real
-strip. Layered measurement: GAM AV + once-guarded agency pixels + MRC
-beacon → agency DCM tracker (`cfg.viewUrl`, pending OMD's URL).
+`docs/gam_placement_injection.md`). Layered measurement: GAM AV +
+once-guarded agency pixels + MRC beacon → agency DCM tracker
+(`cfg.viewUrl`, never supplied — OMD declined a viewable pixel, so GAM is
+the measurement of record).
+
+> **Active View un-clip fix (2026-06-22).** The carrier-reposition above
+> did **not** actually make AV honest — the LI sat at ~1% viewable / mostly
+> 0% *measurable* for weeks. Root cause, found by inspecting the live JT
+> Batson article: GPT forces the out-of-page iframe to **~150px tall**, but
+> the carrier clipped it (`overflow:hidden`) to the logo's **~24px**, so
+> Active View — which measures the iframe element and respects the ancestor
+> clip — saw only **16%** of it in view, under the 50% bar, and booked every
+> impression not-viewable. The iframe is **not** destroyed by hydration (the
+> earlier theory); it survives and the glue works — it was just clipped. Fix:
+> size the carrier to the iframe's **real height** (no overflow clip), so AV
+> measures the whole in-view iframe. Verified live with an
+> IntersectionObserver (AV's own geometry): in-view ratio **0.16 clipped →
+> 1.00 un-clipped**, logo render unchanged. So impressions
+> (`AD_SERVER_IMPRESSIONS`) **and** viewability (Active View) now come from
+> the one creative on the one LI, straight out of the normal GAM report — no
+> beacon, no second counter. Snippet:
+> `docs/snippets/article_sponsor_logo_creative.html`; apply via
+> `scripts/apply_sponsor_logo_av_fix.py` (dry-run default, `APPLY=true`) or
+> the `apply_sponsor_logo_av_fix.yml` workflow. Confirm on the next day's
+> `gam_campaigns.viewable_imps_1d` for LI 7336465381 (AV lags ~1 day).
 
 Everything below is the build history: the oop2 era (why it never rendered
 on articles), the carriers that were built and rolled back, and the gotchas

@@ -21,3 +21,6 @@ static/fonts/*
 !.claude/settings.json
 !.claude/hooks
 !.claude/hooks/**
+.venv/
+.playwright-mcp/
+sponsor-logo-top.png
