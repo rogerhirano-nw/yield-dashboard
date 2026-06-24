@@ -1163,9 +1163,14 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
    per zone: triage reads as the lede, the hero numbers are the first
    read, the QA metrics recede to a supporting line.
    ═══════════════════════════════════════════════════════════════════ */
-/* Section eyebrow (e.g. "Priority flights"). */
-.nw-section-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+/* Section eyebrow (e.g. "Priority flights") — leads with the brand-red tick
+   (sanctioned chrome, like .nw-eyebrow), matching the mockup's section rhythm
+   (Today's totals / Priority flights / All direct campaigns / Programmatic). */
+.nw-section-eyebrow { display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
   font-weight: 700; color: var(--text-secondary); margin: 14px 0 8px; }
+.nw-section-eyebrow::before { content: ""; width: 7px; height: 7px;
+  background: var(--brand-red); flex: none; }
 /* Eyebrow trailing subtitle (e.g. "· 2 betting flights · CPA goal $150") —
    sans, sentence case, muted; rides on the same line as the eyebrow. */
 .nw-section-sub { font-family: var(--font-sans); font-weight: 400; letter-spacing: 0;
@@ -6084,6 +6089,7 @@ if st.session_state.active_view == "campaigns":
             if _direct_total_pages > 1:
                 _direct_tbl_sub += f" · page {_direct_cur_page + 1}/{_direct_total_pages}"
             _table_html = (
+                '<div class="nw-section-eyebrow">All direct campaigns</div>'
                 '<div class="nw-tbl-wrap nw-tbl-direct">'
                 '<div class="nw-tbl-head">'
                 '<div class="nw-tbl-title">Direct campaigns'
