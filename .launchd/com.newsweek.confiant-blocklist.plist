@@ -41,10 +41,15 @@
     <!-- Protection 28044902 is "Everything" — the production catch-all
          Protection that covers all Newsweek inventory. Verify in
          GAM > Delivery > Protections before changing. -->
+    <!-- Use the pinned venv at ~/.confiant-blocklist/venv (created 2026-06-24
+         in PR #307). Lives alongside the rest of the cron's state directory.
+         Built from /opt/homebrew/opt/python@3.12/bin/python3.12 — the
+         versioned Homebrew path, so future "python3" minor-version bumps
+         don't reset site-packages and silently break the cron.
+         See docs/confiant_blocklist.md "Venv-pinned python" for details. -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/env</string>
-        <string>python3</string>
+        <string>/Users/roger/.confiant-blocklist/venv/bin/python3</string>
         <string>/Users/roger/code/yield-dashboard/confiant_blocklist.py</string>
         <string>--protection-id</string>
         <string>28044902</string>

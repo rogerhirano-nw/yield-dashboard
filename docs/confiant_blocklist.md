@@ -30,6 +30,37 @@ Tradeoffs you're accepting:
 
 [1]: https://support.google.com/admanager/thread/7512693?hl=en
 
+## Venv-pinned python (PR #307, 2026-06-24)
+
+The launchd plists call a pinned venv at `~/.confiant-blocklist/venv/bin/python3`
+instead of `/usr/bin/env python3`. Reason: on 2026-06-24, Homebrew bumped
+`/opt/homebrew/bin/python3` to a fresh 3.12.13 install, the new
+site-packages didn't have `requests`, and the cron silently failed for a
+day (the script crashed before reaching the email path). The pinned venv
+isolates the cron from future Homebrew/Apple python bumps.
+
+Recreate the venv on a new machine:
+
+```bash
+# Build from the versioned path so future "python3" bumps don't affect it
+/opt/homebrew/opt/python@3.12/bin/python3.12 -m venv ~/.confiant-blocklist/venv
+
+# Install deps
+~/.confiant-blocklist/venv/bin/pip install -r ~/code/yield-dashboard/requirements.txt
+
+# Playwright Chromium (shared with the daily blocklist cron's profile dir)
+~/.confiant-blocklist/venv/bin/playwright install chromium
+
+# Reload the launchd jobs so they pick up the new ProgramArguments
+launchctl unload  ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+launchctl load -w ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+```
+
+If `python@3.12` ever gets removed by Homebrew (Homebrew sometimes drops
+older versions when new ones land), the venv's interpreter path goes
+stale. The fix is the same five lines — rebuild against the new
+versioned path (`python@3.13`, etc).
+
 ## First-time setup
 
 ```bash
