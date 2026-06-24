@@ -509,12 +509,14 @@ def _attention_html(idx, prior=None) -> str:
         return '<div class="cell-dash">—</div>'
     v = float(idx)
     _b = dl.attention_band(v)
+    # In-range reads plain INK (black); only a deviation gets color — a pill,
+    # amber (slightly below median) or red (well below). (Roger 2026-06-24.)
     if _b == "red":
         cell = f'<div class="pill pill-red">{v:.0f}</div>'
     elif _b == "amber":
-        cell = f'<div class="txt-amber">{v:.0f}</div>'
+        cell = f'<div class="pill pill-amber">{v:.0f}</div>'
     else:
-        cell = f'<div class="txt-green">{v:.0f}</div>'
+        cell = f'<div class="txt-ink">{v:.0f}</div>'
     if prior is not None and not pd.isna(prior):
         cell += _delta_below_html(v - float(prior), lower_is_worse=True)
     return cell
@@ -593,14 +595,16 @@ def _ivt_html(pct, prior=None) -> str:
         return '<div class="cell-dash">—</div>'
     v = float(pct)
     _b = dl.ivt_band(v)
+    # In-range (<1%) reads plain INK (black); only a deviation gets color — an
+    # amber pill (1-3%) or red pill (≥3%). (Roger 2026-06-24.)
     if _b == "red":
         cell = f'<div class="pill pill-red">{v:.1f}%</div>'
     elif _b == "amber":
-        cell = f'<div class="txt-amber">{v:.1f}%</div>'
+        cell = f'<div class="pill pill-amber">{v:.1f}%</div>'
     elif v == 0:
-        cell = '<div class="txt-green">0%</div>'
+        cell = '<div class="txt-ink">0%</div>'
     else:
-        cell = f'<div class="txt-green">{v:.2f}%</div>'
+        cell = f'<div class="txt-ink">{v:.2f}%</div>'
     if prior is not None and not pd.isna(prior):
         cell += _delta_below_html(v - float(prior), lower_is_worse=False)
     return cell
@@ -1055,6 +1059,11 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
   background: var(--surface-1) !important; color: var(--text-primary) !important;
 }
 [class*="st-key-nwpgrwrap_"] .stButton button:disabled { opacity: .4 !important; }
+/* Desktop: hide the Direct table's TOP pager (the bottom one is enough on a
+   wide layout); mobile keeps both so you needn't scroll past 25 rows to page. */
+@media (min-width: 641px) {
+  .st-key-nwpgrwrap_direct_top { display: none !important; }
+}
 .nw-pager-cap { text-align: center; line-height: 1.15; }
 .nw-pager-cap b { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
 .nw-pager-cap span { display: block; font-size: 10.5px; color: var(--text-secondary);
@@ -1460,6 +1469,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
    Re-toned for paper 2026-06 (Newsweek rebrand). */
 .txt-green   { display: inline-block; color: var(--state-positive-muted); font-weight: 600; font-size: 13px; }
 .txt-amber   { display: inline-block; color: var(--state-warning);  font-weight: 600; font-size: 13px; }
+/* In-range Attention/SIVT/GIVT values read plain INK (black) — only deviations
+   get color (the amber/red pills). Same weight/size as txt-green. */
+.txt-ink     { display: inline-block; color: var(--text-primary); font-weight: 600; font-size: 13px; }
 .txt-red     { display: inline-block; color: var(--state-critical); font-weight: 600; font-size: 13px; }
 /* Delta-row palette: worsening = critical, drifting = warning; the
    improving "up" delta stays the quiet green. Same recede-vs-pop logic
