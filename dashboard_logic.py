@@ -1142,6 +1142,56 @@ def cpa_goal_delta(cpa, goal):
     return {"over": c > g, "delta": abs(c - g)}
 
 
+def trend_delta(values, fmt="pct", invert=False):
+    """KPI-tile trend chip: latest value vs the mean of the PRIOR points (the
+    "vs 7-day avg" comparison the Today's-totals strip shows under each number).
+
+    ``fmt``:
+      - ``"pct"`` → relative change, rendered ``"▲ 14.3%"``; ``basis`` is
+        ``"vs 7-day avg"`` (the tile's subtitle when there's no fixed target).
+      - ``"pp"``  → percentage-point change, rendered ``"▲ 3.3pp"``; no basis
+        (the tile shows its ``target`` instead).
+    ``invert``: set True when a RISE is *bad* (SIVT / GIVT) so the good/bad
+    color flips — a climb in fraud reads as worsening, a drop reads green.
+
+    Banding (``cls``, mapped to ``.kpi-delta-*`` in the app):
+      ``|d| < 0.5`` → ``"flat"`` (noise band, neutral); improving → ``"up"``
+      (muted green, the design's "fine/improving" tier); worsening →
+      ``"neutral"`` (<2), ``"amber"`` (<5), ``"down"`` (≥5, red).
+
+    Returns ``None`` when there are <2 valid points or a zero pct base; else
+    ``{"delta": float, "text": str, "cls": str, "basis": str|None}``."""
+    nums = [float(v) for v in (values or [])
+            if v is not None and not (isinstance(v, float) and math.isnan(v))]
+    if len(nums) < 2:
+        return None
+    latest = nums[-1]
+    prior = nums[:-1]
+    base = sum(prior) / len(prior)
+    if fmt == "pct":
+        if base == 0:
+            return None
+        d = (latest - base) / abs(base) * 100.0
+        unit, basis = "%", "vs 7-day avg"
+    else:
+        d = latest - base
+        unit, basis = "pp", None
+    ad = abs(d)
+    if ad < 0.5:
+        return {"delta": d, "text": "flat", "cls": "flat", "basis": basis}
+    good = (d < 0) if invert else (d > 0)
+    arrow = "▲" if d > 0 else "▼"
+    if good:
+        cls = "up"
+    elif ad < 2:
+        cls = "neutral"
+    elif ad < 5:
+        cls = "amber"
+    else:
+        cls = "down"
+    return {"delta": d, "text": f"{arrow} {ad:.1f}{unit}", "cls": cls, "basis": basis}
+
+
 def cpa_join_key(name):
     """Key linking a TTD ad_group ↔ a GAM line-item name for the gambling CPA
     flights: ``"<audience>|<size>"`` (e.g. ``"casino|728x90-300x250"``). None
