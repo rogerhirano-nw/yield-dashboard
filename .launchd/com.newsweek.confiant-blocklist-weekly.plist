@@ -25,10 +25,11 @@
     <key>WorkingDirectory</key>
     <string>/Users/roger/code/yield-dashboard</string>
 
+    <!-- Pinned venv (created 2026-06-24, PR #307) — same one the daily
+         cron uses. See docs/confiant_blocklist.md "Venv-pinned python". -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/env</string>
-        <string>python3</string>
+        <string>/Users/roger/.confiant-blocklist/venv/bin/python3</string>
         <string>/Users/roger/code/yield-dashboard/confiant_blocklist_weekly_report.py</string>
         <string>--to</string>
         <string>confiant-alerts@newsweek.com</string>
