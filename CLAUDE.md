@@ -664,9 +664,12 @@ Rules that survive any future restyle:
      sliced from **`_direct_view`** = `view_gam` narrowed to the active index set
      — the per-row `_vw_rate`/`_ctr_rate` `index.get_loc` lookups stay keyed on
      the **full** `view_gam`, so they still resolve — and the table subtitle names
-     the category (`<Category> · N of M line items`). Two-reds rule holds: the
-     **"All flagged" dot is ink** (not brand-red); only Ending/Underpacing dots
-     are severity red. The dead briefing builders (`_na_row` / `_na_subrows` /
+     the category (`<Category> · N of M line items`). The **"All flagged" dot is
+     the brand-red accent** (per the design mockup `.fpill.all { --c: var(--brand) }`
+     — it marks the primary "show everything" pill and reads as chrome like the
+     eyebrow tick, not a data severity); Ending/Underpacing are severity red, and
+     triage dots **keep their color when the pill is active** (no surface-0
+     override — matches the mockup). The dead briefing builders (`_na_row` / `_na_subrows` /
      `_lr_rows_html` / `_*_detail` + the `.nw-brief*` / `.nw-na-srow` / `.nw-lr-*`
      CSS) were removed; the **`.nw-na-*` shell is kept** — the PMP-signals
      accordion still uses it.
