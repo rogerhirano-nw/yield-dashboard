@@ -4418,7 +4418,9 @@ if st.session_state.active_view == "campaigns":
                     )
                 st.markdown(
                     f'<div class="nw-ttd-wrap">'
-                    f'<details class="nw-na nw-na--collapsible" open>'
+                    # Load CLOSED — the slim monitor summary row shows; the full
+                    # scorecard is one tap away (matches the mockup). No `open`.
+                    f'<details class="nw-na nw-na--collapsible">'
                     f'{summary_html}'
                     f'<div class="nw-na-body" style="padding:12px 13px 4px">'
                     f'{body_inner}'
