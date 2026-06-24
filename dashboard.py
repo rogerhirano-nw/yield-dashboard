@@ -1004,7 +1004,10 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
               text-transform: uppercase; color: var(--brand-red); font-weight: 600; }
 .nw-eyebrow::before { content: ""; width: 8px; height: 8px; background: var(--brand-red); }
 .nw-timestamp { font-size: 12px; color: var(--text-secondary);
-                font-variant-numeric: tabular-nums; }
+                font-variant-numeric: tabular-nums; text-align: right; }
+/* "Updated <relative>" subline under the header timestamp (mockup parity). */
+.nw-ts-sub { display: block; font-size: 11px; color: var(--text-muted);
+             margin-top: 2px; }
 /* Filter labels — field labels above selects. Visibly less prominent than
    the page eyebrow: smaller font, lighter weight, less tracked, dimmer. */
 .nw-filter-label { font-size: 9px; letter-spacing: 0.02em; text-transform: uppercase;
@@ -1881,9 +1884,10 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 .pill-dt-pa  { background: var(--surface-2); color: var(--text-secondary); }
 .pill-dt-pmp { background: var(--cat-purple-surface); color: var(--cat-purple); }
 /* eCPM-vs-floor banding (3-step, 2026-06-23 handoff) — the programmatic
-   equivalent of CPA-vs-goal. Below floor = critical (money leaking), within
-   10% above = warning (precarious), ≥10% above = healthy (plain). The
-   below/near cells carry a small "$X below floor" / "near floor" annotation. */
+   equivalent of CPA-vs-goal, graded by how far BELOW floor. >10% below =
+   critical (red, money leaking), within 10% below = warning (amber,
+   precarious), at/above floor = healthy (green). The below/near cells carry a
+   small "$X below floor" annotation. */
 .ecpm-below { background: var(--state-critical-surface); color: var(--state-critical);
               padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
 .ecpm-near  { background: var(--state-warning-surface); color: var(--state-warning);
@@ -3725,10 +3729,23 @@ if st.session_state.active_view == "campaigns":
                 _last_data_refresh_iso()
             )
             _n_lines = len(view_gam)
-            if _ts_str:
-                _render_header_right(f"🕐 {_ts_str} · {_n_lines:,} line items")
-            else:
-                _render_header_right(f"🕐 {_n_lines:,} line items")
+            # Header meta (mockup parity): "<time> · N line items" with an
+            # "Updated <relative>" subline below — no clock glyph.
+            _head_line = (f"{_ts_str} · {_n_lines:,} line items" if _ts_str
+                          else f"{_n_lines:,} line items")
+            _rel = None
+            try:
+                if _ts_iso is not None and pd.notna(_ts_iso):
+                    _age_min = (pd.Timestamp.utcnow()
+                                - pd.to_datetime(_ts_iso, utc=True)).total_seconds() / 60
+                    if _age_min < 2:      _rel = "just now"
+                    elif _age_min < 60:   _rel = f"{int(_age_min)} min ago"
+                    elif _age_min < 1440: _rel = f"{int(_age_min // 60)} h ago"
+                    else:                 _rel = f"{int(_age_min // 1440)} d ago"
+            except Exception:
+                _rel = None
+            _sub = f'<span class="nw-ts-sub">Updated {_rel}</span>' if _rel else ""
+            _render_header_right(f"{_head_line}{_sub}")
 
             # ── Summary numbers (used by both banners and KPI strip).
             total_impr = view_gam["lifetime_impressions_delivered"].sum() if "lifetime_impressions_delivered" in view_gam else 0
@@ -6855,20 +6872,22 @@ if st.session_state.active_view == "campaigns":
             return f'<span class="pill-dt {cls}">{code}</span>'
 
         def _ecpm_cell(ecpm, floor, gap=True):
-            # 3-step eCPM-vs-floor band (dl.ecpm_floor_band): below floor =
-            # critical + "$X below floor", within 10% above = warning + "near
-            # floor", ≥10% above (or no floor) = plain. `gap=False` drops the
-            # annotation (the mobile card already shows the eCPM-vs-floor bar).
+            # 3-step eCPM-vs-floor band (dl.ecpm_floor_band): >10% below floor =
+            # critical (red) + "$X below floor", within 10% below = warning
+            # (amber) + "$X below floor", at/above floor = green, no floor =
+            # plain. `gap=False` drops the annotation (the mobile card already
+            # shows the eCPM-vs-floor bar).
             if ecpm is None or pd.isna(ecpm):
                 return '<span class="cell-dash">—</span>'
             band = dl.ecpm_floor_band(ecpm, floor)
-            if band == "below":
-                ann = (f'<span class="ecpm-gap nw-ecpm-gap--below">${float(floor) - float(ecpm):.2f} below floor</span>'
+            if band in ("below", "near"):
+                cls = "ecpm-below" if band == "below" else "ecpm-near"
+                gcls = "nw-ecpm-gap--below" if band == "below" else "nw-ecpm-gap--near"
+                ann = (f'<span class="ecpm-gap {gcls}">${float(floor) - float(ecpm):.2f} below floor</span>'
                        if gap else "")
-                return f'<span class="ecpm-below">${ecpm:.2f}</span>{ann}'
-            if band == "near":
-                ann = '<span class="ecpm-gap nw-ecpm-gap--near">near floor</span>' if gap else ""
-                return f'<span class="ecpm-near">${ecpm:.2f}</span>{ann}'
+                return f'<span class="{cls}">${ecpm:.2f}</span>{ann}'
+            if band == "above":
+                return f'<span class="txt-green">${ecpm:.2f}</span>'
             return f"${ecpm:.2f}"
 
         def _rev_cell(v):
@@ -6982,19 +7001,19 @@ if st.session_state.active_view == "campaigns":
             _ex_dt_code = {"Programmatic Guaranteed": "PG", "Preferred Deal": "PD",
                            "Private Auction": "PA", "Private Marketplace": "PMP"
                            }.get(_ex.get("Deal Type"), "")
-            # Dollars left on the table = Σ (floor − eCPM) × paid impressions /
-            # 1000 over the breaching deals (the revenue the floor would have
-            # captured), across the displayed window.
-            _imp_b   = pd.to_numeric(_breach_rows.get("Paid Impressions"), errors="coerce").fillna(0)
-            _ecpm_b  = pd.to_numeric(_breach_rows.get("eCPM"), errors="coerce").fillna(0)
-            _floor_b = pd.to_numeric(_breach_rows.get("_floor"), errors="coerce").fillna(0)
-            _dollars_left = float(((_floor_b - _ecpm_b).clip(lower=0) * _imp_b / 1000).sum())
+            # Header = the breach count; the dollar detail moves to the worst-
+            # offender subline as "leaving ~$<gap> CPM on the table across <imps>
+            # imps" (the per-CPM gap × that deal's impressions), matching the
+            # mockup.
             _hd = f"{_n_breach} {_ex_dt_code} deal{'s' if _n_breach != 1 else ''} below floor eCPM".strip()
-            _left_s = f" · ~${_dollars_left:,.0f} left on the table" if _dollars_left >= 1 else ""
+            _ex_imp = pd.to_numeric(_ex.get("Paid Impressions"), errors="coerce")
+            _gap_cpm = max(_ex_floor - _ex_ecpm, 0.0)
+            _left_sub = (f" — leaving ~${_gap_cpm:.2f} CPM on the table across {_pmp_fmt_count(float(_ex_imp))} imps"
+                         if _gap_cpm > 0 and pd.notna(_ex_imp) else "")
             _banners.append(
                 f'<div class="nw-banner sev-amber">'
-                f'<div class="nw-banner-head">⚠ {_hd}{_left_s}</div>'
-                f'<div>Worst: {_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor</div>'
+                f'<div class="nw-banner-head">⚠ {_hd}</div>'
+                f'<div>Worst: {_pmp_esc(_ex_primary)} · ${_ex_ecpm:.2f} vs ${_ex_floor:.2f} floor{_left_sub}</div>'
                 f'</div>'
             )
         # No-delivery is folded into the "PMP signals" accordion below the KPIs.
@@ -7011,10 +7030,9 @@ if st.session_state.active_view == "campaigns":
         # their rate floor (the actionable, money-leaking count).
         _rev_sub  = f"vs ${_d_rev/1000:,.1f}K direct" if _d_rev else None
         _ecpm_sub = f"vs ${_d_ecpm:.2f} direct" if _d_ecpm else None
-        # Every tile carries a sub-line so the row reads even — Paid impressions
-        # was the one ragged tile (no context line). Mirror Revenue's "vs …
-        # direct" comparison (2026-06-23 handoff "even fill").
-        _impr_sub = f"vs {_pmp_fmt_count(_d_impr)} direct" if _d_impr else None
+        # Paid impressions reads "across N active deals" (the deal count it spans),
+        # matching the mockup — not a direct comparison.
+        _impr_sub = f"across {_pmp_count:,} active deals" if _pmp_count else None
         if not _breach_rows.empty:
             _bn = len(_breach_rows)
             _ecpm_sub = (f"{_ecpm_sub} · {_bn} below floor" if _ecpm_sub
@@ -7023,7 +7041,7 @@ if st.session_state.active_view == "campaigns":
             '<div class="nw-kpi-row nw-kpi-row--pmp">'
             + _pmp_tile("Revenue", _pmp_fmt_money(_pmp_rev), _rev_sub)
             + _pmp_tile("Paid impressions", _pmp_fmt_count(_pmp_impr), _impr_sub)
-            + _pmp_tile("Avg eCPM", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub, lead=True)
+            + _pmp_tile("Avg eCPM · yield", f"${_pmp_ecpm:.2f}" if _pmp_ecpm else "—", _ecpm_sub, lead=True)
             + _pmp_tile("Active deals", f"{_pmp_count:,}", _mix_sub or None)
             + '</div>',
             unsafe_allow_html=True,
