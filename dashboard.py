@@ -492,10 +492,11 @@ _parse_gam_salesperson = dl.parse_gam_salesperson
 
 def _attention_html(idx, prior=None) -> str:
     """Render the DV Attention Index. 100 = DV's industry median; higher
-    = better attention. Color bands:
-      red    < 85   (15%+ below median — meaningful underperformance)
-      amber  85-100 (slightly below median)
-      green  ≥ 100  (at or above median)
+    = better attention. dl.attention_band drives the cell — in-range reads
+    plain INK (black); only a deviation gets color, as a pill:
+      < 85   → red pill   (15%+ below median — meaningful underperformance)
+      85-100 → amber pill  (slightly below median)
+      ≥ 100  → ink         (at/above median — healthy, no color)
     None / NaN → em-dash (line/deal not in the DV report).
 
     Optional `prior` (latest-day-excluded mean) appends a "▲/▼ Xpp"
@@ -582,13 +583,14 @@ def _ivt_html(pct, prior=None) -> str:
         the current export — see project_yield_dashboard_dv_attention.md
         memory note for the asks-of-DV list.
 
-    Color bands tuned to industry-standard impression-weighted IVT
-    thresholds:
-      green  < 1%   (excellent — Newsweek's overall publisher IVT
-                     hovers around 0.5-1% per the 2026-05-24 export)
-      amber  1-3%   (acceptable but watch — typical industry tolerance)
-      red    ≥ 3%   (problem — escalate; risk to buyer relationships
-                     and IAB Tag Lab cert)
+    dl.ivt_band drives the cell — in-range reads plain INK (black); only a
+    deviation gets color, as a pill. Thresholds tuned to industry-standard
+    impression-weighted IVT:
+      < 1%  → ink        (excellent — Newsweek's overall publisher IVT
+                          hovers around 0.5-1% per the 2026-05-24 export)
+      1-3%  → amber pill  (acceptable but watch — typical industry tolerance)
+      ≥ 3%  → red pill    (problem — escalate; risk to buyer relationships
+                          and IAB Tag Lab cert)
     Shows 2 decimal places under 1% (where small movements matter) and
     1 decimal at higher values. None / NaN → em-dash."""
     if pct is None or pd.isna(pct):
