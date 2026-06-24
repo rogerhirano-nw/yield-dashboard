@@ -1414,6 +1414,9 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
                border: 1px solid var(--border); padding: 16px 18px; margin: 8px 0; }
 .nw-tbl-head { display: flex; justify-content: space-between; align-items: center;
                margin-bottom: 10px; font-size: 12px; }
+/* Head rendered ABOVE the bordered table card (title + legend as page chrome,
+   not a table row) — aligns left with the section eyebrow, small gap to card. */
+.nw-tbl-head--out { margin: 0 2px 8px; }
 .nw-tbl-title { color: var(--text-primary); font-weight: 600; }
 .nw-tbl-title .nw-tbl-sub { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
 .nw-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-secondary);
@@ -6090,8 +6093,10 @@ if st.session_state.active_view == "campaigns":
                 _direct_tbl_sub += f" · page {_direct_cur_page + 1}/{_direct_total_pages}"
             _table_html = (
                 '<div class="nw-section-eyebrow">All direct campaigns</div>'
-                '<div class="nw-tbl-wrap nw-tbl-direct">'
-                '<div class="nw-tbl-head">'
+                # Title + severity legend sit OUTSIDE the bordered table card
+                # (above it), matching the mockup — the legend is page chrome,
+                # not a table row.
+                '<div class="nw-tbl-head nw-tbl-head--out">'
                 '<div class="nw-tbl-title">Direct campaigns'
                 f'<span class="nw-tbl-sub">{_direct_tbl_sub}</span></div>'
                 '<div class="nw-legend">'
@@ -6101,6 +6106,7 @@ if st.session_state.active_view == "campaigns":
                 '<span>— = N/A</span>'
                 '</div>'
                 '</div>'
+                '<div class="nw-tbl-wrap nw-tbl-direct">'
                 '<div class="nw-rows">'
                 '<div class="nw-row-header">'
                 '<div>Line item</div>'
@@ -7842,8 +7848,9 @@ if st.session_state.active_view == "campaigns":
             _pmp_tbl_sub += f" · page {_cur_page + 1}/{_pmp_total_pages}"
 
         st.markdown(
-            '<div class="nw-tbl-wrap nw-tbl-pmp">'
-            '<div class="nw-tbl-head">'
+            # Title + deal-type legend sit ABOVE the bordered card (page chrome,
+            # not a table row) — same treatment as the Direct table.
+            '<div class="nw-tbl-head nw-tbl-head--out">'
             f'<div class="nw-tbl-title">PMP deals'
             f'<span class="nw-tbl-sub">{_pmp_tbl_sub}</span></div>'
             '<div class="nw-legend-pill">'
@@ -7852,6 +7859,7 @@ if st.session_state.active_view == "campaigns":
             '<span><span class="pill-dt pill-dt-pa">PA</span> Private auction</span>'
             '</div>'
             '</div>'
+            '<div class="nw-tbl-wrap nw-tbl-pmp">'
             '<div class="nw-pmp-rows">'
             '<div class="nw-row-header">'
             '<div>Deal</div><div>Type</div><div>DSP</div><div>SSP</div><div>Format</div>'
