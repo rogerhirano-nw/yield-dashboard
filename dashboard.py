@@ -1195,14 +1195,16 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .nw-fpill--off { opacity: 0.5; cursor: default; }
 .nw-fpill .dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: 0 0 auto; }
 .nw-fpill .ct { font-weight: 700; font-variant-numeric: tabular-nums; }
-/* Severity dots — data severity (allowed): crit red / warn amber / info blue.
-   The "All flagged" dot is INK, not brand-red: brand-red is chrome-only, so a
-   data pill keeps clear of it (the two-reds rule). */
-.nw-fpill--all  .dot { background: var(--text-primary); }
+/* Triage dots. The "All flagged" dot is the BRAND accent (brand-red, like the
+   eyebrow tick) marking the primary "show everything" pill — per the design
+   mockup (`.fpill.all { --c: var(--brand) }`); it reads as chrome, not a data
+   severity. The rest are data severity: crit red / warn amber / info blue.
+   Dots KEEP their color when the pill is active (dark bg) — matching the
+   mockup, which has no active-state dot override. */
+.nw-fpill--all  .dot { background: var(--brand-red); }
 .nw-fpill--crit .dot { background: var(--state-critical); }
 .nw-fpill--warn .dot { background: var(--state-warning); }
 .nw-fpill--info .dot { background: #1f5fa8; }            /* --viz info blue */
-.nw-fpill--on .dot { background: var(--surface-0); }
 .nw-triage__right { margin-left: auto; font-family: var(--font-display);
   font-weight: 700; font-size: 15px; color: var(--text-primary);
   font-variant-numeric: tabular-nums; }
