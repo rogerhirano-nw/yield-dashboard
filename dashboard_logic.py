@@ -661,10 +661,11 @@ def pmp_deal_floor(name):
 
 def ecpm_floor_band(ecpm, floor):
     """3-step eCPM-vs-rate-floor band for programmatic yield cells — the
-    programmatic equivalent of CPA-vs-goal:
-      ``"below"`` eCPM < floor          (money leaking, critical)
-      ``"near"``  floor ≤ eCPM < floor×1.1 (precarious, warning)
-      ``"above"`` eCPM ≥ floor×1.1      (healthy)
+    programmatic equivalent of CPA-vs-goal, graded by how far BELOW the floor
+    the eCPM has fallen:
+      ``"above"`` eCPM ≥ floor            (at/above floor — healthy, green)
+      ``"near"``  floor×0.9 ≤ eCPM < floor (within 10% below — precarious, amber)
+      ``"below"`` eCPM < floor×0.9        (>10% below — money leaking, red)
     ``None`` when either value is missing/NaN or the floor isn't positive —
     no floor, no band (cell renders plain). Centralized so the PMP table and
     the rolled-out SSP tables (Magnite/Pubmatic) band identically."""
@@ -675,11 +676,11 @@ def ecpm_floor_band(ecpm, floor):
         return None
     if pd.isna(e) or pd.isna(f) or f <= 0:
         return None
-    if e < f:
-        return "below"
-    if e < f * 1.1:
+    if e >= f:
+        return "above"
+    if e >= f * 0.9:
         return "near"
-    return "above"
+    return "below"
 
 
 # ── Pacing ──────────────────────────────────────────────────────────────

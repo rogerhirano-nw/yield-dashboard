@@ -189,11 +189,14 @@ def test_inactivity_band_boundaries():
 
 def test_ecpm_floor_band():
     from dashboard_logic import ecpm_floor_band
-    assert ecpm_floor_band(4.10, 5.00) == "below"   # money leaking
-    assert ecpm_floor_band(5.00, 5.00) == "near"    # exactly at floor = precarious
-    assert ecpm_floor_band(5.49, 5.00) == "near"    # within 10% above
-    assert ecpm_floor_band(5.50, 5.00) == "above"   # 10% above = healthy
-    assert ecpm_floor_band(12.0, 5.00) == "above"
+    # Graded by how far BELOW the floor (mockup scheme).
+    assert ecpm_floor_band(14.20, 14.00) == "above"  # at/above floor = green
+    assert ecpm_floor_band(14.00, 14.00) == "above"  # exactly at floor
+    assert ecpm_floor_band(12.60, 14.00) == "near"   # 90% of floor = within 10% below = amber
+    assert ecpm_floor_band(12.59, 14.00) == "below"  # just past 10% below = red
+    assert ecpm_floor_band(5.40, 14.00) == "below"   # far below floor = red
+    assert ecpm_floor_band(4.50, 5.00) == "near"     # 90% = amber boundary
+    assert ecpm_floor_band(4.49, 5.00) == "below"
     # missing / invalid → no band
     assert ecpm_floor_band(None, 5.00) is None
     assert ecpm_floor_band(8.0, None) is None
