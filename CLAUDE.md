@@ -979,6 +979,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
   diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
   that creates the test LIs + creatives + LICAs and reduces the control goal).
+- `docs/pps_setup.md` — Publisher Provided Signals (PPS). Two publisher routes
+  (GAM-UI mapping vs pass-at-ad-request-time via GPT `setConfig({pps:…})`); we
+  ship the **client-side contextual** route. Snippet
+  `docs/snippets/pps_content_signals.js` maps the article's section/topic →
+  **IAB Content Taxonomy 2.2** IDs and sets them before the first ad request.
+  Website-tag / config work — **not** dashboard pipeline code; nothing here
+  runs it. Audience signals (`IAB_AUDIENCE_1_1`) left off pending a
+  segment→IAB lookup + consent gating.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
