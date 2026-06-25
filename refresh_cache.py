@@ -1163,14 +1163,14 @@ def _refresh_ttd_campaign(
 def refresh_ttd() -> int:
     """Poll for TTD Luckyland Casino report and upsert into ttd_luckyland."""
     from ttd_client import TTD_SUBJECT_NEEDLE
-    # Luckyland KPI = pixel 03 ("03 - Total Click + View Conversions"), which
-    # maps to "usergenLLC Registration Complete" in the current IdentityAlliance
-    # pixel naming.  The original "usergenLLC Purchase [IdentityAlliance]"
-    # column no longer appears in the live TTD report after a pixel rename; this
-    # is the closest current equivalent until TTD restores the Purchase pixel.
+    # Luckyland KPI = "usergenLLC Purchase [IdentityAlliance]" — the authoritative
+    # acquisition pixel (26 June conversions, CPA $346), matching the manually-
+    # produced report methodology.  The automated TTD scheduled report must include
+    # this column; if it's absent the parser logs a WARNING and falls back to the
+    # conversion auto-sum until TTD adds it to the report configuration.
     return _refresh_ttd_campaign(
         TTD_SUBJECT_NEEDLE, "ttd_luckyland",
-        primary_conv_col="03 - Total Click + View Conversions",
+        primary_conv_col="usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions",
     )
 
 
