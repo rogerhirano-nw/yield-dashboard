@@ -4,6 +4,21 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-25 — Publisher Provided Signals (PPS) contextual snippet
+
+- **Added a client-side PPS route for contextual content signals.** New
+  page-tag snippet `docs/snippets/pps_content_signals.js` resolves the
+  article's editorial section/topic and passes the matching **IAB Content
+  Taxonomy 2.2** category IDs to buyers via
+  `googletag.setConfig({ pps: { taxonomies: { IAB_CONTENT_2_2: … } } })` — the
+  "pass at ad request time" (Path B) route, an alternative to the GAM-UI
+  mapping route. Section→IAB mapping is seeded from the canonical IAB 2.2 sheet
+  (News & Politics 379, Business & Finance 52, Technology & Computing 596,
+  Sports 483, Automotive 1, …) for RevOps to review. Audience signals
+  (`IAB_AUDIENCE_1_1`) left off by default (need a segment→IAB lookup +
+  consent gating). Runbook: `docs/pps_setup.md`. Config-only / website-tag
+  work — nothing in the dashboard pipeline changes.
+
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily
