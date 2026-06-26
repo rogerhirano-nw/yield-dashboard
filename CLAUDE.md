@@ -923,6 +923,14 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/tam_prebid_integration.md` — partner integration (Elly's team):
+  **Amazon TAM first, then Prebid Server**. Tracks the project state, the
+  open items on each side, and the **consent-signal answer** (target **TCF
+  v2.2**, not v2.0 — IAB Europe sunset v2.0 in Nov 2023; TAM forwards the TC
+  string via on-page `apstag`/`__tcfapi`, Prebid Server via OpenRTB
+  `regs.ext.gdpr` + `user.ext.consent` + US privacy USP/GPP), with a **draft
+  reply** (not sent). RevOps coordination, not a code change — this repo
+  serves no ads and manages no consent.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

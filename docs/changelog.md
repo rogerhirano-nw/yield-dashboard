@@ -4,6 +4,21 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-26 — TAM + Prebid Server integration tracking doc
+
+- **New partner integration (Elly's team): Amazon TAM first, then Prebid
+  Server.** Added `docs/tam_prebid_integration.md` to track the project —
+  partner timeline (TAM setup ~2026-07-01, Prebid Server endpoint/docs the
+  following week), the open items on each side, and the **consent-signal
+  answer** the partner asked for. Key finding: **target TCF v2.2, not v2.0**
+  (IAB Europe sunset live v2.0 strings 2023-11-20). TAM consent is forwarded
+  automatically by on-page `apstag` from the CMP's `__tcfapi`; Prebid Server
+  consent rides OpenRTB (`regs.ext.gdpr` + `user.ext.consent`, plus US
+  privacy via USP/GPP). Doc includes a **draft reply to the partner** (not
+  sent) with bracketed items for ad-ops/CMP to confirm (CMP vendor, USP vs
+  GPP, schain/sellers.json). No code change — this repo doesn't serve ads or
+  manage consent.
+
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily
