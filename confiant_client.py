@@ -31,6 +31,7 @@ import csv
 import io
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -233,23 +234,71 @@ def fetch_via_api(
     headers = {"X-Auth-Token": api_key, "Content-Type": "application/json"}
 
     # 1. Queue the report
-    r = requests.post(
-        f"{_API_BASE}/reports/{report_type}", json=body, headers=headers, timeout=30,
+    # Transient network errors that the inner retry catches. NOT HTTP 4xx —
+    # those need human inspection (bad API key, malformed request, etc.) so
+    # they propagate immediately via raise_for_status.
+    _TRANSIENT_REQ_ERRORS = (
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ChunkedEncodingError,
+        requests.exceptions.ReadTimeout,
+        requests.exceptions.Timeout,
     )
+
+    def _retry_request(label: str, fn):
+        """Run a single HTTP call with 3 attempts and exponential backoff
+        (1s, 2s, 4s) on transient errors. Returns the response object on
+        success; re-raises the last transient error after attempt 3.
+
+        Confiant's API drops mid-request occasionally — empirically every
+        week or two (2026-06-10 polling GET, 2026-06-26 polling GET,
+        2026-06-27 initial POST). Without retry, ONE failed call killed
+        the whole daily cron (no result in state.sqlite, no failure email
+        either because the script crashed before reaching _send_email).
+        Same pattern as the Magnite client's 5xx/429 retry behavior in
+        CLAUDE.md. Total worst-case added delay: ~7s on a fully-failed
+        chain; near-zero on the happy path.
+        """
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                return fn()
+            except _TRANSIENT_REQ_ERRORS as e:
+                last_err = e
+                if attempt == 2:
+                    break  # let the caller see the failure
+                backoff = 2 ** attempt  # 1s, 2s, 4s
+                print(
+                    f"Confiant {label} failed ({type(e).__name__}: {e}); "
+                    f"retry {attempt + 1}/3 after {backoff}s",
+                    file=sys.stderr,
+                )
+                time.sleep(backoff)
+        raise last_err if last_err else RuntimeError(
+            f"Confiant {label} failed silently"
+        )
+
+    # 1. Queue the report (transient-retried)
+    r = _retry_request("initial POST", lambda: requests.post(
+        f"{_API_BASE}/reports/{report_type}", json=body, headers=headers,
+        timeout=30,
+    ))
     r.raise_for_status()
     pay = r.json()
     if not pay.get("success"):
         raise RuntimeError(f"Confiant API rejected request: {pay}")
     report_hash = pay["report_hash"]
 
-    # 2. Poll until ready
+    # 2. Poll until ready (each GET transient-retried)
     deadline = time.monotonic() + _POLL_TIMEOUT_S
     while time.monotonic() < deadline:
-        rr = requests.get(
-            f"{_API_BASE}/report/{report_type}/{report_hash}",
-            headers=headers, timeout=30,
-        )
-        rr.raise_for_status()
+        def _do_get():
+            rr = requests.get(
+                f"{_API_BASE}/report/{report_type}/{report_hash}",
+                headers=headers, timeout=30,
+            )
+            rr.raise_for_status()
+            return rr
+        rr = _retry_request("polling GET", _do_get)
         rep = rr.json().get("report", {})
         status = rep.get("status")
         if status == "ready":
