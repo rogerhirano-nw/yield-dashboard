@@ -252,12 +252,28 @@ Takeaways:
    GAM would bill ~nothing and delivery logic would crater. They are plain
    CPM today; keep it that way until AV measures the real unit.
 
-## Daily monitor log (temporary, through ~2026-06-16)
+## Monitor log — CLOSED 2026-06-26 (flights ended, all numbers final)
 
-The diagnose workflow runs on a daily cron (06:30/10:30 UTC) and posts the
-per-creative AV split for the three mirrored LIs to the open monitor PR.
-Findings get appended here; remove this section and the workflow's
-`schedule:` block once the flights wrap.
+The diagnose workflow ran on a daily cron (06:30/10:30 UTC) and posted the
+per-creative AV split for the three mirrored LIs to the monitor PR (#197)
+while the flights ran. **All three flights are COMPLETED (Invesco ended
+6/14, both Cartier 6/15); GAM delivery froze on 6/15 and the cron was
+re-pulling identical frozen data (plus occasional quota 429s), so the
+`schedule:` block + monitor-PR fallback were removed and the workflow is
+back to dispatch-only.** Final per-LI lifetime AV (mirror era + pre-mirror
+blend where applicable):
+
+| LI | Format | Final cumulative AV | Best mirrored daily |
+|---|---|---|---|
+| 7310815861 Invesco interscroller | mirror creative 138562143597 | **57.68%** (20,002 / 34,675) | 61.06% (6/13) |
+| 7313011338 Cartier interscroller | edited in place | 4.99% blended | **68.59%** (6/14) |
+| 7316916920 Cartier uniscroller | edited in place | 2.66% blended | **59.01%** (6/15) |
+
+Read the **mirror-era daily rows**, not Cartier's lifetime cumulative —
+the in-place edits blend a month of ~0.4% broken data with only ~4 mirrored
+days before the flights ended, so cumulative understates the real result.
+The Invesco mirror creative (a separate creative id) is the clean,
+unblended number at 57.68%. Everything MRC-measured, ~100% measurable.
 
 - 2026-06-12: mirror live on all three creatives; Invesco control retired.
   First evidence: ~34% viewable on the first ~240 mirrored impressions
