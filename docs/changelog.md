@@ -4,6 +4,23 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-27 — SSP parameter inventory for the Assertive Yield migration
+
+- **Documented the full server-side (S2S / Prebid Server) bidder configuration
+  ahead of the Magnite Demand Manager → Assertive Yield Prebid Server cutover.**
+  Parsed the two Magnite Demand Manager "Server Patterns" exports (Desktop +
+  Mobile) into `docs/assertive_yield/ssp_params_migration.md`: a faithful
+  transcription of **28 bidders** across Desktop/Mobile × display (`puc`) /
+  video (`vast`), with account-level constants (publisher/seller IDs) split from
+  per-ad-unit IDs (placementId/zoneId/tagid/adSlot/unit/siteId/pos/…),
+  partial-coverage bidders flagged, an account-level "port these first" summary,
+  and a cutover checklist. The doc is **generated and reproducible** via
+  `docs/assertive_yield/parse_server_patterns.py` (reads the raw workbooks
+  archived in `docs/assertive_yield/source_exports/`, fills `_doc_template.md`)
+  so a refreshed export re-derives the markdown rather than being hand-edited.
+  Docs-only; no code paths touched. Indexed in CLAUDE.md "Subsystems with their
+  own docs".
+
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily

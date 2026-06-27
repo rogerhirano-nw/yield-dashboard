@@ -979,6 +979,15 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
   diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
   that creates the test LIs + creatives + LICAs and reduces the control goal).
+- `docs/assertive_yield/ssp_params_migration.md` — full S2S / Prebid Server
+  bidder roster + per-ad-unit parameters captured from the Magnite Demand
+  Manager "Server Patterns" exports, for the planned **Magnite Demand Manager →
+  Assertive Yield Prebid Server** cutover. 28 bidders across Desktop/Mobile ×
+  display(`puc`)/video(`vast`); account-level constants and per-slot IDs split
+  out, partial-coverage bidders flagged, plus a porting checklist. **Generated**
+  — the doc is reproducible via `docs/assertive_yield/parse_server_patterns.py`
+  (reads the raw workbooks in `source_exports/`, fills `_doc_template.md`); drop
+  refreshed exports in and re-run rather than hand-editing the `.md`.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
