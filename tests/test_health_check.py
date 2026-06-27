@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from health_check import (CheckResult, _data_day, _eval_freshness,
-                          _eval_rls_hygiene, build_report, should_send)
+                          _eval_rls_hygiene, _guarded, build_report,
+                          should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -84,6 +85,55 @@ def test_should_send_matrix():
     assert should_send(True, True, "remediated")   # auto-fix outcome sends
     assert should_send(True, False, None)          # green morning verdict sends
     assert not should_send(True, True, None)       # quiet green follow-up
+
+
+class _FakeConn:
+    """Records rollback() calls so we can assert the per-check reset fires."""
+
+    def __init__(self):
+        self.rollbacks = 0
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+def test_guarded_records_pass_and_resets_transaction():
+    results: list[CheckResult] = []
+    conn = _FakeConn()
+    _guarded(results, "ok check", lambda: CheckResult("ok check", True, "fine"), conn)
+    assert results[0].ok
+    # Rollback must fire even on success — it ends the autobegun read txn so
+    # the next check starts clean.
+    assert conn.rollbacks == 1
+
+
+def test_guarded_failure_is_contained_and_does_not_cascade():
+    """A check that raises (e.g. a statement timeout) must be reported as that
+    one check failing AND must reset the shared connection, so the *next*
+    check isn't poisoned with InFailedSqlTransaction. This is the 2026-06-27
+    regression: one dv_ivt timeout reported 18 phantom failures."""
+    results: list[CheckResult] = []
+    conn = _FakeConn()
+
+    # First check blows up mid-statement, like a cancelled query.
+    _guarded(results, "dv_ivt id format",
+             lambda: (_ for _ in ()).throw(RuntimeError("statement timeout")), conn)
+    # Second check would have failed with InFailedSqlTransaction if the first
+    # didn't roll back; here it succeeds, proving isolation.
+    _guarded(results, "next check", lambda: CheckResult("next check", True, "fine"), conn)
+
+    assert not results[0].ok
+    assert "check errored: statement timeout" in results[0].detail
+    assert results[1].ok                      # not cascaded
+    assert conn.rollbacks == 2                # reset after each check
+
+
+def test_guarded_without_conn_does_not_crash():
+    # The workflow check runs with no DB connection (conn=None).
+    results: list[CheckResult] = []
+    _guarded(results, "refresh sweep run",
+             lambda: CheckResult("refresh sweep run", True, "ok"))
+    assert results[0].ok
 
 
 def test_rls_hygiene_passes_when_no_offenders():

@@ -424,19 +424,54 @@ def remediate_rls() -> tuple[bool, str]:
         return False, f"RLS auto-lockdown failed: {e}"
 
 
+def _guarded(results: list[CheckResult], name: str, fn, conn=None) -> None:
+    """Run one check, appending its CheckResult (or a synthetic failing one if
+    it raises), then reset `conn`'s transaction.
+
+    The rollback is the load-bearing part. The DB checks share a single
+    connection, and SQLAlchemy autobegins a transaction on first execute. A
+    check that errors mid-statement — a statement timeout, a transient lock —
+    leaves that transaction ABORTED, and every *subsequent* execute on the
+    same connection then raises InFailedSqlTransaction. Without a rollback
+    here, one blip cascades into a wall-red report: observed 2026-06-27, a
+    single transient dv_ivt timeout reported 18 phantom failures
+    ("current transaction is aborted") and emailed a false ❌ 3/21. Rolling
+    back after every check (success included — a no-op for these read-only
+    selects) guarantees the next check starts on a clean transaction, so a
+    failure stays contained to its own row."""
+    try:
+        results.append(fn())
+    except Exception as e:  # noqa: BLE001 — a broken check IS the finding
+        results.append(CheckResult(name, False, f"check errored: {e}"))
+    finally:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001 — best-effort reset, never crash
+                pass
+
+
 def run_checks() -> list[CheckResult]:
     """Run every check, isolating failures so one bad table can't hide the rest."""
     results: list[CheckResult] = []
 
-    def _guard(name: str, fn) -> None:
-        try:
-            results.append(fn())
-        except Exception as e:  # noqa: BLE001 — a broken check IS the finding
-            results.append(CheckResult(name, False, f"check errored: {e}"))
+    def _guard(name: str, fn, conn=None) -> None:
+        _guarded(results, name, fn, conn)
 
     engine = sqlalchemy.create_engine(
         os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_recycle=300,
-        connect_args={"connect_timeout": 10},
+        pool_pre_ping=True,
+        connect_args={
+            "connect_timeout": 10,
+            # Give a transiently-slow query room to finish (mirrors
+            # refresh_cache.py) instead of tripping the tight Supabase-pooler
+            # default statement_timeout. The cancel is what *triggered* the
+            # cascade on 2026-06-27 — a dv_ivt count that normally returns in
+            # <1s hit contention, was cancelled (QueryCanceled), and aborted
+            # the shared transaction. 120s lets the blip pass; the per-check
+            # rollback in _guarded contains it either way.
+            "options": "-c statement_timeout=120000",
+        },
     )
     # Retry the initial connect — a transient pooler blip would otherwise
     # error every SQL check at once and email a false ❌ (the same failure
@@ -454,15 +489,16 @@ def run_checks() -> list[CheckResult]:
             time.sleep(15 * (_attempt + 1))
     with engine.connect() as conn:
         for table in ("dv_attention", "dv_ivt"):
-            _guard(f"{table} id format", lambda t=table: _check_dv_id_format(conn, t))
-            _guard(f"{table} ↔ GAM join", lambda t=table: _check_dv_join_rate(conn, t))
+            _guard(f"{table} id format", lambda t=table: _check_dv_id_format(conn, t), conn)
+            _guard(f"{table} ↔ GAM join", lambda t=table: _check_dv_join_rate(conn, t), conn)
         for name, table, col, days in FRESHNESS_CHECKS:
             _guard(name, lambda n=name, t=table, c=col, d=days:
-                   _check_freshness(conn, n, t, c, d))
+                   _check_freshness(conn, n, t, c, d), conn)
         for name, table, col, hours in PULLED_AT_CHECKS:
             _guard(name, lambda n=name, t=table, c=col, h=hours:
-                   _check_pulled_at(conn, n, t, c, h))
-        _guard(RLS_CHECK_NAME, lambda: _check_rls_hygiene(conn))
+                   _check_pulled_at(conn, n, t, c, h), conn)
+        _guard(RLS_CHECK_NAME, lambda: _check_rls_hygiene(conn), conn)
+    # The workflow check is HTTP-only (no conn) — nothing to roll back.
     _guard("refresh sweep run", _check_sweep_workflow)
     return results
 

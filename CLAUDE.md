@@ -111,6 +111,19 @@ offending tables (a sweep can't fix RLS, and re-running it creates the very
 tables that drift), then re-checks. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
+**Per-check isolation:** the DB checks share one connection, and each is
+wrapped by `_guarded`, which **rolls back after every check** (success
+included). This is load-bearing: a check that errors mid-statement (a
+statement timeout, a transient lock) leaves the autobegun transaction
+ABORTED, and without the rollback every *later* check on the same
+connection raises `InFailedSqlTransaction` — so one blip cascades into a
+wall-red report. Seen 2026-06-27: a single transient `dv_ivt` count
+timeout (the table is only ~44k rows, so it was contention, not volume)
+emailed a false **❌ 3/21** — 18 phantom "current transaction is aborted"
+failures behind one real timeout. The health-check engine now also sets
+`statement_timeout=120000` + `pool_pre_ping` (mirrors `refresh_cache.py`)
+so a transiently-slow query finishes instead of being cancelled by the
+tight pooler default; the per-check rollback contains it either way.
 **Retry ladder:** seconds-scale blips are retried inside the clients
 (Magnite 429 ×10 / 5xx ×3, GAM SOAP ×3, Supabase pooler connect ×4 — the
 six parallel sweep jobs stampede the pooler at 09:00 UTC and the initial

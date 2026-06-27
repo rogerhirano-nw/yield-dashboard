@@ -4,6 +4,29 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-27 — Health check: contain a single-query blip (don't email a false 3/21)
+
+- **One transient query timeout was reporting itself as 18 failures.** The
+  2026-06-27 digest emailed **❌ 3/21 FAILING**, but only one check had a real
+  problem: `dv_ivt id format` hit a `QueryCanceled` (statement timeout). Every
+  check after it failed with `InFailedSqlTransaction` — "current transaction is
+  aborted, commands ignored until end of transaction block". Root cause: the DB
+  checks share one connection, SQLAlchemy autobegins a transaction on first
+  execute, and the per-check guard caught the timeout but **never rolled back**
+  — so the aborted transaction poisoned all 18 subsequent checks. The data was
+  fine (the sweep had succeeded 10.4h earlier; `dv_attention` + the join check
+  passed). `dv_ivt` is only ~44k rows / 12 MB with no bloat or locks — the
+  timeout was transient contention, not volume (the exact query now returns
+  `dotzero=0` in <1s). **Fixes** (`health_check.py`): (1) lifted the per-check
+  guard to a module-level `_guarded()` that **rolls back the shared connection
+  after every check** (success included), so a mid-statement error stays
+  contained to its own row instead of cascading; (2) gave the health-check
+  engine `statement_timeout=120000` + `pool_pre_ping` (mirrors
+  `refresh_cache.py`) so a transiently-slow query finishes instead of being
+  cancelled by the tight pooler default. With both, today's run would have been
+  at worst ❌ 1/21 (one real timeout), not a wall-red false alarm. Pinned by
+  `test_guarded_*` in `tests/test_health_check.py`.
+
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily
