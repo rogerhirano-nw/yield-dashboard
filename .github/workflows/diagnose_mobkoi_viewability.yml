@@ -11,13 +11,6 @@ on:
         description: 'Cap the report lookback (days before yesterday)'
         required: false
         default: '45'
-  # Temporary daily monitor while the iframe-mirror flights run (through
-  # ~2026-06-16): pulls the per-creative/per-day AV split for the three
-  # Mobkoi LIs and posts it to the open monitor PR. Two firings as
-  # GitHub-cron drift insurance. REMOVE this block after the flights end.
-  schedule:
-    - cron: '30 6 * * *'
-    - cron: '30 10 * * *'
 
 permissions:
   contents: read
@@ -53,12 +46,7 @@ jobs:
         run: |
           PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
           if [ -z "$PR" ]; then
-            # scheduled runs fire from main, which has no PR — post to the
-            # open Mobkoi monitor PR instead (wakes the monitoring session)
-            PR=$(gh pr list --head "claude/wonderful-pascal-p3737t" --state open --json number --jq '.[0].number')
-          fi
-          if [ -z "$PR" ]; then
-            echo "No open PR found to post results to"; exit 0
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
           fi
           {
             echo '### Mobkoi interscroller/uniscroller — GAM viewability diagnosis'
