@@ -154,6 +154,28 @@ the day and the verdict still goes out — late, which is the tell. The
 script exits non-zero on any failing check, so the Actions run goes red
 and GitHub's failure email fires as a second signal.
 
+**`refresh_direct.yml` intra-day dispatch + watchdog.** The direct-only
+refresh (`--mode=direct` → `gam_campaigns`, plus `--mode=gam_hourly` when
+`GAM_HOURLY_LINE_ITEMS` is set) is `workflow_dispatch`-only and fired
+hourly during business hours by **cron-job.org** (same PAT pattern as
+`refresh.yml`). cron-job.org's POST to the GitHub dispatches API
+occasionally gets a transient **`500 Internal Server Error`** (GitHub-side;
+a bad workflow/ref returns 422, not 500) — when that happens **no run is
+created** and that refresh hour is silently skipped. It's low-stakes (the
+pull is a rolling window, so the next hourly run re-covers the gap) and
+cron-job.org retries the following hour, but the fallback per Roger
+(2026-06-30) is to **always manually dispatch the catch-up**:
+`gh workflow run refresh_direct.yml` (or GitHub MCP `actions_run_trigger`
+run_workflow on `main`). A durable Claude **watchdog Routine**
+(`refresh_direct dispatch watchdog`, fires hourly at :17, fresh session per
+fire) automates this: it only dispatches a catch-up when an hour was
+skipped *inside the active window* (a run exists in the last ~3h but none
+in the last ~70min), so it stays silent overnight and is TZ-independent.
+The Routine lives in the Claude scheduler (account-side, not in the repo) —
+if it's ever lost, recreate it with that hourly-:17 / skipped-hour logic.
+Persistent (not one-off) dispatch failures point at the cron-job.org job
+or its PAT, not GitHub, and want a human look rather than the watchdog.
+
 **Betting CPA digest is retired.** The IO1109 Spinfinite campaign was
 paused mid-flight and no longer runs (per Roger, 2026-06-10); the digest
 went dormant ~2026-06-04 and `betting_conversions` was dropped from prod,
