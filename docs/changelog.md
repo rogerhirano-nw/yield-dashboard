@@ -4,6 +4,27 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-06-30 — Dashboard "today" derived in Eastern, not UTC (#339)
+
+- **The dashboard showed delivery/flight dates a day ahead — `6/30` labels on
+  the evening of `6/29` — because Streamlit Cloud runs in UTC.** `dashboard.py`
+  derived "today" from a bare `date.today()` (and two
+  `datetime.now(timezone.utc).date()` sites); after ~8pm ET, once UTC has
+  crossed midnight, those resolve to the next calendar day, while the cached
+  data is keyed to the GAM network tz (`America/New_York`) and so is the user's
+  wall clock. No table actually held `6/30` rows (max dates were `6/27`–`6/29`),
+  so this was a date *label/axis* artifact, not data. **Fix:** added a
+  `_today_et()` helper (`datetime.now(_ET).date()`) and routed the 11
+  display/pacing "today" sites through it — date-range presets (`_preset_range`),
+  landing-risk window, pacing projection, "day N of M" flight labels, the
+  drawer/small-multiples 7-day date rows, and the two stale-deal cutoffs.
+  Mirrors the pull side, which already uses ET (`refresh_gam_hourly`,
+  `gam_client._ts_to_date`). Intentionally left UTC: the `_pulled_at` timestamp
+  and the clock-chip exception fallback. The `refresh_cache.py` "yesterday" pull
+  windows stay UTC by design (they fire at 09:00 UTC / 05:00 ET — same calendar
+  day, unaffected by the evening rollover). Rendering-only change; no
+  `dashboard_logic` decision touched, `tests/test_dashboard_logic.py` green (74).
+
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
 - **New source tables kept drifting into Supabase RLS-disabled; the daily
