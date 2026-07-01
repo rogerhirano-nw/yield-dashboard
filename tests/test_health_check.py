@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from health_check import (CheckResult, _data_day, _eval_freshness,
-                          _eval_rls_hygiene, _guarded, build_report,
-                          should_send)
+from health_check import (FRESHNESS_CHECKS, CheckResult, _data_day,
+                          _eval_freshness, _eval_rls_hygiene, _guarded,
+                          build_report, should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -85,6 +85,15 @@ def test_should_send_matrix():
     assert should_send(True, True, "remediated")   # auto-fix outcome sends
     assert should_send(True, False, None)          # green morning verdict sends
     assert not should_send(True, True, None)       # quiet green follow-up
+
+
+def test_ttd_luckyland_freshness_is_retired():
+    # The Luckyland flight ended 2026-07-01, so its table is frozen by
+    # design — freshness-checking it would flag a permanent ❌. Chumba is
+    # still live and stays checked.
+    names = [c[0] for c in FRESHNESS_CHECKS]
+    assert "ttd_luckyland fresh" not in names
+    assert "ttd_chumba fresh" in names
 
 
 class _FakeConn:

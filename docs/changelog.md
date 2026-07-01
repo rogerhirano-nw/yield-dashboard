@@ -4,6 +4,33 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-01 — Health check: retire Luckyland freshness canary + fix RLS-remediation ordering
+
+- **Two coupled `ttd_luckyland` failures on the 2026-07-01 digest, both now
+  handled.** With the cascade fixed (see 2026-06-27 below), the report cleanly
+  isolated `19/21` with only `ttd_luckyland` failing twice:
+  - **`ttd_luckyland fresh`** (stuck at 06-28 while Chumba was current) — the
+    Luckyland flight **ended** (per Roger), so the table is frozen by design.
+    Removed its `("ttd_luckyland fresh", …)` entry from `FRESHNESS_CHECKS` — a
+    freshness canary on a retired flight is a permanent false ❌. The table is
+    kept (the Priority-flights monitor still shows the completed flight);
+    restore the line if a new Luckyland flight delivers. Pinned by
+    `test_ttd_luckyland_freshness_is_retired`.
+  - **`public RLS hygiene` (ttd_luckyland RLS off)** — recurred because the
+    daily TTD refresh recreates the table RLS-off, and the morning
+    remediation's **own sweep re-run clobbered the in-place RLS fix**: the log
+    read *"locked down ttd_luckyland; re-ran refresh sweep → success. Still
+    failing after remediation."* Root: `health_check.main()` ran
+    `remediate_rls()` **before** `remediate_with_sweep()`, so the sweep undid
+    the lockdown before the re-check. **Reordered — sweep first, RLS lockdown
+    last** — so the final DB state the re-check sees has RLS on. (The deeper
+    "sweep recreates TTD tables RLS-off" root cause is left for later per
+    Roger; the daily in-place lockdown keeps it green.)
+- Note: the `schedule:` dead-man health-check run has `HEALTH_AUTO_REMEDIATE=0`
+  (GitHub coerces the empty `inputs.remediate == false` to true), so it reports
+  without remediating — the morning `workflow_dispatch` run is the one that
+  heals. Left as-is; flagged for awareness.
+
 ## 2026-06-27 — Health check: contain a single-query blip (don't email a false 3/21)
 
 - **One transient query timeout was reporting itself as 18 failures.** The

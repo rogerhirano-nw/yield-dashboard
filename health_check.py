@@ -108,7 +108,12 @@ FRESHNESS_CHECKS = [
     # TTD scheduled reports arrive via agentmail (same pipeline as DV).
     # Allow 2 days lag — TTD typically sends the report same-day but the
     # signed URL is valid 30 days so the report always reflects past data.
-    ("ttd_luckyland fresh",       "ttd_luckyland",      "date", 2),
+    # ttd_luckyland is intentionally NOT freshness-checked: the Luckyland
+    # flight ended 2026-07-01 (per Roger), so its table is frozen at its
+    # last report date by design and a freshness canary would flag a
+    # permanent ❌. The table is kept (the dashboard's Priority-flights
+    # monitor still shows the completed flight) — only the canary retires.
+    # Restore this line if a new Luckyland flight starts delivering again.
     ("ttd_chumba fresh",          "ttd_chumba",         "date", 2),
 ]
 
@@ -621,11 +626,19 @@ def main(argv: list[str]) -> int:
     if not dry_run and remediate_enabled:
         notes: list[str] = []
         failing_before = {r.name for r in results if not r.ok}
-        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
-            _, note = remediate_rls()
-            notes.append(note)
+        # Order matters: sweep re-run FIRST, in-place RLS lockdown LAST.
+        # A sweep recreates the tables it writes RLS-off (new tables arrive
+        # RLS-disabled), so fixing RLS *before* the sweep lets the sweep
+        # clobber it and the re-check still reports RLS off. Seen 2026-07-01:
+        # "locked down ttd_luckyland; re-ran refresh sweep → success. Still
+        # failing after remediation." Running the lockdown after the sweep
+        # guarantees the final DB state — the one the re-check sees — has
+        # RLS on.
         if any(not r.ok and r.remediable for r in results):
             _, note = remediate_with_sweep()
+            notes.append(note)
+        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
+            _, note = remediate_rls()
             notes.append(note)
         if notes:
             results = run_checks()
