@@ -4,6 +4,33 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-01 — Health check: retire Luckyland freshness canary + fix RLS-remediation ordering
+
+- **Two coupled `ttd_luckyland` failures on the 2026-07-01 digest, both now
+  handled.** With the cascade fixed (see 2026-06-27 below), the report cleanly
+  isolated `19/21` with only `ttd_luckyland` failing twice:
+  - **`ttd_luckyland fresh`** (stuck at 06-28 while Chumba was current) — the
+    Luckyland flight **ended** (per Roger), so the table is frozen by design.
+    Removed its `("ttd_luckyland fresh", …)` entry from `FRESHNESS_CHECKS` — a
+    freshness canary on a retired flight is a permanent false ❌. The table is
+    kept (the Priority-flights monitor still shows the completed flight);
+    restore the line if a new Luckyland flight delivers. Pinned by
+    `test_ttd_luckyland_freshness_is_retired`.
+  - **`public RLS hygiene` (ttd_luckyland RLS off)** — recurred because the
+    daily TTD refresh recreates the table RLS-off, and the morning
+    remediation's **own sweep re-run clobbered the in-place RLS fix**: the log
+    read *"locked down ttd_luckyland; re-ran refresh sweep → success. Still
+    failing after remediation."* Root: `health_check.main()` ran
+    `remediate_rls()` **before** `remediate_with_sweep()`, so the sweep undid
+    the lockdown before the re-check. **Reordered — sweep first, RLS lockdown
+    last** — so the final DB state the re-check sees has RLS on. (The deeper
+    "sweep recreates TTD tables RLS-off" root cause is left for later per
+    Roger; the daily in-place lockdown keeps it green.)
+- Note: the `schedule:` dead-man health-check run has `HEALTH_AUTO_REMEDIATE=0`
+  (GitHub coerces the empty `inputs.remediate == false` to true), so it reports
+  without remediating — the morning `workflow_dispatch` run is the one that
+  heals. Left as-is; flagged for awareness.
+
 ## 2026-06-30 — Dashboard "today" derived in Eastern, not UTC (#339)
 
 - **The dashboard showed delivery/flight dates a day ahead — `6/30` labels on
@@ -24,6 +51,29 @@ and why" index, keyed by PR. Newest first.
   windows stay UTC by design (they fire at 09:00 UTC / 05:00 ET — same calendar
   day, unaffected by the evening rollover). Rendering-only change; no
   `dashboard_logic` decision touched, `tests/test_dashboard_logic.py` green (74).
+
+## 2026-06-27 — Health check: contain a single-query blip (don't email a false 3/21)
+
+- **One transient query timeout was reporting itself as 18 failures.** The
+  2026-06-27 digest emailed **❌ 3/21 FAILING**, but only one check had a real
+  problem: `dv_ivt id format` hit a `QueryCanceled` (statement timeout). Every
+  check after it failed with `InFailedSqlTransaction` — "current transaction is
+  aborted, commands ignored until end of transaction block". Root cause: the DB
+  checks share one connection, SQLAlchemy autobegins a transaction on first
+  execute, and the per-check guard caught the timeout but **never rolled back**
+  — so the aborted transaction poisoned all 18 subsequent checks. The data was
+  fine (the sweep had succeeded 10.4h earlier; `dv_attention` + the join check
+  passed). `dv_ivt` is only ~44k rows / 12 MB with no bloat or locks — the
+  timeout was transient contention, not volume (the exact query now returns
+  `dotzero=0` in <1s). **Fixes** (`health_check.py`): (1) lifted the per-check
+  guard to a module-level `_guarded()` that **rolls back the shared connection
+  after every check** (success included), so a mid-statement error stays
+  contained to its own row instead of cascading; (2) gave the health-check
+  engine `statement_timeout=120000` + `pool_pre_ping` (mirrors
+  `refresh_cache.py`) so a transiently-slow query finishes instead of being
+  cancelled by the tight pooler default. With both, today's run would have been
+  at worst ❌ 1/21 (one real timeout), not a wall-red false alarm. Pinned by
+  `test_guarded_*` in `tests/test_health_check.py`.
 
 ## 2026-06-23 — RLS hygiene canary in the health check (#322)
 
