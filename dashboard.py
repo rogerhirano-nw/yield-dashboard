@@ -24,6 +24,19 @@ from zoneinfo import ZoneInfo
 _ET = ZoneInfo("America/New_York")
 
 
+def _today_et() -> date:
+    """Current calendar date in the GAM network tz (America/New_York).
+
+    Streamlit Cloud runs in UTC, so a bare ``date.today()`` rolls to the next
+    day after ~8pm ET — surfacing tomorrow's date in pacing math, "day N of M"
+    flight labels, the date-range presets, and the delivery date rows while it's
+    still today in Eastern (and in the data, which is keyed to the network tz).
+    Use this everywhere the dashboard needs "today" so it matches the data's day,
+    same as ``refresh_gam_hourly`` / ``gam_client._ts_to_date`` on the pull side.
+    """
+    return datetime.now(_ET).date()
+
+
 def _fmt_last_refresh(ts: str) -> str:
     try:
         dt = datetime.fromisoformat(str(ts))
@@ -616,7 +629,7 @@ PRESETS = ["Year to date", "Month to date", "Last quarter", "Last 7 days", "Yest
 
 
 def _preset_range(preset: str, dmin: date, dmax: date) -> tuple[date, date]:
-    today = date.today()
+    today = _today_et()
     if preset == "Yesterday":
         d = today - timedelta(days=1)
         return d, d
@@ -3856,7 +3869,7 @@ if st.session_state.active_view == "campaigns":
             # dashboard_logic (landing_projection / landing_at_risk).
             _lr_window = int(_cfg.get("landing_window_days", 7) or 7)
             _lr_thresh = float(_cfg.get("landing_threshold_pct", 100.0) or 100.0)
-            _lr_today = date.today()
+            _lr_today = _today_et()
             _ending_idx = []
             if {"impressions_goal", "lifetime_impressions_delivered", "end_date"}.issubset(view_gam.columns):
                 for _, _lr in view_gam.iterrows():
@@ -4042,7 +4055,7 @@ if st.session_state.active_view == "campaigns":
                    "start_date" not in view_gam.columns or \
                    "end_date" not in view_gam.columns:
                     return None
-                today = date.today()
+                today = _today_et()
                 lifetime = pd.to_numeric(view_gam.get("lifetime_impressions_delivered",
                                                       view_gam.get("ad_server_impressions")),
                                           errors="coerce").fillna(0)
@@ -4778,7 +4791,7 @@ if st.session_state.active_view == "campaigns":
                     row.get("impressions_1d"),
                     row.get("start_date"),
                     row.get("end_date"),
-                    pd.Timestamp(date.today()),
+                    pd.Timestamp(_today_et()),
                 )
 
             view_gam["pacing_prior_pct"] = view_gam.apply(_prior_pacing, axis=1)
@@ -5245,7 +5258,7 @@ if st.session_state.active_view == "campaigns":
                 if pd.notna(p) and _pacing_warn_low <= p <= _pacing_warn_high \
                    and pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
-                    elapsed = max((pd.Timestamp(date.today()) - start).days, 0)
+                    elapsed = max((pd.Timestamp(_today_et()) - start).days, 0)
                     if total > 0 and elapsed / total >= 0.9:
                         return _at_routes.get("Direct line · healthy end-of-flight",
                                               "Direct Campaign - IO Review")
@@ -5275,7 +5288,7 @@ if st.session_state.active_view == "campaigns":
                 flight_bit = ""
                 if pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
-                    elapsed = max((pd.Timestamp(date.today()) - start).days, 0)
+                    elapsed = max((pd.Timestamp(_today_et()) - start).days, 0)
                     elapsed = min(elapsed, total)
                     flight_bit = f" on day {elapsed} of {total}"
                 if lit == "SPONSORSHIP":
@@ -5352,7 +5365,7 @@ if st.session_state.active_view == "campaigns":
                 flight_bit = ""
                 if pd.notna(start) and pd.notna(end):
                     total = max((end - start).days, 1)
-                    today_dt = pd.Timestamp(date.today())
+                    today_dt = pd.Timestamp(_today_et())
                     elapsed = max((today_dt - start).days, 0)
                     elapsed = min(elapsed, total)
                     flight_bit = (f" · {today_dt.strftime('%a %b %d').replace(' 0', ' ')}"
@@ -5450,7 +5463,7 @@ if st.session_state.active_view == "campaigns":
                 """7-cell row of 'Mon 12'-style labels under the delivery chart.
                 Marks today (rightmost) and below-expected days for visual
                 context — answers 'which day was the dip?' without a calendar."""
-                today_d = date.today()
+                today_d = _today_et()
                 cells = []
                 soft_threshold = (expected * 0.75) if expected else None
                 for i in range(7, 0, -1):
@@ -5474,7 +5487,7 @@ if st.session_state.active_view == "campaigns":
             def _sm_date_row_html():
                 """Compact 7-cell date row under the small-multiples sparklines.
                 Endpoints show 'M 12' / 'S 18'; middle days are single letters."""
-                today_d = date.today()
+                today_d = _today_et()
                 cells = []
                 for i in range(7, 0, -1):
                     d = today_d - timedelta(days=i - 1)
@@ -7146,7 +7159,7 @@ if st.session_state.active_view == "campaigns":
                 # never bid, since it was set up (create_time). Most-inactive first
                 # within each seller. Canceled / delivering / open-auction excluded
                 # upstream.
-                _today = datetime.now(timezone.utc).date()
+                _today = _today_et()
                 try:
                     _lbd_t = load("pmp_last_bid_date")
                     _lastbid_map = (dict(zip(_lbd_t["deal_key"].astype(str),
@@ -7251,7 +7264,7 @@ if st.session_state.active_view == "campaigns":
             except Exception:
                 _lbd_stale = pd.DataFrame()
             if not _lbd_stale.empty:
-                _stale_today = datetime.now(timezone.utc).date()
+                _stale_today = _today_et()
                 # Two distinct cutoffs: stale = no winning bid in 90+ days;
                 # "still live" = appeared in the GAM feed within the (short)
                 # seen-window, so a paused deal drops out within ~a week

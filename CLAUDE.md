@@ -906,6 +906,25 @@ average would be steadier if pacing is spiky.
 ## Streamlit Cloud deploy
 **Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
+**The Cloud runtime is UTC — the dashboard's "today" must be Eastern.**
+Streamlit Cloud's container clock is UTC, so a bare `date.today()` /
+`datetime.now()` rolls to the *next* calendar day after ~8pm ET (once UTC
+crosses midnight), while the cached data is keyed to the GAM network tz
+(`America/New_York`) and so is Roger's wall clock. That mismatch surfaced
+**6/30-dated** labels on the evening of 6/29 (#339) — a date *label/axis*, not
+data (no table held 6/30 rows). All display/pacing "today" reads in
+`dashboard.py` therefore go through **`_today_et()`** (`datetime.now(_ET).date()`,
+`_ET = ZoneInfo("America/New_York")`): the date-range presets (`_preset_range`),
+landing-risk window, pacing projection, "day N of M" flight labels, the
+drawer/small-multiples 7-day date rows, and the stale-deal cutoffs. **Use
+`_today_et()` for any new "today" in dashboard.py.** Intentionally left UTC: the
+`_pulled_at` ISO timestamp and the header clock-chip's exception fallback (its
+primary path already prints ET). This mirrors the *pull* side, which already
+derives dates in ET (`refresh_gam_hourly`, `gam_client._ts_to_date`) — and note
+the `refresh_cache.py` "yesterday" windows stay UTC on purpose: they fire at
+09:00 UTC / 05:00 ET, the *same* calendar day, so the evening rollover never
+touches them.
+
 **`st.cache_data` survives code-only deploys.** Table loads (`load()`,
 `_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (1h — was 6h
 until 2026-06-12; the 6h guarded the Free plan's 5 GB egress cap and the
