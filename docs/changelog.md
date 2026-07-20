@@ -4,6 +4,24 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-01 — Dashboard cache TTL 1h → 6h (Supabase Disk IO budget)
+
+- **Supabase alerted that the prod project was depleting its Disk IO
+  budget; restored the dashboard cache TTL to 6h to cut read IO.**
+  `_CACHE_TTL_SECONDS` had been lowered 6h → 1h on 2026-06-12 on the
+  assumption that Pro egress + Micro compute made the disk-IO budget
+  non-binding. It binds: every cache miss re-runs the two server-side DV
+  `GROUP BY` aggregations (`_load_dv_attention_agg` / `_load_dv_ivt_agg`),
+  each a **full scan of the largest tables** (`dv_attention` / `dv_ivt`),
+  plus the other 6 cached loads — so a 1h TTL fired those up to ~6× more
+  often than 6h. Set back to **21600s (6h)**. Post-sweep data still
+  surfaces within the window; the debug "Clear cache + re-query" button and
+  any Settings save (`st.cache_data.clear()`) force an on-demand refresh.
+  Read-only mitigation — no schema/query change. Deeper diagnosis
+  (pg_stat_statements / advisors / vacuum + index tuning) pending a
+  Supabase reconnect. Only lower the TTL again if the Disk IO chart shows
+  headroom.
+
 ## 2026-06-30 — Dashboard "today" derived in Eastern, not UTC (#339)
 
 - **The dashboard showed delivery/flight dates a day ahead — `6/30` labels on
