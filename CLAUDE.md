@@ -891,9 +891,15 @@ the `refresh_cache.py` "yesterday" windows stay UTC on purpose: they fire at
 touches them.
 
 **`st.cache_data` survives code-only deploys.** Table loads (`load()`,
-`_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (1h — was 6h
-until 2026-06-12; the 6h guarded the Free plan's 5 GB egress cap and the
-Nano disk-IO budget, neither of which binds on Pro + Micro compute),
+`_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (**6h**). It was
+6h originally (guarding the Free plan's 5 GB egress cap + the Nano disk-IO
+budget), cut to 1h on 2026-06-12 on the assumption Pro egress + Micro
+compute made neither bind — **restored to 6h on 2026-07-01** after Supabase
+alerted the project was depleting its **Disk IO budget**: each cache miss
+re-runs the two big DV server-side `GROUP BY` aggregations
+(`_load_dv_attention_agg` / `_load_dv_ivt_agg`, a full scan of the largest
+tables) plus the other cached loads, so 1h fired those ~6× more often than
+6h. Only lower again if the Supabase Disk IO chart shows headroom. Cache is
 keyed on function source — a push that doesn't change those functions
 hot-reloads the script but keeps the old cached frames. So after fixing
 data out-of-band (direct SQL against prod), the dashboard keeps
