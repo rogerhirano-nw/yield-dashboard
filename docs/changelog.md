@@ -4,6 +4,20 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-23 — Hourly GAM clicks for per-hour CTR
+
+- **The GAM hourly feed now pulls clicks alongside impressions so the cap
+  digest can render per-hour CTR.** `run_hourly_report` (`gam_client.py`) — the
+  `DATE × HOUR × LINE_ITEM_ID` report behind `--mode=gam_hourly` /
+  `gam_campaigns_hourly` — added the **`AD_SERVER_CLICKS`** metric next to
+  `AD_SERVER_IMPRESSIONS`, coerced to `int64` the same way. `refresh_gam_hourly`
+  (`refresh_cache.py`) now writes an **`ad_server_clicks`** column on each hourly
+  upsert; it `ALTER TABLE … ADD COLUMN ad_server_clicks bigint`s the existing
+  `gam_campaigns_hourly` table once (guarded on the column not already existing)
+  before the DELETE+append so the widened row lands cleanly. No consumer change —
+  seller-comms auto-detects the column and renders per-hour CTR on the next cap
+  digest.
+
 ## 2026-06-30 — Dashboard "today" derived in Eastern, not UTC (#339)
 
 - **The dashboard showed delivery/flight dates a day ahead — `6/30` labels on

@@ -484,8 +484,9 @@ def refresh_gam_hourly() -> int:
     silently if the variable is unset.
 
     Writes to gam_campaigns_hourly (date, hour, line_item_id, ad_server_impressions,
-    pulled_at). Upserts by deleting today's rows for these LIs then re-inserting
-    so re-runs throughout the day always reflect the latest intraday delivery.
+    ad_server_clicks, pulled_at). Upserts by deleting today's rows for these LIs
+    then re-inserting so re-runs throughout the day always reflect the latest
+    intraday delivery.
     """
     import os
     li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
@@ -511,6 +512,13 @@ def refresh_gam_hourly() -> int:
     table = "gam_campaigns_hourly"
     with _engine().begin() as conn:
         if table in sa_inspect(conn).get_table_names():
+            # Backfill the ad_server_clicks column on the existing table so the
+            # append below (which carries clicks) lands cleanly. Idempotent.
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if "ad_server_clicks" not in existing_cols:
+                conn.execute(
+                    text(f'ALTER TABLE "{table}" ADD COLUMN ad_server_clicks bigint')
+                )
             conn.execute(
                 text(f"DELETE FROM \"{table}\" WHERE date = :d AND line_item_id::text = ANY(:ids)"),
                 {"d": today.isoformat(), "ids": li_ids},

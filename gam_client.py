@@ -303,17 +303,18 @@ class GAMClient:
         """Pull today's hour-by-hour delivery for specific line items.
 
         Dimensions: DATE, HOUR, LINE_ITEM_ID
-        Metrics: AD_SERVER_IMPRESSIONS
+        Metrics: AD_SERVER_IMPRESSIONS, AD_SERVER_CLICKS
 
         Used by refresh_gam_hourly() to populate gam_campaigns_hourly.
         Results are filtered client-side to the provided line_item_ids.
 
         Returns a DataFrame with columns: date, hour (0–23), line_item_id,
-        ad_server_impressions.  Returns empty DataFrame if no data.
+        ad_server_impressions, ad_server_clicks.  Returns empty DataFrame if
+        no data.
         """
         df = self._run_report(
             dimensions=["DATE", "HOUR", "LINE_ITEM_ID"],
-            metrics=["AD_SERVER_IMPRESSIONS"],
+            metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
             start_date=report_date,
             end_date=report_date,
         )
@@ -327,6 +328,9 @@ class GAMClient:
 
         df["ad_server_impressions"] = (
             pd.to_numeric(df["ad_server_impressions"], errors="coerce").fillna(0).astype("int64")
+        )
+        df["ad_server_clicks"] = (
+            pd.to_numeric(df["ad_server_clicks"], errors="coerce").fillna(0).astype("int64")
         )
         df["hour"] = pd.to_numeric(df["hour"], errors="coerce").fillna(0).astype("int64")
         return df
