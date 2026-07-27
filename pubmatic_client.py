@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL      = "https://api.pubmatic.com/v1/analytics/data/publisher"
 _REFRESH_URL   = "https://api.pubmatic.com/v1/developer-integrations/developer/refreshToken"
+_GENERATE_URL  = "https://api.pubmatic.com/v1/developer-integrations/developer/token"
 _TOKEN_MAX_AGE = 55   # days — refresh 5 days before the 60-day expiry
 
 
@@ -90,16 +91,49 @@ class PubmaticClient:
 
         if age_days >= _TOKEN_MAX_AGE:
             logger.info("Pubmatic: token is %d days old — refreshing", age_days)
-            new_token = self._call_refresh(refresh_token)
-            self._save_token(engine, new_token, refresh_token)
+            try:
+                new_token, new_refresh = self._call_refresh(
+                    access_token, refresh_token)
+            except requests.HTTPError as exc:
+                # Refresh only works within the access token's 60-day
+                # validity. Past that (or any other auth failure), recover
+                # without raising when we can:
+                #   1. env secrets rotated since our stored pair → re-seed
+                #      from them (a secret update alone self-heals, no
+                #      manual api_tokens surgery);
+                #   2. PUBMATIC_PASSWORD set → mint a brand-new pair via
+                #      the first-time-setup POST /token (fully hands-free).
+                # Neither available → surface the failure.
+                env_token = os.environ["PUBMATIC_TOKEN"]
+                if env_token != access_token:
+                    logger.warning(
+                        "Pubmatic: token refresh failed (%s) — re-seeding "
+                        "from rotated env credentials", exc)
+                    self._save_token(engine, env_token, self._seed_refresh_token)
+                    return env_token
+                if os.environ.get("PUBMATIC_PASSWORD"):
+                    logger.warning(
+                        "Pubmatic: token refresh failed (%s) — generating "
+                        "a new token pair from account credentials", exc)
+                    new_token, new_refresh = self._call_generate()
+                    self._save_token(engine, new_token, new_refresh)
+                    return new_token
+                raise
+            self._save_token(engine, new_token, new_refresh)
             return new_token
 
         logger.info("Pubmatic: token age %d days — no refresh needed", age_days)
         return access_token
 
-    def _call_refresh(self, refresh_token: str) -> str:
+    def _call_refresh(self, access_token: str,
+                      refresh_token: str) -> tuple[str, str]:
+        """Refresh the token pair. Pubmatic's refreshToken endpoint requires
+        the *previous* access token as the Bearer (2026-07: omitting it
+        401s), and the response rotates BOTH tokens — persist the new
+        refreshToken or the next cycle's refresh dies."""
         resp = requests.put(
             _REFRESH_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
             json={
                 "email":        self._email,
                 "apiProduct":   "PUBLISHER",
@@ -116,8 +150,41 @@ class PubmaticClient:
         )
         if not new_token:
             raise RuntimeError(f"Unexpected token refresh response: {data}")
+        new_refresh = (
+            data.get("refreshToken")
+            or data.get("refresh_token")
+            or refresh_token
+        )
         logger.info("Pubmatic: token refreshed successfully")
-        return new_token
+        return new_token, new_refresh
+
+    def _call_generate(self) -> tuple[str, str]:
+        """Mint a brand-new token pair from account credentials — the
+        first-time-setup POST /token. Last-resort fallback when the 60-day
+        refresh window has been missed (a refresh token can't outlive its
+        access token). Requires PUBMATIC_PASSWORD.
+
+        Pubmatic disables the account at 200 generation attempts in 20
+        minutes — this is called at most once per refresh cycle (only after
+        a failed refresh), far under the limit; never call it per-request."""
+        resp = requests.post(
+            _GENERATE_URL,
+            json={
+                "userName":   self._email,
+                "password":   os.environ["PUBMATIC_PASSWORD"],
+                "apiProduct": "PUBLISHER",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        new_token = data.get("accessToken") or data.get("access_token")
+        new_refresh = data.get("refreshToken") or data.get("refresh_token")
+        if not new_token or not new_refresh:
+            raise RuntimeError(f"Unexpected token generation response keys: "
+                               f"{sorted(data)}")
+        logger.info("Pubmatic: new token pair generated from credentials")
+        return new_token, new_refresh
 
     @staticmethod
     def _save_token(

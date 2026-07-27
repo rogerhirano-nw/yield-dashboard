@@ -585,11 +585,19 @@ def main(argv: list[str]) -> int:
     if not dry_run and remediate_enabled:
         notes: list[str] = []
         failing_before = {r.name for r in results if not r.ok}
-        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
-            _, note = remediate_rls()
-            notes.append(note)
+        # Sweep FIRST, RLS fix second — the sweep can DROP+recreate a table
+        # whose upstream schema changed, which re-opens RLS on it; with the
+        # old order (RLS first) that undid the in-place fix before the
+        # re-check every time (2026-07-27: ttd_luckyland recreated on every
+        # sweep by a TTD report-schema change → permanent ❌ loop). The RLS
+        # fix re-queries offenders itself, so run last it also catches drift
+        # the sweep just created. refresh_cache now locks down tables at
+        # creation too, so this ordering is defense in depth.
         if any(not r.ok and r.remediable for r in results):
             _, note = remediate_with_sweep()
+            notes.append(note)
+        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
+            _, note = remediate_rls()
             notes.append(note)
         if notes:
             results = run_checks()

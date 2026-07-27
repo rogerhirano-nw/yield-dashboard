@@ -4,6 +4,53 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-27 — RLS lockdown at table creation + remediation ordering
+
+- **The health check's RLS auto-fix was being undone by its own sweep re-run,
+  looping ❌ daily.** The TTD Luckyland scheduled report changed shape (the
+  inbox now only has forwarded "MonthtoDate report v3" mails whose column set
+  differs from `ttd_luckyland` and whose data ends 7/1), so every sweep hit
+  `_refresh_ttd_campaign`'s schema-change path and DROP+recreated the table —
+  and a freshly created Supabase table is REST-reachable (RLS off). The health
+  check remediated in the wrong order: RLS fixed in-place *first*, sweep re-run
+  *second* — the recreate re-opened RLS before the re-check, every run
+  ("Still failing after remediation — needs a human", 2026-07-27). Two fixes:
+  1. **`refresh_cache._lockdown_table`** — new helper that enables RLS +
+     revokes anon/authenticated (the `docs/supabase_rls_lockdown.sql`
+     end-state) on a just-created table, in the same transaction as the write.
+     Called from `_safe_replace` and `_refresh_ttd_campaign` whenever the
+     table was created (first deploy or schema-change drop). No-op on
+     SQLite (local dev) and on plain Postgres without the Supabase roles.
+  2. **`health_check.main` remediation order flipped** — sweep re-run first,
+     in-place RLS fix second (it re-queries offenders, so it also catches
+     drift the sweep just created).
+  The same incident surfaced three upstream outages (all reported in the
+  2026-07-27 digest): the Pubmatic token refresh 401s (data stale since 7/7),
+  DV Attention emails arrive with no CSV attachment since ~6/29 (IVT
+  unaffected), and the real TTD Luckyland scheduled report stopped after
+  ~7/1 (only forwarded v3 mails remain, missing the IdentityAlliance
+  conversion column).
+
+- **Pubmatic token refresh was malformed — fixed against the vendor docs.**
+  `pubmatic_client._call_refresh` never sent the required
+  `Authorization: Bearer <previous access token>` header (the docs mandate
+  it; omitting it is what 401'd every refresh once the token crossed the
+  55-day refresh threshold ~7/10), and it discarded the **rotated
+  refreshToken** the response returns, re-saving the old one — so even a
+  successful refresh would strand the next cycle. Both fixed; `_call_refresh`
+  now returns and persists the full new pair. Recovery paths on a failed
+  refresh (refresh only works within the access token's 60-day validity and
+  ours is past it): **(1)** if env `PUBMATIC_TOKEN` differs from the stored
+  token, re-seed from the rotated secrets — a secret update alone
+  self-heals, no manual `api_tokens` SQL; **(2)** if `PUBMATIC_PASSWORD` is
+  set, **mint a brand-new pair via the first-time-setup `POST /token`**
+  (`_call_generate` — invoked at most once per refresh cycle; Pubmatic
+  disables the account at 200 generation attempts in 20 min, so never
+  per-request). `refresh.yml` passes the optional `PUBMATIC_PASSWORD`
+  secret; while it's absent the fallback is skipped. With the password
+  secret set, the current outage recovers hands-free on the next sweep — no
+  UI visit needed.
+
 ## 2026-07-23 — Hourly GAM clicks for per-hour CTR
 
 - **The GAM hourly feed now pulls clicks alongside impressions so the cap

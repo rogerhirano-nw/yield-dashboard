@@ -128,20 +128,50 @@ def _engine() -> sqlalchemy.Engine:
     return _ENGINE
 
 
+def _lockdown_table(conn, table: str) -> None:
+    """Enable RLS + revoke anon/authenticated on a just-created public table
+    (the end-state of docs/supabase_rls_lockdown.sql).
+
+    On Supabase, a freshly created table is REST-reachable: RLS is off and
+    nothing auto-enables it, so every create — first deploy OR a
+    schema-change DROP+recreate — silently re-opens the PostgREST surface
+    until the daily health check catches it. Worse, the recreate case
+    ping-ponged with the health check's in-place RLS fix (2026-07-27:
+    ttd_luckyland dropped on every sweep by a TTD report-schema change,
+    undoing each remediation). Locking down at creation, in the same
+    transaction as the write, closes the gap entirely.
+
+    No-op off Postgres (local SQLite) and when the Supabase REST roles
+    don't exist (plain Postgres)."""
+    if conn.dialect.name != "postgresql":
+        return
+    ident = 'public."' + table.replace('"', '""') + '"'
+    conn.execute(text(f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
+    roles = [r for (r,) in conn.execute(text(
+        "SELECT rolname FROM pg_roles "
+        "WHERE rolname IN ('anon', 'authenticated')"))]
+    if roles:
+        conn.execute(text(f"REVOKE ALL ON {ident} FROM {', '.join(roles)}"))
+
+
 def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
     """Write df to table using TRUNCATE when the schema is unchanged, falling
     back to DROP only when columns differ. TRUNCATE generates a single WAL
     record vs. per-row WAL from DROP, cutting catalog churn and autovacuum
     pressure on tables that are replaced daily."""
     existing_tables = sa_inspect(conn).get_table_names()
-    if table in existing_tables:
+    created = table not in existing_tables
+    if not created:
         existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
         if existing_cols == set(df.columns):
             conn.execute(text(f'TRUNCATE TABLE "{table}"'))
         else:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
+            created = True
     df.to_sql(table, conn, if_exists="append", index=False)
+    if created:
+        _lockdown_table(conn, table)
 
 
 # (table, index_name, column_expression)
@@ -1142,11 +1172,13 @@ def _refresh_ttd_campaign(
     df["_execution_id"] = df.get("_execution_id", meta.get("execution_id"))
 
     with _engine().begin() as conn:
-        if table in sa_inspect(conn).get_table_names():
+        created = table not in sa_inspect(conn).get_table_names()
+        if not created:
             existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
             if existing_cols != set(df.columns):
                 logger.info("Schema change for %s — dropping and recreating", table)
                 conn.execute(text(f'DROP TABLE "{table}"'))
+                created = True
             elif "date" in df.columns:
                 dates = [
                     d.isoformat() if d is not None else None
@@ -1158,6 +1190,8 @@ def _refresh_ttd_campaign(
                         {"dates": dates},
                     )
         df.to_sql(table, conn, if_exists="append", index=False)
+        if created:
+            _lockdown_table(conn, table)
 
     logger.info(
         "Wrote %d rows to %s (exec_id=%s, %d dates)",

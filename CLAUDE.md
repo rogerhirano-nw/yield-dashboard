@@ -108,7 +108,16 @@ waits for it, re-checks everything, and reports the final state — transient
 upstream failures heal hands-free. **RLS-hygiene drift is fixed *in-place*
 instead** — it enables RLS + revokes anon/authenticated grants on the
 offending tables (a sweep can't fix RLS, and re-running it creates the very
-tables that drift), then re-checks. Code-level failures (id format, join
+tables that drift), then re-checks. **The sweep re-run goes FIRST, the RLS
+fix second** (2026-07-27): a sweep can DROP+recreate a table whose upstream
+report schema changed, re-opening RLS on it — with the old order the
+in-place fix was undone before the re-check on every run (`ttd_luckyland`,
+recreated daily by a TTD report-schema change, looped ❌ this way). Belt and
+braces, `refresh_cache._lockdown_table` now also enables RLS + revokes
+anon/authenticated *at table creation* in the same transaction as the write
+(the `_safe_replace` drop path, `_refresh_ttd_campaign`'s schema-change
+drop, and first-time creates on those paths) — so recreated tables are born
+locked instead of waiting for the next health check. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients
