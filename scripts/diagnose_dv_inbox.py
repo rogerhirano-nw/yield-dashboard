@@ -15,6 +15,12 @@ from __future__ import annotations
 
 import os
 import re
+import sys
+from pathlib import Path
+
+# Run as `python scripts/…`, so only scripts/ is on sys.path — add the repo
+# root for the client-module imports.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import dv_attention_client as att_client
 import dv_ivt_client as ivt_client
