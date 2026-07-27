@@ -1,0 +1,38 @@
+name: Drop ttd_luckyland (one-shot)
+
+# One-shot prod cleanup for the TTD Luckyland retirement (#344, per Roger
+# 2026-07-27): drops the orphaned ttd_luckyland table. Nothing recreates it
+# — the refresh mode was removed — so this is safe and idempotent
+# (IF EXISTS). Dispatch on demand; harmless to re-run.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  drop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install sqlalchemy psycopg2-binary
+      - name: Drop ttd_luckyland and verify
+        run: |
+          python - <<'PYEOF'
+          import os, sqlalchemy
+          engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+          with engine.begin() as conn:
+              conn.execute(sqlalchemy.text(
+                  'DROP TABLE IF EXISTS public."ttd_luckyland"'))
+          with engine.connect() as conn:
+              exists = conn.execute(sqlalchemy.text(
+                  "SELECT to_regclass('public.ttd_luckyland') IS NOT NULL"
+              )).scalar()
+          print(f"ttd_luckyland exists after drop: {exists}")
+          raise SystemExit(1 if exists else 0)
+          PYEOF
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
