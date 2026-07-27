@@ -3,13 +3,15 @@ Pull DoubleVerify Pinnacle "Attention" reports from the
 newsweek@agentmail.to inbox.
 
 DV's team emails the report daily (subject:
-"Unified Analytics Report: Attention Metrics") with the CSV attached.
-This module polls the agentmail inbox, finds unprocessed matching
-emails, downloads the CSV, parses it into a DataFrame, and hands
-back rows ready for refresh_cache.py to write to the `dv_attention`
-table.
+"Unified Analytics Report: Attention Metrics") with the report attached —
+as a CSV until ~2026-06-29, as an XLSX since (DV changed the export
+format; the sibling IVT report stayed CSV). This module polls the
+agentmail inbox, finds unprocessed matching emails, downloads the
+attachment, parses it into a DataFrame, and hands back rows ready for
+refresh_cache.py to write to the `dv_attention` table.
 
-CSV format (DV Pinnacle export):
+CSV format (DV Pinnacle export; the XLSX carries the same sheet shape —
+preamble rows, then a header row starting with "Date"):
     Lines 1-4: "# Report:", "# Start Date:", "# End Date:", "# Submit Time:"
     Line 5: blank
     Line 6: header row (12 columns, all double-quoted)
@@ -194,7 +196,40 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
         )
 
     payload = "\n".join(lines[header_idx:])
-    df = pd.read_csv(io.StringIO(payload))
+    return _normalize_dv_frame(pd.read_csv(io.StringIO(payload)))
+
+
+def parse_dv_xlsx(content: bytes) -> pd.DataFrame:
+    """Parse a DV Pinnacle Attention XLSX (bytes).
+
+    DV switched the emailed Attention report from CSV to XLSX ~2026-06-29
+    (the sibling IVT report stayed CSV) — the sweep then silently skipped
+    every attachment for a month because the puller only accepted `.csv`.
+    Same sheet shape as the CSV: preamble rows, then a header row whose
+    first cell is `Date`. Cells arrive typed (dates as datetime, ids as
+    int/float), which the shared normalization handles — the float path is
+    the #151 `.0` hazard, live here exactly as in the CSV because blank
+    open-exchange rows make the id column float.
+    """
+    raw = pd.read_excel(io.BytesIO(content), header=None, dtype=object)
+    header_idx = None
+    for i, first in enumerate(raw.iloc[:, 0]):
+        if isinstance(first, str) and first.strip() == "Date":
+            header_idx = i
+            break
+    if header_idx is None:
+        raise ValueError(
+            "DV Attention XLSX: could not locate 'Date' header row in the "
+            f"first column. First 5 cells: {raw.iloc[:5, 0].tolist()!r}"
+        )
+    df = raw.iloc[header_idx + 1:].copy()
+    df.columns = ["" if pd.isna(c) else str(c).strip() for c in raw.iloc[header_idx]]
+    return _normalize_dv_frame(df)
+
+
+def _normalize_dv_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Shared CSV/XLSX tail: rename to snake_case, coerce types, and apply
+    the #151 line_item_id hygiene."""
     df = df.rename(columns=COLUMN_MAP)
     keep = [c for c in COLUMN_MAP.values() if c in df.columns]
     df = df[keep].copy()
@@ -229,9 +264,9 @@ def parse_dv_csv(content: bytes) -> pd.DataFrame:
 
 
 def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.DataFrame:
-    """End-to-end: poll the inbox, fetch every matching CSV attachment,
-    parse + concat. Returns one DataFrame with all rows from all matched
-    emails, plus an `_email_message_id` column for downstream dedup.
+    """End-to-end: poll the inbox, fetch every matching report attachment
+    (CSV or XLSX), parse + concat. Returns one DataFrame with all rows from
+    all matched emails, plus an `_email_message_id` column for downstream dedup.
 
     Empty DataFrame if no matches or all fetches failed.
     """
@@ -271,11 +306,18 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
             fn     = att.get("filename") or att.get("name") or ""
             att_id = att.get("id") or att.get("attachment_id") or ""
             logger.debug("  att object: %r", att)
-            if not fn.lower().endswith(".csv") or not att_id:
+            # DV mailed CSVs until ~2026-06-29, XLSX since — accept both.
+            if fn.lower().endswith(".csv"):
+                parser = parse_dv_csv
+            elif fn.lower().endswith(".xlsx"):
+                parser = parse_dv_xlsx
+            else:
+                continue
+            if not att_id:
                 continue
             try:
                 content = fetch_attachment(api_key, inbox_id, thread_id, att_id)
-                df = parse_dv_csv(content)
+                df = parser(content)
                 df["_email_message_id"] = dedup_id
                 logger.info("Parsed %d rows from %s (msg %s)", len(df), fn, dedup_id)
                 frames.append(df)
