@@ -108,7 +108,7 @@ FRESHNESS_CHECKS = [
     # TTD scheduled reports arrive via agentmail (same pipeline as DV).
     # Allow 2 days lag — TTD typically sends the report same-day but the
     # signed URL is valid 30 days so the report always reflects past data.
-    ("ttd_luckyland fresh",       "ttd_luckyland",      "date", 2),
+    # (ttd_luckyland retired 2026-07-27 — campaign ended, table dropped.)
     ("ttd_chumba fresh",          "ttd_chumba",         "date", 2),
 ]
 

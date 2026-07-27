@@ -4,6 +4,26 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-27 — TTD Luckyland retired (campaign ended)
+
+- **The Luckyland Casino TTD lane is retired** (per Roger, 2026-07-27 — the
+  campaign ended; the scheduled report had already stopped after ~7/1, and the
+  forwarded "MonthtoDate v3" mails it left behind were the schema-change
+  trigger for the daily `ttd_luckyland` recreate in the RLS-drift loop fixed
+  in #343). Removed: `refresh_ttd` + `--mode=ttd` (`refresh_cache.py`), the
+  Luckyland step in `refresh.yml`'s `ttd` job and in `refresh_ttd.yml`
+  (now Chumba-only), the `ttd_luckyland fresh` health check row, the
+  `idx_ttd_luckyland_date` index entry, and the dashboard's Luckyland
+  Priority-flights card + drawer-CPA source (Chumba untouched; the section
+  eyebrow now reads "1 betting flight"). Prod cleanup: run
+  `DROP TABLE IF EXISTS public.ttd_luckyland;` in the Supabase SQL editor —
+  nothing recreates it after this change (until dropped, the orphan table is
+  still covered by the RLS-hygiene check and stays locked once the next
+  health check runs). Kept as the pattern for the next TTD-reported flight (same as the Improvado
+  retirement): `ttd_client.py` in full (needle consts, IdentityAlliance
+  column handling) and the shared `_refresh_ttd_campaign` pipeline, which
+  Chumba still uses.
+
 ## 2026-07-27 — RLS lockdown at table creation + remediation ordering
 
 - **The health check's RLS auto-fix was being undone by its own sweep re-run,

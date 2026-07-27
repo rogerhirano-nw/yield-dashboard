@@ -135,12 +135,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python refresh_cache.py --mode=ttd
-        env:
-          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
-          REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
+      # --mode=ttd (Luckyland) retired 2026-07-27 — campaign ended.
       - run: python refresh_cache.py --mode=ttd-chumba
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}

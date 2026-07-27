@@ -1,8 +1,9 @@
-name: Refresh TTD (Luckyland + Chumba)
+name: Refresh TTD (Chumba)
 
 # Triggered manually for ad-hoc TTD-only refreshes (e.g. backfilling
 # missed days) without running the full sweep.
 # Runs in ~30s (agentmail poll + XLSX download + parse).
+# (Luckyland retired 2026-07-27 — campaign ended, --mode=ttd removed.)
 on:
   workflow_dispatch:
 
@@ -23,12 +24,6 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python refresh_cache.py --mode=ttd
-        env:
-          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
-          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
-          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
-
       - run: python refresh_cache.py --mode=ttd-chumba
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
@@ -42,7 +37,7 @@ jobs:
           url = os.environ["DATABASE_URL"]
           engine = sqlalchemy.create_engine(url)
           with engine.connect() as conn:
-              for tbl in ("ttd_luckyland", "ttd_chumba"):
+              for tbl in ("ttd_chumba",):
                   try:
                       n = conn.execute(sqlalchemy.text(f'SELECT COUNT(*) FROM "{tbl}"')).scalar()
                       r = conn.execute(sqlalchemy.text(f'SELECT MIN(date), MAX(date) FROM "{tbl}"')).fetchone()
