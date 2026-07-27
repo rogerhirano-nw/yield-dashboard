@@ -14,6 +14,11 @@ permissions:
 
 jobs:
   query:
+    # Dependabot pull_request runs don't receive repository Actions secrets,
+    # so DATABASE_URL arrives empty and the query step can only fail — skip
+    # the job instead of red-flagging every dependabot bump that touches
+    # this workflow file (the paths filter includes it).
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
