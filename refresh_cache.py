@@ -1071,7 +1071,7 @@ def refresh_dv_attention() -> int:
     # NOT in the current pull stay untouched.
     df = pull_dv_attention(api_key, inbox_id, limit=2)
     if df.empty:
-        logger.warning("No DV Attention CSV attachments found in inbox")
+        logger.warning("No DV Attention report attachments (.csv/.xlsx) found in inbox")
         return 0
 
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
