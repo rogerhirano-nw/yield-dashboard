@@ -225,8 +225,8 @@ _DEFAULT_SETTINGS: dict = {
     # under-delivery risks are still 2 weeks out when they're most fixable).
     "landing_window_days": 7,
     "landing_threshold_pct": 100.0,
-    # TTD acquisition CPA goal ($) — the target the Priority-flights cards
-    # (Luckyland / Chumba) grade against: the CPA hero shows over/under vs this,
+    # TTD acquisition CPA goal ($) — the target the Priority-flights card
+    # (Chumba) grades against: the CPA hero shows over/under vs this,
     # and the Daily CPA chart draws a dashed reference line at it. $150 per Roger
     # (2026-06-22); editable in Settings → Direct.
     "ttd_cpa_goal": 150.0,
@@ -1295,7 +1295,7 @@ h1, .stMarkdown h1 { font-family: var(--font-display); font-size: 22px !importan
 .kpi-delta-amber { color: var(--state-warning); }
 .kpi-delta-flat  { color: var(--text-muted); }
 .kpi-delta-neutral { color: var(--text-secondary); }
-/* ── TTD Luckyland CPA accordion ──────────────────────────────────── */
+/* ── TTD CPA accordion ────────────────────────────────────────────── */
 /* Reuses the .nw-na accordion shell + .kpi-tile/.kpi-row atoms;
    adds a bar-chart row, a breakdown table, and a date-range eyebrow. */
 .nw-ttd-wrap { margin: 6px 0 1rem; }
@@ -3394,12 +3394,9 @@ if st.session_state.active_view == "campaigns":
      _sivt_series_by_li, _givt_series_by_li,
      _sivt_by_order, _sivt_prior_by_order, _givt_by_order, _givt_prior_by_order) = _dv_ivt_aggregates()
 
-    # TTD acquisition reports — polled from agentmail by refresh_ttd / refresh_ttd_chumba.
-    # Degrade silently to empty frame when a table doesn't exist yet.
-    try:
-        _ttd_df = load("ttd_luckyland")
-    except Exception:
-        _ttd_df = pd.DataFrame()
+    # TTD acquisition report — polled from agentmail by refresh_ttd_chumba.
+    # Degrade silently to empty frame when the table doesn't exist yet.
+    # (Luckyland retired 2026-07-27 — campaign ended, ttd_luckyland dropped.)
     try:
         _ttd_chumba_df = load("ttd_chumba")
     except Exception:
@@ -4213,7 +4210,7 @@ if st.session_state.active_view == "campaigns":
 
             def _render_ttd_cpa(
                 summary: dict,
-                title: str = "Luckyland Casino · TTD Acquisition",
+                title: str = "TTD Acquisition",
                 goal=None,
             ) -> None:
                 """Render a TTD CPA accordion — the "Editorial scorecard" layout.
@@ -4678,7 +4675,7 @@ if st.session_state.active_view == "campaigns":
             _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
             st.markdown(
                 '<div class="nw-section-eyebrow">Priority flights · daily monitor'
-                f'<span class="nw-section-sub">2 betting flights · CPA goal ${_ttd_goal:,.0f}</span>'
+                f'<span class="nw-section-sub">1 betting flight · CPA goal ${_ttd_goal:,.0f}</span>'
                 '</div>',
                 unsafe_allow_html=True)
             # Window each card from the earliest start_date of that campaign's
@@ -4697,10 +4694,9 @@ if st.session_state.active_view == "campaigns":
             # One slim MONITOR row per flight, stacked full-width (2026-06-23
             # handoff): each row is the always-visible summary (name · CPA · goal
             # pill · stats · breach sparkline) and the full editorial scorecard is
-            # one tap away in the collapsed body. Both graded against the
-            # configured CPA goal (_ttd_goal, computed above for the eyebrow).
-            _render_ttd_cpa(dl.ttd_cpa_summary(_ttd_df, start=_ttd_li_start("Luckyland")),
-                            goal=_ttd_goal)
+            # one tap away in the collapsed body. Graded against the configured
+            # CPA goal (_ttd_goal, computed above for the eyebrow). Luckyland's
+            # card was retired 2026-07-27 with the campaign.
             _render_ttd_cpa(
                 dl.ttd_cpa_summary(_ttd_chumba_df, start=_ttd_li_start("Chumba")),
                 title="VGW Chumba Casino · TTD Acquisition",
@@ -5859,19 +5855,14 @@ if st.session_state.active_view == "campaigns":
                 _cpa_html = ""
                 _cpa_info = None
                 _deal_id = row.get("deal_id")
-                for _src in (_ttd_df, _ttd_chumba_df):
-                    if _src is not None and not _src.empty:
-                        _cpa_info = dl.ttd_cpa_for_deal(_src, _deal_id, start=row.get("start_date"))
-                        if _cpa_info:
-                            break
+                if _ttd_chumba_df is not None and not _ttd_chumba_df.empty:
+                    _cpa_info = dl.ttd_cpa_for_deal(_ttd_chumba_df, _deal_id, start=row.get("start_date"))
                 if _cpa_info is None:
                     _cpa_key = dl.cpa_join_key(row.get("line_item_name"))
                     if _cpa_key:
                         _cpa_ord = str(row.get("order_name") or "").lower()
-                        _cpa_src = (_ttd_df if "luckyland" in _cpa_ord
-                                    else (_ttd_chumba_df if ("chumba" in _cpa_ord or "vgw" in _cpa_ord) else None))
-                        if _cpa_src is not None:
-                            _cpa_info = dl.ttd_cpa_for_li(_cpa_src, _cpa_key, start=row.get("start_date"))
+                        if "chumba" in _cpa_ord or "vgw" in _cpa_ord:
+                            _cpa_info = dl.ttd_cpa_for_li(_ttd_chumba_df, _cpa_key, start=row.get("start_date"))
                 if _cpa_info:
                     _cpa_v = f'${_cpa_info["cpa"]:,.2f}' if _cpa_info["cpa"] is not None else "—"
                     _cpa_chart = _ttd_trend_svg(_cpa_info["daily_cpa"], "Daily CPA", kind="line")
@@ -8936,7 +8927,7 @@ if st.session_state.active_view == "configure":
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">TTD CPA goal</div>'
                 f'<div style="font-size:11px;color:var(--text-secondary);">'
-                f'Target for the Luckyland / Chumba Priority-flights cards — the CPA hero '
+                f'Target for the Chumba Priority-flights card — the CPA hero '
                 f'flags over/under this and the Daily CPA chart marks it.</div>',
                 unsafe_allow_html=True,
             )

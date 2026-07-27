@@ -188,7 +188,6 @@ _INDEXES = [
     ("pubmatic_deals",        "idx_pubmatic_deals_deal",          "deal"),
     ("dv_attention",          "idx_dv_attention_date",            '"date"'),
     ("dv_ivt",                "idx_dv_ivt_date",                  '"date"'),
-    ("ttd_luckyland",         "idx_ttd_luckyland_date",           '"date"'),
     ("ttd_chumba",            "idx_ttd_chumba_date",              '"date"'),
     ("opensincera_ecosystem", "idx_opensincera_ecosystem_date",   '"date"'),
     ("gam_deal_bid_daily",    "idx_gam_deal_bid_daily_date",      '"date"'),
@@ -1202,18 +1201,11 @@ def _refresh_ttd_campaign(
     return len(df)
 
 
-def refresh_ttd() -> int:
-    """Poll for TTD Luckyland Casino report and upsert into ttd_luckyland."""
-    from ttd_client import TTD_SUBJECT_NEEDLE
-    # Luckyland KPI = "usergenLLC Purchase [IdentityAlliance]" — the authoritative
-    # acquisition pixel (26 June conversions, CPA $346), matching the manually-
-    # produced report methodology.  The automated TTD scheduled report must include
-    # this column; if it's absent the parser logs a WARNING and falls back to the
-    # conversion auto-sum until TTD adds it to the report configuration.
-    return _refresh_ttd_campaign(
-        TTD_SUBJECT_NEEDLE, "ttd_luckyland",
-        primary_conv_col="usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions",
-    )
+# refresh_ttd (TTD Luckyland Casino → ttd_luckyland) was RETIRED 2026-07-27 —
+# the campaign ended; its scheduled report had already stopped after ~7/1 and
+# only forwarded "MonthtoDate v3" mails remained. ttd_luckyland was dropped
+# from prod. _refresh_ttd_campaign stays — it's the shared pipeline Chumba
+# (below) still uses, and the pattern for the next TTD-reported flight.
 
 
 def refresh_ttd_chumba() -> int:
@@ -1402,7 +1394,7 @@ def main() -> None:
 
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
-        "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep", "ttd", "ttd-chumba",
+        "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep", "ttd-chumba",
     )
     if mode not in _VALID_MODES:
         logger.error("Unknown --mode=%s  valid: %s", mode, ", ".join(_VALID_MODES))
@@ -1424,10 +1416,6 @@ def main() -> None:
 
     if mode == "dv":
         _run_with_alert("dv", [refresh_dv_attention, refresh_dv_ivt])
-        return
-
-    if mode == "ttd":
-        _run_with_alert("ttd", [refresh_ttd])
         return
 
     if mode == "ttd-chumba":
@@ -1500,7 +1488,6 @@ def main() -> None:
         refresh_pubmatic_deal_metadata,
         refresh_dv_attention,
         refresh_dv_ivt,
-        refresh_ttd,
         refresh_ttd_chumba,
         refresh_opensincera_ecosystem,
         refresh_opensincera_publishers,
