@@ -1,0 +1,25 @@
+name: Diagnose DV Attention inbox
+
+# One-off diagnostic (dispatch on demand): why do DV Attention emails no
+# longer yield a CSV? Prints structural metadata only (public logs) — see
+# scripts/diagnose_dv_inbox.py.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/diagnose_dv_inbox.py
+        env:
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
