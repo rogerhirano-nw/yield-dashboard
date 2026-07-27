@@ -90,16 +90,40 @@ class PubmaticClient:
 
         if age_days >= _TOKEN_MAX_AGE:
             logger.info("Pubmatic: token is %d days old — refreshing", age_days)
-            new_token = self._call_refresh(refresh_token)
-            self._save_token(engine, new_token, refresh_token)
+            try:
+                new_token, new_refresh = self._call_refresh(
+                    access_token, refresh_token)
+            except requests.HTTPError as exc:
+                # Refresh only works within the access token's 60-day
+                # validity. Past that (or any other auth failure), the only
+                # recovery is a UI-generated token pair — and if the env
+                # secrets have been rotated since our stored pair, re-seed
+                # from them so a secret update alone self-heals the client
+                # (no manual api_tokens surgery). Same-as-stored env token
+                # means nothing new to try: surface the failure.
+                env_token = os.environ["PUBMATIC_TOKEN"]
+                if env_token != access_token:
+                    logger.warning(
+                        "Pubmatic: token refresh failed (%s) — re-seeding "
+                        "from rotated env credentials", exc)
+                    self._save_token(engine, env_token, self._seed_refresh_token)
+                    return env_token
+                raise
+            self._save_token(engine, new_token, new_refresh)
             return new_token
 
         logger.info("Pubmatic: token age %d days — no refresh needed", age_days)
         return access_token
 
-    def _call_refresh(self, refresh_token: str) -> str:
+    def _call_refresh(self, access_token: str,
+                      refresh_token: str) -> tuple[str, str]:
+        """Refresh the token pair. Pubmatic's refreshToken endpoint requires
+        the *previous* access token as the Bearer (2026-07: omitting it
+        401s), and the response rotates BOTH tokens — persist the new
+        refreshToken or the next cycle's refresh dies."""
         resp = requests.put(
             _REFRESH_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
             json={
                 "email":        self._email,
                 "apiProduct":   "PUBLISHER",
@@ -116,8 +140,13 @@ class PubmaticClient:
         )
         if not new_token:
             raise RuntimeError(f"Unexpected token refresh response: {data}")
+        new_refresh = (
+            data.get("refreshToken")
+            or data.get("refresh_token")
+            or refresh_token
+        )
         logger.info("Pubmatic: token refreshed successfully")
-        return new_token
+        return new_token, new_refresh
 
     @staticmethod
     def _save_token(

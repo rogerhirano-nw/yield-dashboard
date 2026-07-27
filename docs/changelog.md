@@ -24,11 +24,27 @@ and why" index, keyed by PR. Newest first.
   2. **`health_check.main` remediation order flipped** — sweep re-run first,
      in-place RLS fix second (it re-queries offenders, so it also catches
      drift the sweep just created).
-  The same incident surfaced three upstream outages the code can't fix (all
-  reported in the 2026-07-27 digest): the Pubmatic refresh token is dead
-  (401 on `refreshToken`, data stale since 7/7), DV Attention emails arrive
-  with no CSV attachment since ~6/29 (IVT unaffected), and the real TTD
-  Luckyland scheduled report stopped after ~7/1.
+  The same incident surfaced three upstream outages (all reported in the
+  2026-07-27 digest): the Pubmatic token refresh 401s (data stale since 7/7),
+  DV Attention emails arrive with no CSV attachment since ~6/29 (IVT
+  unaffected), and the real TTD Luckyland scheduled report stopped after
+  ~7/1 (only forwarded v3 mails remain, missing the IdentityAlliance
+  conversion column).
+
+- **Pubmatic token refresh was malformed — fixed against the vendor docs.**
+  `pubmatic_client._call_refresh` never sent the required
+  `Authorization: Bearer <previous access token>` header (the docs mandate
+  it; omitting it is what 401'd every refresh once the token crossed the
+  55-day refresh threshold ~7/10), and it discarded the **rotated
+  refreshToken** the response returns, re-saving the old one — so even a
+  successful refresh would strand the next cycle. Both fixed; `_call_refresh`
+  now returns and persists the full new pair. Recovery path: refresh only
+  works within the access token's 60-day validity and ours is past it, so a
+  one-time UI regeneration is needed — and `_load_or_refresh_token` now
+  **re-seeds from the env secrets when a refresh fails and
+  `PUBMATIC_TOKEN` differs from the stored token**, so rotating the two
+  GitHub secrets alone self-heals on the next sweep (no manual `api_tokens`
+  SQL).
 
 ## 2026-07-23 — Hourly GAM clicks for per-hour CTR
 
