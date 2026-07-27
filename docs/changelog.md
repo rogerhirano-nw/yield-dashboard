@@ -38,13 +38,18 @@ and why" index, keyed by PR. Newest first.
   55-day refresh threshold ~7/10), and it discarded the **rotated
   refreshToken** the response returns, re-saving the old one — so even a
   successful refresh would strand the next cycle. Both fixed; `_call_refresh`
-  now returns and persists the full new pair. Recovery path: refresh only
-  works within the access token's 60-day validity and ours is past it, so a
-  one-time UI regeneration is needed — and `_load_or_refresh_token` now
-  **re-seeds from the env secrets when a refresh fails and
-  `PUBMATIC_TOKEN` differs from the stored token**, so rotating the two
-  GitHub secrets alone self-heals on the next sweep (no manual `api_tokens`
-  SQL).
+  now returns and persists the full new pair. Recovery paths on a failed
+  refresh (refresh only works within the access token's 60-day validity and
+  ours is past it): **(1)** if env `PUBMATIC_TOKEN` differs from the stored
+  token, re-seed from the rotated secrets — a secret update alone
+  self-heals, no manual `api_tokens` SQL; **(2)** if `PUBMATIC_PASSWORD` is
+  set, **mint a brand-new pair via the first-time-setup `POST /token`**
+  (`_call_generate` — invoked at most once per refresh cycle; Pubmatic
+  disables the account at 200 generation attempts in 20 min, so never
+  per-request). `refresh.yml` passes the optional `PUBMATIC_PASSWORD`
+  secret; while it's absent the fallback is skipped. With the password
+  secret set, the current outage recovers hands-free on the next sweep — no
+  UI visit needed.
 
 ## 2026-07-23 — Hourly GAM clicks for per-hour CTR
 

@@ -86,6 +86,9 @@ jobs:
           PUBMATIC_TOKEN:         ${{ secrets.PUBMATIC_TOKEN }}
           PUBMATIC_REFRESH_TOKEN: ${{ secrets.PUBMATIC_REFRESH_TOKEN }}
           PUBMATIC_EMAIL:         ${{ secrets.PUBMATIC_EMAIL }}
+          # Optional: enables hands-free token-pair regeneration when the
+          # 60-day refresh window is missed (pubmatic_client._call_generate).
+          PUBMATIC_PASSWORD:      ${{ secrets.PUBMATIC_PASSWORD }}
           AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:       ${{ vars.REFRESH_ALERT_TO }}
