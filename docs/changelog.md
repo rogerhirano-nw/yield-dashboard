@@ -4,6 +4,38 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-07-27 — CI: skip the $-advertiser one-off on dependabot PRs
+
+- **`find_dollar_advertisers.yml` failed ("DATABASE_URL not set") on dependabot
+  PR #342** — the dependabot actions-bump edited the workflow file itself,
+  matching the workflow's own `paths` filter, and dependabot-triggered
+  `pull_request` runs receive only Dependabot secrets, never repository
+  Actions secrets, so `secrets.DATABASE_URL` came through empty. Fix: a
+  job-level `if:` skips the run when the actor is `dependabot[bot]` (the
+  check reports skipped/neutral instead of failure). Human PRs touching the
+  script or workflow still run + comment as before; `workflow_dispatch` is
+  unaffected. Deliberately NOT fixed by mirroring `DATABASE_URL` into
+  Dependabot secrets — that would hand prod-DB access to dependabot-context
+  runs for no benefit.
+
+## 2026-07-27 — DV Attention: accept the XLSX report format
+
+- **`dv_attention` had been stale since 6/29 because DV switched the emailed
+  Attention report from CSV to XLSX** — the daily mails kept arriving
+  (verified via `diagnose_dv_inbox.yml`: `Attention_<start>_<end>.xlsx`,
+  ~1.8 MB, authenticated, downloadable) but `pull_dv_attention`'s
+  `.csv`-only attachment filter skipped every one, so the sweep logged
+  "No DV Attention CSV attachments found" for a month while the sibling
+  IVT feed (still CSV) kept working. Fix in `dv_attention_client`: new
+  `parse_dv_xlsx` (same sheet shape — preamble rows, then a header row
+  starting with `Date`; cells arrive typed, and the float id path is the
+  same #151 `.0` hazard as the CSV), the CSV/XLSX tail refactored into a
+  shared `_normalize_dv_frame`, and the puller dispatches by extension.
+  No refresh_cache logic change (`limit=2` + full-replace as before — the
+  table only ever holds the latest ~8-day window, so no backfill needed).
+  Regression test builds an in-memory DV-shaped workbook and asserts the
+  normalized ids/date/index (`test_attention_xlsx_parses_and_normalizes_ids`).
+
 ## 2026-07-27 — TTD Luckyland retired (campaign ended)
 
 - **The Luckyland Casino TTD lane is retired** (per Roger, 2026-07-27 — the
