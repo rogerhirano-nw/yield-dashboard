@@ -313,6 +313,14 @@ if str(order.status) in ("DRAFT", "PENDING_APPROVAL"):
         summary["order_approval_error"] = str(exc)[:300]
 
 li = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=li.id)))
+if str(li.status) == "INACTIVE":
+    try:
+        r = li_svc.performLineItemAction(
+            {"xsi_type": "ActivateLineItems"}, stmt("id = :i", i=li.id))
+        summary["li_activation_changes"] = int(getattr(r, "numChanges", 0))
+        li = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=li.id)))
+    except Exception as exc:
+        summary["li_activation_error"] = str(exc)[:300]
 summary["line_item_final_status"] = str(li.status)
 summary["test_url_param"] = f"?{KV_KEY_NAME}={KV_VALUE}"
 
