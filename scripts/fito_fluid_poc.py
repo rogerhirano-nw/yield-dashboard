@@ -263,17 +263,31 @@ snippet = """
 
     var vEl = pdoc.getElementById("dfp-ad-inarticle3-wrapper");
     if (vEl && VIDEO_URL) {
-      vEl.innerHTML =
-        "<div style='max-width:640px;margin:8px auto'>" +
-        "<video src='" + VIDEO_URL + "' autoplay muted playsinline controls" +
-        " style='width:100%%;display:block'></video></div>";
-      var v = vEl.querySelector("video");
-      if (v && top.IntersectionObserver) {
-        v.pause();
-        new top.IntersectionObserver(function (es) {
-          es.forEach(function (e) { e.isIntersecting ? v.play() : v.pause(); });
-        }, { threshold: 0.5 }).observe(v);
-      }
+      // VIDEO_URL is a VAST tag, and its MediaFile URLs expire within
+      // hours — resolve at runtime (GAM video CDN sends CORS headers).
+      // Production version: template uses an uploaded MP4 asset instead.
+      fetch(VIDEO_URL).then(function (r) { return r.text(); })
+        .then(function (x) {
+          var re = /<MediaFile[^>]*video\\/mp4[^>]*>\\s*<!\\[CDATA\\[([^\\]]+)\\]\\]/g;
+          var best = null, m;
+          while ((m = re.exec(x))) {
+            var w = (m[0].match(/width="(\\d+)"/) || [])[1] || 0;
+            if (!best || +w > best.w) best = { w: +w, url: m[1].trim() };
+          }
+          if (!best) return;
+          vEl.innerHTML =
+            "<div style='max-width:640px;margin:8px auto'>" +
+            "<video src='" + best.url + "' muted playsinline controls" +
+            " style='width:100%%;display:block'></video></div>";
+          var v = vEl.querySelector("video");
+          if (v && top.IntersectionObserver) {
+            new top.IntersectionObserver(function (es) {
+              es.forEach(function (e) {
+                e.isIntersecting ? v.play() : v.pause();
+              });
+            }, { threshold: 0.5 }).observe(v);
+          }
+        }).catch(function () {});
     }
   } catch (e) {}
 })();
@@ -298,6 +312,11 @@ if creative is None:
         "htmlSnippet": snippet,
         "isSafeFrameCompatible": False,
     }])[0]
+else:
+    # refresh the snippet on re-runs so template fixes reach the live creative
+    creative.htmlSnippet = snippet
+    creative = cr_svc.updateCreatives([creative])[0]
+    summary["creative_snippet_updated"] = True
 summary["creative"] = {"id": creative.id}
 
 # ---- 6. LICA + approve order ----------------------------------------------
