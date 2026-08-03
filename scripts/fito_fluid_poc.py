@@ -358,6 +358,8 @@ if pre_li is None:
             "inventoryTargeting": {
                 "targetedAdUnits": [
                     {"adUnitId": root_ad_unit, "includeDescendants": True}]},
+            "requestPlatformTargeting": {
+                "targetedRequestPlatforms": ["VIDEO_PLAYER"]},
             "customTargeting": {
                 "xsi_type": "CustomCriteriaSet",
                 "logicalOperator": "AND",
