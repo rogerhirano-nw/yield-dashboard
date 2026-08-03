@@ -221,7 +221,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
-  var FITO_POC_V = "v6-preroll";
+  var FITO_POC_V = "v7-cascade";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -246,46 +246,21 @@ snippet = """
   writeFrame(document, document.getElementById("fito-host"), 970, 250,
              TAGS.t970);
 
-  // 2. break out and paint the rest of the takeover (POC stand-in for the
-  //    page-contract hook; requires friendly iframe)
+  // 2. KVP cascade: the anchor render flips page-level targeting, and every
+  //    subsequent ad request (lazily-defined in-article slots, sticky, and —
+  //    once dev wires it — the MUX player's VAST request) carries
+  //    fitolive=fluid. Follower line items targeting that KVP win those
+  //    auctions natively; nothing is painted or suppressed from here.
+  //    (Production: the page sets this from its own slotRenderEnded listener
+  //    after validating the anchor line item — creative-side is POC only.)
   try {
     var top = window.top;
-    if (top.__FITO_FLUID__) return;
-    top.__FITO_FLUID__ = true;
-    var pdoc = top.document;
-
-    function paintTag(wrapperId, w, h, tag) {
-      var el = pdoc.getElementById(wrapperId);
-      if (el) writeFrame(pdoc, el, w, h, tag);
+    if (!top.__FITO_FLUID__) {
+      top.__FITO_FLUID__ = true;
+      if (top.googletag && top.googletag.pubads) {
+        top.googletag.pubads().setTargeting("fitolive", "fluid");
+      }
     }
-
-    paintTag("dfp-ad-inarticle2-wrapper", 970, 250, TAGS.t970);
-    paintTag("dfp-ad-inarticle4-wrapper", 970, 250, TAGS.t970);
-
-    // collapse extra in-article units so the takeover stays exclusive
-    for (var n = 5; n <= 12; n++) {
-      var extra = pdoc.getElementById("dfp-ad-inarticle" + n + "-wrapper");
-      if (extra) extra.style.display = "none";
-    }
-
-    // the sticky/adhesion unit mounts late and runs its own auction —
-    // claim it whenever it renders (POC stand-in for page-side suppression)
-    if (top.googletag && top.googletag.apiReady) {
-      top.googletag.pubads().addEventListener("slotRenderEnded", function (ev) {
-        try {
-          var p = ev.slot.getAdUnitPath() || "";
-          if (!/\\/(sticky|stky)$/i.test(p)) return;
-          var el = pdoc.getElementById(ev.slot.getSlotElementId());
-          if (el && el.parentNode) writeFrame(pdoc, el.parentNode, 728, 90, TAGS.t728);
-        } catch (e) {}
-      });
-    }
-
-    // video runs as a pre-roll in the MUX player via a separate VIDEO_PLAYER
-    // line item — not painted inline. Collapse the third in-article unit so
-    // the takeover stays exclusive.
-    var vEl = pdoc.getElementById("dfp-ad-inarticle3-wrapper");
-    if (vEl) vEl.style.display = "none";
   } catch (e) {}
 })();
 </script>
@@ -412,6 +387,122 @@ if str(pre_li.status) == "INACTIVE":
             {"xsi_type": "ActivateLineItems"}, stmt("id = :i", i=pre_li.id))
     except Exception as exc:
         summary["preroll_activation_error"] = str(exc)[:200]
+
+# ---- 6c. KVP cascade followers ---------------------------------------------
+# The anchor creative sets page-level fitolive=fluid on render; follower LIs
+# targeting that KVP win every subsequent slot natively (no painting).
+FOLLOWER_LI_NAME = "[nw]_FITO-Fluid_POC_follower_cascade"
+fkey = first(kv_svc.getCustomTargetingKeysByStatement(
+    stmt("name = :n", n="fitolive")))
+if fkey is None:
+    fkey = kv_svc.createCustomTargetingKeys([
+        {"name": "fitolive", "displayName": "FITO takeover live",
+         "type": "FREEFORM"}])[0]
+fval = first(kv_svc.getCustomTargetingValuesByStatement(
+    stmt("customTargetingKeyId = :k AND name = :v", k=fkey.id, v="fluid")))
+if fval is None:
+    fval = kv_svc.createCustomTargetingValues([
+        {"customTargetingKeyId": fkey.id, "name": "fluid",
+         "matchType": "EXACT"}])[0]
+summary["cascade_kv"] = {"keyId": fkey.id, "valueId": fval.id}
+
+fol_li = first(li_svc.getLineItemsByStatement(
+    stmt("name = :n AND orderId = :o", n=FOLLOWER_LI_NAME, o=order.id)))
+if fol_li is None:
+    fol_li = li_svc.createLineItems([{
+        "orderId": order.id,
+        "name": FOLLOWER_LI_NAME,
+        "lineItemType": "SPONSORSHIP",
+        "costType": "CPM",
+        "costPerUnit": {"currencyCode": "USD", "microAmount": 0},
+        "creativeRotationType": "OPTIMIZED",
+        "primaryGoal": {"goalType": "DAILY", "unitType": "IMPRESSIONS",
+                        "units": 100},
+        "startDateTimeType": "IMMEDIATELY",
+        "endDateTime": {
+            "date": {"year": 2026, "month": 8, "day": 17},
+            "hour": 23, "minute": 59, "second": 0,
+            "timeZoneId": "America/New_York",
+        },
+        "creativePlaceholders": [
+            {"size": {"width": 970, "height": 250, "isAspectRatio": False}},
+            {"size": {"width": 300, "height": 250, "isAspectRatio": False}},
+            {"size": {"width": 728, "height": 90, "isAspectRatio": False}},
+        ],
+        "targeting": {
+            "inventoryTargeting": {
+                "targetedAdUnits": [
+                    {"adUnitId": root_ad_unit, "includeDescendants": True}]},
+            "customTargeting": {
+                "xsi_type": "CustomCriteriaSet",
+                "logicalOperator": "AND",
+                "children": [{
+                    "xsi_type": "CustomCriteria",
+                    "keyId": fkey.id,
+                    "valueIds": [fval.id],
+                    "operator": "IS",
+                }],
+            },
+        },
+        "skipInventoryCheck": True,
+        "allowOverbook": True,
+    }])[0]
+summary["follower_line_item"] = {"id": fol_li.id, "status": str(fol_li.status)}
+
+fol_creatives = []
+for size_label, (w, h) in {"970x250": (970, 250), "300x250": (300, 250),
+                           "728x90": (728, 90)}.items():
+    tag = tags.get(size_label)
+    if not tag:
+        continue
+    cname = f"[nw]_FITO-Fluid_POC_follower_{size_label}"
+    c = first(cr_svc.getCreativesByStatement(
+        stmt("name = :n AND advertiserId = :a",
+             n=cname, a=order.advertiserId)))
+    if c is None:
+        c = cr_svc.createCreatives([{
+            "xsi_type": "ThirdPartyCreative",
+            "name": cname,
+            "advertiserId": order.advertiserId,
+            "size": {"width": w, "height": h, "isAspectRatio": False},
+            "snippet": tag,
+            "isSafeFrameCompatible": True,
+        }])[0]
+    fol_creatives.append(c.id)
+    lica = first(lica_svc.getLineItemCreativeAssociationsByStatement(
+        stmt("lineItemId = :l AND creativeId = :c", l=fol_li.id, c=c.id)))
+    if lica is None:
+        lica_svc.createLineItemCreativeAssociations([
+            {"lineItemId": fol_li.id, "creativeId": c.id}])
+summary["follower_creatives"] = fol_creatives
+
+if str(fol_li.status) == "INACTIVE":
+    try:
+        li_svc.performLineItemAction(
+            {"xsi_type": "ActivateLineItems"}, stmt("id = :i", i=fol_li.id))
+    except Exception as exc:
+        summary["follower_activation_error"] = str(exc)[:200]
+
+# mutual exclusion: keep the anchor LI off the follower slots (anchor's own
+# request never carries fitolive; every post-render request does)
+try:
+    anchor = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=li.id)))
+    at = anchor.targeting
+    ct = getattr(at, "customTargeting", None)
+    already = "fitolive" in str(ct)
+    if not already and ct is not None:
+        ct.children.append({
+            "xsi_type": "CustomCriteria",
+            "keyId": fkey.id,
+            "valueIds": [fval.id],
+            "operator": "IS_NOT",
+        })
+        li_svc.updateLineItems([anchor])
+        summary["anchor_exclusion_added"] = True
+    else:
+        summary["anchor_exclusion_added"] = "already present" if already else False
+except Exception as exc:
+    summary["anchor_exclusion_error"] = str(exc)[:250]
 
 if str(order.status) in ("DRAFT", "PENDING_APPROVAL"):
     try:
