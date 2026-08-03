@@ -488,26 +488,60 @@ if str(fol_li.status) == "INACTIVE":
     except Exception as exc:
         summary["follower_activation_error"] = str(exc)[:200]
 
-# mutual exclusion: keep the anchor LI off the follower slots (anchor's own
-# request never carries fitolive; every post-render request does)
+# ---- 6d. Organic test page: no URL-param gate --------------------------------
+# Anchor eligibility comes from the test article itself (article_id KV the
+# page already passes); the cascade signal (nwdemocr=fitolive) is set by the
+# creative on render, so followers and the pre-roll need no gate at all.
+TEST_ARTICLE_ID = "12233005"  # Insta360 test article
 try:
+    akey = first(kv_svc.getCustomTargetingKeysByStatement(
+        stmt("name = :n", n="article_id")))
+    assert akey is not None, "custom targeting key article_id not found"
+    aval = first(kv_svc.getCustomTargetingValuesByStatement(
+        stmt("customTargetingKeyId = :k AND name = :v",
+             k=akey.id, v=TEST_ARTICLE_ID)))
+    if aval is None:
+        aval = kv_svc.createCustomTargetingValues([
+            {"customTargetingKeyId": akey.id, "name": TEST_ARTICLE_ID,
+             "matchType": "EXACT"}])[0]
+
     anchor = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=li.id)))
-    at = anchor.targeting
-    ct = getattr(at, "customTargeting", None)
-    already = "fitolive" in str(ct)
-    if not already and ct is not None:
-        ct.children.append({
-            "xsi_type": "CustomCriteria",
-            "keyId": fkey.id,
-            "valueIds": [fval.id],
-            "operator": "IS_NOT",
-        })
+    if f"'{akey.id}'" not in str(anchor.targeting) and \
+            str(akey.id) not in str(anchor.targeting):
+        anchor.targeting.customTargeting = {
+            "xsi_type": "CustomCriteriaSet",
+            "logicalOperator": "AND",
+            "children": [
+                {"xsi_type": "CustomCriteria", "keyId": akey.id,
+                 "valueIds": [aval.id], "operator": "IS"},
+                # exclusion keeps the anchor off follower slots (its own
+                # request never carries fitolive; post-render requests do)
+                {"xsi_type": "CustomCriteria", "keyId": fkey.id,
+                 "valueIds": [fval.id], "operator": "IS_NOT"},
+            ],
+        }
         li_svc.updateLineItems([anchor])
-        summary["anchor_exclusion_added"] = True
+        summary["anchor_retargeted_to_article"] = TEST_ARTICLE_ID
     else:
-        summary["anchor_exclusion_added"] = "already present" if already else False
+        summary["anchor_retargeted_to_article"] = "already targeted"
+
+    # pre-roll follows the cascade signal, not the URL gate
+    pre = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
+    if str(fval.id) not in str(pre.targeting):
+        pre.targeting.customTargeting = {
+            "xsi_type": "CustomCriteriaSet",
+            "logicalOperator": "AND",
+            "children": [
+                {"xsi_type": "CustomCriteria", "keyId": fkey.id,
+                 "valueIds": [fval.id], "operator": "IS"},
+            ],
+        }
+        li_svc.updateLineItems([pre])
+        summary["preroll_retargeted_to_cascade"] = True
+    else:
+        summary["preroll_retargeted_to_cascade"] = "already targeted"
 except Exception as exc:
-    summary["anchor_exclusion_error"] = str(exc)[:250]
+    summary["organic_retarget_error"] = str(exc)[:300]
 
 if str(order.status) in ("DRAFT", "PENDING_APPROVAL"):
     try:
