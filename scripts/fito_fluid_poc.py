@@ -119,24 +119,29 @@ if val is None:
          "matchType": "EXACT"}])[0]
 summary["kv"] = {"keyId": kv_key.id, "valueId": val.id}
 
-# ---- 3. Order (own test order; fall back to source order) ------------------
+# ---- 3. Order --------------------------------------------------------------
+# The service account cannot approve orders (OrderActionError.PERMISSION_DENIED
+# on ApproveOrders, verified run 30823071325), so a fresh order stays DRAFT and
+# never serves. Instead, create the test LI inside the already-approved source
+# order; archive the stranded draft POC order from the first run if possible.
 order_svc = client.GetService("OrderService", version=VERSION)
-order = first(order_svc.getOrdersByStatement(stmt("name = :n", n=ORDER_NAME)))
-if order is None:
+draft = first(order_svc.getOrdersByStatement(stmt("name = :n", n=ORDER_NAME)))
+if draft is not None and str(draft.status) == "DRAFT":
     try:
-        order = order_svc.createOrders([
-            {"name": ORDER_NAME, "advertiserId": adv.id,
-             "traffickerId": me.id}])[0]
+        order_svc.performOrderAction(
+            {"xsi_type": "ArchiveOrders"}, stmt("id = :i", i=draft.id))
+        summary["draft_poc_order_archived"] = draft.id
     except Exception as exc:
-        print(f"createOrders failed ({exc}); falling back to source order")
-        order = first(order_svc.getOrdersByStatement(
-            stmt("id = :i", i=SRC_ORDER_ID)))
+        summary["draft_poc_order_archive_error"] = str(exc)[:200]
+
+order = first(order_svc.getOrdersByStatement(stmt("id = :i", i=SRC_ORDER_ID)))
 summary["order"] = {"id": order.id, "name": order.name,
                     "status": str(order.status)}
 
 # ---- 4. Line item ----------------------------------------------------------
 li_svc = client.GetService("LineItemService", version=VERSION)
-li = first(li_svc.getLineItemsByStatement(stmt("name = :n", n=LI_NAME)))
+li = first(li_svc.getLineItemsByStatement(
+    stmt("name = :n AND orderId = :o", n=LI_NAME, o=order.id)))
 if li is None:
     base = {
         "orderId": order.id,
@@ -257,13 +262,15 @@ snippet = """
     "video": js_str(video_url or ""),
 }
 
-creative = first(cr_svc.getCreativesByStatement(stmt("name = :n",
-                                                     n=CREATIVE_NAME)))
+# creative must share the order's advertiser or the LICA is rejected
+creative = first(cr_svc.getCreativesByStatement(
+    stmt("name = :n AND advertiserId = :a",
+         n=CREATIVE_NAME, a=order.advertiserId)))
 if creative is None:
     creative = cr_svc.createCreatives([{
         "xsi_type": "CustomCreative",
         "name": CREATIVE_NAME,
-        "advertiserId": adv.id,
+        "advertiserId": order.advertiserId,
         "size": {"width": 970, "height": 250, "isAspectRatio": False},
         "htmlSnippet": snippet,
         "isSafeFrameCompatible": False,
