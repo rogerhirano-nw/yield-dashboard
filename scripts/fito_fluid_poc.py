@@ -221,6 +221,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
+  var FITO_POC_V = "v5-970s";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -258,8 +259,8 @@ snippet = """
       if (el) writeFrame(pdoc, el, w, h, tag);
     }
 
-    paintTag("dfp-ad-inarticle2-wrapper", 300, 250, TAGS.t300);
-    paintTag("dfp-ad-inarticle4-wrapper", 728, 90, TAGS.t728);
+    paintTag("dfp-ad-inarticle2-wrapper", 970, 250, TAGS.t970);
+    paintTag("dfp-ad-inarticle4-wrapper", 970, 250, TAGS.t970);
 
     // collapse extra in-article units so the takeover stays exclusive
     for (var n = 5; n <= 12; n++) {
