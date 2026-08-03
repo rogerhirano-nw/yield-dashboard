@@ -520,6 +520,8 @@ try:
                  "valueIds": [fval.id], "operator": "IS_NOT"},
             ],
         }
+        anchor.skipInventoryCheck = True
+        anchor.allowOverbook = True
         li_svc.updateLineItems([anchor])
         summary["anchor_retargeted_to_article"] = TEST_ARTICLE_ID
     else:
@@ -536,6 +538,8 @@ try:
                  "valueIds": [fval.id], "operator": "IS"},
             ],
         }
+        pre.skipInventoryCheck = True
+        pre.allowOverbook = True
         li_svc.updateLineItems([pre])
         summary["preroll_retargeted_to_cascade"] = True
     else:
