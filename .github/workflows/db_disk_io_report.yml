@@ -1,0 +1,59 @@
+name: DB disk-IO report (diagnostic)
+
+# Dispatched on demand when Supabase warns the project is depleting its
+# Disk IO Budget (see docs/supabase_disk_io.md). Runs the read-only
+# scripts/db_disk_io_report.py against prod and prints per-table /
+# per-statement disk-IO accounting to the job log + step summary, so the
+# driver can be identified from Postgres's own counters instead of guessed.
+#
+# The optional `vacuum` input additionally runs VACUUM (ANALYZE) on every
+# public table after the report — plain VACUUM (no exclusive locks, safe
+# against the live dashboard), which reclaims the dead-tuple bloat left by
+# the daily DELETE+append refresh churn.
+on:
+  workflow_dispatch:
+    inputs:
+      vacuum:
+        description: 'Also run VACUUM (ANALYZE) on all public tables'
+        required: false
+        default: '0'
+        type: choice
+        options: ['0', '1']
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - run: pip install sqlalchemy psycopg2-binary
+
+      - name: Run disk-IO report
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ "${{ github.event.inputs.vacuum }}" = "1" ]; then
+            python scripts/db_disk_io_report.py --vacuum | tee report.txt
+          else
+            python scripts/db_disk_io_report.py | tee report.txt
+          fi
+
+      - name: Publish to step summary
+        run: |
+          {
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
