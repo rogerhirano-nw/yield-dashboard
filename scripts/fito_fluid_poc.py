@@ -376,16 +376,23 @@ if pre_li is None:
     }])[0]
 summary["preroll_line_item"] = {"id": pre_li.id, "status": str(pre_li.status)}
 
+# the campaign VAST tag is ~4KB — over vastXmlUrl's length limit — so the
+# creative points at a short wrapper VAST hosted in this repo whose
+# VASTAdTagURI carries the long tag (docs/snippets/fito_preroll_vast.xml)
+WRAPPER_VAST_URL = ("https://raw.githubusercontent.com/rogerhirano-nw/"
+                    "yield-dashboard/claude/fito-fluid-poc/docs/snippets/"
+                    "fito_preroll_vast.xml")
+
 pre_cr = first(cr_svc.getCreativesByStatement(
     stmt("name = :n AND advertiserId = :a",
          n=PREROLL_CR_NAME, a=order.advertiserId)))
-if pre_cr is None and video_url:
+if pre_cr is None:
     pre_cr = cr_svc.createCreatives([{
         "xsi_type": "VastRedirectCreative",
         "name": PREROLL_CR_NAME,
         "advertiserId": order.advertiserId,
         "size": {"width": 640, "height": 360, "isAspectRatio": False},
-        "vastXmlUrl": video_url.replace("http://", "https://"),
+        "vastXmlUrl": WRAPPER_VAST_URL,
         "vastRedirectType": "LINEAR",
         "duration": 15000,
     }])[0]
