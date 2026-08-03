@@ -28,7 +28,7 @@ VIDEO_CREATIVE_ID = 138568962668
 KV_KEY_NAME = "nwdemocr"
 KV_VALUE = "fitofluid"
 ORDER_NAME = "[nw] FITO Fluid POC"
-LI_NAME = "[nw]_FITO-Fluid_POC_single-li-takeover"
+LI_NAME = "[nw]_FITO-Fluid_POC_single-li-takeover_pp"
 CREATIVE_NAME = "[nw]_FITO-Fluid_POC_fluid-host_970x250"
 
 key_data = json.loads(os.environ["GAM_SERVICE_ACCOUNT_JSON"])
@@ -192,17 +192,23 @@ if li is None:
         "skipInventoryCheck": True,
         "allowOverbook": True,
     }
+    # SPONSORSHIP is the real-world config, but activating a guaranteed LI
+    # requires reservation rights the service account lacks
+    # (LineItemOperationError.NOT_ALLOWED, run 30823644824). PRICE_PRIORITY
+    # needs no reservation and $100 CPM wins the demo-gated auction, so the
+    # single-LI takeover mechanism is testable all the same.
+    li = li_svc.createLineItems([dict(
+        base, lineItemType="PRICE_PRIORITY",
+        costPerUnit={"currencyCode": "USD", "microAmount": 100000000},
+        primaryGoal={"goalType": "NONE"})])[0]
+
+    # best effort: archive the stranded INACTIVE sponsorship LI from run 4
     try:
-        li = li_svc.createLineItems([dict(
-            base, lineItemType="SPONSORSHIP",
-            primaryGoal={"goalType": "DAILY", "unitType": "IMPRESSIONS",
-                         "units": 100})])[0]
+        li_svc.performLineItemAction(
+            {"xsi_type": "ArchiveLineItems"},
+            stmt("id = :i", i=7389497908))
     except Exception as exc:
-        print(f"SPONSORSHIP create failed ({exc}); trying PRICE_PRIORITY")
-        li = li_svc.createLineItems([dict(
-            base, lineItemType="PRICE_PRIORITY",
-            costPerUnit={"currencyCode": "USD", "microAmount": 100000000},
-            primaryGoal={"goalType": "NONE"})])[0]
+        print(f"archive of stranded sponsorship LI failed: {exc}")
 summary["line_item"] = {"id": li.id, "type": str(li.lineItemType),
                         "status": str(li.status)}
 
