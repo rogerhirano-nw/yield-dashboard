@@ -900,10 +900,13 @@ the `refresh_cache.py` "yesterday" windows stay UTC on purpose: they fire at
 touches them.
 
 **`st.cache_data` survives code-only deploys.** Table loads (`load()`,
-`_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (1h — was 6h
-until 2026-06-12; the 6h guarded the Free plan's 5 GB egress cap and the
-Nano disk-IO budget, neither of which binds on Pro + Micro compute),
-keyed on function source — a push that doesn't change those functions
+`_load_li_max_duration()`) cache for `_CACHE_TTL_SECONDS` (**2h** since
+2026-08-03 — was 6h → 1h on 2026-06-12 on the premise that Pro + Micro
+compute made the egress cap and disk-IO budget moot; Supabase's
+2026-08-03 "depleting its Disk IO Budget" warning disproved the IO half,
+so the TTL went back up to 2h. See `docs/supabase_disk_io.md` for the
+full IO story + the `db_disk_io_report.yml` diagnostic), keyed on
+function source — a push that doesn't change those functions
 hot-reloads the script but keeps the old cached frames. So after fixing
 data out-of-band (direct SQL against prod), the dashboard keeps
 rendering stale frames until TTL expiry; clear via the app menu
@@ -951,6 +954,13 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the
+  2026-08-03 depletion warning): what in this stack spends disk IO, how to
+  measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,
+  read-only pg_stat/pg_statio/pg_stat_statements report, optional
+  `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
+  and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
+  conversion, compute upgrade).
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

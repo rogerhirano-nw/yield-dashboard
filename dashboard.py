@@ -2158,14 +2158,18 @@ except Exception:
 
 _load_errors: dict[str, str] = {}  # table → error message, populated by load()
 
-# Cache TTL: 1 hour. The original 6h TTL guarded the FREE plan's 5 GB/month
-# egress cap (1h ≈ 9 GB/month) and the Nano compute's daily disk-IO budget.
-# The org is on Pro now (250 GB egress included) and the project runs Micro
-# compute (covered by Pro's $10 compute credit), so neither constraint
-# binds — and 1h means post-sweep data shows up within the hour instead of
-# whenever the 6h window happened to roll. The debug "Clear cache +
-# re-query" button still handles on-demand refresh.
-_CACHE_TTL_SECONDS = 3600
+# Cache TTL: 2 hours. The original 6h TTL guarded the FREE plan's 5 GB/month
+# egress cap and the Nano compute's daily disk-IO budget; it was cut to 1h
+# on 2026-06-12 on the premise that Pro + Micro compute made both moot.
+# That premise half-failed: Supabase warned the project is depleting its
+# Micro DISK IO BUDGET (2026-08-03), and the hourly cold reload — ~25
+# table reads + 4 GROUP BY scans, every hour, forever — is the dashboard's
+# whole share of that budget. 2h halves it while still surfacing the
+# 4×/day intraday direct refreshes within ≤2h (the data cadence itself is
+# 3h) and the 05:00 ET sweep well before US business hours. The debug
+# "Clear cache + re-query" button still handles on-demand refresh; see
+# docs/supabase_disk_io.md for the full IO story.
+_CACHE_TTL_SECONDS = 7200
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def load(table: str) -> pd.DataFrame:

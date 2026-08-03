@@ -4,6 +4,37 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
+
+- **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)
+  is depleting its Disk IO Budget** (email 2026-08-03). Nothing in the stack
+  is individually huge, so the driver has to be measured on the instance, not
+  guessed from code. Shipped in response:
+  1. **`scripts/db_disk_io_report.py` + `db_disk_io_report.yml`** — a
+     dispatchable, read-only diagnostic that prints Postgres's own IO
+     accounting: DB/table/index sizes, cache-hit ratios (RAM vs disk reads),
+     per-table disk blocks read + write churn (dead tuples, ins/del,
+     autovacuum), temp-file spill, and the top statements by disk blocks
+     read/written (pg_stat_statements). Optional `vacuum=1` input runs a
+     lock-free `VACUUM (ANALYZE)` on every public table afterwards — the
+     daily DELETE+append refresh pattern had never been followed by a
+     manual vacuum.
+  2. **Dashboard cache TTL 1h → 2h** (`_CACHE_TTL_SECONDS`) — the hourly
+     cold reload (~25 table reads + 4 GROUP BY scans) was the dashboard's
+     whole share of the budget; 2h halves it while still surfacing the
+     4×/day intraday direct refreshes within ≤2h (their own cadence is 3h).
+     Reverses half of the 2026-06-12 6h→1h premise ("neither constraint
+     binds on Pro + Micro") — the disk-IO half was wrong.
+  3. **`docs/supabase_disk_io.md`** — runbook: per-consumer IO table
+     (dashboard reload / daily sweep / 4×-day direct refresh / health-check
+     remediation sweeps / platform floor), how to read the report, and the
+     levers cheapest-first (TTL, vacuum, converting `refresh_gam`'s
+     DELETE+append to TRUNCATE, Micro→Small compute).
+  Not done pre-emptively: `refresh_gam` churn conversion (verify no consumer
+  depends on rows surviving a missed sweep first) and the compute upgrade
+  (only if the report shows healthy cache-hit + modest churn, i.e. the floor
+  is platform overhead).
+
 ## 2026-07-27 — CI: skip the $-advertiser one-off on dependabot PRs
 
 - **`find_dollar_advertisers.yml` failed ("DATABASE_URL not set") on dependabot
