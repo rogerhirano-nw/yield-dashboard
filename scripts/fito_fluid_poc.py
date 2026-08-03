@@ -221,7 +221,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
-  var FITO_POC_V = "v7-cascade";
+  var FITO_POC_V = "v7b-cascade";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -258,7 +258,12 @@ snippet = """
     if (!top.__FITO_FLUID__) {
       top.__FITO_FLUID__ = true;
       if (top.googletag && top.googletag.pubads) {
-        top.googletag.pubads().setTargeting("fitolive", "fluid");
+        var pa = top.googletag.pubads();
+        var cur = pa.getTargeting("nwdemocr") || [];
+        if (cur.indexOf("fitolive") < 0) {
+          cur.push("fitolive");
+          pa.setTargeting("nwdemocr", cur);
+        }
       }
     }
   } catch (e) {}
@@ -392,17 +397,17 @@ if str(pre_li.status) == "INACTIVE":
 # The anchor creative sets page-level fitolive=fluid on render; follower LIs
 # targeting that KVP win every subsequent slot natively (no painting).
 FOLLOWER_LI_NAME = "[nw]_FITO-Fluid_POC_follower_cascade"
-fkey = first(kv_svc.getCustomTargetingKeysByStatement(
-    stmt("name = :n", n="fitolive")))
-if fkey is None:
-    fkey = kv_svc.createCustomTargetingKeys([
-        {"name": "fitolive", "displayName": "FITO takeover live",
-         "type": "FREEFORM"}])[0]
+# the service account cannot create custom targeting KEYS (PERMISSION_DENIED,
+# run 30832191951) — only values under existing keys. So the cascade signal is
+# a second value on the existing nwdemocr key: anchor render appends
+# nwdemocr=fitolive; followers target that value. (Production: a dedicated
+# key created once in the UI.)
+fkey = kv_key
 fval = first(kv_svc.getCustomTargetingValuesByStatement(
-    stmt("customTargetingKeyId = :k AND name = :v", k=fkey.id, v="fluid")))
+    stmt("customTargetingKeyId = :k AND name = :v", k=fkey.id, v="fitolive")))
 if fval is None:
     fval = kv_svc.createCustomTargetingValues([
-        {"customTargetingKeyId": fkey.id, "name": "fluid",
+        {"customTargetingKeyId": fkey.id, "name": "fitolive",
          "matchType": "EXACT"}])[0]
 summary["cascade_kv"] = {"keyId": fkey.id, "valueId": fval.id}
 
