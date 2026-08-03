@@ -1,0 +1,31 @@
+name: FITO Fluid POC (one-off)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/fito-fluid-poc]
+    paths:
+      - 'scripts/fito_fluid_poc.py'
+      - '.github/workflows/fito_fluid_poc.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Run POC setup
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: python scripts/fito_fluid_poc.py
