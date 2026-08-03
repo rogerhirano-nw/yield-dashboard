@@ -221,7 +221,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
-  var FITO_POC_V = "v5-970s";
+  var FITO_POC_V = "v6-preroll";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -281,37 +281,11 @@ snippet = """
       });
     }
 
+    // video runs as a pre-roll in the MUX player via a separate VIDEO_PLAYER
+    // line item — not painted inline. Collapse the third in-article unit so
+    // the takeover stays exclusive.
     var vEl = pdoc.getElementById("dfp-ad-inarticle3-wrapper");
-    if (vEl && VIDEO_URL) {
-      // VIDEO_URL is a VAST tag, and its MediaFile URLs expire within
-      // hours — resolve at runtime (GAM video CDN sends CORS headers).
-      // Production version: template uses an uploaded MP4 asset instead.
-      // The API hands the tag back as http:// — fetch() on an https page
-      // hard-blocks mixed content, so force https.
-      fetch(VIDEO_URL.replace(/^http:/, "https:"))
-        .then(function (r) { return r.text(); })
-        .then(function (x) {
-          var re = /<MediaFile[^>]*video\\/mp4[^>]*>\\s*<!\\[CDATA\\[([^\\]]+)\\]\\]/g;
-          var best = null, m;
-          while ((m = re.exec(x))) {
-            var w = (m[0].match(/width="(\\d+)"/) || [])[1] || 0;
-            if (!best || +w > best.w) best = { w: +w, url: m[1].trim() };
-          }
-          if (!best) return;
-          vEl.innerHTML =
-            "<div style='max-width:640px;margin:8px auto'>" +
-            "<video src='" + best.url + "' muted playsinline controls" +
-            " style='width:100%%;display:block'></video></div>";
-          var v = vEl.querySelector("video");
-          if (v && top.IntersectionObserver) {
-            new top.IntersectionObserver(function (es) {
-              es.forEach(function (e) {
-                e.isIntersecting ? v.play() : v.pause();
-              });
-            }, { threshold: 0.5 }).observe(v);
-          }
-        }).catch(function () {});
-    }
+    if (vEl) vEl.style.display = "none";
   } catch (e) {}
 })();
 </script>
@@ -351,6 +325,84 @@ if lica is None:
     lica_svc.createLineItemCreativeAssociations([
         {"lineItemId": li.id, "creativeId": creative.id}])
 summary["lica"] = "ok"
+
+# ---- 6b. Pre-roll: separate VIDEO_PLAYER line item for the MUX player -----
+# The video must serve as a pre-roll through the player's own VAST request,
+# so it cannot come from the display creative. Reuse the campaign video via
+# a VastRedirectCreative pointing at its VAST tag.
+PREROLL_LI_NAME = "[nw]_FITO-Fluid_POC_preroll_pp"
+PREROLL_CR_NAME = "[nw]_FITO-Fluid_POC_preroll_vast_640x360"
+
+pre_li = first(li_svc.getLineItemsByStatement(
+    stmt("name = :n AND orderId = :o", n=PREROLL_LI_NAME, o=order.id)))
+if pre_li is None:
+    pre_li = li_svc.createLineItems([{
+        "orderId": order.id,
+        "name": PREROLL_LI_NAME,
+        "lineItemType": "PRICE_PRIORITY",
+        "environmentType": "VIDEO_PLAYER",
+        "costType": "CPM",
+        "costPerUnit": {"currencyCode": "USD", "microAmount": 100000000},
+        "creativeRotationType": "EVEN",
+        "primaryGoal": {"goalType": "NONE"},
+        "startDateTimeType": "IMMEDIATELY",
+        "endDateTime": {
+            "date": {"year": 2026, "month": 8, "day": 17},
+            "hour": 23, "minute": 59, "second": 0,
+            "timeZoneId": "America/New_York",
+        },
+        "videoMaxDuration": 30000,
+        "creativePlaceholders": [
+            {"size": {"width": 640, "height": 360, "isAspectRatio": False}}],
+        "targeting": {
+            "inventoryTargeting": {
+                "targetedAdUnits": [
+                    {"adUnitId": root_ad_unit, "includeDescendants": True}]},
+            "customTargeting": {
+                "xsi_type": "CustomCriteriaSet",
+                "logicalOperator": "AND",
+                "children": [{
+                    "xsi_type": "CustomCriteria",
+                    "keyId": kv_key.id,
+                    "valueIds": [val.id],
+                    "operator": "IS",
+                }],
+            },
+        },
+        "skipInventoryCheck": True,
+        "allowOverbook": True,
+    }])[0]
+summary["preroll_line_item"] = {"id": pre_li.id, "status": str(pre_li.status)}
+
+pre_cr = first(cr_svc.getCreativesByStatement(
+    stmt("name = :n AND advertiserId = :a",
+         n=PREROLL_CR_NAME, a=order.advertiserId)))
+if pre_cr is None and video_url:
+    pre_cr = cr_svc.createCreatives([{
+        "xsi_type": "VastRedirectCreative",
+        "name": PREROLL_CR_NAME,
+        "advertiserId": order.advertiserId,
+        "size": {"width": 640, "height": 360, "isAspectRatio": False},
+        "vastXmlUrl": video_url.replace("http://", "https://"),
+        "vastRedirectType": "LINEAR",
+        "duration": 15000,
+    }])[0]
+if pre_cr is not None:
+    summary["preroll_creative"] = {"id": pre_cr.id}
+    pre_lica = first(lica_svc.getLineItemCreativeAssociationsByStatement(
+        stmt("lineItemId = :l AND creativeId = :c",
+             l=pre_li.id, c=pre_cr.id)))
+    if pre_lica is None:
+        lica_svc.createLineItemCreativeAssociations([
+            {"lineItemId": pre_li.id, "creativeId": pre_cr.id}])
+    summary["preroll_lica"] = "ok"
+
+if str(pre_li.status) == "INACTIVE":
+    try:
+        li_svc.performLineItemAction(
+            {"xsi_type": "ActivateLineItems"}, stmt("id = :i", i=pre_li.id))
+    except Exception as exc:
+        summary["preroll_activation_error"] = str(exc)[:200]
 
 if str(order.status) in ("DRAFT", "PENDING_APPROVAL"):
     try:
