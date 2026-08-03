@@ -418,17 +418,45 @@ class GAMBlocklistBrowser:
                     f"establish the profile at {self.profile_dir}."
                 )
 
-            # Sanity check: poll for "Advertiser URLs" text up to 45s.
-            # Playwright's wait_for returns the moment the element is
-            # visible; we're not paying the full timeout cost when the
-            # page renders normally. The wait fails fast on wrong pages
-            # too — there's no "Advertiser URLs" anywhere on Delivery →
-            # Orders, so the wait times out and we move to the next
-            # candidate without retrying the same wrong page.
+            # Sanity check: wait for the Protection detail drawer to open.
+            # 2026-08: GAM redesigned the Protection detail as a slide-in
+            # side drawer over the Protections list (not a full page). The
+            # direct URL still auto-opens the drawer, but the previous
+            # landing marker ("Advertiser URLs" text) sits ~800px below
+            # the drawer's initial viewport and its in-DOM presence races
+            # the drawer's slide-in animation in the automated Chromium
+            # context — the old poll timed out even though the URL was
+            # correct (verified interactively 2026-08-03; "Advertiser
+            # URLs" is present in the accessibility tree post-open, so
+            # this is a rendering-timing issue, not a UI removal). The
+            # drawer's own title text ("Protection: <name>") is always
+            # in the initial viewport and is the reliable landing marker.
+            # Failed candidates still time out fast — a URL that lands on
+            # the Protections LIST without opening the drawer has no
+            # "Protection:" title anywhere.
             try:
-                page.locator('text="Advertiser URLs"').first.wait_for(
+                page.locator('text=/^Protection:/').first.wait_for(
                     state="visible", timeout=_PER_CANDIDATE_TIMEOUT_MS,
                 )
+                # Scroll the drawer to reveal the Advertiser URLs section
+                # so the Edit-button XPath in _open_advertiser_urls_modal
+                # (which anchors on the section heading) resolves without
+                # a separate scroll step. Also forces a render if the
+                # drawer's below-fold content is lazy.
+                try:
+                    page.locator('text="Advertiser URLs"').first.scroll_into_view_if_needed(
+                        timeout=10_000,
+                    )
+                except PWTimeout:
+                    # Drawer opened but Advertiser URLs section missing —
+                    # this Protection has no URLs section (misconfigured)
+                    # OR Google moved the section within the drawer. Let
+                    # _open_advertiser_urls_modal raise its own clearer
+                    # error when it can't find the Edit button.
+                    if self.debug:
+                        print("  [browser] drawer opened but 'Advertiser "
+                              "URLs' not found — continuing anyway",
+                              file=sys.stderr)
                 if i > 0:
                     self.auto_recovered_url = url
                     print(f"  [browser] AUTO-RECOVERED via candidate {i}. "
@@ -441,15 +469,18 @@ class GAMBlocklistBrowser:
                         path=str(self.profile_dir / f"debug-url-candidate-{i}-failed.png"),
                         full_page=True,
                     )
-                print(f"  [browser] candidate {i}: 'Advertiser URLs' didn't "
-                      f"appear within {_PER_CANDIDATE_TIMEOUT_MS//1000}s — trying next",
+                print(f"  [browser] candidate {i}: Protection drawer didn't "
+                      f"open within {_PER_CANDIDATE_TIMEOUT_MS//1000}s — trying next",
                       file=sys.stderr)
 
         raise RuntimeError(
             f"None of {len(_PROTECTION_URL_CANDIDATES)} known Protection URL "
-            "patterns landed on a page with 'Advertiser URLs'. Google likely "
-            "moved the page again — open the GAM UI, find the new URL hash "
-            "for Protections, and prepend it to _PROTECTION_URL_CANDIDATES."
+            "patterns opened the Protection drawer within "
+            f"{_PER_CANDIDATE_TIMEOUT_MS//1000}s each. Either Google moved the "
+            "page again (find the new URL hash and prepend it to "
+            "_PROTECTION_URL_CANDIDATES) or the GAM session has expired "
+            "(re-run with --inspect to log in manually and re-establish "
+            f"the profile at {self.profile_dir})."
         )
 
     def _open_protection_page(self, protection_id: int):
