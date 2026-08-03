@@ -285,7 +285,10 @@ snippet = """
       // VIDEO_URL is a VAST tag, and its MediaFile URLs expire within
       // hours — resolve at runtime (GAM video CDN sends CORS headers).
       // Production version: template uses an uploaded MP4 asset instead.
-      fetch(VIDEO_URL).then(function (r) { return r.text(); })
+      // The API hands the tag back as http:// — fetch() on an https page
+      // hard-blocks mixed content, so force https.
+      fetch(VIDEO_URL.replace(/^http:/, "https:"))
+        .then(function (r) { return r.text(); })
         .then(function (x) {
           var re = /<MediaFile[^>]*video\\/mp4[^>]*>\\s*<!\\[CDATA\\[([^\\]]+)\\]\\]/g;
           var best = null, m;
