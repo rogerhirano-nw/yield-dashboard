@@ -261,6 +261,25 @@ snippet = """
     paintTag("dfp-ad-inarticle2-wrapper", 300, 250, TAGS.t300);
     paintTag("dfp-ad-inarticle4-wrapper", 728, 90, TAGS.t728);
 
+    // collapse extra in-article units so the takeover stays exclusive
+    for (var n = 5; n <= 12; n++) {
+      var extra = pdoc.getElementById("dfp-ad-inarticle" + n + "-wrapper");
+      if (extra) extra.style.display = "none";
+    }
+
+    // the sticky/adhesion unit mounts late and runs its own auction —
+    // claim it whenever it renders (POC stand-in for page-side suppression)
+    if (top.googletag && top.googletag.apiReady) {
+      top.googletag.pubads().addEventListener("slotRenderEnded", function (ev) {
+        try {
+          var p = ev.slot.getAdUnitPath() || "";
+          if (!/\\/(sticky|stky)$/i.test(p)) return;
+          var el = pdoc.getElementById(ev.slot.getSlotElementId());
+          if (el && el.parentNode) writeFrame(pdoc, el.parentNode, 728, 90, TAGS.t728);
+        } catch (e) {}
+      });
+    }
+
     var vEl = pdoc.getElementById("dfp-ad-inarticle3-wrapper");
     if (vEl && VIDEO_URL) {
       // VIDEO_URL is a VAST tag, and its MediaFile URLs expire within
