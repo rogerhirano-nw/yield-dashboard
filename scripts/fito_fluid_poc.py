@@ -120,21 +120,38 @@ if val is None:
 summary["kv"] = {"keyId": kv_key.id, "valueId": val.id}
 
 # ---- 3. Order --------------------------------------------------------------
-# The service account cannot approve orders (OrderActionError.PERMISSION_DENIED
-# on ApproveOrders, verified run 30823071325), so a fresh order stays DRAFT and
-# never serves. Instead, create the test LI inside the already-approved source
-# order; archive the stranded draft POC order from the first run if possible.
+# Constraints discovered on earlier runs:
+#  - service account cannot approve orders (OrderActionError.PERMISSION_DENIED,
+#    run 30823071325) -> a fresh order stays DRAFT and never serves
+#  - source order 4144745465 is managed/programmatic
+#    (LineItemError.CANNOT_ADD_TO_MANAGED_ORDER, run 30823246802) -> cannot
+#    host API-created line items
+# So: reuse an existing APPROVED non-programmatic order under any [nw] test
+# advertiser (the demo-gated test campaigns live in such orders).
 order_svc = client.GetService("OrderService", version=VERSION)
-draft = first(order_svc.getOrdersByStatement(stmt("name = :n", n=ORDER_NAME)))
-if draft is not None and str(draft.status) == "DRAFT":
-    try:
-        order_svc.performOrderAction(
-            {"xsi_type": "ArchiveOrders"}, stmt("id = :i", i=draft.id))
-        summary["draft_poc_order_archived"] = draft.id
-    except Exception as exc:
-        summary["draft_poc_order_archive_error"] = str(exc)[:200]
 
-order = first(order_svc.getOrdersByStatement(stmt("id = :i", i=SRC_ORDER_ID)))
+nw_advs = []
+resp = co_svc.getCompaniesByStatement(
+    stmt("type = 'ADVERTISER' AND name LIKE '%[nw]%'"))
+for c in getattr(resp, "results", None) or []:
+    nw_advs.append(c)
+
+order = None
+for a in nw_advs:
+    resp = order_svc.getOrdersByStatement(
+        stmt("advertiserId = :a AND status = 'APPROVED'", a=a.id))
+    for o in getattr(resp, "results", None) or []:
+        if not getattr(o, "isProgrammatic", False) and not getattr(
+                o, "isArchived", False):
+            order = o
+            break
+    if order is not None:
+        break
+
+assert order is not None, (
+    "No APPROVED non-programmatic [nw] test order found — approve the draft "
+    f"POC order '{ORDER_NAME}' in the GAM UI, then re-run."
+)
 summary["order"] = {"id": order.id, "name": order.name,
                     "status": str(order.status)}
 
