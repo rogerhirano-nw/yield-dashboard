@@ -500,7 +500,15 @@ if str(fol_li.status) == "INACTIVE":
 # Anchor eligibility comes from the test article itself (article_id KV the
 # page already passes); the cascade signal (nwdemocr=fitolive) is set by the
 # creative on render, so followers and the pre-roll need no gate at all.
-TEST_ARTICLE_ID = "12233005"  # Insta360 test article
+TEST_ARTICLE_ID = "12233005"  # Insta360 test article (display-only, no player)
+# Shared-contextual sync: the video module builds cust_params containing
+# cat/sitecat/group_cat/nwnet_section/content/vidcontent/topics/pageurl —
+# the SAME contextual dimensions display requests carry. Targeting both legs
+# on one of those keys syncs them per-pageview with no cookie dependency, no
+# page change, and stays inside Kelly's "section or contextual only" rule.
+# "Dare to Dream" scopes the POC to one series that has verified video.
+SYNC_KEY = "topics"
+SYNC_VALUE = "Dare to Dream"
 # the SERVING anchor is the Sponsorship LI Roger activated — NOT `li`, which
 # the name lookup resolves to the inactive `_pp` copy (diag run 30907700023)
 ANCHOR_LI_ID = 7389497908
@@ -516,46 +524,67 @@ try:
             {"customTargetingKeyId": akey.id, "name": TEST_ARTICLE_ID,
              "matchType": "EXACT"}])[0]
 
+    # the shared contextual key both display AND video requests carry
+    skey = first(kv_svc.getCustomTargetingKeysByStatement(
+        stmt("name = :n", n=SYNC_KEY)))
+    assert skey is not None, f"custom targeting key {SYNC_KEY} not found"
+    sval = first(kv_svc.getCustomTargetingValuesByStatement(
+        stmt("customTargetingKeyId = :k AND name = :v",
+             k=skey.id, v=SYNC_VALUE)))
+    if sval is None:
+        sval = kv_svc.createCustomTargetingValues([
+            {"customTargetingKeyId": skey.id, "name": SYNC_VALUE,
+             "matchType": "EXACT"}])[0]
+    summary["sync_kv"] = {"key": SYNC_KEY, "keyId": skey.id,
+                          "value": SYNC_VALUE, "valueId": sval.id}
+
+    demo_val = val  # nwdemocr=fitofluid — forwarded to BOTH display and video
+
+    def crit(k, v, op="IS"):
+        return {"xsi_type": "CustomCriteria", "keyId": k,
+                "valueIds": [v], "operator": op}
+
+    # anchor: contextual scope OR the sanctioned URL demo param; the IS_NOT
+    # keeps it off follower slots (its own request predates the cascade value)
     anchor = first(li_svc.getLineItemsByStatement(
         stmt("id = :i", i=ANCHOR_LI_ID)))
-    if f"'{akey.id}'" not in str(anchor.targeting) and \
-            str(akey.id) not in str(anchor.targeting):
-        anchor.targeting.customTargeting = {
-            "xsi_type": "CustomCriteriaSet",
-            "logicalOperator": "AND",
-            "children": [
-                {"xsi_type": "CustomCriteria", "keyId": akey.id,
-                 "valueIds": [aval.id], "operator": "IS"},
-                # exclusion keeps the anchor off follower slots (its own
-                # request never carries fitolive; post-render requests do)
-                {"xsi_type": "CustomCriteria", "keyId": fkey.id,
-                 "valueIds": [fval.id], "operator": "IS_NOT"},
-            ],
-        }
-        anchor.skipInventoryCheck = True
-        anchor.allowOverbook = True
-        li_svc.updateLineItems([anchor])
-        summary["anchor_retargeted_to_article"] = TEST_ARTICLE_ID
-    else:
-        summary["anchor_retargeted_to_article"] = "already targeted"
+    anchor.targeting.customTargeting = {
+        "xsi_type": "CustomCriteriaSet",
+        "logicalOperator": "OR",
+        "children": [
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": [crit(skey.id, sval.id),
+                          crit(fkey.id, fval.id, "IS_NOT")]},
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": [crit(akey.id, aval.id),
+                          crit(fkey.id, fval.id, "IS_NOT")]},
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": [crit(fkey.id, demo_val.id),
+                          crit(fkey.id, fval.id, "IS_NOT")]},
+        ],
+    }
+    anchor.skipInventoryCheck = True
+    anchor.allowOverbook = True
+    li_svc.updateLineItems([anchor])
+    summary["anchor_targeting"] = f"{SYNC_KEY}={SYNC_VALUE} OR article_id={TEST_ARTICLE_ID} OR nwdemocr=fitofluid"
 
-    # pre-roll follows the cascade signal, not the URL gate
+    # pre-roll: SAME contextual scope (cookie-free, per-pageview) OR the demo
+    # param — no audience segment, no request-KV the player cannot send
     pre = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
-    if str(fval.id) not in str(pre.targeting):
-        pre.targeting.customTargeting = {
-            "xsi_type": "CustomCriteriaSet",
-            "logicalOperator": "AND",
-            "children": [
-                {"xsi_type": "CustomCriteria", "keyId": fkey.id,
-                 "valueIds": [fval.id], "operator": "IS"},
-            ],
-        }
-        pre.skipInventoryCheck = True
-        pre.allowOverbook = True
-        li_svc.updateLineItems([pre])
-        summary["preroll_retargeted_to_cascade"] = True
-    else:
-        summary["preroll_retargeted_to_cascade"] = "already targeted"
+    pre.targeting.customTargeting = {
+        "xsi_type": "CustomCriteriaSet",
+        "logicalOperator": "OR",
+        "children": [
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": [crit(skey.id, sval.id)]},
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": [crit(fkey.id, demo_val.id)]},
+        ],
+    }
+    pre.skipInventoryCheck = True
+    pre.allowOverbook = True
+    li_svc.updateLineItems([pre])
+    summary["preroll_targeting"] = f"{SYNC_KEY}={SYNC_VALUE} OR nwdemocr=fitofluid"
 except Exception as exc:
     summary["organic_retarget_error"] = str(exc)[:300]
 
@@ -625,24 +654,13 @@ try:
         **diag_seg,
     }
 
-    # point the pre-roll at segment membership instead of the request KV
-    pre2 = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
-    if str(seg.id) not in str(pre2.targeting):
-        pre2.targeting.customTargeting = {
-            "xsi_type": "CustomCriteriaSet",
-            "logicalOperator": "AND",
-            "children": [{
-                "xsi_type": "AudienceSegmentCriteria",
-                "operator": "IS",
-                "audienceSegmentIds": [seg.id],
-            }],
-        }
-        pre2.skipInventoryCheck = True
-        pre2.allowOverbook = True
-        li_svc.updateLineItems([pre2])
-        summary["preroll_targets_segment"] = True
-    else:
-        summary["preroll_targets_segment"] = "already targeted"
+    # NOT used to gate the pre-roll: segment membership rides the Google
+    # cookie, so Safari/ITP/Firefox/cookieless traffic (a large share of
+    # Newsweek's audience) would never join and the video leg would
+    # systematically under-deliver against display. The segment is left in
+    # place for reporting/optional use only; the pre-roll is gated on shared
+    # contextual key-values instead (section 6d).
+    summary["preroll_targets_segment"] = False
 except Exception as exc:
     summary["audience_segment_error"] = str(exc)[:400]
 
