@@ -568,23 +568,57 @@ try:
     li_svc.updateLineItems([anchor])
     summary["anchor_targeting"] = f"{SYNC_KEY}={SYNC_VALUE} OR article_id={TEST_ARTICLE_ID} OR nwdemocr=fitofluid"
 
-    # pre-roll: SAME contextual scope (cookie-free, per-pageview) OR the demo
-    # param — no audience segment, no request-KV the player cannot send
+    # --- validation of the proposed DEV CHANGE (docs/fito_video_custparams_spec.md)
+    # The spec forwards `nwdemocr` (cascade value) and `categories` into the
+    # video request's cust_params. Target the pre-roll on exactly those so we
+    # can prove the ad-server half works before engineering writes any code.
+    ckey = first(kv_svc.getCustomTargetingKeysByStatement(
+        stmt("name = :n", n="categories")))
+    cat_vals = []
+    if ckey is not None:
+        for cv in ("personal/finance", "business"):
+            v2 = first(kv_svc.getCustomTargetingValuesByStatement(
+                stmt("customTargetingKeyId = :k AND name = :v", k=ckey.id, v=cv)))
+            if v2 is None:
+                try:
+                    v2 = kv_svc.createCustomTargetingValues([
+                        {"customTargetingKeyId": ckey.id, "name": cv,
+                         "matchType": "EXACT"}])[0]
+                except Exception as exc:
+                    summary[f"categories_value_error_{cv}"] = str(exc)[:200]
+                    continue
+            cat_vals.append(v2.id)
+    summary["categories_key"] = getattr(ckey, "id", None)
+    summary["categories_values"] = cat_vals
+
+    branches = [
+        # cascade value — what the dev change makes reach the player
+        {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+         "children": [crit(fkey.id, fval.id)]},
+        # sanctioned URL demo param
+        {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+         "children": [crit(fkey.id, demo_val.id)]},
+        # current contextual fallback (works today, no dev change)
+        {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+         "children": [crit(skey.id, sval.id)]},
+    ]
+    if ckey is not None and cat_vals:
+        branches.append({
+            "xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+            "children": [{"xsi_type": "CustomCriteria", "keyId": ckey.id,
+                          "valueIds": cat_vals, "operator": "IS"}]})
+
     pre = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
     pre.targeting.customTargeting = {
-        "xsi_type": "CustomCriteriaSet",
-        "logicalOperator": "OR",
-        "children": [
-            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
-             "children": [crit(skey.id, sval.id)]},
-            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
-             "children": [crit(fkey.id, demo_val.id)]},
-        ],
+        "xsi_type": "CustomCriteriaSet", "logicalOperator": "OR",
+        "children": branches,
     }
     pre.skipInventoryCheck = True
     pre.allowOverbook = True
     li_svc.updateLineItems([pre])
-    summary["preroll_targeting"] = f"{SYNC_KEY}={SYNC_VALUE} OR nwdemocr=fitofluid"
+    summary["preroll_targeting"] = (
+        "nwdemocr=fitolive OR nwdemocr=fitofluid OR "
+        f"{SYNC_KEY}={SYNC_VALUE} OR categories IN (personal/finance, business)")
 except Exception as exc:
     summary["organic_retarget_error"] = str(exc)[:300]
 
