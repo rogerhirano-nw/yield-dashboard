@@ -579,6 +579,73 @@ if str(li.status) == "INACTIVE":
 summary["line_item_final_status"] = str(li.status)
 summary["test_url_param"] = f"?{KV_KEY_NAME}={KV_VALUE}"
 
+# ---- 6e. Audience-segment gate for the pre-roll ----------------------------
+# Chosen path: a rule-based first-party segment populated by ad requests that
+# already carry the cascade KV (nwdemocr=fitolive). No pixel, no creative
+# change, no page change — GAM joins the user server-side when any takeover
+# ad request is seen, and the pre-roll targets segment membership instead of
+# request-level KVs (which the player never sends).
+SEGMENT_NAME = "[nw] FITO Fluid takeover viewers"
+try:
+    aud_svc = client.GetService("AudienceSegmentService", version=VERSION)
+    seg = first(aud_svc.getAudienceSegmentsByStatement(
+        stmt("name = :n", n=SEGMENT_NAME)))
+    diag_seg = {}
+    if seg is None:
+        seg = aud_svc.createAudienceSegments([{
+            "xsi_type": "RuleBasedFirstPartyAudienceSegment",
+            "name": SEGMENT_NAME,
+            "description": ("Users who received a FITO Fluid takeover "
+                            "(ad request carried nwdemocr=fitolive). Gates "
+                            "the synced pre-roll line item."),
+            "pageViews": 1,          # join on first qualifying request
+            "recencyDays": 0,        # only meaningful when pageViews > 1
+            "membershipExpirationDays": 1,   # GAM minimum
+            "rule": {
+                "inventoryRule": {
+                    "targetedAdUnits": [
+                        {"adUnitId": root_ad_unit, "includeDescendants": True}]},
+                "customCriteriaRule": {
+                    "xsi_type": "CustomCriteriaSet",
+                    "logicalOperator": "AND",
+                    "children": [{
+                        "xsi_type": "CustomCriteria",
+                        "keyId": fkey.id,
+                        "valueIds": [fval.id],
+                        "operator": "IS",
+                    }],
+                },
+            },
+        }])[0]
+        diag_seg["created"] = True
+    summary["audience_segment"] = {
+        "id": seg.id, "name": seg.name,
+        "status": str(getattr(seg, "status", "")),
+        "size": getattr(seg, "size", None),
+        **diag_seg,
+    }
+
+    # point the pre-roll at segment membership instead of the request KV
+    pre2 = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
+    if str(seg.id) not in str(pre2.targeting):
+        pre2.targeting.customTargeting = {
+            "xsi_type": "CustomCriteriaSet",
+            "logicalOperator": "AND",
+            "children": [{
+                "xsi_type": "AudienceSegmentCriteria",
+                "operator": "IS",
+                "audienceSegmentIds": [seg.id],
+            }],
+        }
+        pre2.skipInventoryCheck = True
+        pre2.allowOverbook = True
+        li_svc.updateLineItems([pre2])
+        summary["preroll_targets_segment"] = True
+    else:
+        summary["preroll_targets_segment"] = "already targeted"
+except Exception as exc:
+    summary["audience_segment_error"] = str(exc)[:400]
+
 # ---- diagnostics: live state of every piece --------------------------------
 diag = {}
 resp = kv_svc.getCustomTargetingKeysByStatement(
