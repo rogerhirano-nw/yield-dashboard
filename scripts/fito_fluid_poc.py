@@ -27,6 +27,13 @@ DISPLAY_TAG_IDS = {"970x250": 138568965365, "300x250": 138568965371,
 VIDEO_CREATIVE_ID = 138568962668
 KV_KEY_NAME = "nwdemocr"
 KV_VALUE = "fitofluid"
+# Dedicated production cascade key. `nwdemocr` must NOT be used for this: a
+# non-empty nwdemocr bypasses the site's DoubleVerify invalid-traffic gate
+# (skips NoPassFQ/keyEx, forces googletag.display and APS bids on IDS=1).
+# The service account cannot create custom targeting KEYS, so this key must be
+# created once in the GAM UI. Everything below degrades gracefully until then.
+FITO_KEY_NAME = "fito"
+FITO_VALUE = "live"
 ORDER_NAME = "[nw] FITO Fluid POC"
 LI_NAME = "[nw]_FITO-Fluid_POC_single-li-takeover_pp"
 CREATIVE_NAME = "[nw]_FITO-Fluid_POC_fluid-host_970x250"
@@ -118,6 +125,27 @@ if val is None:
         {"customTargetingKeyId": kv_key.id, "name": KV_VALUE,
          "matchType": "EXACT"}])[0]
 summary["kv"] = {"keyId": kv_key.id, "valueId": val.id}
+
+# dedicated production cascade key — present only once Ad Ops creates it in the
+# GAM UI; until then every consumer below falls back to the nwdemocr cascade
+fito_key = first(kv_svc.getCustomTargetingKeysByStatement(
+    stmt("name = :n", n=FITO_KEY_NAME)))
+fito_val = None
+if fito_key is not None:
+    fito_val = first(kv_svc.getCustomTargetingValuesByStatement(
+        stmt("customTargetingKeyId = :k AND name = :v",
+             k=fito_key.id, v=FITO_VALUE)))
+    if fito_val is None:
+        try:
+            fito_val = kv_svc.createCustomTargetingValues([
+                {"customTargetingKeyId": fito_key.id, "name": FITO_VALUE,
+                 "matchType": "EXACT"}])[0]
+        except Exception as exc:
+            summary["fito_value_error"] = str(exc)[:200]
+summary["fito_kv"] = (
+    {"keyId": fito_key.id, "valueId": getattr(fito_val, "id", None)}
+    if fito_key is not None
+    else f"key '{FITO_KEY_NAME}' not created yet — create it in the GAM UI")
 
 # ---- 3. Order --------------------------------------------------------------
 # Constraints discovered on earlier runs:
@@ -221,7 +249,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
-  var FITO_POC_V = "v10-no-override";
+  var FITO_POC_V = "v11-fito-key";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -259,6 +287,9 @@ snippet = """
       top.__FITO_FLUID__ = true;
       if (top.googletag && top.googletag.pubads) {
         var pa = top.googletag.pubads();
+        // production cascade signal — dedicated key, no side effects
+        pa.setTargeting("fito", "live");
+        // legacy signal, kept until the follower/pre-roll finish migrating
         var cur = pa.getTargeting("nwdemocr") || [];
         if (cur.indexOf("fitolive") < 0) {
           cur.push("fitolive");
@@ -592,7 +623,7 @@ try:
     summary["categories_values"] = cat_vals
 
     branches = [
-        # cascade value — what the dev change makes reach the player
+        # legacy cascade value (nwdemocr) — retire once `fito` is live
         {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
          "children": [crit(fkey.id, fval.id)]},
         # sanctioned URL demo param
@@ -607,6 +638,12 @@ try:
             "xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
             "children": [{"xsi_type": "CustomCriteria", "keyId": ckey.id,
                           "valueIds": cat_vals, "operator": "IS"}]})
+    # dedicated production key — added as soon as Ad Ops creates it
+    if fito_key is not None and fito_val is not None:
+        branches.append({
+            "xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+            "children": [crit(fito_key.id, fito_val.id)]})
+        summary["preroll_uses_fito_key"] = True
 
     pre = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=pre_li.id)))
     pre.targeting.customTargeting = {
