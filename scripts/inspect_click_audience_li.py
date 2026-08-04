@@ -116,6 +116,80 @@ try:
 except Exception as e:
     print("AudienceSegmentService probe FAILED:", repr(e)[:300])
 
+print("\n=== SEGMENT RULE DETAIL (pixel + traffic examples) ===")
+# 9265049836/9265053919 = Subscription pixel-style segments; 9443596281 = the
+# [nw] FITO rule-based segment. Their rules are the template to replicate for
+# the clicker segment (inventoryRule -> DFPAudiencePixel + dc_seg custom
+# criteria, if that's how the UI wired them).
+try:
+    as_svc = client.GetService("AudienceSegmentService", version=V)
+    ct_svc = client.GetService("CustomTargetingService", version=V)
+
+    def resolve_kv(crit):
+        key_id = getattr(crit, "keyId", None)
+        val_ids = list(getattr(crit, "valueIds", None) or [])
+        kname = vnames = None
+        try:
+            kres = ct_svc.getCustomTargetingKeysByStatement(
+                stmt(f"id = {key_id}", 1)).results
+            kname = kres[0].name if kres else None
+            if val_ids:
+                vres = ct_svc.getCustomTargetingValuesByStatement(
+                    ad_manager.StatementBuilder(version=V)
+                    .Where(f"customTargetingKeyId = {key_id} AND id IN "
+                           f"({', '.join(str(int(i)) for i in val_ids)})")
+                    .Limit(50).ToStatement()).results or []
+                vnames = [v.name for v in vres]
+        except Exception as e:
+            kname = f"<resolve failed: {e!r}"[:80]
+        return key_id, kname, val_ids, vnames
+
+    def dump_criteria_node(node, indent="    "):
+        tname = type(node).__name__
+        if hasattr(node, "children") and getattr(node, "children", None):
+            print(f"{indent}{tname} logicalOperator={getattr(node, 'logicalOperator', None)}")
+            for ch in node.children:
+                dump_criteria_node(ch, indent + "  ")
+        elif tname == "AudienceSegmentCriteria" or hasattr(node, "audienceSegmentIds"):
+            print(f"{indent}AudienceSegmentCriteria op={getattr(node, 'operator', None)}"
+                  f" segIds={list(getattr(node, 'audienceSegmentIds', None) or [])}")
+        elif hasattr(node, "keyId"):
+            key_id, kname, val_ids, vnames = resolve_kv(node)
+            print(f"{indent}CustomCriteria op={getattr(node, 'operator', None)}"
+                  f" keyId={key_id} key={kname!r} valueIds={val_ids} values={vnames}")
+        else:
+            print(f"{indent}{tname}: {node}")
+
+    for sid in (9265049836, 9265053919, 9443596281):
+        res = as_svc.getAudienceSegmentsByStatement(stmt(f"id = {sid}", 1))
+        segs = getattr(res, "results", None) or []
+        if not segs:
+            print(f"  segment {sid}: not found")
+            continue
+        s = segs[0]
+        print(f"\n  -- {s.id} {s.name!r} [{type(s).__name__}]")
+        print(f"     pageViews={getattr(s, 'pageViews', None)}"
+              f" recencyDays={getattr(s, 'recencyDays', None)}"
+              f" membershipExpirationDays={getattr(s, 'membershipExpirationDays', None)}")
+        rule = getattr(s, "rule", None)
+        if rule is None:
+            print("     rule: None")
+            continue
+        inv_rule = getattr(rule, "inventoryRule", None)
+        for au in (getattr(inv_rule, "targetedAdUnits", None) or []):
+            print(f"     inventoryRule.targetedAdUnit: {getattr(au, 'adUnitId', None)}"
+                  f" includeDescendants={getattr(au, 'includeDescendants', None)}")
+        for pl in (getattr(inv_rule, "targetedPlacementIds", None) or []):
+            print(f"     inventoryRule.targetedPlacementId: {pl}")
+        cc = getattr(rule, "customCriteriaRule", None)
+        if cc is not None:
+            print("     customCriteriaRule:")
+            dump_criteria_node(cc)
+        else:
+            print("     customCriteriaRule: None")
+except Exception as e:
+    print("rule detail probe FAILED:", repr(e)[:300])
+
 print("\n=== DFPAudiencePixel AD UNIT ===")
 try:
     inv = client.GetService("InventoryService", version=V)
