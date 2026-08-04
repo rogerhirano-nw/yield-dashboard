@@ -117,6 +117,50 @@ complaint. The sold number is enforced on the **anchor** (one anchor impression
 = one takeover pageview) with a monitor that pauses the set at goal, rather than
 by asking two line items to pace themselves into agreement.
 
+### Why the video leg cannot use the cascade today
+
+Everything above works because the display followers and the anchor speak the
+same language: **GPT holds page-level targeting, and every GPT request made
+after `setTargeting()` inherits it.** That is the entire mechanism.
+
+**The video player does not use GPT.** The MUX/IMA player's VAST request is
+assembled by the site's own video ad module, which builds its own `cust_params`
+object from a fixed list of page signals plus a handful of named globals. It
+**never reads GPT page-level targeting**. So the anchor can broadcast
+`fito=live` all it likes — the video request simply is not listening on that
+channel.
+
+There is one key that looks like a bridge and is not. The module does forward
+`nwdemocr`, but it reads it from `window.nwdemocr`, and
+`initializeNwdemocr()` runs at the *top of the request builder* and re-derives
+that global from the URL query string — erasing any value set at runtime
+microseconds before it is read. That is why `?nwdemocr=` works (the URL is the
+one input both paths share) while a creative-set value does not.
+
+Two practical consequences, and they are the whole reason the video leg is
+trafficked differently:
+
+1. **No render-condition sync.** The pre-roll cannot be gated on "the display
+   takeover actually rendered on this pageview," because that fact lives in GPT
+   and never reaches the player. The fallback is to target **shared contextual
+   key-values** — `cat`, `sitecat`, `topics`, `content` — which both request
+   types independently carry. That is *page-condition* sync: both legs are
+   eligible on the same set of pages rather than the video keying off the
+   display's render. With a Sponsorship anchor (which always renders on its
+   targeted pages) the two are equivalent in practice, but they are not
+   mechanically linked, and any future non-Sponsorship anchor would let them
+   drift.
+2. **No section-accurate targeting.** The module also discards `categories` —
+   the only key that reflects every section an article is filed under. It reads
+   `e.categories` purely to take `.split(",")[0]` as a fallback for `cat`, then
+   throws the rest away. So video can only be scoped by *primary* category,
+   which does not match the section listings: only ~34% of articles listed under
+   /personal-finance and /business have those as their primary category.
+
+Both are fixed by the one-function page change in
+`fito_video_custparams_spec.md`, after which the pre-roll targets `fito = live`
+like every other leg and the two mechanisms collapse into one.
+
 ---
 
 ## 4. Current POC objects
