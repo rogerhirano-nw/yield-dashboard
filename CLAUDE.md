@@ -1017,6 +1017,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
   diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
   that creates the test LIs + creatives + LICAs and reduces the control goal).
+- `docs/click_audience.md` — first-party segment 9443004817 ("clicked the
+  Apple at Work PG interstitial", LI 7384069597), pixel-populated via a
+  capture `<script>` appended to the Innovid ThirdPartyCreative snippets
+  (fires the DFPAudiencePixel activity tag on click-through signals only;
+  closes never fire). Segment create + creative rollout/rollback via
+  `create_click_audience.yml` / `add_click_capture.yml` (target=rollback is
+  the instant revert). No retroactive population; re-run target=all if the
+  agency swaps creatives.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
