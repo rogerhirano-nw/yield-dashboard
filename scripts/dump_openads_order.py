@@ -134,6 +134,23 @@ for li in lis:
         print(f"    customTargeting: {len(crumbs)} criteria (resolved below)")
     print()
 
+# ---------- 2b) Resolve targeted ad units (id -> code/path) ----------
+au_ids = set()
+for li in lis:
+    inv = g(g(li, "targeting", None), "inventoryTargeting", None)
+    for a in (g(inv, "targetedAdUnits", []) or []):
+        au_ids.add(g(a, "adUnitId"))
+if au_ids:
+    inv_svc = client.GetService("InventoryService", version=V)
+    ids = ", ".join(str(int(a)) for a in au_ids)
+    sb = ad_manager.StatementBuilder(version=V).Where(f"id IN ({ids})").Limit(100)
+    print("=" * 72)
+    print("TARGETED AD UNITS (resolved)")
+    for au in g(inv_svc.getAdUnitsByStatement(sb.ToStatement()), "results", []) or []:
+        path = "/".join(g(p, "adUnitCode", "?") for p in (g(au, "parentPath", []) or []))
+        print(f"  {g(au,'id')}: adUnitCode={g(au,'adUnitCode')}  name={g(au,'name')}  "
+              f"parentPath=/{path}  status={g(au,'status')}")
+
 # ---------- 3) Resolve custom targeting key/value names ----------
 key_names, val_names = {}, {}
 if key_ids:
