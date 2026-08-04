@@ -1,20 +1,5 @@
 # Video ad request: forward selected page key-values into `cust_params`
 
-**Owner:** Ad Ops (Roger Hirano) → Web Engineering
-**Scope:** one function in the video ad module. No trafficking changes required.
-**Priority:** blocks the FITO Fluid takeover product (Cognizant Q4/Q1 plan).
-
-**Prerequisite (Ad Ops, one-time):** create the custom targeting key `fito`
-with value `live` in GAM. The takeover creative sets it via
-`googletag.pubads().setTargeting('fito','live')`; this change forwards it to the
-video request.
-
-**Background (optional):** `fito_gam_setup.md` documents the ad-server side —
-what the takeover is, why the display leg already works, and why the video leg
-needs this change. Not required to implement the change below.
-
----
-
 ## 1. Problem
 
 The video player's VAST ad request is built by the site's video ad module, which
@@ -61,8 +46,8 @@ display can — verified: only ~34% of articles listed under /personal-finance a
 
 **Module:** the video ad chunk — in the current build
 `/_next/static/chunks/102l587676ixg.js`. Identify by content, not filename
-(hash changes per build): it references `openads_video_cust` and
-`initializeNwdemocr`, and builds the `cust_params` object containing
+(hash changes per build): it references `initializeNwdemocr` and builds the
+`cust_params` object containing
 `ts / content / cat / sitecat / group_cat / nwnet_section / vid / vidcontent /
 topics / pageurl / video_type`.
 
