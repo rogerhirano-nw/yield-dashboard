@@ -600,6 +600,29 @@ for label, lid in (("anchor", ANCHOR_LI_ID), ("preroll", pre_li.id),
         "isMissingCreatives": getattr(x, "isMissingCreatives", None),
         "targeting": str(getattr(x.targeting, "customTargeting", ""))[:600],
     }
+# which ad units does the ORIGINAL FITO-Video LI deliver on? (tells us the
+# real video/player ad unit for VAST request testing)
+try:
+    import gzip
+    import tempfile as _tf
+    downloader = client.GetDataDownloader(version=VERSION)
+    report_job = {"reportQuery": {
+        "dimensions": ["AD_UNIT_ID", "AD_UNIT_NAME"],
+        "columns": ["AD_SERVER_IMPRESSIONS"],
+        "dateRangeType": "LAST_MONTH",
+        "statement": {"query": "WHERE LINE_ITEM_ID = 7381354074"},
+        "adUnitView": "FLAT",
+    }}
+    job_id = downloader.WaitForReport(report_job)
+    with _tf.NamedTemporaryFile(suffix=".csv.gz", delete=False) as rf:
+        downloader.DownloadReportToFile(job_id, "CSV_DUMP", rf)
+        rpath = rf.name
+    with gzip.open(rpath, "rt") as fh:
+        lines = fh.read().splitlines()
+    diag["video_li_ad_units"] = lines[:15]
+except Exception as exc:
+    diag["video_li_ad_units_error"] = str(exc)[:300]
+
 print("\n=== DIAG ===")
 print(json.dumps(diag, indent=1, default=str))
 
