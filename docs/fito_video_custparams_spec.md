@@ -9,6 +9,10 @@ with value `live` in GAM. The takeover creative sets it via
 `googletag.pubads().setTargeting('fito','live')`; this change forwards it to the
 video request.
 
+**Background (optional):** `fito_gam_setup.md` documents the ad-server side —
+what the takeover is, why the display leg already works, and why the video leg
+needs this change. Not required to implement the change below.
+
 ---
 
 ## 1. Problem
@@ -17,8 +21,8 @@ The video player's VAST ad request is built by the site's video ad module, which
 assembles its own `cust_params` object. It currently sends a good set of page
 signals (`cat`, `sitecat`, `group_cat`, `content`, `vidcontent`, `topics`,
 `pageurl`, `title`, `adexclusion`, `trsource`, `brtype`, `video_type`, …) but it
-**does not read live GPT page-level targeting**, and it drops two keys the
-display side does send.
+**does not read live GPT page-level targeting**, and it drops several keys the
+display side does send — notably `categories`, `adunit` and `article_id`.
 
 Two consequences:
 
