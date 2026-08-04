@@ -26,7 +26,7 @@ on:
 env:
   # Pre-merge stage knob (workflow_dispatch input overrides it):
   #   dryrun | canary | all | rollback
-  TARGET: dryrun
+  TARGET: canary
   CANARY_CREATIVE: "138568851141"
 
 permissions:
