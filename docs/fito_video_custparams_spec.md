@@ -52,9 +52,8 @@ display can — verified: only ~34% of articles listed under /personal-finance a
 topics / pageurl / video_type`.
 
 **Function:** the async ad-request builder — identifiable as the function that
-calls `initializeNwdemocr()` and then clears the OpenAds global on its first
-lines (that clearing belongs to the OpenAds integration; leave it alone — see
-below). It ends by returning the assembled params object:
+calls `initializeNwdemocr()` on its first lines. It ends by returning the
+assembled params object:
 
 ```js
 return i && Object.assign(ee, i), ee;   // `ee` = the cust_params object
@@ -76,16 +75,8 @@ if (pa) {
 }
 ```
 
-### Do NOT use `window.openads_video_cust`
-
-That global is **reserved for the OpenAds integration** and must not be
-repurposed for this change. The builder deliberately clears it and reads it back
-after its async work — that gap is the window in which OpenAds populates it.
-Writing our own values there would collide with OpenAds and could be silently
-overwritten in either direction.
-
-The change above never reads or writes that global. It only adds keys to the
-`ee` object, and only keys not already present.
+This change writes only to the `ee` object, and only for keys not already
+present.
 
 ---
 
