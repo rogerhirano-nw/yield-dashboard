@@ -1,0 +1,69 @@
+name: Create click-audience segment (one-off)
+
+# Creates the "[nw] Apple at Work Q426 - ad clickers (LI 7384069597)"
+# first-party audience segment (pixel-populated via DFPAudiencePixel +
+# dc_seg, cloned from the Subscription segments' rule shape — see PR #351
+# recon). The script is idempotent (name lookup first), so the hardwired
+# --apply on push is safe: re-pushes no-op and just re-print the segment
+# + pixel tags. workflow_dispatch kept for post-merge reuse.
+on:
+  workflow_dispatch:
+    inputs:
+      expiration_days:
+        description: "Membership expiration (days)"
+        required: false
+        default: "90"
+        type: string
+  push:
+    branches: [claude/click-audience-li7384069597]
+    paths:
+      - 'scripts/create_click_audience_segment.py'
+      - '.github/workflows/create_click_audience.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Create segment (idempotent)
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          EXP_DAYS: ${{ inputs.expiration_days }}
+        run: |
+          set -o pipefail
+          python scripts/create_click_audience_segment.py --apply \
+            --expiration-days "${EXP_DAYS:-90}" 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Click-audience segment — create run'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
