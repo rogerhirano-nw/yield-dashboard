@@ -104,6 +104,28 @@ explicitly and re-check total URL length.
 
 ---
 
+## 3b. How `cust_params` is assembled (context — five owners)
+
+The final `cust_params` string is built from **five segments**, joined with `&`,
+URL-encoded once, then substituted into the tag via the `%%CUST_PARAMS%%`
+placeholder. Each segment has a different owner:
+
+| Segment | Owner | Source | Key namespace |
+|---|---|---|---|
+| base params object (`ee`) | **this module** | built in-function | `cat`, `sitecat`, `topics`, `content`, `pageurl`, `video_type`, `nwdemocr`, … |
+| header bidding | Prebid | `window.prebid_video_bid` + `window.prebid_cust_param` | `hb_adid`, `hb_bidder`, `hb_pb`, `hb_size`, `hb_uuid`, `hb_vid`, `hb_cache_id` |
+| Amazon | APS / apstag | `window.amzn_video_bid` | `amzn*` |
+| OpenAds | **OpenAds integration** | `window.openads_video_cust` | (do not touch) |
+| verification | DoubleVerify / IAS | `window.getDvtagTargeting()`, `window.IasVideoParam` | DV keys are upper-cased; IAS keys are `IAS_*` |
+
+**This change writes only to the first segment** — the object the module itself
+owns — and only for keys not already present. It does not read or write any of
+the other four globals.
+
+**Collision check:** the four keys added (`nwdemocr`, `categories`, `adunit`,
+`article_id`) are lower-case and do not overlap the `hb_*`, `amzn*`, `IAS_*`, or
+upper-cased DV namespaces. No collision is expected; confirm in the canary.
+
 ## 4. Notes / already verified
 
 - **Serialization is safe.** The existing serializer drops empty/null values
