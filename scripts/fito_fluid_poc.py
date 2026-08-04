@@ -493,6 +493,9 @@ if str(fol_li.status) == "INACTIVE":
 # page already passes); the cascade signal (nwdemocr=fitolive) is set by the
 # creative on render, so followers and the pre-roll need no gate at all.
 TEST_ARTICLE_ID = "12233005"  # Insta360 test article
+# the SERVING anchor is the Sponsorship LI Roger activated — NOT `li`, which
+# the name lookup resolves to the inactive `_pp` copy (diag run 30907700023)
+ANCHOR_LI_ID = 7389497908
 try:
     akey = first(kv_svc.getCustomTargetingKeysByStatement(
         stmt("name = :n", n="article_id")))
@@ -505,7 +508,8 @@ try:
             {"customTargetingKeyId": akey.id, "name": TEST_ARTICLE_ID,
              "matchType": "EXACT"}])[0]
 
-    anchor = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=li.id)))
+    anchor = first(li_svc.getLineItemsByStatement(
+        stmt("id = :i", i=ANCHOR_LI_ID)))
     if f"'{akey.id}'" not in str(anchor.targeting) and \
             str(akey.id) not in str(anchor.targeting):
         anchor.targeting.customTargeting = {
@@ -587,7 +591,7 @@ try:
         for v in (getattr(vresp, "results", None) or [])]
 except NameError:
     pass
-for label, lid in (("anchor", li.id), ("preroll", pre_li.id),
+for label, lid in (("anchor", ANCHOR_LI_ID), ("preroll", pre_li.id),
                    ("follower", fol_li.id)):
     x = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=lid)))
     diag[label] = {
