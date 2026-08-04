@@ -5,9 +5,9 @@
 **Priority:** blocks the FITO Fluid takeover product (Cognizant Q4/Q1 plan).
 
 **Prerequisite (Ad Ops, one-time):** create the custom targeting key `fito`
-(type: predefined or freeform) with value `live` in GAM. The takeover creative
-sets it via `googletag.pubads().setTargeting('fito','live')`; this change
-forwards it to the video request.
+with value `live` in GAM. The takeover creative sets it via
+`googletag.pubads().setTargeting('fito','live')`; this change forwards it to the
+video request.
 
 ---
 
@@ -76,6 +76,9 @@ return i && Object.assign(ee, i), ee;   // `ee` = the cust_params object
 // Forward a small, explicit set of live GPT page key-values into the video
 // ad request. Must run at REQUEST-BUILD time (not module init) so values set
 // at runtime by a rendered creative are picked up.
+// Keep this list SHORT and explicit — do not merge all GPT targeting. Page
+// targeting includes multi-kilobyte values (vnd_prx_segments, ias-kw,
+// ABS/BSC/CBS) that would blow the ad-tag URL limit and break video fill.
 const VIDEO_KV_ALLOWLIST = ["fito", "nwdemocr", "categories", "adunit", "article_id"];
 const pa = window.googletag?.pubads?.();
 if (pa) {
@@ -88,97 +91,3 @@ if (pa) {
 
 This change writes only to the `ee` object, and only for keys not already
 present.
-
----
-
-## 3. The allowlist is mandatory, not stylistic
-
-**Do not merge all GPT targeting.** Page-level targeting on article pages
-includes very large values:
-
-- `vnd_prx_segments` — several thousand characters (hundreds of Proximic IDs)
-- `ias-kw` — ~200+ characters
-- `ABS` / `BSC` / `CBS` — ID lists
-
-Merging these would exceed practical ad-tag URL limits and silently break video
-fill. Keep the allowlist short. If more keys are needed later, add them
-explicitly and re-check total URL length.
-
----
-
-## 3b. How `cust_params` is assembled (context — five owners)
-
-The final `cust_params` string is built from **five segments**, joined with `&`,
-URL-encoded once, then substituted into the tag via the `%%CUST_PARAMS%%`
-placeholder. Each segment has a different owner:
-
-| Segment | Owner | Source | Key namespace |
-|---|---|---|---|
-| base params object (`ee`) | **this module** | built in-function | `cat`, `sitecat`, `topics`, `content`, `pageurl`, `video_type`, `nwdemocr`, … (this change adds `fito`, `categories`, `adunit`, `article_id`) |
-| header bidding | Prebid | `window.prebid_video_bid` + `window.prebid_cust_param` | `hb_adid`, `hb_bidder`, `hb_pb`, `hb_size`, `hb_uuid`, `hb_vid`, `hb_cache_id` |
-| Amazon | APS / apstag | `window.amzn_video_bid` | `amzn*` |
-| OpenAds | **OpenAds integration** | `window.openads_video_cust` | (do not touch) |
-| verification | DoubleVerify / IAS | `window.getDvtagTargeting()`, `window.IasVideoParam` | DV keys are upper-cased; IAS keys are `IAS_*` |
-
-**This change writes only to the first segment** — the object the module itself
-owns — and only for keys not already present. It does not read or write any of
-the other four globals.
-
-**Collision check:** the keys added (`fito`, `nwdemocr`, `categories`, `adunit`, `article_id`) are lower-case and do not overlap the `hb_*`, `amzn*`, `IAS_*`, or
-upper-cased DV namespaces. No collision is expected; confirm in the canary.
-
-## 4. Notes / already verified
-
-- **Serialization is safe.** The existing serializer drops empty/null values
-  (except `ref`), so allowlisted keys that are absent on a page cost nothing.
-- **Multi-value keys work.** GAM matches comma-joined lists: a line item
-  targeting `topics = "Dare to Dream"` was confirmed to match a request sending
-  `topics=American dream,United States,Society,Dare to Dream`. So
-  `categories="life,personal/finance"` will match a line item targeting
-  `personal/finance`.
-- **Master → pod propagation already works.** `vid.newsweek` uses ad rules; the
-  master playlist request's `cust_params` is inherited by the pod request. No
-  change needed there.
-- **Do not change `initializeNwdemocr()`'s URL behaviour.** The `?nwdemocr=`
-  test-campaign path must keep working as-is.
-
----
-
-## 5. Acceptance criteria
-
-1. On an article page, after the takeover anchor creative renders (page-level
-   targeting shows `fito = live`), playing the video produces a request to
-   `https://pubads.g.doubleclick.net/gampad/ads?...iu=/22541732127/vid.newsweek...`
-   whose `cust_params` contains `fito=live`.
-2. The same request contains `categories=` with the page's full category list
-   (e.g. `life,personal/finance`).
-3. On a page where the anchor did **not** render, `cust_params` contains no `fito` value.
-4. Total ad-tag URL length stays within normal bounds (no truncation).
-5. Existing video delivery is unchanged on non-takeover pages.
-
-A passing end-to-end test: with (1) satisfied, GAM returns the already-trafficked
-Apple pre-roll (line item `7386773208`). It is confirmed to serve when the
-request carries the matching key-value and to return nothing when it does not.
-
----
-
-## 6. Rollout
-
-- Put it behind a flag; canary one article template first.
-- **Watch for one day:** video fill rate, video CPM, VAST error rate.
-- **Known regression risk:** adding keys that were previously absent can change
-  which *existing* video line items match — particularly any using `IS_NOT`
-  conditions or brand-safety exclusions. This is the main thing to watch.
-- Rollback is a flag flip. Nothing in trafficking depends on this change; the
-  current contextual targeting keeps working meanwhile, so shipping late or
-  reverting breaks nothing.
-
----
-
-## 7. Out of scope
-
-This change makes video targeting *correct and durable*. It does not create
-video inventory — only ~8% of articles have a real player, so a takeover that
-requires display and video together is still capped by player availability.
-That is a separate product decision (outstream unit vs. instream pre-roll) and
-does not block this ticket.
