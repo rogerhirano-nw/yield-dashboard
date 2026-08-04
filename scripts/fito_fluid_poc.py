@@ -567,5 +567,37 @@ if str(li.status) == "INACTIVE":
 summary["line_item_final_status"] = str(li.status)
 summary["test_url_param"] = f"?{KV_KEY_NAME}={KV_VALUE}"
 
+# ---- diagnostics: live state of every piece --------------------------------
+diag = {}
+resp = kv_svc.getCustomTargetingKeysByStatement(
+    stmt("name = :n", n="article_id"))
+diag["article_id_keys"] = [
+    {"id": k.id, "type": str(getattr(k, "type", "")),
+     "status": str(getattr(k, "status", ""))}
+    for k in (getattr(resp, "results", None) or [])]
+diag["article_id_key_used"] = None
+try:
+    diag["article_id_key_used"] = akey.id
+    vresp = kv_svc.getCustomTargetingValuesByStatement(
+        stmt("customTargetingKeyId = :k AND name = :v",
+             k=akey.id, v=TEST_ARTICLE_ID))
+    diag["article_value"] = [
+        {"id": v.id, "status": str(getattr(v, "status", "")),
+         "matchType": str(getattr(v, "matchType", ""))}
+        for v in (getattr(vresp, "results", None) or [])]
+except NameError:
+    pass
+for label, lid in (("anchor", li.id), ("preroll", pre_li.id),
+                   ("follower", fol_li.id)):
+    x = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=lid)))
+    diag[label] = {
+        "id": lid,
+        "status": str(x.status),
+        "isMissingCreatives": getattr(x, "isMissingCreatives", None),
+        "targeting": str(getattr(x.targeting, "customTargeting", ""))[:600],
+    }
+print("\n=== DIAG ===")
+print(json.dumps(diag, indent=1, default=str))
+
 print("\n=== SUMMARY ===")
 print(json.dumps(summary, indent=1, default=str))
