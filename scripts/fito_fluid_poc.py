@@ -221,7 +221,7 @@ snippet = """
 <div id="fito-host" style="width:970px;height:250px;overflow:hidden"></div>
 <script>
 (function () {
-  var FITO_POC_V = "v7b-cascade";
+  var FITO_POC_V = "v9-preroll-global";
   var TAGS = { t970: %(t970)s, t300: %(t300)s, t728: %(t728)s };
   var VIDEO_URL = %(video)s;
 
@@ -265,6 +265,17 @@ snippet = """
           pa.setTargeting("nwdemocr", cur);
         }
       }
+      // the site's video module forwards window.nwdemocr into the player's
+      // VAST cust_params (getNwdemocrValue), but initializeNwdemocr resets
+      // the global from the URL on every request build — claim it with an
+      // unclobberable getter so the pre-roll KV survives on bare URLs
+      try {
+        Object.defineProperty(top, "nwdemocr", {
+          get: function () { return "fitolive"; },
+          set: function () {},
+          configurable: true
+        });
+      } catch (e2) {}
     }
   } catch (e) {}
 })();
