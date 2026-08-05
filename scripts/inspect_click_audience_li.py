@@ -233,33 +233,12 @@ try:
 except Exception as e:
     print("enum introspection failed:", repr(e)[:200])
 
-# Pixel-unit requests: iterate dim/metric combos until one runs (the
-# DATE+HOUR+AD_UNIT_ID+AD_REQUESTS combo 400s — find a compatible pairing).
-for dims_try, met_try in (
-        (["DATE", "AD_UNIT_ID"], "AD_REQUESTS"),
-        (["AD_UNIT_ID"], "AD_REQUESTS"),
-        (["DATE", "AD_UNIT_ID"], "UNMATCHED_AD_REQUESTS"),
-        (["DATE", "AD_UNIT_ID"], "UNFILLED_IMPRESSIONS"),
-):
-    try:
-        df = gc._run_report(dims_try, [met_try], START, END)
-        col = met_try.lower()
-        hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
-        tot = hit[col].astype(float).sum() if len(hit) else 0
-        print(f"\n[combo {dims_try}+{met_try}] DFPAudiencePixel "
-              f"{START}->{END}: total={tot:.0f} over {len(hit)} rows")
-        for _, r in hit.sort_values([c for c in ("date",) if c in hit]).iterrows():
-            print("  " + "  ".join(f"{c}={r[c]}" for c in hit.columns))
-        break
-    except Exception as e:
-        print(f"[combo {dims_try}+{met_try}] failed:", repr(e)[:160])
-
-# LI delivery by hour around the rollout (proves clicking unaffected).
-# Same dims/metrics refresh_gam_hourly uses in prod.
+# LI delivery by hour around the rollout FIRST (proves clicking unaffected;
+# same dims/metrics refresh_gam_hourly runs daily in prod, known-fast).
 try:
     cdf = gc._run_report(["DATE", "HOUR", "LINE_ITEM_ID"],
                          ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
-                         START, END)
+                         date(2026, 8, 4), END)
     li = cdf[cdf["line_item_id"].astype(str) == str(LI_ID)]
     print(f"\nLI {LI_ID} delivery by hour (ET; capture live 8/4 18:07 ET):")
     for _, r in li.sort_values(["date", "hour"]).iterrows():
@@ -268,3 +247,14 @@ try:
               f"clicks={r['ad_server_clicks']}")
 except Exception as e:
     print("LI hourly report failed:", repr(e)[:300])
+
+# Pixel-unit requests: narrowest possible shape — one dimension, today only.
+# (DATE+HOUR+AD_UNIT_ID 400'd; DATE+AD_UNIT_ID over 3 days hung past the job
+# timeout.)
+try:
+    df = gc._run_report(["AD_UNIT_ID"], ["AD_REQUESTS"], END, END)
+    hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
+    tot = hit["ad_requests"].astype(float).sum() if len(hit) else 0
+    print(f"\nDFPAudiencePixel AD_REQUESTS today ({END}): {tot:.0f}")
+except Exception as e:
+    print("pixel-unit report failed:", repr(e)[:300])
