@@ -227,47 +227,36 @@ try:
     print("custom-targeting dimensions available:",
           sorted(d for d in dims if "CUSTOM" in d or "KEY_VALUE" in d)[:12])
 
-    req_metric = next((m for m in (
-        "AD_REQUESTS", "TOTAL_AD_REQUESTS", "UNMATCHED_AD_REQUESTS",
-        "RESPONSES_SERVED", "UNFILLED_IMPRESSIONS") if m in mets), None)
-    print("using requests metric:", req_metric)
+    print("more metric names:", sorted(
+        m for m in mets if any(k in m for k in
+        ("UNFILLED", "UNMATCHED", "SERVED", "CODE_SERVED")))[:10])
+except Exception as e:
+    print("enum introspection failed:", repr(e)[:200])
 
-    if req_metric:
-        df = gc._run_report(["DATE", "HOUR", "AD_UNIT_ID"], [req_metric],
-                            START, END)
-        col = req_metric.lower()
+# Pixel-unit requests: iterate dim/metric combos until one runs (the
+# DATE+HOUR+AD_UNIT_ID+AD_REQUESTS combo 400s — find a compatible pairing).
+for dims_try, met_try in (
+        (["DATE", "AD_UNIT_ID"], "AD_REQUESTS"),
+        (["AD_UNIT_ID"], "AD_REQUESTS"),
+        (["DATE", "AD_UNIT_ID"], "UNMATCHED_AD_REQUESTS"),
+        (["DATE", "AD_UNIT_ID"], "UNFILLED_IMPRESSIONS"),
+):
+    try:
+        df = gc._run_report(dims_try, [met_try], START, END)
+        col = met_try.lower()
         hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
         tot = hit[col].astype(float).sum() if len(hit) else 0
-        print(f"\nDFPAudiencePixel unit {req_metric} {START}->{END}: "
-              f"total={tot:.0f} across {len(hit)} date/hour rows")
-        for _, r in hit.sort_values(["date", "hour"]).iterrows():
-            print(f"  {r['date']} {int(r['hour']):02d}:00 ET  {col}={r[col]}")
-        if not len(hit):
-            print("  (no rows for the pixel unit — check if ANY unit id "
-                  "matched; sample units in report:",
-                  df["ad_unit_id"].astype(str).unique()[:5], ")")
+        print(f"\n[combo {dims_try}+{met_try}] DFPAudiencePixel "
+              f"{START}->{END}: total={tot:.0f} over {len(hit)} rows")
+        for _, r in hit.sort_values([c for c in ("date",) if c in hit]).iterrows():
+            print("  " + "  ".join(f"{c}={r[c]}" for c in hit.columns))
+        break
+    except Exception as e:
+        print(f"[combo {dims_try}+{met_try}] failed:", repr(e)[:160])
 
-    # dc_seg value split, if a value-level dimension exists
-    kv_dim = next((d for d in (
-        "CUSTOM_TARGETING_VALUE_ID", "KEY_VALUES_ID",
-        "CUSTOM_TARGETING_VALUE") if d in dims), None)
-    print("\nusing KV dimension:", kv_dim)
-    if kv_dim and req_metric:
-        try:
-            kdf = gc._run_report(["DATE", kv_dim], [req_metric], START, END)
-            kcol = kv_dim.lower()
-            ours = kdf[kdf[kcol].astype(str) == DCSEG_VALUE_ID]
-            print(f"rows for dc_seg value {DCSEG_VALUE_ID} (segment "
-                  f"9443004817): {len(ours)}")
-            for _, r in ours.sort_values("date").iterrows():
-                print(f"  {r['date']}  {req_metric.lower()}={r[req_metric.lower()]}")
-            if not len(ours):
-                print("  (value not present in report — either no fires or "
-                      "dimension reports differently)")
-        except Exception as e:
-            print("KV-split report failed:", repr(e)[:200])
-
-    # LI clicks by hour around the rollout (proves clicking unaffected)
+# LI delivery by hour around the rollout (proves clicking unaffected).
+# Same dims/metrics refresh_gam_hourly uses in prod.
+try:
     cdf = gc._run_report(["DATE", "HOUR", "LINE_ITEM_ID"],
                          ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
                          START, END)
@@ -278,4 +267,4 @@ try:
               f"imps={r['ad_server_impressions']}  "
               f"clicks={r['ad_server_clicks']}")
 except Exception as e:
-    print("PIXEL HIT CHECK failed:", repr(e)[:400])
+    print("LI hourly report failed:", repr(e)[:300])
