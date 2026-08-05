@@ -793,6 +793,90 @@ try:
 except Exception as exc:
     summary["audience_segment_error"] = str(exc)[:400]
 
+# ---- 6f. Eager signal line item on an out-of-page slot ---------------------
+# The anchor slot (inarticle1) is lazily defined and sits ~1388px down the
+# page, so it renders long after the video player has already built its ad
+# request — which is why the pre-roll never matched fito=live. The oop1/2/3
+# slots ARE requested at page load (single SRA call, verified on QA) and came
+# back unfilled, so an eager "signal" line item there can set fito=live before
+# the video request is assembled. No page change required.
+#
+# The service account cannot create the out-of-page CREATIVE — that must be
+# made in the GAM UI with size "Out of page" (a 1x1 CustomCreative will not
+# serve an OOP slot on this network). This block creates the line item only.
+SIGNAL_LI_NAME = "[nw]_FITO-Fluid_POC_signal_oop"
+try:
+    inv_svc = client.GetService("InventoryService", version=VERSION)
+    sb_oop = ad_manager.StatementBuilder(version=VERSION)
+    sb_oop.Where("name IN ('oop1','oop2','oop3')").Limit(20)
+    oop_resp = inv_svc.getAdUnitsByStatement(sb_oop.ToStatement())
+    oop_units = [{"id": u.id, "name": u.name,
+                  "status": str(getattr(u, "status", ""))}
+                 for u in (getattr(oop_resp, "results", None) or [])]
+    summary["oop_ad_units"] = oop_units
+
+    # prefer oop3 (unused on QA), else oop2, else oop1
+    pick = None
+    for want in ("oop3", "oop2", "oop1"):
+        for u in oop_units:
+            if u["name"] == want:
+                pick = u
+                break
+        if pick:
+            break
+    summary["oop_unit_chosen"] = pick
+
+    if pick is not None:
+        sig_li = first(li_svc.getLineItemsByStatement(
+            stmt("name = :n AND orderId = :o",
+                 n=SIGNAL_LI_NAME, o=order.id)))
+        if sig_li is None:
+            sig_li = li_svc.createLineItems([{
+                "orderId": order.id,
+                "name": SIGNAL_LI_NAME,
+                "lineItemType": "SPONSORSHIP",
+                "costType": "CPM",
+                "costPerUnit": {"currencyCode": "USD", "microAmount": 0},
+                "creativeRotationType": "EVEN",
+                "primaryGoal": {"goalType": "DAILY",
+                                "unitType": "IMPRESSIONS", "units": 100},
+                "startDateTimeType": "IMMEDIATELY",
+                "endDateTime": {
+                    "date": {"year": 2026, "month": 8, "day": 17},
+                    "hour": 23, "minute": 59, "second": 0,
+                    "timeZoneId": "America/New_York",
+                },
+                # out-of-page slots require an interstitial-size placeholder
+                "creativePlaceholders": [
+                    {"size": {"width": 1, "height": 1, "isAspectRatio": False},
+                     "creativeSizeType": "INTERSTITIAL"}],
+                "targeting": {
+                    "inventoryTargeting": {
+                        "targetedAdUnits": [
+                            {"adUnitId": pick["id"], "includeDescendants": False}]},
+                    "customTargeting": {
+                        "xsi_type": "CustomCriteriaSet",
+                        "logicalOperator": "AND",
+                        "children": [
+                            {"xsi_type": "CustomCriteria", "keyId": akey.id,
+                             "valueIds": [qa_aval.id], "operator": "IS"},
+                        ] + ([{"xsi_type": "CustomCriteria", "keyId": envkey.id,
+                               "valueIds": [qa_env.id], "operator": "IS"}]
+                             if qa_env is not None else []),
+                    },
+                },
+                "skipInventoryCheck": True,
+                "allowOverbook": True,
+            }])[0]
+        summary["signal_line_item"] = {
+            "id": sig_li.id,
+            "status": str(sig_li.status),
+            "isMissingCreatives": getattr(sig_li, "isMissingCreatives", None),
+            "adUnit": pick["name"],
+        }
+except Exception as exc:
+    summary["signal_li_error"] = str(exc)[:400]
+
 # ---- diagnostics: live state of every piece --------------------------------
 diag = {}
 resp = kv_svc.getCustomTargetingKeysByStatement(
