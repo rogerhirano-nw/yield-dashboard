@@ -876,6 +876,54 @@ try:
             "isMissingCreatives": getattr(sig_li, "isMissingCreatives", None),
             "adUnit": pick["name"],
         }
+
+        # The page requests oop1/2/3 at prev_iu_szs=1x1 (verified in the live
+        # SRA request), so an INTERSTITIAL-only placeholder never matches and
+        # GAM returns _empty_. Add a plain 1x1 placeholder + a 1x1 creative
+        # alongside the out-of-page one and let GAM pick whichever fits.
+        sig_now = first(li_svc.getLineItemsByStatement(
+            stmt("id = :i", i=sig_li.id)))
+        phs = list(getattr(sig_now, "creativePlaceholders", None) or [])
+        has_plain_1x1 = any(
+            getattr(p, "size", None) is not None
+            and p.size.width == 1 and p.size.height == 1
+            and not str(getattr(p, "creativeSizeType", "")).endswith("INTERSTITIAL")
+            for p in phs)
+        if not has_plain_1x1:
+            sig_now.creativePlaceholders = phs + [
+                {"size": {"width": 1, "height": 1, "isAspectRatio": False}}]
+            sig_now.skipInventoryCheck = True
+            sig_now.allowOverbook = True
+            li_svc.updateLineItems([sig_now])
+            summary["signal_added_1x1_placeholder"] = True
+
+        SIGNAL_CR_NAME = "[nw]_FITO-Fluid_POC_signal_1x1"
+        sig_cr = first(cr_svc.getCreativesByStatement(
+            stmt("name = :n AND advertiserId = :a",
+                 n=SIGNAL_CR_NAME, a=order.advertiserId)))
+        if sig_cr is None:
+            sig_cr = cr_svc.createCreatives([{
+                "xsi_type": "CustomCreative",
+                "name": SIGNAL_CR_NAME,
+                "advertiserId": order.advertiserId,
+                "size": {"width": 1, "height": 1, "isAspectRatio": False},
+                "isSafeFrameCompatible": False,
+                "htmlSnippet": (
+                    '<img src="%%VIEW_URL_UNESC%%" width="1" height="1" '
+                    'border="0" alt="" style="position:absolute;left:-9999px">'
+                    "<script>(function(){try{var w=window.top;"
+                    "if(w.googletag&&w.googletag.pubads)"
+                    "w.googletag.pubads().setTargeting('fito','live');}"
+                    "catch(e){}})();</script>"
+                ),
+            }])[0]
+        sig_lica = first(lica_svc.getLineItemCreativeAssociationsByStatement(
+            stmt("lineItemId = :l AND creativeId = :c",
+                 l=sig_li.id, c=sig_cr.id)))
+        if sig_lica is None:
+            lica_svc.createLineItemCreativeAssociations([
+                {"lineItemId": sig_li.id, "creativeId": sig_cr.id}])
+        summary["signal_1x1_creative"] = sig_cr.id
 except Exception as exc:
     summary["signal_li_error"] = str(exc)[:400]
 
