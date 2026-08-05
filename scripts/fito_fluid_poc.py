@@ -851,9 +851,11 @@ try:
                     {"size": {"width": 1, "height": 1, "isAspectRatio": False},
                      "creativeSizeType": "INTERSTITIAL"}],
                 "targeting": {
+                    # includeDescendants must be True — these OOP units reject
+                    # self-only targeting (SELF_ONLY_INVENTORY_UNIT_NOT_ALLOWED)
                     "inventoryTargeting": {
                         "targetedAdUnits": [
-                            {"adUnitId": pick["id"], "includeDescendants": False}]},
+                            {"adUnitId": pick["id"], "includeDescendants": True}]},
                     "customTargeting": {
                         "xsi_type": "CustomCriteriaSet",
                         "logicalOperator": "AND",
