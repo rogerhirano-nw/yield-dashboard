@@ -899,7 +899,7 @@ try:
         for v in (getattr(vresp, "results", None) or [])]
 except NameError:
     pass
-for label, lid in (("anchor", ANCHOR_LI_ID), ("preroll", pre_li.id),
+for label, lid in (("anchor", ANCHOR_LI_ID), ("signal", 7393356692), ("preroll", pre_li.id),
                    ("follower", fol_li.id)):
     x = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=lid)))
     diag[label] = {
