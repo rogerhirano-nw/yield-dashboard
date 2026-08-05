@@ -26,7 +26,10 @@ on:
 env:
   # Pre-merge stage knob (workflow_dispatch input overrides it):
   #   dryrun | canary | all | rollback
-  TARGET: all
+  # rollback since 2026-08-05: the capture moved to the creative wrapper on
+  # the interstitial unit (setup_click_capture_wrapper.py) — snippets are
+  # restored to the byte-identical Innovid originals.
+  TARGET: rollback
   CANARY_CREATIVE: "138568851141"
 
 permissions:

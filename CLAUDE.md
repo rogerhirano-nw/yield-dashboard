@@ -1019,12 +1019,15 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   that creates the test LIs + creatives + LICAs and reduces the control goal).
 - `docs/click_audience.md` — first-party segment 9443004817 ("clicked the
   Apple at Work PG interstitial", LI 7384069597), pixel-populated via a
-  capture `<script>` appended to the Innovid ThirdPartyCreative snippets
-  (fires the DFPAudiencePixel activity tag on click-through signals only;
-  closes never fire). Segment create + creative rollout/rollback via
-  `create_click_audience.yml` / `add_click_capture.yml` (target=rollback is
-  the instant revert). No retroactive population; re-run target=all if the
-  agency swaps creatives.
+  **creative wrapper** on the `interstitial` ad unit (label+wrapper
+  391280066; wrapper labels are AD-UNIT-scoped, so the injected block is
+  LI-gated and inert for other campaigns). Fires the DFPAudiencePixel
+  activity tag on click-through signals only; closes never fire. Instant
+  kill = deactivate the wrapper / pull the unit label (UI — the SA cannot
+  update ad units). Creative swaps need no action. Scripts:
+  `create_click_audience_segment.py`, `setup_click_capture_wrapper.py`;
+  the per-creative snippet path (`add_click_capture.yml`) is the retired
+  fallback. No retroactive population.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz

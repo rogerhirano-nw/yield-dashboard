@@ -11,9 +11,23 @@ segment fills only from click-time pixel fires after the capture went live.
 
 ## How it populates (publisher-side, no agency dependency)
 
-The three Innovid `ThirdPartyCreative` snippets on LI 7384069597
-(138568851141 / 138568952930 / 138569841328) carry an appended, marker-wrapped
-`<script>` block (`nw-click-audience`) that fires the segment's activity tag
+A **GAM Creative Wrapper** carries the capture code since 2026-08-05: label
+391280066 (`[nw] click-audience wrapper - Apple at Work clickers`, type
+CREATIVE_WRAPPER) is applied to the **`interstitial` ad unit** (23295929518 —
+wrapper labels are unit-scoped per the API), and wrapper 391280066 (ACTIVE)
+injects a marker-wrapped `<script>` footer (`nw-click-audience … via=wrapper`)
+into every creative served there. Because the whole unit gets wrapped, the
+block is **LI-gated**: it resolves the serving line item via GPT response info
+(the slot whose container holds `window.frameElement`) and returns inert
+unless the LI is allow-listed (7384069597; preview URLs naming
+`lineItemId=7384069597` also pass, for testing). Innovid snippets are
+byte-identical originals — creative swaps/additions are wrapped automatically.
+
+(History: 2026-08-04→05 the same block, ungated, was appended directly to the
+three Innovid `ThirdPartyCreative` snippets — `add_click_capture_to_creatives.py`
+stripped them back once the wrapper was verified serving.)
+
+The block fires the segment's activity tag
 
     https://pubads.g.doubleclick.net/activity;dc_iu=/22541732127/DFPAudiencePixel;ord=<ts>;dc_seg=9443004817
 
@@ -41,18 +55,25 @@ Safari/Firefox clickers don't join (~half of clicks convert to members).
 
 ## Operate
 
-`scripts/add_click_capture_to_creatives.py` (dry-run default, marker-
-idempotent, updates creatives one at a time) driven by
-`.github/workflows/add_click_capture.yml`:
+**Kill/revert (instant):** Delivery → Creative wrappers → deactivate wrapper
+391280066, or remove the label from the interstitial unit's Settings → Labels.
+(The SA can create labels/wrappers but is PERMISSION_DENIED on AdUnit
+updates — label add/remove on the unit is a UI step.)
 
-- post-merge: `gh workflow run add_click_capture.yml -f target=<stage>` —
-  `dryrun` | `canary` (138568851141 only) | `all` | **`rollback`** (strips the
-  block from every creative; the instant-revert lever).
-- pre-merge: the workflow's `TARGET` env on the branch drives push-triggered
-  runs (rolled dryrun → canary → all on 2026-08-04).
+**Setup / re-check:** `scripts/setup_click_capture_wrapper.py` via
+`setup_click_capture_wrapper.yml` (`target=dryrun|apply`, idempotent at every
+step). To reuse for a future campaign: new segment (create_click_audience.yml),
+clone the wrapper script with the new seg id + LI allow-list, new label, apply
+to the relevant unit.
 
-If OMD/Innovid ever **swap or add creatives** on the LI, the block is gone
-from the new ones — re-run `target=all` (the script picks up all LICAs).
-Monitoring: segment size in Signals → Audience (30min–48h lag; line items can
-target it once ≥~100 members) or re-run the recon workflow
-(`inspect_click_audience.yml`), which lists first-party segments with sizes.
+**Legacy per-creative path** (`add_click_capture_to_creatives.py` +
+`add_click_capture.yml`, stages dryrun|canary|all|rollback): retired 2026-08-05
+after the wrapper went live — kept as the fallback if the wrapper ever has to
+come off. Creative swaps need no action while the wrapper carries the code.
+
+**Monitoring:** segment size in Signals → Audience (30min–48h membership lag;
+line items can target it once ≥~100 members) or the recon workflow
+(`inspect_click_audience.yml`), which lists segment sizes and checks the
+creatives + pixel plumbing. GAM report ops from this SA can outlive 10-minute
+jobs — the recon workflow runs with a 30-minute cap; keep pixel-unit request
+reports to single-dimension/single-day shapes.
