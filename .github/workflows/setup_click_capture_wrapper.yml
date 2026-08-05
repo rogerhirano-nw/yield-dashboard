@@ -1,0 +1,77 @@
+name: Click-capture creative wrapper (one-off)
+
+# Moves the click-audience capture (segment 9443004817) from per-creative
+# snippet appends to a GAM Creative Wrapper on the interstitial ad unit —
+# LI-gated in the injected code, swap-proof, one-switch kill. Staged via
+# the TARGET env pre-merge (dryrun -> apply); workflow_dispatch post-merge.
+# See docs/click_audience.md.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Stage"
+        required: true
+        default: "dryrun"
+        type: choice
+        options: [dryrun, apply]
+  push:
+    branches: [claude/click-audience-li7384069597]
+    paths:
+      - 'scripts/setup_click_capture_wrapper.py'
+      - '.github/workflows/setup_click_capture_wrapper.yml'
+
+env:
+  TARGET: dryrun
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  wrapper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Run (stage from TARGET / dispatch input)
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DISPATCH_TARGET: ${{ inputs.target }}
+        run: |
+          set -o pipefail
+          STAGE="${DISPATCH_TARGET:-$TARGET}"
+          echo "stage: $STAGE"
+          if [ "$STAGE" = "apply" ]; then
+            python scripts/setup_click_capture_wrapper.py --apply 2>&1 | tee /tmp/output.txt
+          else
+            python scripts/setup_click_capture_wrapper.py 2>&1 | tee /tmp/output.txt
+          fi
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Click-capture creative wrapper'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
