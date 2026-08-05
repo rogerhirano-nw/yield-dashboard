@@ -21,7 +21,7 @@ on:
       - '.github/workflows/setup_click_capture_wrapper.yml'
 
 env:
-  TARGET: dryrun
+  TARGET: apply
 
 permissions:
   contents: read
