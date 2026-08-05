@@ -493,6 +493,28 @@ if fol_li is None:
     }])[0]
 summary["follower_line_item"] = {"id": fol_li.id, "status": str(fol_li.status)}
 
+# follower must also accept the new production cascade key
+if fito_key is not None and fito_val is not None:
+    fol_now = first(li_svc.getLineItemsByStatement(stmt("id = :i", i=fol_li.id)))
+    if str(fito_val.id) not in str(fol_now.targeting):
+        fol_now.targeting.customTargeting = {
+            "xsi_type": "CustomCriteriaSet", "logicalOperator": "OR",
+            "children": [
+                {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+                 "children": [{"xsi_type": "CustomCriteria", "keyId": fkey.id,
+                               "valueIds": [fval.id], "operator": "IS"}]},
+                {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+                 "children": [{"xsi_type": "CustomCriteria", "keyId": fito_key.id,
+                               "valueIds": [fito_val.id], "operator": "IS"}]},
+            ],
+        }
+        fol_now.skipInventoryCheck = True
+        fol_now.allowOverbook = True
+        li_svc.updateLineItems([fol_now])
+        summary["follower_accepts_fito"] = True
+    else:
+        summary["follower_accepts_fito"] = "already"
+
 fol_creatives = []
 for size_label, (w, h) in {"970x250": (970, 250), "300x250": (300, 250),
                            "728x90": (728, 90)}.items():
@@ -543,6 +565,7 @@ SYNC_VALUE = "Dare to Dream"
 # the SERVING anchor is the Sponsorship LI Roger activated — NOT `li`, which
 # the name lookup resolves to the inactive `_pp` copy (diag run 30907700023)
 ANCHOR_LI_ID = 7389497908
+QA_ARTICLE_ID = "11184432"   # qa.next.newsweek.com Cadillac F1 article
 try:
     akey = first(kv_svc.getCustomTargetingKeysByStatement(
         stmt("name = :n", n="article_id")))
@@ -575,6 +598,38 @@ try:
         return {"xsi_type": "CustomCriteria", "keyId": k,
                 "valueIds": [v], "operator": op}
 
+    # --- QA test article (Cadillac F1) -------------------------------------
+    # Scoped with siteenv=qa so it cannot fire on the production article that
+    # shares this article_id.
+    qa_aval = first(kv_svc.getCustomTargetingValuesByStatement(
+        stmt("customTargetingKeyId = :k AND name = :v",
+             k=akey.id, v=QA_ARTICLE_ID)))
+    if qa_aval is None:
+        qa_aval = kv_svc.createCustomTargetingValues([
+            {"customTargetingKeyId": akey.id, "name": QA_ARTICLE_ID,
+             "matchType": "EXACT"}])[0]
+    envkey = first(kv_svc.getCustomTargetingKeysByStatement(
+        stmt("name = :n", n="siteenv")))
+    qa_env = None
+    if envkey is not None:
+        qa_env = first(kv_svc.getCustomTargetingValuesByStatement(
+            stmt("customTargetingKeyId = :k AND name = :v",
+                 k=envkey.id, v="qa")))
+        if qa_env is None:
+            try:
+                qa_env = kv_svc.createCustomTargetingValues([
+                    {"customTargetingKeyId": envkey.id, "name": "qa",
+                     "matchType": "EXACT"}])[0]
+            except Exception as exc:
+                summary["siteenv_value_error"] = str(exc)[:200]
+    qa_children = [crit(akey.id, qa_aval.id), crit(fkey.id, fval.id, "IS_NOT")]
+    if qa_env is not None:
+        qa_children.insert(1, crit(envkey.id, qa_env.id))
+    summary["qa_branch"] = {
+        "article_id": QA_ARTICLE_ID,
+        "siteenv_scoped": qa_env is not None,
+    }
+
     # anchor: contextual scope OR the sanctioned URL demo param; the IS_NOT
     # keeps it off follower slots (its own request predates the cascade value)
     anchor = first(li_svc.getLineItemsByStatement(
@@ -592,6 +647,9 @@ try:
             {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
              "children": [crit(fkey.id, demo_val.id),
                           crit(fkey.id, fval.id, "IS_NOT")]},
+            # QA test article
+            {"xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+             "children": qa_children},
         ],
     }
     anchor.skipInventoryCheck = True
