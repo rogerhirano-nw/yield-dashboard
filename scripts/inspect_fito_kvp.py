@@ -224,10 +224,31 @@ def main():
         if (kids & fito_key_ids) or (vids & article_value_ids):
             matches.append(li)
     print(f"\n  {len(matches)} of them target fito / article_id={TEST_ARTICLE_ID}:")
+
+    # competitors seen winning `top` in live-page / SRA probes — dump them too
+    for comp_id in (6876369518, 7291689732):
+        if comp_id in {int(m["id"]) for m in matches}:
+            continue
+        sb = ad_manager.StatementBuilder(version=V)
+        sb.Where("id = :i").WithBindVariable("i", comp_id).Limit(1)
+        comp = rows(li_svc.getLineItemsByStatement(sb.ToStatement()))
+        if comp:
+            print(f"  (+ top-slot competitor {comp_id} appended below)")
+            matches.append(comp[0])
+
     for li in matches:
         print(f"\n  LI {li['id']}  {li['name']!r}")
         print(f"     status={li['status']}  type={li['lineItemType']}  priority={getattr(li, 'priority', '?')}  order={li['orderId']}")
         print(f"     roadblocking={getattr(li, 'roadblockingType', '?')}  rotation={getattr(li, 'creativeRotationType', '?')}  deliveryRate={getattr(li, 'deliveryRateType', '?')}")
+        goal = getattr(li, "primaryGoal", None)
+        if goal is not None:
+            print(f"     primaryGoal: goalType={getattr(goal, 'goalType', '?')} unitType={getattr(goal, 'unitType', '?')} units={getattr(goal, 'units', '?')}")
+        fcaps = getattr(li, "frequencyCaps", None) or []
+        if fcaps:
+            for fc in fcaps:
+                print(f"     frequencyCap: max={fc['maxImpressions']} per {fc['numTimeUnits']} {fc['timeUnit']}")
+        else:
+            print("     frequencyCaps: (none)")
         print(f"     lastModified={fmt_dt(li['lastModifiedDateTime'])}")
         sizes = [f"{p['size']['width']}x{p['size']['height']}" for p in (getattr(li, "creativePlaceholders", None) or [])]
         print(f"     sizes={sizes}")
