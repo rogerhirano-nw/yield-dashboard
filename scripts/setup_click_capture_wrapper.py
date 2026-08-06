@@ -46,10 +46,15 @@ UNIT_CODE = "interstitial"
 WRAPPER_FOOTER = """
 <!-- nw-click-audience:start seg=9443004817 via=wrapper -->
 <script>
-/* nw-click-audience v2w (creative wrapper, LI-gated) - adds users who CLICK
+/* nw-click-audience v3w (creative wrapper, LI-gated) - adds users who CLICK
    THROUGH the Apple at Work interstitial (LI 7384069597) to GAM first-party
    segment 9443004817. Injected by creative wrapper on the interstitial unit;
-   INERT for every other line item serving there. yield-dashboard PR #351. */
+   INERT for every other line item serving there. v3: fire in the exact
+   pcd.js request form (dc_seg before ord + ?ptt=22 - the raw activity URL
+   without ptt returns 200 but never registers on the pixel unit, proven
+   2026-08-06) + official pcd.js injection as belt-and-braces; LI gate also
+   accepts the Apple Innovid loader signature (r1.6a68d35b*), immune to
+   null GPT response info on programmatic serves. yield-dashboard PR #351. */
 (function () {
   "use strict";
   var SEG = "9443004817", NET = "22541732127";
@@ -62,6 +67,11 @@ WRAPPER_FOOTER = """
   function servingLiOk() {
     try {
       if ((topWin.location.search || "").indexOf("lineItemId=7384069597") > -1) { return true; }
+      try {
+        /* the wrapped creative IS one of the three Apple Innovid tags */
+        var h = document.documentElement.innerHTML || "";
+        if (h.indexOf("rtr.innovid.com/js/r1.6a68d35b") > -1) { return true; }
+      } catch (e) {}
       var gt = topWin.googletag;
       if (!gt || !gt.pubads) { return false; }
       var fe = window.frameElement, slots = gt.pubads().getSlots();
@@ -87,11 +97,32 @@ WRAPPER_FOOTER = """
 
   function fire() {
     if (fired) { return; } fired = true;
+    /* exact pcd.js form: dc_seg;ord path order + ?ptt=22 */
     var u = "https://pubads.g.doubleclick.net/activity;dc_iu=/" + NET +
-            "/DFPAudiencePixel;ord=" + Date.now() + ";dc_seg=" + SEG +
-            (usp ? "?us_privacy=" + encodeURIComponent(usp) : "");
-    try { fetch(u, { mode: "no-cors", credentials: "include", keepalive: true }); }
-    catch (e) { try { (new Image()).src = u; } catch (e2) {} }
+            "/DFPAudiencePixel;dc_seg=" + SEG + ";ord=" +
+            Math.floor(Math.random() * 9e15) + "?ptt=22" +
+            (usp ? "&us_privacy=" + encodeURIComponent(usp) : "");
+    try {
+      fetch(u, { mode: "no-cors", credentials: "include", keepalive: true })
+        .catch(function () { try { (new Image()).src = u; } catch (e) {} });
+    } catch (e) { try { (new Image()).src = u; } catch (e2) {} }
+    /* belt-and-braces: let Google's own pcd.js issue the canonical request
+       when the document survives (new-tab click-throughs - the unit's
+       Target window is _blank, so this is the common path) */
+    try {
+      setTimeout(function () {
+        try {
+          if (document.getElementById("google-pcd-tag")) { return; }
+          var s = document.createElement("script");
+          s.async = true;
+          s.id = "google-pcd-tag";
+          s.src = "https://pagead2.googlesyndication.com/pagead/js/pcd.js";
+          s.setAttribute("data-audience-pixel",
+            "dc_iu=/" + NET + "/DFPAudiencePixel;dc_seg=" + SEG);
+          (document.head || document.documentElement).appendChild(s);
+        } catch (e) {}
+      }, 0);
+    } catch (e) {}
   }
 
   function isAdIframe(el) {
@@ -246,8 +277,19 @@ def main():
             stmt(f"labelId = {label_id}", 5)).results or []
         if wraps:
             w = wraps[0]
+            cur = getattr(w, "htmlFooter", "") or ""
             print(f"wrapper exists: id={w.id} status={getattr(w, 'status', None)} "
-                  f"footer={len(getattr(w, 'htmlFooter', '') or '')} chars")
+                  f"footer={len(cur)} chars")
+            if cur != WRAPPER_FOOTER:
+                if args.apply:
+                    w.htmlFooter = WRAPPER_FOOTER
+                    upd = cw_svc.updateCreativeWrappers([w])[0]
+                    print(f"wrapper footer UPDATED: {len(cur)} -> "
+                          f"{len(upd.htmlFooter)} chars "
+                          f"(v3w pcd-form fire + hardened gate)")
+                else:
+                    print(f"wrapper footer DIFFERS ({len(cur)} vs "
+                          f"{len(WRAPPER_FOOTER)} chars) — would update")
         elif args.apply:
             w = cw_svc.createCreativeWrappers([{
                 "labelId": label_id,
