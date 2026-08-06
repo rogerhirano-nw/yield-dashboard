@@ -232,6 +232,10 @@ def stmt(where, limit=10):
             .Where(where).Limit(limit).ToStatement())
 
 
+KNOWN_WRAPPER_ID = 391280066   # bound to label 391280066, applied to the unit
+DUPLICATE_WRAPPER_ID = 391439379  # accidental 8/6 pair (label applied nowhere)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -242,6 +246,54 @@ def main():
     lbl_svc = client.GetService("LabelService", version=V)
     cw_svc = client.GetService("CreativeWrapperService", version=V)
     inv_svc = client.GetService("InventoryService", version=V)
+
+    # Diagnose the 8/6 name-lookup miss: dump stored label names in the family.
+    try:
+        fam = lbl_svc.getLabelsByStatement(
+            stmt("name LIKE '%click-audience%'", 10)).results or []
+        for L in fam:
+            print(f"label on file: id={L.id} active={getattr(L, 'isActive', None)} "
+                  f"name={L.name!r}")
+    except Exception as e:
+        print("label family dump failed:", repr(e)[:150])
+
+    # Fast path: the LIVE wrapper (label applied to the unit by Roger) is known
+    # by id — update its footer in place; never mint new label/wrapper pairs.
+    wraps = cw_svc.getCreativeWrappersByStatement(
+        stmt(f"id = {KNOWN_WRAPPER_ID}", 1)).results or []
+    if wraps:
+        w = wraps[0]
+        cur = getattr(w, "htmlFooter", "") or ""
+        print(f"LIVE wrapper {w.id}: status={getattr(w, 'status', None)} "
+              f"labelId={getattr(w, 'labelId', None)} footer={len(cur)} chars "
+              f"v3={'ptt=22' in cur}")
+        if cur != WRAPPER_FOOTER:
+            if args.apply:
+                w.htmlFooter = WRAPPER_FOOTER
+                upd = cw_svc.updateCreativeWrappers([w])[0]
+                print(f"LIVE wrapper footer UPDATED -> {len(upd.htmlFooter)} "
+                      f"chars (v3={'ptt=22' in upd.htmlFooter})")
+            else:
+                print("LIVE wrapper footer differs — would update (dry-run)")
+        else:
+            print("LIVE wrapper footer already v3 — nothing to do")
+        # retire the accidental duplicate pair
+        try:
+            dup = cw_svc.getCreativeWrappersByStatement(
+                stmt(f"id = {DUPLICATE_WRAPPER_ID}", 1)).results or []
+            if dup and str(getattr(dup[0], "status", "")) == "ACTIVE":
+                if args.apply:
+                    r = cw_svc.performCreativeWrapperAction(
+                        {"xsi_type": "DeactivateCreativeWrappers"},
+                        stmt(f"id = {DUPLICATE_WRAPPER_ID}", 1))
+                    print(f"duplicate wrapper {DUPLICATE_WRAPPER_ID} "
+                          f"deactivated ({getattr(r, 'numChanges', '?')} change)")
+                else:
+                    print(f"duplicate wrapper {DUPLICATE_WRAPPER_ID} ACTIVE — "
+                          f"would deactivate")
+        except Exception as e:
+            print("duplicate cleanup failed:", repr(e)[:200])
+        return
 
     units = inv_svc.getAdUnitsByStatement(
         stmt(f"adUnitCode = '{UNIT_CODE}'", 5)).results or []
