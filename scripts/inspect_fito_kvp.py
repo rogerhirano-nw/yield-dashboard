@@ -241,6 +241,38 @@ def main():
     # make their creatives print in section 4 too
     lis = matches + lis
 
+    # ── 3c. resolve the ad units + delivery stats for the matched LIs ───────
+    print()
+    print("=" * 72)
+    print("AD UNITS + DELIVERY ON THE MATCHED LIs")
+    print("=" * 72)
+    inv_svc = client.GetService("InventoryService", version=V)
+    unit_ids = set()
+    for li in matches:
+        inv = getattr(li["targeting"], "inventoryTargeting", None)
+        if inv is not None:
+            for u in getattr(inv, "targetedAdUnits", None) or []:
+                unit_ids.add(str(u["adUnitId"]))
+    for uid in sorted(unit_ids):
+        sb = ad_manager.StatementBuilder(version=V)
+        sb.Where("id = :u").WithBindVariable("u", int(uid)).Limit(1)
+        us = rows(inv_svc.getAdUnitsByStatement(sb.ToStatement()))
+        if us:
+            u = us[0]
+            parent = getattr(u, "parentPath", None) or []
+            path = "/".join(str(p["adUnitCode"]) for p in parent) + "/" + str(u["adUnitCode"])
+            print(f"  unit {uid}: code={u['adUnitCode']!r}  path={path}  status={getattr(u, 'status', '?')}")
+        else:
+            print(f"  unit {uid}: <not found>")
+    for li in matches:
+        st = getattr(li, "stats", None)
+        imps = getattr(st, "impressionsDelivered", None) if st is not None else None
+        clicks = getattr(st, "clicksDelivered", None) if st is not None else None
+        start = fmt_dt(getattr(li, "startDateTime", None)) if getattr(li, "startDateTime", None) else "?"
+        end = "unlimited" if getattr(li, "unlimitedEndDateTime", False) else (
+            fmt_dt(getattr(li, "endDateTime", None)) if getattr(li, "endDateTime", None) else "?")
+        print(f"  LI {li['id']} {str(li['name'])[:48]!r}: impressions={imps} clicks={clicks} start={start} end={end}")
+
     # ── 4. creatives on the 4 newest FITO LIs ───────────────────────────────
     print()
     print("=" * 72)
