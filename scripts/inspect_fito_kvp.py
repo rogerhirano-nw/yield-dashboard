@@ -51,10 +51,15 @@ def rows(resp):
 def fmt_dt(dt):
     try:
         d = dt["date"]
-        return (
-            f"{d['year']:04d}-{d['month']:02d}-{d['day']:02d} "
-            f"{dt['hour']:02d}:{dt['minute']:02d} {dt.get('timeZoneId', '')}"
-        )
+        parts = [f"{int(d['year']):04d}-{int(d['month']):02d}-{int(d['day']):02d}"]
+        hour = getattr(dt, "hour", None)
+        minute = getattr(dt, "minute", None)
+        if hour is not None:
+            parts.append(f"{int(hour):02d}:{int(minute or 0):02d}")
+        tz = getattr(dt, "timeZoneId", "")
+        if tz:
+            parts.append(str(tz))
+        return " ".join(parts)
     except Exception:
         return str(dt)
 
@@ -174,6 +179,67 @@ def main():
             render_criteria(ct, depth=4)
         else:
             print("     customTargeting: (none)")
+
+    # ── 3b. recently modified LIs that reference the fito key or the test
+    #        article's article_id value (the LI pushed today may not carry
+    #        "FITO" in its name) ─────────────────────────────────────────────
+    print()
+    print("=" * 72)
+    print("RECENTLY MODIFIED LIs REFERENCING `fito` OR article_id=12280782")
+    print("=" * 72)
+    fito_key_ids = {k for k, n in key_by_id.items() if "fito" in n.lower()}
+    article_key_ids = set(key_ids_named("article_id", "articleid"))
+
+    def collect_ids(node, kids, vids):
+        if node is None:
+            return
+        if hasattr(node, "keyId"):
+            kids.add(int(node["keyId"]))
+            for v in getattr(node, "valueIds", None) or []:
+                vids.add(int(v))
+        for ch in getattr(node, "children", None) or []:
+            collect_ids(ch, kids, vids)
+
+    # resolve the article_id value ids matching the test article
+    article_value_ids = set()
+    for kid in article_key_ids:
+        sb = ad_manager.StatementBuilder(version=V)
+        sb.Where("customTargetingKeyId = :kid AND name = :n")
+        sb.WithBindVariable("kid", kid).WithBindVariable("n", TEST_ARTICLE_ID).Limit(10)
+        for v in rows(ct_svc.getCustomTargetingValuesByStatement(sb.ToStatement())):
+            article_value_ids.add(int(v["id"]))
+
+    sb = ad_manager.StatementBuilder(version=V)
+    sb.Where("isArchived = false").Limit(80)
+    sb.OrderBy("lastModifiedDateTime", ascending=False)
+    recent = rows(li_svc.getLineItemsByStatement(sb.ToStatement()))
+    print(f"  scanned {len(recent)} most recently modified line items:")
+    for li in recent[:25]:
+        print(f"    {fmt_dt(li['lastModifiedDateTime'])}  LI {li['id']}  status={li['status']:<22} {str(li['name'])[:70]!r}")
+
+    matches = []
+    for li in recent:
+        kids, vids = set(), set()
+        collect_ids(getattr(li["targeting"], "customTargeting", None), kids, vids)
+        if (kids & fito_key_ids) or (vids & article_value_ids):
+            matches.append(li)
+    print(f"\n  {len(matches)} of them target fito / article_id={TEST_ARTICLE_ID}:")
+    for li in matches:
+        print(f"\n  LI {li['id']}  {li['name']!r}")
+        print(f"     status={li['status']}  type={li['lineItemType']}  priority={getattr(li, 'priority', '?')}  order={li['orderId']}")
+        print(f"     lastModified={fmt_dt(li['lastModifiedDateTime'])}")
+        sizes = [f"{p['size']['width']}x{p['size']['height']}" for p in (getattr(li, "creativePlaceholders", None) or [])]
+        print(f"     sizes={sizes}")
+        inv = getattr(li["targeting"], "inventoryTargeting", None)
+        if inv is not None:
+            units = [str(u["adUnitId"]) for u in (getattr(inv, "targetedAdUnits", None) or [])]
+            print(f"     adUnits={units}")
+        ct = getattr(li["targeting"], "customTargeting", None)
+        if ct is not None:
+            print("     customTargeting:")
+            render_criteria(ct, depth=4)
+    # make their creatives print in section 4 too
+    lis = matches + lis
 
     # ── 4. creatives on the 4 newest FITO LIs ───────────────────────────────
     print()
