@@ -227,6 +227,7 @@ def main():
     for li in matches:
         print(f"\n  LI {li['id']}  {li['name']!r}")
         print(f"     status={li['status']}  type={li['lineItemType']}  priority={getattr(li, 'priority', '?')}  order={li['orderId']}")
+        print(f"     roadblocking={getattr(li, 'roadblockingType', '?')}  rotation={getattr(li, 'creativeRotationType', '?')}  deliveryRate={getattr(li, 'deliveryRateType', '?')}")
         print(f"     lastModified={fmt_dt(li['lastModifiedDateTime'])}")
         sizes = [f"{p['size']['width']}x{p['size']['height']}" for p in (getattr(li, "creativePlaceholders", None) or [])]
         print(f"     sizes={sizes}")
