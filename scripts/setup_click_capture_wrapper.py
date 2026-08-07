@@ -46,15 +46,18 @@ UNIT_CODE = "interstitial"
 WRAPPER_FOOTER = """
 <!-- nw-click-audience:start seg=9443004817 via=wrapper -->
 <script>
-/* nw-click-audience v3w (creative wrapper, LI-gated) - adds users who CLICK
+/* nw-click-audience v4w (creative wrapper, LI-gated) - adds users who CLICK
    THROUGH the Apple at Work interstitial (LI 7384069597) to GAM first-party
    segment 9443004817. Injected by creative wrapper on the interstitial unit;
    INERT for every other line item serving there. v3: fire in the exact
-   pcd.js request form (dc_seg before ord + ?ptt=22 - the raw activity URL
-   without ptt returns 200 but never registers on the pixel unit, proven
-   2026-08-06) + official pcd.js injection as belt-and-braces; LI gate also
-   accepts the Apple Innovid loader signature (r1.6a68d35b*), immune to
-   null GPT response info on programmatic serves. yield-dashboard PR #351. */
+   pcd.js request form (dc_seg before ord + ?ptt=22) + official pcd.js
+   injection as belt-and-braces; LI gate accepts the Apple Innovid loader
+   signature (r1.6a68d35b*), immune to null GPT response info on programmatic
+   serves. v4 (2026-08-07): liberalized C-signal for the low-click-volume
+   era - arming window 800ms->2500ms, blur->hidden fire window 1.6s->3.5s,
+   pointerdown/touchstart inside the overlay also arms (touch/hybrid).
+   Known cost: close-then-tab-switch within ~3.5s can over-count (was ~1.6s).
+   yield-dashboard PR #351. */
 (function () {
   "use strict";
   var SEG = "9443004817", NET = "22541732127";
@@ -203,10 +206,22 @@ WRAPPER_FOOTER = """
         if (isAdIframe(t) || inCandidate(t)) { lastOverAt = Date.now(); }
       } catch (err) {}
     }, true);
+    topDoc.addEventListener("pointerdown", function (e) {
+      try {
+        var t = e.target;
+        if (isAdIframe(t) || inCandidate(t)) { lastOverAt = Date.now(); }
+      } catch (err) {}
+    }, true);
+    topDoc.addEventListener("touchstart", function (e) {
+      try {
+        var t = e.target;
+        if (isAdIframe(t) || inCandidate(t)) { lastOverAt = Date.now(); }
+      } catch (err) {}
+    }, true);
 
     topWin.addEventListener("blur", function () {
       try {
-        if (activeElInAd() || Date.now() - lastOverAt < 800) {
+        if (activeElInAd() || Date.now() - lastOverAt < 2500) {
           blurArmedAt = Date.now();
         }
       } catch (err) {}
@@ -214,7 +229,7 @@ WRAPPER_FOOTER = """
     topDoc.addEventListener("visibilitychange", function () {
       try {
         if (topDoc.visibilityState === "hidden" &&
-            Date.now() - blurArmedAt <= 1600) { fire(); }
+            Date.now() - blurArmedAt <= 3500) { fire(); }
       } catch (err) {}
     });
 
