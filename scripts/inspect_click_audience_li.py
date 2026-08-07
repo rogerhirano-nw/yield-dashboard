@@ -255,13 +255,30 @@ except Exception as e:
 try:
     cdf = gc._run_report(["DATE", "HOUR", "LINE_ITEM_ID"],
                          ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
-                         date(2026, 8, 6), END)
+                         date(2026, 8, 5), END)
     li = cdf[cdf["line_item_id"].astype(str) == str(LI_ID)]
     print(f"\nLI {LI_ID} delivery by hour (ET; v3w wrapper live 8/6 18:07 ET):")
-    for _, r in li.sort_values(["date", "hour"]).iterrows():
+    for _, r in li[li["date"] >= "2026-08-06"].sort_values(["date", "hour"]).iterrows():
         print(f"  {r['date']} {int(r['hour']):02d}:00  "
               f"imps={r['ad_server_impressions']}  "
               f"clicks={r['ad_server_clicks']}")
+
+    # Both Apple PG orders' LIs, daily totals from the same frame — is the
+    # 8/6 collapse interstitial-deal-specific or Apple-account-wide?
+    li_svc2 = client.GetService("LineItemService", version=V)
+    sib = (li_svc2.getLineItemsByStatement(
+        stmt("orderId IN (4144745465, 4144759148)", 40)).results or [])
+    names = {str(x.id): x.name for x in sib}
+    both = cdf[cdf["line_item_id"].astype(str).isin(names)]
+    agg = (both.assign(lid=both["line_item_id"].astype(str))
+           .groupby(["lid", "date"])[["ad_server_impressions",
+                                      "ad_server_clicks"]].sum())
+    print("\nApple PG orders — daily imps by LI (collapse scope check):")
+    for (lid, d), r in agg.iterrows():
+        nm = names.get(lid, "?")
+        tok = nm.split("_")[10] if len(nm.split("_")) > 10 else nm[:20]
+        print(f"  {d}  LI {lid} [{tok}]  imps={int(r['ad_server_impressions'])}"
+              f"  clicks={int(r['ad_server_clicks'])}")
 except Exception as e:
     print("LI hourly report failed:", repr(e)[:300])
 
