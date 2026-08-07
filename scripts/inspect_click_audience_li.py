@@ -162,7 +162,7 @@ try:
         else:
             print(f"{indent}{tname}: {node}")
 
-    for sid in (9265049836, 9265053919, 9443596281):
+    for sid in (9443004817, 9265049836, 9265053919, 9443596281):
         res = as_svc.getAudienceSegmentsByStatement(stmt(f"id = {sid}", 1))
         segs = getattr(res, "results", None) or []
         if not segs:
@@ -233,14 +233,14 @@ try:
 except Exception as e:
     print("enum introspection failed:", repr(e)[:200])
 
-# LI delivery by hour around the rollout FIRST (proves clicking unaffected;
-# same dims/metrics refresh_gam_hourly runs daily in prod, known-fast).
+# LI delivery by hour in the v3w era (proves clicking still healthy; same
+# dims/metrics refresh_gam_hourly runs daily in prod, known-fast).
 try:
     cdf = gc._run_report(["DATE", "HOUR", "LINE_ITEM_ID"],
                          ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
-                         date(2026, 8, 4), END)
+                         date(2026, 8, 6), END)
     li = cdf[cdf["line_item_id"].astype(str) == str(LI_ID)]
-    print(f"\nLI {LI_ID} delivery by hour (ET; capture live 8/4 18:07 ET):")
+    print(f"\nLI {LI_ID} delivery by hour (ET; v3w wrapper live 8/6 18:07 ET):")
     for _, r in li.sort_values(["date", "hour"]).iterrows():
         print(f"  {r['date']} {int(r['hour']):02d}:00  "
               f"imps={r['ad_server_impressions']}  "
@@ -248,13 +248,42 @@ try:
 except Exception as e:
     print("LI hourly report failed:", repr(e)[:300])
 
-# Pixel-unit requests: narrowest possible shape — one dimension, today only.
+# Pixel-unit requests: narrowest possible shape — one dimension, SINGLE-day.
 # (DATE+HOUR+AD_UNIT_ID 400'd; DATE+AD_UNIT_ID over 3 days hung past the job
-# timeout.)
-try:
-    df = gc._run_report(["AD_UNIT_ID"], ["AD_REQUESTS"], END, END)
-    hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
-    tot = hit["ad_requests"].astype(float).sum() if len(hit) else 0
-    print(f"\nDFPAudiencePixel AD_REQUESTS today ({END}): {tot:.0f}")
-except Exception as e:
-    print("pixel-unit report failed:", repr(e)[:300])
+# timeout.) Per-day since 8/5: 8/5 = pre-fix control (known 0), 8/6 = v3w
+# cutover day (wrapper updated 22:07Z + canary fires ~22:00Z), 8/7+ = full
+# correct-form days.
+day_reqs = {}
+for d in [date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7)]:
+    if d > END:
+        continue
+    try:
+        df = gc._run_report(["AD_UNIT_ID"], ["AD_REQUESTS"], d, d)
+        hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
+        tot = hit["ad_requests"].astype(float).sum() if len(hit) else 0
+        day_reqs[str(d)] = tot
+        print(f"\nDFPAudiencePixel AD_REQUESTS {d}: {tot:.0f}")
+    except Exception as e:
+        print(f"pixel-unit report {d} failed:", repr(e)[:200])
+
+# If the v3w era still reads 0, AD_REQUESTS itself may not count activity
+# hits — probe alternate request-shaped metrics on the cutover day.
+post = [v for k, v in day_reqs.items() if k >= "2026-08-06"]
+if post and max(post) == 0:
+    try:
+        alt_mets = {m.name for m in gcmod._M}
+    except Exception:
+        alt_mets = set()
+    for alt in ("TOTAL_CODE_SERVED_COUNT", "UNMATCHED_AD_REQUESTS",
+                "TOTAL_IMPRESSIONS", "UNFILLED_IMPRESSIONS"):
+        if alt_mets and alt not in alt_mets:
+            print(f"alt metric {alt}: not in enum, skipped")
+            continue
+        try:
+            df = gc._run_report(["AD_UNIT_ID"], [alt],
+                                date(2026, 8, 6), date(2026, 8, 6))
+            hit = df[df["ad_unit_id"].astype(str) == PIXEL_UNIT]
+            tot = hit[alt.lower()].astype(float).sum() if len(hit) else 0
+            print(f"DFPAudiencePixel {alt} 2026-08-06: {tot:.0f}")
+        except Exception as e:
+            print(f"alt metric {alt} failed:", repr(e)[:160])
