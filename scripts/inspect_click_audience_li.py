@@ -60,6 +60,10 @@ print("flight:", dt(getattr(li, "startDateTime", None)), "->",
 st = getattr(li, "stats", None)
 print("delivered: impressions=", getattr(st, "impressionsDelivered", None),
       " clicks=", getattr(st, "clicksDelivered", None))
+pg = getattr(li, "primaryGoal", None)
+print("goal:", getattr(pg, "units", None), getattr(pg, "unitType", None),
+      f"({getattr(pg, 'goalType', None)})",
+      " deliveryRate:", getattr(li, "deliveryRateType", None))
 
 o_svc = client.GetService("OrderService", version=V)
 order = o_svc.getOrdersByStatement(stmt(f"id = {li.orderId}", 1)).results[0]
