@@ -293,6 +293,23 @@ for d in [date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7)]:
     except Exception as e:
         print(f"interstitial unit report {d} failed:", repr(e)[:200])
 
+# Deal-level bid funnel for the Apple deals: GAM->DV360 solicitation
+# (deals_bid_requests) vs DV360 responses (deals_bids). Discriminates
+# "line stopped matching requests" (requests collapse too) from "buyer
+# stopped bidding" (requests hold, bids collapse). Same shape as the
+# daily sweep's refresh_gam_deal_bids — known-fast.
+try:
+    bdf = gc.run_deal_bid_report(date(2026, 8, 4), END)
+    apple = bdf[bdf["programmatic_deal_name"].str.contains("Apple", case=False,
+                                                           na=False)]
+    print("\nApple deal bid funnel by day:")
+    for _, r in apple.sort_values(["programmatic_deal_name", "date"]).iterrows():
+        print(f"  {r['date']}  {r['programmatic_deal_name'][:70]}  "
+              f"bid_reqs={r['deals_bid_requests']}  bids={r['deals_bids']}  "
+              f"wins={r['deals_winning_bids']}")
+except Exception as e:
+    print("deal bid report failed:", repr(e)[:300])
+
 # If the v3w era still reads 0, AD_REQUESTS itself may not count activity
 # hits — probe alternate request-shaped metrics on the cutover day.
 post = [v for k, v in day_reqs.items() if k >= "2026-08-06"]
