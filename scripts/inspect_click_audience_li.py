@@ -270,6 +270,29 @@ for d in [date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7)]:
     except Exception as e:
         print(f"pixel-unit report {d} failed:", repr(e)[:200])
 
+# Interstitial UNIT demand-vs-supply: did the slot stop being requested
+# (site-side) or did requests hold while LI 7384069597 stopped winning
+# (buyer/demand-side)? Same single-dimension single-day shape as the pixel
+# unit checks. 8/5 = healthy control; collapse started ~8/6 11:00 ET.
+INTERSTITIAL_UNIT = "23295929518"
+for d in [date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7)]:
+    if d > END:
+        continue
+    try:
+        df = gc._run_report(["AD_UNIT_ID"],
+                            ["AD_REQUESTS", "AD_SERVER_IMPRESSIONS",
+                             "UNFILLED_IMPRESSIONS"], d, d)
+        hit = df[df["ad_unit_id"].astype(str) == INTERSTITIAL_UNIT]
+        if len(hit):
+            row = hit.iloc[0]
+            print(f"interstitial unit {d}: requests={row['ad_requests']} "
+                  f"served={row['ad_server_impressions']} "
+                  f"unfilled={row['unfilled_impressions']}")
+        else:
+            print(f"interstitial unit {d}: NO ROW (zero activity)")
+    except Exception as e:
+        print(f"interstitial unit report {d} failed:", repr(e)[:200])
+
 # If the v3w era still reads 0, AD_REQUESTS itself may not count activity
 # hits — probe alternate request-shaped metrics on the cutover day.
 post = [v for k, v in day_reqs.items() if k >= "2026-08-06"]
