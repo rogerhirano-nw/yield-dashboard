@@ -65,6 +65,19 @@ print("goal:", getattr(pg, "units", None), getattr(pg, "unitType", None),
       f"({getattr(pg, 'goalType', None)})",
       " deliveryRate:", getattr(li, "deliveryRateType", None))
 
+
+def full_dt(v):
+    d = getattr(v, "date", None)
+    if d is None:
+        return None
+    return (f"{d.year}-{d.month:02d}-{d.day:02d} "
+            f"{getattr(v, 'hour', 0):02d}:{getattr(v, 'minute', 0):02d} "
+            f"{getattr(v, 'timeZoneId', '')}")
+
+
+print("LI lastModified:", full_dt(getattr(li, "lastModifiedDateTime", None)),
+      " creation:", full_dt(getattr(li, "creationDateTime", None)))
+
 o_svc = client.GetService("OrderService", version=V)
 order = o_svc.getOrdersByStatement(stmt(f"id = {li.orderId}", 1)).results[0]
 print("\n=== ORDER ===")

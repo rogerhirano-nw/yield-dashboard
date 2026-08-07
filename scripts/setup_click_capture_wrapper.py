@@ -279,9 +279,11 @@ def main():
     if wraps:
         w = wraps[0]
         cur = getattr(w, "htmlFooter", "") or ""
+        ver = ("v4w" if "nw-click-audience v4w" in cur
+               else "v3w" if "ptt=22" in cur else "v2w/older")
         print(f"LIVE wrapper {w.id}: status={getattr(w, 'status', None)} "
               f"labelId={getattr(w, 'labelId', None)} footer={len(cur)} chars "
-              f"v3={'ptt=22' in cur}")
+              f"ver={ver}")
         if cur != WRAPPER_FOOTER:
             if args.apply:
                 w.htmlFooter = WRAPPER_FOOTER
