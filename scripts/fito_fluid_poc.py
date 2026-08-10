@@ -927,6 +927,124 @@ try:
 except Exception as exc:
     summary["signal_li_error"] = str(exc)[:400]
 
+# ---- 6g. Master/companion roadblock (GAM-native) ---------------------------
+# Video is the master; the display units ride as companions in one creative
+# set. companionDeliveryOption=ALL makes GAM serve the video and every
+# companion together or nothing at all — a true roadblock, with no key-values
+# and no signal line item. Requires the page to register display slots with
+# googletag.companionAds() (currently ZERO are), so this is trafficked ready
+# and verified against the ad server once that ships.
+MASTER_LI_NAME = "[nw]_FITO-Fluid_POC_master_companion"
+MASTER_CR_NAME = "[nw]_FITO-Fluid_POC_master_video_640x360"
+CREATIVE_SET_NAME = "[nw]_FITO-Fluid_POC_creative_set"
+try:
+    # companions: reuse the follower display creatives (same advertiser)
+    comp_ids = []
+    for size_label in ("970x250", "300x250", "728x90"):
+        cname = f"[nw]_FITO-Fluid_POC_follower_{size_label}"
+        c = first(cr_svc.getCreativesByStatement(
+            stmt("name = :n AND advertiserId = :a",
+                 n=cname, a=order.advertiserId)))
+        if c is not None:
+            comp_ids.append(c.id)
+    summary["mc_companion_creatives"] = comp_ids
+
+    # master: VAST-redirect video creative pointing at the wrapper VAST
+    mv = first(cr_svc.getCreativesByStatement(
+        stmt("name = :n AND advertiserId = :a",
+             n=MASTER_CR_NAME, a=order.advertiserId)))
+    if mv is None:
+        mv = cr_svc.createCreatives([{
+            "xsi_type": "VastRedirectCreative",
+            "name": MASTER_CR_NAME,
+            "advertiserId": order.advertiserId,
+            "size": {"width": 640, "height": 360, "isAspectRatio": False},
+            "vastXmlUrl": WRAPPER_VAST_URL,
+            "vastRedirectType": "LINEAR",
+            "duration": 15000,
+        }])[0]
+    summary["mc_master_creative"] = mv.id
+
+    # creative set = master + companions
+    cs_svc = client.GetService("CreativeSetService", version=VERSION)
+    cset = first(cs_svc.getCreativeSetsByStatement(
+        stmt("name = :n", n=CREATIVE_SET_NAME)))
+    if cset is None and comp_ids:
+        cset = cs_svc.createCreativeSet({
+            "name": CREATIVE_SET_NAME,
+            "masterCreativeId": mv.id,
+            "companionCreativeIds": comp_ids,
+        })
+    summary["mc_creative_set"] = getattr(cset, "id", None)
+
+    # master line item: CREATIVE_SET roadblocking + all-or-none companions
+    m_li = first(li_svc.getLineItemsByStatement(
+        stmt("name = :n AND orderId = :o", n=MASTER_LI_NAME, o=order.id)))
+    if m_li is None:
+        m_li = li_svc.createLineItems([{
+            "orderId": order.id,
+            "name": MASTER_LI_NAME,
+            "lineItemType": "SPONSORSHIP",
+            "environmentType": "VIDEO_PLAYER",
+            "roadblockingType": "CREATIVE_SET",
+            "companionDeliveryOption": "ALL",
+            "costType": "CPM",
+            "costPerUnit": {"currencyCode": "USD", "microAmount": 0},
+            "creativeRotationType": "EVEN",
+            "primaryGoal": {"goalType": "DAILY", "unitType": "IMPRESSIONS",
+                            "units": 100},
+            "startDateTimeType": "IMMEDIATELY",
+            "endDateTime": {
+                "date": {"year": 2026, "month": 8, "day": 17},
+                "hour": 23, "minute": 59, "second": 0,
+                "timeZoneId": "America/New_York",
+            },
+            "videoMaxDuration": 30000,
+            "creativePlaceholders": [{
+                "size": {"width": 640, "height": 360, "isAspectRatio": False},
+                "companions": [
+                    {"size": {"width": 970, "height": 250, "isAspectRatio": False}},
+                    {"size": {"width": 300, "height": 250, "isAspectRatio": False}},
+                    {"size": {"width": 728, "height": 90, "isAspectRatio": False}},
+                ],
+            }],
+            "targeting": {
+                "inventoryTargeting": {
+                    "targetedAdUnits": [
+                        {"adUnitId": root_ad_unit, "includeDescendants": True}]},
+                "requestPlatformTargeting": {
+                    "targetedRequestPlatforms": ["VIDEO_PLAYER"]},
+                "customTargeting": {
+                    "xsi_type": "CustomCriteriaSet",
+                    "logicalOperator": "AND",
+                    "children": [
+                        {"xsi_type": "CustomCriteria", "keyId": akey.id,
+                         "valueIds": [qa_aval.id], "operator": "IS"},
+                    ],
+                },
+            },
+            "skipInventoryCheck": True,
+            "allowOverbook": True,
+        }])[0]
+    summary["mc_line_item"] = {
+        "id": m_li.id, "status": str(m_li.status),
+        "roadblocking": str(getattr(m_li, "roadblockingType", "")),
+        "companionDelivery": str(getattr(m_li, "companionDeliveryOption", "")),
+    }
+
+    # associate the creative SET (not an individual creative)
+    if cset is not None:
+        m_lica = first(lica_svc.getLineItemCreativeAssociationsByStatement(
+            stmt("lineItemId = :l", l=m_li.id)))
+        if m_lica is None:
+            lica_svc.createLineItemCreativeAssociations([
+                {"lineItemId": m_li.id, "creativeSetId": cset.id}])
+            summary["mc_lica"] = "creative set associated"
+        else:
+            summary["mc_lica"] = "already associated"
+except Exception as exc:
+    summary["mc_error"] = str(exc)[:500]
+
 # ---- diagnostics: live state of every piece --------------------------------
 diag = {}
 resp = kv_svc.getCustomTargetingKeysByStatement(
