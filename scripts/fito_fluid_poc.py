@@ -980,14 +980,21 @@ try:
     # master line item: CREATIVE_SET roadblocking + all-or-none companions
     m_li = first(li_svc.getLineItemsByStatement(
         stmt("name = :n AND orderId = :o", n=MASTER_LI_NAME, o=order.id)))
+    # GAM rejected CREATIVE_SET + companionDeliveryOption=ALL together
+    # (LineItemError.VIDEO_INVALID_ROADBLOCKING). Try the valid combinations
+    # in order of preference and record which one the ad server accepts.
+    ROADBLOCK_VARIANTS = [
+        {"roadblockingType": "CREATIVE_SET"},                        # no companionDeliveryOption
+        {"roadblockingType": "ONLY_ONE", "companionDeliveryOption": "ALL"},
+        {"roadblockingType": "ONE_OR_MORE", "companionDeliveryOption": "ALL"},
+        {"companionDeliveryOption": "ALL"},                          # default roadblocking
+    ]
     if m_li is None:
-        m_li = li_svc.createLineItems([{
+        base_li = {
             "orderId": order.id,
             "name": MASTER_LI_NAME,
             "lineItemType": "SPONSORSHIP",
             "environmentType": "VIDEO_PLAYER",
-            "roadblockingType": "CREATIVE_SET",
-            "companionDeliveryOption": "ALL",
             "costType": "CPM",
             "costPerUnit": {"currencyCode": "USD", "microAmount": 0},
             "creativeRotationType": "EVEN",
@@ -1025,15 +1032,26 @@ try:
             },
             "skipInventoryCheck": True,
             "allowOverbook": True,
-        }])[0]
-    summary["mc_line_item"] = {
-        "id": m_li.id, "status": str(m_li.status),
-        "roadblocking": str(getattr(m_li, "roadblockingType", "")),
-        "companionDelivery": str(getattr(m_li, "companionDeliveryOption", "")),
-    }
+        }
+        attempts = []
+        for variant in ROADBLOCK_VARIANTS:
+            try:
+                m_li = li_svc.createLineItems([dict(base_li, **variant)])[0]
+                attempts.append({"variant": variant, "result": "ACCEPTED"})
+                break
+            except Exception as exc:
+                attempts.append({"variant": variant,
+                                 "result": str(exc)[:180]})
+        summary["mc_roadblock_attempts"] = attempts
+    if m_li is not None:
+        summary["mc_line_item"] = {
+            "id": m_li.id, "status": str(m_li.status),
+            "roadblocking": str(getattr(m_li, "roadblockingType", "")),
+            "companionDelivery": str(getattr(m_li, "companionDeliveryOption", "")),
+        }
 
     # associate the creative SET (not an individual creative)
-    if cset is not None:
+    if cset is not None and m_li is not None:
         m_lica = first(lica_svc.getLineItemCreativeAssociationsByStatement(
             stmt("lineItemId = :l", l=m_li.id)))
         if m_lica is None:
