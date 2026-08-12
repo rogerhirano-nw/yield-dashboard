@@ -4,6 +4,29 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-08-12 — Cognizant AI Summit: CTR diagnostics + optimization plan (#354)
+
+- **Client report (JC) flagged the Cognizant AI Impact Summit campaign under
+  benchmark** — display 0.08–0.09% vs 0.10%, Custom-Audience pre-roll 0.48%
+  vs 0.60%, paid LinkedIn far under (0.13–0.33% vs 0.80% display; 0.02% vs
+  1.00% video/static). Shipped in response:
+  1. **`scripts/cognizant_media_perf_pull.py` + `cognizant_media_perf.yml`**
+     — read-only one-off GAM pull (per-LI / per-creative / per-rendered-size
+     / per-device / rotation-type / weekly trend for any `ORDER_NEEDLE`),
+     secrets-in-Actions pattern, output posted as a PR comment.
+  2. **`docs/cognizant_ai_summit_optimization.md`** — the findings + plan.
+     Headline: mobile display already beats benchmark (0.102%) while
+     desktop+tablet run 0.039% and the desktop sizes (728x90/970x250) are
+     ~0.045% everywhere; every LI serves "Evenly" rotation; the CA-only
+     pre-roll gap is the audience pool (same VCR/viewability as the
+     at-benchmark lines); LinkedIn's $0.29–0.69 CPMs (43–59× under plan)
+     mark Audience-Network/audience-expansion leakage — fix settings before
+     resuming spend, budget was never the constraint (2.8× planned
+     impressions on 4.7% of budget).
+  No GAM entities were modified — the executable changes (rotation switch,
+  device reweight, creative pause, video goal rebalance, LinkedIn relaunch
+  checklist) are listed in the doc pending owner approval.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)

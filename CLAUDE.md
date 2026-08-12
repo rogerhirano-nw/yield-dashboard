@@ -1009,6 +1009,13 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `scripts/setup_fito_top_banner.py` (970x250 between article title and
   video player). Covers the INACTIVE-until-order-reapproved, viewport/size
   eligibility, and ONE_OR_MORE roadblocking gotchas.
+- `docs/cognizant_ai_summit_optimization.md` — Cognizant AI Impact Summit
+  (IO1053) CTR optimization: where display/pre-roll/paid-LinkedIn leak vs
+  benchmark, the prioritized fix list, and the LinkedIn actualization
+  guidance. Data via `scripts/cognizant_media_perf_pull.py` +
+  `cognizant_media_perf.yml` (re-dispatchable read-only GAM pull, generic
+  over `ORDER_NEEDLE` — reuse it for the next under-benchmark direct
+  campaign).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
