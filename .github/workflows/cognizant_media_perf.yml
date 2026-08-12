@@ -1,0 +1,64 @@
+name: Cognizant media perf pull (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_needle:
+        description: "Order-name filter (case-insensitive substring)"
+        required: false
+        default: "cognizant"
+      pull_start:
+        description: "Start date (YYYY-MM-DD)"
+        required: false
+        default: "2026-04-28"
+  push:
+    branches: [claude/media-article-performance-opt-2w99b1]
+    paths:
+      - 'scripts/cognizant_media_perf_pull.py'
+      - '.github/workflows/cognizant_media_perf.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          ORDER_NEEDLE: ${{ inputs.order_needle || 'cognizant' }}
+          PULL_START: ${{ inputs.pull_start || '2026-04-28' }}
+        run: |
+          set -o pipefail
+          python scripts/cognizant_media_perf_pull.py 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "claude/media-article-performance-opt-2w99b1" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch"; exit 0
+          fi
+          {
+            echo '### Cognizant GAM diagnostics'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            # PR comments cap at 65536 chars; keep headroom for the wrapper.
+            head -c 60000 /tmp/output.txt
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
