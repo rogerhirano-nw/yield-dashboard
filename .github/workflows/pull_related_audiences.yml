@@ -2,6 +2,11 @@ name: Pull related audiences (one-off)
 
 on:
   workflow_dispatch:
+    inputs:
+      li_id:
+        description: 'Line item ID to analyze (default 7300490129)'
+        required: false
+        default: ''
   push:
     branches: [claude/new-session-jaxa80]
     paths:
@@ -29,6 +34,7 @@ jobs:
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          RELATED_AUD_LI_ID: ${{ inputs.li_id || '7300490129' }}
         run: |
           set -o pipefail
           python scripts/pull_related_audiences.py 2>&1 | tee /tmp/output.txt
@@ -48,7 +54,11 @@ jobs:
             echo "Workflow run (full candidate TSV in the job log): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ''
             echo '```'
-            sed -n '1,/^BEGIN_RELATED_AUDIENCES_TSV$/p' /tmp/output.txt | sed '$d' | head -c 55000
+            # print everything before the TSV marker; when the marker is absent
+            # (script died early) print the whole file so the error line survives.
+            # `q` under -n quits without printing the marker line itself.
+            sed -n '/^BEGIN_RELATED_AUDIENCES_TSV$/q;p' /tmp/output.txt | head -c 55000
+            echo ''
             echo '```'
             echo ''
             echo '---'

@@ -20,8 +20,10 @@ GAM — "related" is keyword + provider siblings):
 Output contract (parsed from the Actions job log by the analysis step):
   - human-readable summary sections first (these also go to the PR comment);
   - the full candidate sheet as TSV between the literal marker lines
-    BEGIN_RELATED_AUDIENCES_TSV / END_RELATED_AUDIENCES_TSV (capped at
-    MAX_TSV_ROWS, biggest-first; per-query truncation is logged, never silent).
+    BEGIN_RELATED_AUDIENCES_TSV / END_RELATED_AUDIENCES_TSV, capped at
+    MAX_TSV_ROWS in ranked order — score desc (2*AI-tier + licensed-provider
+    + 6*first-party, so 1P always outranks 3P and survives the cap), size
+    desc as tiebreak; per-query truncation is logged, never silent.
 
 Runs in Actions via .github/workflows/pull_related_audiences.yml (the
 pull_index_ob_requests.yml pattern) — GAM creds live only in repo secrets.
@@ -55,6 +57,9 @@ MAX_TSV_ROWS = 2500
 # AI tier — mirrors the families already delivering on the line (LiveRamp OAN
 # "Professionals Using AI", TL1 "AI Events", Bombora AI/ML, BlueWhale "Active
 # Research > AI"). Catalog names are title-case; PQL LIKE terms match that.
+# A term containing '%' is used as the LIKE pattern verbatim (for anchored
+# matches); otherwise it is wrapped '%term%'. The anchored "%> AI" catches
+# bare-"AI"-leaf names (e.g. "Active Research > AI") that no phrase matches.
 AI_TERMS = [
     "Artificial Intelligence",
     "Machine Learning",
@@ -66,13 +71,17 @@ AI_TERMS = [
     "Professionals Using AI",
     "Data Science",
     "ChatGPT",
+    "%> AI",
 ]
 # Broad tier — high-volume phrases; restricted to providers already licensed
 # on the plan (derived at runtime from the currently targeted segments).
+# "C Level" and "C-Level" both appear in catalogs — LIKE can't bridge the
+# hyphen/space difference, so both spellings are queried.
 BROAD_TERMS = [
     "Decision Maker",
     "C-Suite",
     "C Level",
+    "C-Level",
     "Technology Buyer",
     "IT Decision",
     "Big Tech",
@@ -264,8 +273,9 @@ def main():
             e["tiers"].add(tier)
 
     for kw in AI_TERMS:
+        pat = kw if "%" in kw else "%" + kw + "%"
         where = (f"type = 'THIRD_PARTY' AND status = 'ACTIVE' "
-                 f"AND name LIKE {pql_quote('%' + kw + '%')}")
+                 f"AND name LIKE {pql_quote(pat)}")
         rows, _ = run_query(seg_svc, where, f"AI: {kw}")
         absorb(rows, kw, "ai")
 
@@ -287,7 +297,9 @@ def main():
         e["ai"] = 1 if "ai" in e["tiers"] else 0
         e["licensed"] = 1 if e["provider"] in cur_providers else 0
         e["fp"] = 1 if "1p" in e["tiers"] else 0
-        e["score"] = 2 * e["ai"] + e["licensed"] + 3 * e["fp"]  # 1P floats to top
+        # 1P weight 6 > max 3P score (3), so the small first-party segments
+        # always outrank size-sorted 3P rows and survive the MAX_TSV_ROWS cap.
+        e["score"] = 2 * e["ai"] + e["licensed"] + 6 * e["fp"]
     cands.sort(key=lambda e: (-e["score"], -e["size"]))
     print(f"\ncandidates: {len(cands)} distinct after dedupe "
           f"(+{len(seen) - len(cands)} already targeted, excluded)")
@@ -298,7 +310,7 @@ def main():
                                       sorted(by_prov.items(), key=lambda x: -x[1])[:20]))
 
     print(f"\n=== Top candidates (of {len(cands)}; score = 2*AI-tier + licensed-provider "
-          f"+ 3*first-party, then size) ===")
+          f"+ 6*first-party, then size) ===")
     print(f"{'score':>5}  {'id':>12}  {'size':>8}  {'cpm':>6}  name")
     for e in cands[:120]:
         cpm = f"{e['cpm']:.2f}" if e["cpm"] is not None else "—"
@@ -306,6 +318,9 @@ def main():
               f"{e['provider']} :: {e['name'][:105]}")
 
     # ---- 4. full sheet, machine-readable ------------------------------------
+    if len(cands) > MAX_TSV_ROWS:
+        print(f"\nNOTE: TSV capped at {MAX_TSV_ROWS} of {len(cands)} candidates "
+              f"(score desc, size desc)")
     print(f"\nBEGIN_RELATED_AUDIENCES_TSV")
     cols = ["id", "score", "ai", "licensed", "fp", "provider", "type", "status",
             "size", "mobile_size", "cpm", "currency", "license", "approval", "terms", "name"]
@@ -315,8 +330,6 @@ def main():
               "cpm": "" if e["cpm"] is None else f"{e['cpm']:.2f}"}
         print("\t".join(str(e2[c]) for c in cols))
     print("END_RELATED_AUDIENCES_TSV")
-    if len(cands) > MAX_TSV_ROWS:
-        print(f"NOTE: TSV capped at {MAX_TSV_ROWS} of {len(cands)} candidates (score/size order)")
 
 
 if __name__ == "__main__":
