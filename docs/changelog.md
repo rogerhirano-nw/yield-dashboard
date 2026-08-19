@@ -4,6 +4,46 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-08-19 — Index Exchange server-side (PBS) drop-off: triage doc
+
+- **Index reported near-zero server-side activity since ~2026-08-01** (TAM and
+  client-side unaffected), diagnosing it as *"the Index cookie is no longer
+  being passed in the PB Server path"*, and asked us to check our `ix.yaml`
+  and report whether we use a redirect or iframe user-sync pixel.
+- **`docs/index_pbs_cookie_sync.md`** — triage writeup. The headline is that
+  the ask is misrouted: `static/bidder-info/ix.yaml` belongs to the **Prebid
+  Server host**, and Newsweek is on **Magnite's RDM managed wrapper**, so
+  Magnite operates the PBS instance and owns that file. The doc covers the
+  cookie-sync chain (`/cookie_sync` → IX `usermatch` → `<pbs-host>/setuid` →
+  `user.buyeruid`) and where a step-change on a specific date can break it, a
+  browser-side diagnostic that reads the sync **type + `s=` id straight out of
+  the `/cookie_sync` response** (so IX's question is answerable without either
+  vendor), and draft replies to IX and to Magnite.
+- **Roger confirmed the discriminator the same day: only Index dropped**, other
+  s2s bidders' match rates held. That strikes off everything shared across
+  bidders — `/cookie_sync` fires, `/setuid` writes, and third-party-cookie
+  attrition can't be it (all bidders would have fallen together). Doc now ranks
+  the ix-specific causes, led by **an iframe-only ix sync filtered out by
+  Prebid.js's image/redirect-only `userSync.filterSettings` default** — a bidder
+  whose only sync type is disallowed gets zero syncs while every other bidder is
+  unaffected, which is the exact signature. Also localizes the break to the
+  **sync leg, not the bid leg**: IX can only see a missing user id if they're
+  still receiving our PBS requests.
+- **`docs/snippets/ix_cookie_sync_probe.js`** — paste-into-console probe that
+  settles it without either vendor: reads the Prebid global's `s2sConfig` /
+  `userSync.filterSettings`, checks this pageview's resource timings for
+  cookie-sync / IX `usermatch` / `/setuid` calls, then **re-issues
+  `/cookie_sync` twice — once with the page's real `filterSettings`, once with
+  iframe additionally allowed**. An `ix` entry absent from the first and present
+  in the second confirms the iframe-filter root cause outright. Read-only, and
+  it prints a verdict plus a JSON block to paste back. Has to be run from a real
+  browser — headless capture isn't possible from the Claude Code container
+  (browser egress resets on every real host; `curl` works).
+- No code change — nothing in the cache covers the PBS path, so the drop-off
+  isn't measurable from this repo. `scripts/pull_index_ob_requests.py` pulls
+  Index **Open Bidding** (Google's server-side path, not PBS) and is noted
+  only as a control on whether IX demand itself is healthy.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)
