@@ -18,8 +18,17 @@ and why" index, keyed by PR. Newest first.
   `user.buyeruid`) and where a step-change on a specific date can break it, a
   browser-side diagnostic that reads the sync **type + `s=` id straight out of
   the `/cookie_sync` response** (so IX's question is answerable without either
-  vendor), the discriminating question nobody had asked (*did other s2s
-  bidders drop too, or only Index?*), and draft replies to IX and to Magnite.
+  vendor), and draft replies to IX and to Magnite.
+- **Roger confirmed the discriminator the same day: only Index dropped**, other
+  s2s bidders' match rates held. That strikes off everything shared across
+  bidders — `/cookie_sync` fires, `/setuid` writes, and third-party-cookie
+  attrition can't be it (all bidders would have fallen together). Doc now ranks
+  the ix-specific causes, led by **an iframe-only ix sync filtered out by
+  Prebid.js's image/redirect-only `userSync.filterSettings` default** — a bidder
+  whose only sync type is disallowed gets zero syncs while every other bidder is
+  unaffected, which is the exact signature. Also localizes the break to the
+  **sync leg, not the bid leg**: IX can only see a missing user id if they're
+  still receiving our PBS requests.
 - No code change — nothing in the cache covers the PBS path, so the drop-off
   isn't measurable from this repo. `scripts/pull_index_ob_requests.py` pulls
   Index **Open Bidding** (Google's server-side path, not PBS) and is noted

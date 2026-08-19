@@ -961,7 +961,10 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `/cookie_sync` → IX `usermatch` → `/setuid` → `user.buyeruid` chain and
   where it breaks, the browser-side diagnostic that answers IX's
   redirect-vs-iframe question without the file, and draft replies to IX +
-  Magnite. No cache table covers the PBS path;
+  Magnite. **Only Index dropped** (Roger, 2026-08-19) — that rules out
+  everything shared across bidders (cookie_sync, setuid, 3P-cookie
+  attrition) and makes the leading theory an **iframe-only ix sync behind
+  Prebid.js's image-only `userSync.filterSettings` default**. No cache table covers the PBS path;
   `scripts/pull_index_ob_requests.py` (Index **Open Bidding**, a different
   server-side path) is only usable as a control.
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the
