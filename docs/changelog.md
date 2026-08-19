@@ -4,6 +4,27 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-08-19 — Index Exchange server-side (PBS) drop-off: triage doc
+
+- **Index reported near-zero server-side activity since ~2026-08-01** (TAM and
+  client-side unaffected), diagnosing it as *"the Index cookie is no longer
+  being passed in the PB Server path"*, and asked us to check our `ix.yaml`
+  and report whether we use a redirect or iframe user-sync pixel.
+- **`docs/index_pbs_cookie_sync.md`** — triage writeup. The headline is that
+  the ask is misrouted: `static/bidder-info/ix.yaml` belongs to the **Prebid
+  Server host**, and Newsweek is on **Magnite's RDM managed wrapper**, so
+  Magnite operates the PBS instance and owns that file. The doc covers the
+  cookie-sync chain (`/cookie_sync` → IX `usermatch` → `<pbs-host>/setuid` →
+  `user.buyeruid`) and where a step-change on a specific date can break it, a
+  browser-side diagnostic that reads the sync **type + `s=` id straight out of
+  the `/cookie_sync` response** (so IX's question is answerable without either
+  vendor), the discriminating question nobody had asked (*did other s2s
+  bidders drop too, or only Index?*), and draft replies to IX and to Magnite.
+- No code change — nothing in the cache covers the PBS path, so the drop-off
+  isn't measurable from this repo. `scripts/pull_index_ob_requests.py` pulls
+  Index **Open Bidding** (Google's server-side path, not PBS) and is noted
+  only as a control on whether IX demand itself is healthy.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)

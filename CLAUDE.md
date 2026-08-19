@@ -954,6 +954,16 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/index_pbs_cookie_sync.md` — Index Exchange server-side (Prebid
+  Server) drop-off, Aug 2026. Why IX's "check your ix.yaml" ask is misrouted
+  (Newsweek is on Magnite's **RDM** managed wrapper, so Magnite operates the
+  PBS host and owns the ix bidder-info + `userSync` block), the
+  `/cookie_sync` → IX `usermatch` → `/setuid` → `user.buyeruid` chain and
+  where it breaks, the browser-side diagnostic that answers IX's
+  redirect-vs-iframe question without the file, and draft replies to IX +
+  Magnite. No cache table covers the PBS path;
+  `scripts/pull_index_ob_requests.py` (Index **Open Bidding**, a different
+  server-side path) is only usable as a control.
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the
   2026-08-03 depletion warning): what in this stack spends disk IO, how to
   measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,
