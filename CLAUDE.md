@@ -964,7 +964,13 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Magnite. **Only Index dropped** (Roger, 2026-08-19) — that rules out
   everything shared across bidders (cookie_sync, setuid, 3P-cookie
   attrition) and makes the leading theory an **iframe-only ix sync behind
-  Prebid.js's image-only `userSync.filterSettings` default**. No cache table covers the PBS path;
+  Prebid.js's image-only `userSync.filterSettings` default**.
+  `docs/snippets/ix_cookie_sync_probe.js` is the paste-into-console probe:
+  it re-issues `/cookie_sync` with and without iframe allowed, so an `ix`
+  entry that appears only in the second confirms that root cause on the
+  spot. Headless capture is impossible from the CC container (browser
+  egress is blocked — curl works, Chromium resets), so it has to be run
+  from a real browser. No cache table covers the PBS path;
   `scripts/pull_index_ob_requests.py` (Index **Open Bidding**, a different
   server-side path) is only usable as a control.
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the

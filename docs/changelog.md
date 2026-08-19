@@ -29,6 +29,16 @@ and why" index, keyed by PR. Newest first.
   unaffected, which is the exact signature. Also localizes the break to the
   **sync leg, not the bid leg**: IX can only see a missing user id if they're
   still receiving our PBS requests.
+- **`docs/snippets/ix_cookie_sync_probe.js`** — paste-into-console probe that
+  settles it without either vendor: reads the Prebid global's `s2sConfig` /
+  `userSync.filterSettings`, checks this pageview's resource timings for
+  cookie-sync / IX `usermatch` / `/setuid` calls, then **re-issues
+  `/cookie_sync` twice — once with the page's real `filterSettings`, once with
+  iframe additionally allowed**. An `ix` entry absent from the first and present
+  in the second confirms the iframe-filter root cause outright. Read-only, and
+  it prints a verdict plus a JSON block to paste back. Has to be run from a real
+  browser — headless capture isn't possible from the Claude Code container
+  (browser egress resets on every real host; `curl` works).
 - No code change — nothing in the cache covers the PBS path, so the drop-off
   isn't measurable from this repo. `scripts/pull_index_ob_requests.py` pulls
   Index **Open Bidding** (Google's server-side path, not PBS) and is noted

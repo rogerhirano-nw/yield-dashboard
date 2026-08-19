@@ -126,7 +126,27 @@ Hypotheses 1 and 2 are both settled by the *same* one-minute check, below.
 
 ## 4. What we can check ourselves, right now (and it answers Daisy directly)
 
-On a live newsweek.com article page, DevTools open:
+**Fastest path — paste `docs/snippets/ix_cookie_sync_probe.js` into the DevTools
+console on a live newsweek.com article page.** It reads the wrapper config,
+checks whether the page allows iframe syncs, looks for cookie-sync / IX
+`usermatch` / `/setuid` calls in this pageview's resource timings, and then
+**re-issues `/cookie_sync` twice — once with the page's real `filterSettings`,
+once with iframe additionally allowed.** If `ix` is absent from the first
+response and present in the second, hypothesis 1 is confirmed outright and the
+fix is a wrapper config change, not an ix.yaml change. It prints a verdict line
+and copies a JSON block to the clipboard to paste back to RevOps / Index. It
+only reads config and repeats a call the page already makes — nothing is
+written.
+
+**This can't be run from the automation environment** — headless browser egress
+is blocked in the Claude Code container (every real site resets the connection;
+only `curl` reaches out), so the capture has to come from a real browser. That's
+the better artifact anyway: a datacenter-IP headless load has different consent,
+geo, and bot-detection behaviour than a real session, and the cookie-sync path
+is exactly what those change.
+
+The manual equivalent, if you'd rather click through it — DevTools open on a
+live article page:
 
 1. Network, filter **`cookie_sync`** → open the response JSON. Look for the
    `ix` entry: `{"bidder":"ix","usersync":{"url":"…","type":"redirect"|"iframe"}}`.
