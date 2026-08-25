@@ -33,6 +33,20 @@ and why" index, keyed by PR. Newest first.
   blended per-field % mixes four routes to OpenX, and a Prebid Server rebuilds
   the imp rather than forwarding ours — so "missing on our pages" and "dropped
   by an intermediary" are indistinguishable in the report as delivered.
+- **Article-page verification (same day).** The first pass read the homepage;
+  articles carry the volume and expose the per-slot bidder params in full.
+  Two articles parsed slot by slot, both agreeing: across the 42 slot×device
+  combos with a Prebid config, **`banner.pos` is set on 0**, inline
+  `ortb2Imp.ext.gpid` on 3 (video only), and **`openx` is a client-side bidder
+  on 39**. Three consequences: articles run **ten sequential `inarticle1…10`
+  slots that are positionally indistinguishable to buyers** (the strongest
+  yield argument in the audit, invisible from the homepage); the video slot
+  already passes **`pos: 1` to Amazon** but not to Prebid, so the omission is
+  an oversight not a policy; and **OpenX bidding client-side corrects the
+  Tier 3 framing** — "a Prebid Server rebuilt the imp" is a much weaker
+  explanation than it looked, so the live `?pbjs_debug=true` check is now the
+  load-bearing next step. `mgnipbs` sitting in the same `bids` array as
+  `openx` gives the path-split ask a named mechanism.
 - Docs-only. No code, schema, or dashboard change.
 
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions

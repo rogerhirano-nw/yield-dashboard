@@ -11,8 +11,11 @@ it, so the loss is downstream of us" (5). 25 of the 43 fields are already at
 100%.
 
 This doc is the evidence trail. Everything below about Newsweek's own setup was
-read out of the **live production page** (`www.newsweek.com`, 2026-08-25) — the
+read out of **live production pages** (`www.newsweek.com`, 2026-08-25) — the
 served HTML plus the Next.js JS chunks that build the ad stack — not inferred.
+**Both the homepage and article pages were audited** (see *Article-page
+verification* below); articles carry the impression volume, and they are also
+where the per-slot bidder configuration is exposed in full.
 
 ## What Newsweek actually runs (as of 2026-08-25)
 
@@ -27,6 +30,60 @@ served HTML plus the Next.js JS chunks that build the ad stack — not inferred.
 | Identity | sharedId/pubcid, criteo, unifiedId (TDID), identityLink, pairId, merkleId, amxId, teadsId, lotamePanoramaId, liveIntentId (US-only, 95% sampled), uid2 (conditional), pubProvidedId (`nwuid`) |
 | Measurement | DV tag (`dvtag`), IAS PET |
 | Relevant config | `gptPreAuction: {enabled, useDefaultPreAuction}`, `enableTIDs` (on unless CCPA opt-out), `paapi.enabled`, floors module keyed on `["mediaType","gptSlot"]` |
+
+## Article-page verification
+
+The homepage was the first read, but articles are where the impressions are —
+and where the per-slot bidder params are served in full (the homepage ships
+them stripped as `bids:[{}]`). Two articles were parsed slot by slot. Both
+agree, so this is the template, not one page's quirk.
+
+**14 display-ish slots per article**: `top`, `sticky`, `inarticle1` … 
+`inarticle10`, `interstitial`, plus `video` and three out-of-page units.
+Across the 42 slot×device combinations that carry a Prebid config:
+
+| Check | Result |
+|---|---|
+| `mediaTypes.banner.pos` set | **0 of 42** |
+| inline `ortb2Imp.ext.gpid` | 3 of 42 — the **video** slot only |
+| `openx` present as a client-side bidder | **39 of 42** |
+
+Three things follow, and one of them corrects the homepage-only reading.
+
+**1. `banner.pos` is confirmed missing where it matters most, and the omission
+is demonstrably an oversight.** Articles run **ten sequential in-article
+slots**. `inarticle1` sits near the top of the story; `inarticle10` is ten
+placements down, deep below the fold. **To a buyer these are indistinguishable
+today** — same sizes, same everything, no position signal. That is the single
+biggest yield argument in this audit, and it is invisible from the homepage,
+which has only three stacked units. The tell that it's an oversight rather than
+policy: the video slot passes **`pos: 1` to Amazon** (`headBidders.amazon.pos`)
+while the Prebid config for the same slot has no `pos` at all. The value is
+already known and already being sent — just not to Prebid.
+
+**2. OpenX is a first-class client-side bidder, not a downstream reseller.**
+It appears on 39 of 42 combos with per-slot `unit` IDs against
+`delDomain: "ibt-d.openx.net"` (only `interstitial` omits it). **This corrects
+the homepage-only framing** in the Tier 3 section below, which leaned on "a
+Prebid Server rebuilds the imp" as the likely reason our fields don't arrive.
+That explanation is much weaker now: a large share of what OpenX measures is
+**our own client-side request**, so a missing field is more likely genuinely
+missing from what we send than dropped by an intermediary. The live
+`?pbjs_debug=true` check moves from nice-to-have to the thing that decides
+Tier 3.
+
+**3. The path-split ask survives, with better evidence.** `mgnipbs` sits in the
+*same* `bids` array as `openx` — so a single auction can reach OpenX twice:
+directly client-side, and again server-side through Magnite's PBS. Both would
+land in the same seat report. That is a concrete, named mechanism for the
+blended percentages, not a hypothesis about unknown resellers.
+
+On gpid specifically: the display builder **ignores** the inline `ortb2Imp` and
+constructs its own from a `slotPath` that articles derive exactly like the
+homepage (`` `/22541732127/newsweek/${slotName}` ``, confirmed in the article
+chunk). So display units should carry gpid at runtime regardless of the config
+being bare — which is why the live check, not more static reading, is the next
+step.
 
 ## Tier 1 — Real gaps we can close
 
@@ -142,8 +199,11 @@ should ask OpenX to re-baseline them rather than spend engineering time.
 ## Tier 3 — We send it; the loss is downstream
 
 For these the wrapper code demonstrably does the right thing on the
-client-side path, so a blended number well under 100% means most
-OpenX-visible requests are arriving via a path that rebuilds the imp.
+client-side path. **Read the article-page verification above before acting on
+this section:** because OpenX is a direct client-side bidder on 39 of 42 slot
+combos, "an intermediary rebuilt the imp" is a weaker explanation than it looked
+from the homepage alone, and these may well be genuinely missing from what we
+send. The live `?pbjs_debug=true` check settles it either way.
 
 - **`imp_ext_gpid` — 33.8%.** The builder sets it unconditionally whenever a
   `slotPath` exists, and `slotPath` is always derived as
@@ -197,16 +257,18 @@ of code.
 
 1. `site.publisher.name` — one line, zero risk.
 2. `banner.pos` — small map, real yield upside.
-3. Live `pbjs_debug` check on `imp.ext.tid` + `gpid` → decides Tier 3.
+3. Live `pbjs_debug` check on `imp.ext.tid` + `gpid` → decides Tier 3. Now
+   load-bearing: OpenX bids client-side on nearly every slot, so Tier 3 is
+   plausibly ours rather than an intermediary's.
 4. GPP (Ketch config + `consentManagementGpp` + `gppControl_usnat`) — largest
    effort, largest compliance exposure.
 5. Reply to OpenX with the Tier 2 re-baseline and the path-split request.
 
 ## Provenance
 
-Findings were read from production on 2026-08-25:
-`curl https://www.newsweek.com/` for the served HTML and the ad bootstrap, then
-the 24 `/_next/static/chunks/*.js` bundles for the wrapper config
+Findings were read from production on 2026-08-25: `curl` against the homepage
+**and two article pages** for the served HTML and the ad bootstrap, then the
+`/_next/static/chunks/*.js` bundles for the wrapper config
 (`buildFullPrebidConfig`, `buildConsentConfig`, `getSharedUserIds`,
 `getPbsVendor`, `applyORTB2ToPrebid` and the ad-unit builder). No credentials
 or internal access were needed. Re-run the same fetch to re-verify after any
