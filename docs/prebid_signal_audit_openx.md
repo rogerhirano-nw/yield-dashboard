@@ -153,15 +153,24 @@ Montana and Florida are expressible **only** through GPP's `usnat`/state
 sections, and buyers increasingly drop or discount US state traffic that
 arrives without a GPP string.
 
-Fix is two-sided and Ketch already supports its half:
+**The Prebid half is already built — it just isn't switched on.** The
+self-hosted bundle's own manifest (see *What's in the Prebid.js build* below)
+lists **`consentManagementGpp` and `gppControl_usstates`**: both modules ship
+on every page today. The wrapper never configures them — `buildConsentConfig()`
+returns only `gdpr` and `usp` keys in all three geo branches, and the string
+`gpp` appears **nowhere** in the wrapper chunks. So we are already paying to
+download GPP support and getting nothing for it.
+
+Fix is two-sided, and neither side needs a Prebid rebuild:
 1. Enable the **GPP API** in the Ketch property config (surfaces `__gpp`).
-2. Add Prebid's **`consentManagementGpp`** module and configure it alongside
-   the existing gdpr/usp blocks in `buildConsentConfig()`:
+2. Add a `gpp` block alongside the existing gdpr/usp blocks in
+   `buildConsentConfig()`:
    ```js
    gpp: { cmpApi: 'iab', timeout: 3000 }
    ```
-3. Add the **`gppControl_usnat`** activity-control module so Prebid actually
-   enforces the sections rather than just forwarding the string.
+Enforcement is covered too: `gppControl_usnat` is *not* in the build, but
+`gppControl_usstates` — the per-state variant, and the more granular of the
+two — is.
 
 Keep sending `us_privacy` in parallel during the transition — the IAB sunset
 lets both coexist, and dropping it early would cost the 49.2% we have.
@@ -194,7 +203,14 @@ Zero risk, and it makes the publisher identity consistent across every path.
 0.0%** — that asymmetry can't be explained by the opt-out flag, which would hit
 both equally.
 
-Before changing anything, open a Newsweek article with `?pbjs_debug=true`,
+The wrapper's display ad-unit builder sets `ext.gpid` and
+`ext.data.pbadslot` but **never `ext.tid`** — while the TTD OpenAds builder
+directly beside it explicitly does (`{tid: oajs.generateTID()}`). In Prebid 10
+the tid is transmitted under the `transmitTid` activity control, gated on
+`enableTIDs`; whether Prebid auto-generates `ortb2Imp.ext.tid` or expects the
+publisher to supply it is the one thing minified code can't settle.
+
+So before changing anything, open a Newsweek article with `?pbjs_debug=true`,
 inspect the outgoing OpenX imp, and check whether `imp[0].ext.tid` is on the
 wire. If it is present client-side, this is an OpenX-side parsing/path issue
 and belongs in the reply to them, not in our backlog. If it's genuinely
@@ -203,6 +219,38 @@ missing, set it explicitly the way the TTD OpenAds builder already does:
 ```js
 ortb2Imp: { ext: { tid: <transactionId>, gpid: slotPath, data: { pbadslot: slotPath } } }
 ```
+
+## What's in the Prebid.js build
+
+The wrapper is self-hosted, so the bundle carries its own manifest. Read from
+`/prebid.js?v=10.29.0` (**built 2026-03-12** — worth a refresh cadence):
+
+> `fpdModule, ttdBidAdapter, rubiconBidAdapter, apsBidAdapter, appnexusBidAdapter,
+> pubmaticBidAdapter, openxBidAdapter, ixBidAdapter, tripleliftBidAdapter,
+> kargoBidAdapter, criteoBidAdapter, teadsBidAdapter, ozoneBidAdapter,
+> fwsspBidAdapter, smilewantedBidAdapter, invibesBidAdapter, atsAnalyticsAdapter,
+> prebidServerBidAdapter, consentManagementTcf, tcfControl, consentManagementGpp,
+> gppControl_usstates, consentManagementUsp, gamAdServerVideo, priceFloors,
+> currency, gptPreAuction, schain, paapi, paapiForGpt, topicsFpdModule, rtdModule,
+> timeoutRtdProvider, userId, unifiedIdSystem, uid2IdSystem, sharedIdSystem,
+> pubProvidedIdSystem, identityLinkIdSystem, pairIdSystem, lotamePanoramaIdSystem,
+> criteoIdSystem, teadsIdSystem, connectIdSystem, amxIdSystem, fabrickIdSystem,
+> merkleIdSystem, liveIntentIdSystem`
+
+Two things follow.
+
+**Nothing in this audit needs a Prebid rebuild.** All four Tier 1 fixes are
+ad-unit or `setConfig` changes against modules already in the bundle. The
+GPP pair is the sharp case — shipped, never configured.
+
+**`openxBidAdapter` is compiled in**, which corroborates the article-page
+finding that OpenX is a genuine client-side bidder, from a second and
+independent angle.
+
+Modules present that this audit does *not* need anyone to touch: `schain`,
+`priceFloors`, `currency`, `gptPreAuction`, `paapi` + `paapiForGpt`,
+`topicsFpdModule`, `rtdModule` + `timeoutRtdProvider`, `fpdModule`, and
+`userId` with 14 ID systems.
 
 ## Tier 2 — Already correct; do not chase these
 
@@ -281,8 +329,10 @@ of code.
 3. Live `pbjs_debug` check on `imp.ext.tid` + `gpid` → decides Tier 3. Now
    load-bearing: OpenX bids client-side on nearly every slot, so Tier 3 is
    plausibly ours rather than an intermediary's.
-4. GPP (Ketch config + `consentManagementGpp` + `gppControl_usnat`) — largest
-   effort, largest compliance exposure.
+4. GPP — a `gpp` block in `buildConsentConfig()` plus Ketch's GPP API. The
+   modules are already in the bundle, so this is **config, not a rebuild** —
+   cheaper than first estimated, and the largest compliance exposure. The
+   Ketch-side switch is the only real dependency.
 5. Reply to OpenX with the Tier 2 re-baseline and the path-split request.
 
 ## Provenance
