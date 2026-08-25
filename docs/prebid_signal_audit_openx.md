@@ -304,6 +304,102 @@ send. The live `?pbjs_debug=true` check settles it either way.
   normally. The missing half is direct / bookmark / dark-social / in-app
   webview traffic. Largely organic; low ceiling.
 
+## Beyond the scorecard: what else should be in the bidstream
+
+OpenX scored 43 fields of its choosing. That is not the same question as *what
+should a news publisher be sending*. Auditing the wrapper's `ortb2` against
+what Newsweek already knows about each page turns up more, and some of it is
+worth more than anything on OpenX's list.
+
+The **complete** Prebid `ortb2.site` today is:
+
+```js
+site: { cattax: 1, battr: [6,7],
+        cat: dataLayer.content_channel_iabs || [],
+        keywords: <topics, comma-joined>,
+        domain: "newsweek.com", name: "Newsweek",
+        ext: { data: { trsource: getTrafficSource() } } }
+```
+
+That is the whole object. There is **no `site.content`, no `site.publisher`,
+and no `user` object anywhere** (`ortb2.user` appears in zero wrapper chunks).
+
+### 1. `site.content` is entirely absent — the biggest gap for a news publisher
+
+Every input is already on the page, in the markup or the Next.js payload:
+
+| ORTB field | Already on the page as |
+|---|---|
+| `content.title` | the headline |
+| `content.cat` + `cattax` | `iab_context_v1` / `iab_context_v2` |
+| `content.keywords` | `orderedKeywords` — structured objects with topic URIs |
+| `content.language` | `<html lang="en">` |
+| `content.url` | the canonical URL |
+| `content.context: 5` | it's a text article |
+| recency | `article:published_time` / `article:modified_time` meta tags |
+| section | `article:section` (e.g. "Personal Finance") |
+| reading time | `readingTime` |
+
+Article-level signals currently sit at **site** level or nowhere: `site.cat`
+receives the *article's* IAB categories, which is the wrong node for them.
+Contextual and news-sensitive buyers that filter on `site.content.cat`,
+`content.language`, or content recency see nothing at all today.
+
+### 2. Zero first-party audience signal (`user.data`)
+
+`ortb2.user` is never set. The page knows the reader's **logged-in state**
+(`<html className="guest">`), **paywall status** (`setIsPaywalledPage`), and
+section/topic affinity. Passing those as `user.data` segments with a declared
+`segtax` is the standard mechanism, and post-cookie it is the signal buyers
+actually pay a premium for. **This is the highest-value yield item in this
+document** — higher than anything OpenX flagged.
+
+### 3. The IAB taxonomy we send is the deprecated one
+
+The page computes **three** versions per article and we send the oldest:
+
+- `iab_context_v1` → `["IAB13-2"]`, `["IAB12-2"]` — legacy 1.0 string IDs
+- `iab_context_v2` → `["406"]`, `["672"]` — 2.x numeric IDs, **computed and unused**
+- `iab_context_v3` → `[]` — plumbed, never populated
+
+`content_channel_iabs` (what reaches `site.cat`) is the **v1** value, and
+`cattax: 1` correctly declares it as Taxonomy 1.0 — so this is *consistent*,
+not a bug. But 1.0 is deprecated and most DSPs now prefer 2.2/3.0. The v2 IDs
+are sitting right there. ORTB 2.6 lets you send both at once: keep
+`site.cat`/`cattax`, and add the newer taxonomy as a `content.data` entry with
+its matching `segtax`. **Verify which 2.x version `iab_context_v2` actually is
+before declaring a `cattax`** (2.0 → 2, 2.1 → 5, 2.2 → 6) — declaring the wrong
+one is worse than sending v1.
+
+### 4. Amazon is fed signals Prebid isn't — three times over
+
+The APS init builds its own site object with `mobile: 1`, `amp: 0`,
+`privpolicy: 1`, `ext.sitetaxonomy` (= `dataLayer.section`) and `kwarray`
+(topics as an **array**). Prebid's `ortb2` gets **none of those**, and receives
+keywords as a comma-joined string rather than the array form ORTB 2.6 prefers.
+
+Together with the `pos: 1` the video slot passes to Amazon and not Prebid, that
+is **three separate places where the Amazon path is enriched and the Prebid
+path isn't**. Worth treating as one systemic habit rather than three
+coincidences: whoever adds a signal is adding it to APS and stopping there.
+`site.privacypolicy` and `site.mobile` are standard ORTB fields and free.
+
+### 5. No `badv` / `bcat`
+
+Neither appears anywhere. Newsweek runs a Confiant → GAM Protection blocklist
+pipeline that pushes flagged advertiser domains daily
+(`docs/confiant_blocklist.md`) — none of it reaches the bidstream, so bad
+demand is caught *after* it bids rather than suppressed before. Worth a
+judgement call rather than a straight yes: `badv` shapes demand, and an
+over-broad list costs fill. `battr: [6,7]` is already set.
+
+### Checked and fine — don't chase
+
+- **`device.sua`** (structured user agent) — Prebid auto-populates it, and
+  `userAgentData` / `getHighEntropyValues` are both in the bundle. As UA
+  strings get reduced this is the replacement, and we already have it.
+- `schain`, price floors, `imp.video.plcmt`, `battr` — all set.
+
 ## The one thing to ask OpenX for
 
 **A breakdown of the same table by schain / seller / integration path.**
