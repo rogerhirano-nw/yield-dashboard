@@ -954,6 +954,19 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/prebid_signal_audit_openx.md` — OpenX bid-request field-coverage
+  audit for the `Newsweek_Display_Prebid` seat (2026-08-25), and the
+  **only place in this repo that documents Newsweek's live ad stack**:
+  Prebid.js 10.29.0 self-hosted, Ketch CMP, a sticky 90/10 Magnite-Demand-
+  Manager-PBS / Assertive-Yield-PBS A/B, plus Amazon APS and TTD OpenAds as
+  separate demand paths, and the 11-module identity stack. Read out of the
+  live production page, so re-verify with the same `curl` after any wrapper
+  deploy (chunk hashes change per build). Sorts the 43 audited fields into
+  fixable (`imp_banner_pos`, GPP, `site.publisher.name`, `imp.ext.tid`),
+  correct-as-is (`device_ip`+`device_ipv6` sum to exactly 1.0;
+  `user_ext_consent` ≈ EEA share; `imp_rwdd`/OMID are in-app signals), and
+  lost-downstream (gpid, tid, buyeruid — all blocked on OpenX splitting the
+  report by schain/integration path).
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the
   2026-08-03 depletion warning): what in this stack spends disk IO, how to
   measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,

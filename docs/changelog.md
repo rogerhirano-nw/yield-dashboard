@@ -4,6 +4,51 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-08-25 — OpenX Prebid signal audit: field-coverage analysis
+
+- **OpenX sent a bid-request field-coverage scorecard** for the
+  `Newsweek_Display_Prebid` seat (43 Required / Strongly-Recommended OpenRTB
+  fields, % of requests carrying each). Question was whether we can raise
+  coverage. Answer: **4 fields yes, 5 are already correct at their low number,
+  5 are sent by our wrapper and lost downstream**; 25 were already at 100%.
+- **`docs/prebid_signal_audit_openx.md`** — the analysis + evidence trail.
+  Newsweek's own setup was read out of the **live production page**
+  (`www.newsweek.com` HTML + the 24 Next.js JS chunks that build the ad
+  stack), not inferred: Prebid.js 10.29.0 self-hosted, Ketch CMP, a sticky
+  90/10 Magnite-PBS / Assertive-Yield-PBS A/B, plus Amazon APS and TTD
+  OpenAds as separate demand paths.
+- Actionable gaps: **`imp_banner_pos`** (0% — never set, though the GPT
+  `setTargeting("pos", …)` call already computes the taxonomy),
+  **`regs_gpp` / `regs_gpp_sid`** (0% — no GPP anywhere; only legacy
+  `us_privacy`, which covers California alone),
+  **`site_publisher_name`** (54.6% — ortb2 sets `site.name` but not
+  `site.publisher.name`), and **`imp_ext_tid`** (0% pending one live
+  `?pbjs_debug=true` check).
+- Non-gaps worth pushing back on: **`device_ip` + `device_ipv6` sum to
+  exactly 1.000000** (mutually exclusive — one field counted as two);
+  **`user_ext_consent` 1.2% ≈ EEA share** (the real TCF CMP only engages when
+  `gdpr_applies`); **`imp_rwdd` and both OMID fields are in-app signals** on a
+  display-web scorecard.
+- Blocked on OpenX: a **breakdown by schain / seller / integration path**. A
+  blended per-field % mixes four routes to OpenX, and a Prebid Server rebuilds
+  the imp rather than forwarding ours — so "missing on our pages" and "dropped
+  by an intermediary" are indistinguishable in the report as delivered.
+- **Article-page verification (same day).** The first pass read the homepage;
+  articles carry the volume and expose the per-slot bidder params in full.
+  Two articles parsed slot by slot, both agreeing: across the 42 slot×device
+  combos with a Prebid config, **`banner.pos` is set on 0**, inline
+  `ortb2Imp.ext.gpid` on 3 (video only), and **`openx` is a client-side bidder
+  on 39**. Three consequences: articles run **ten sequential `inarticle1…10`
+  slots that are positionally indistinguishable to buyers** (the strongest
+  yield argument in the audit, invisible from the homepage); the video slot
+  already passes **`pos: 1` to Amazon** but not to Prebid, so the omission is
+  an oversight not a policy; and **OpenX bidding client-side corrects the
+  Tier 3 framing** — "a Prebid Server rebuilt the imp" is a much weaker
+  explanation than it looked, so the live `?pbjs_debug=true` check is now the
+  load-bearing next step. `mgnipbs` sitting in the same `bids` array as
+  `openx` gives the path-split ask a named mechanism.
+- Docs-only. No code, schema, or dashboard change.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)
