@@ -72,11 +72,32 @@ missing from what we send than dropped by an intermediary. The live
 `?pbjs_debug=true` check moves from nice-to-have to the thing that decides
 Tier 3.
 
-**3. The path-split ask survives, with better evidence.** `mgnipbs` sits in the
-*same* `bids` array as `openx` — so a single auction can reach OpenX twice:
-directly client-side, and again server-side through Magnite's PBS. Both would
-land in the same seat report. That is a concrete, named mechanism for the
-blended percentages, not a hypothesis about unknown resellers.
+**3. The path-split ask survives — and the second path is now confirmed, not
+inferred.** `mgnipbs` sits in the *same* `bids` array as `openx`, so a single
+auction can reach OpenX twice: directly client-side, and again server-side
+through Magnite's PBS. The private `ssp-prebid-params` repo (Newsweek's S2S
+parameter inventory, captured from the Magnite Demand Manager Server Patterns
+exports) closes it: **OpenX is in the server-side bidder roster too — display
+and video, desktop and mobile — against the same `delDomain`.** Both paths
+therefore land in the same OpenX seat, proven from two independent sources.
+
+That reframes the blended percentages as a **mix ratio**. Three fields cluster
+tightly — `user_id` 31.3%, `imp_ext_gpid` 33.8%, `source_tid` 37.7% — which is
+what you'd expect if the client-side path (which carries all three) is roughly
+a third of what OpenX receives, and the server-side path drops or regenerates
+them. `imp_ext_tid` at exactly 0.0% is the outlier the live check should
+explain. Treat this as the leading hypothesis, not a settled result: it is
+consistent with the numbers, but only OpenX's own path split can confirm it.
+
+**Consequence for the Assertive Yield migration.** If that reading is right,
+most of the lost coverage is Prebid Server configuration, not wrapper code —
+and Newsweek is mid-migration from Magnite Demand Manager to Assertive Yield
+PBS. The cutover checklist in `ssp-prebid-params` covers bidder codes, account
+and per-slot IDs, ads.txt/sellers.json, floors and identity modules, but has
+**no signal-forwarding requirements at all** (no `gpid`, `ortb2`, `ext.tid`,
+`schain`, or GPP). Porting the config as-is carries this gap forward. The
+cutover is the cheapest moment to fix it — add signal forwarding to that
+checklist before it happens.
 
 On gpid specifically: the display builder **ignores** the inline `ortb2Imp` and
 constructs its own from a `slotPath` that articles derive exactly like the
