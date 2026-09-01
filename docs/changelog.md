@@ -26,6 +26,25 @@ and why" index, keyed by PR. Newest first.
   does not wire beehiiv data into the cache or any tab; it just makes the
   server available to interactive sessions.
 
+## 2026-08-17 — Docs: refresh_direct is hourly now (was 4×/day) (#355)
+
+- **`refresh_direct.yml`'s header still described the retired 4×/day
+  schedule** (10:30/13:30/16:30/19:30 ET). The cron-job.org job is now
+  "business hours, hourly": on the hour, 07:00–20:00 ET, every day —
+  14 fires/day, confirmed from the Actions run history. Comment updated;
+  `docs/supabase_disk_io.md`'s consumer table now counts the ~15
+  `gam_campaigns` DELETE+append rewrites/day (sweep included; was 5) —
+  **3× the direct-refresh write churn the 2026-08-03 disk-IO numbers
+  assumed**, worth re-measuring (`db_disk_io_report.yml`) if the Disk IO
+  Budget warning recurs.
+- Context for the change: the 2026-08-17 15:00 UTC fire failed with a
+  GitHub-side `503` at the dispatch API — no run was created, the gap was
+  filled by a manual `workflow_dispatch` ~20 min later, and the next
+  hourly fire proceeded normally. A lone dispatch 503 self-heals at the
+  next hour (cron-job.org keeps firing after a failure; it only mutes
+  further failure *emails* until the next success), so it needs no action
+  unless up-to-the-hour freshness matters at that moment.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)
