@@ -4,6 +4,65 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-01 — beehiiv wired in as a data source
+
+- **`beehiiv_client.py` (`BeehiivClient`)** — newsletter audience + per-send
+  performance from the beehiiv v2 REST API. Two tables:
+  - **`beehiiv_publications`** — daily snapshot of active/free/premium
+    subscriptions and average open/click rate per publication. The API has no
+    history endpoint (only *current* counts), so the trend is accumulated by
+    snapshotting one row per publication per day, with a same-day DELETE so a
+    re-run replaces rather than doubles. Same shape as `opensincera_ecosystem`.
+  - **`beehiiv_posts`** — rolling 90-day window of confirmed sends with
+    `stats.email.*` / `stats.web.*` flattened into columns (delivered, opens,
+    unique opens, open rate, clicks, click rate, unsubscribes, spam reports,
+    web views/clicks, upgrades). Written with `_safe_replace` **deliberately**:
+    post stats keep accruing for days after a send, so every row in the window
+    has to be rewritten each sweep, not just the newest — which also means the
+    `retention_days == pull_window + 1` rule for the append-with-DELETE tables
+    doesn't apply here and widening the window can't duplicate.
+  - `stats.clicks` (the per-URL breakdown) is dropped — variable-length, would
+    need its own table.
+- **Dates are converted epoch → Eastern**, not UTC (`epoch_to_et_date`). Same
+  #339 hazard as the dashboard's "today": a UTC read labels a 22:00 ET send as
+  the *next* day, disagreeing with every other date in the cache.
+- **`--mode=beehiiv`** + both functions in the `all` sweep; `beehiiv` job added
+  to `refresh.yml`. **beehiiv is optional until `BEEHIIV_API_KEY` is
+  provisioned**, gated identically at all three surfaces so merging the client
+  can't disturb anything:
+  1. the workflow job's step `if` (job-level env + step `if`, because the
+     `secrets` context isn't readable in a job-level `if` and a step's own
+     `env:` isn't visible to its own `if`);
+  2. `_beehiiv_configured()` in both refresh functions — they return 0 at INFO
+     rather than raising. `_run_with_alert` would catch a raise, but the logged
+     exception is a WARNING+ record, so every `--mode=all` run (local dev
+     included) would have emailed a sweep alert until the key existed;
+  3. the health check's freshness rows (below).
+- **Health-check freshness rows are gated on the same secret**
+  (`health_check.active_pulled_at_checks`). A freshness check against a table
+  that has never been created is a *non-remediable* hard error, so adding the
+  rows unconditionally would have emailed a ❌ and redded the Actions run every
+  day between merge and provisioning. Keyed on the secret rather than on "table
+  exists" on purpose: once beehiiv is live, a *missing* table must still fail —
+  that's the drift the check exists to catch. Both rows check `_pulled_at`, not
+  `max(date)`: `beehiiv_posts.date` is the send date, which follows the
+  newsletter's own cadence, so a weekly publication would fail a `max(date)`
+  bound every day it doesn't send.
+- **This is the REST API, not the beehiiv MCP server** (#359). MCP is browser
+  OAuth and per-user, so it can't run unattended — the two paths are separate
+  by design and CLAUDE.md now says so.
+- Verified against a throwaway local Postgres 16 (tables created RLS-enabled
+  with no anon/authenticated grants via `_lockdown_table`; same-day snapshot
+  DELETE keeps 1 row; `_safe_replace` replaces rather than accumulates across
+  a 2→5 row window change; both indexes created) and a local stub HTTP server
+  for the wire contract (bearer header, `expand=["stats"]` JSON-array
+  encoding per the docs, publish_date-desc pagination stopping on
+  `total_pages`, the window break, 429 + `Retry-After` backoff).
+  **Not verified: a live call to beehiiv** — no API key in this environment.
+- Tests: `tests/test_beehiiv_client.py` (15) pins the flattening, the ET
+  conversion, the stable column set, and the window predicate;
+  4 added to `tests/test_health_check.py` for the gating.
+
 ## 2026-09-01 — beehiiv MCP server wired into the project config (#359)
 
 - **Added `beehiiv` (remote HTTP, `https://mcp.beehiiv.com/mcp`) to the
