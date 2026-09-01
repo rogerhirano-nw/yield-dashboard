@@ -4,7 +4,7 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-09-01 — beehiiv MCP server wired into the project config
+## 2026-09-01 — beehiiv MCP server wired into the project config (#359)
 
 - **Added `beehiiv` (remote HTTP, `https://mcp.beehiiv.com/mcp`) to the
   checked-in `.mcp.json`**, alongside the existing `supabase` server, so every
