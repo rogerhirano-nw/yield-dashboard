@@ -4,6 +4,28 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-01 — beehiiv MCP server wired into the project config
+
+- **Added `beehiiv` (remote HTTP, `https://mcp.beehiiv.com/mcp`) to the
+  checked-in `.mcp.json`**, alongside the existing `supabase` server, so every
+  Claude Code session opened on this repo is offered it rather than each person
+  running `claude mcp add` into their own config. Servers are sorted
+  alphabetically in the file for a stable diff.
+- **Auth is browser OAuth, per-user, and never lands in the repo** — no API key
+  in `.mcp.json` or `.env`. Consequence worth knowing before relying on it:
+  **it cannot be authorized from a headless session** (Claude Code on the web,
+  Actions runners), so the first authorization has to happen in an interactive
+  local `claude` session via `/mcp`; until then the beehiiv tools are simply
+  absent. Same constraint the Supabase connector already has (see
+  `docs/supabase_disk_io.md`, where an unauthorized Supabase MCP blocked the
+  measurement step).
+- New **`## MCP servers`** section in `CLAUDE.md` records both servers, the
+  transport/URL/auth for each, and the "edit `.mcp.json`, don't `claude mcp
+  add`" preference.
+- Config only — no client module, no refresh path, no dashboard surface. This
+  does not wire beehiiv data into the cache or any tab; it just makes the
+  server available to interactive sessions.
+
 ## 2026-08-03 — Supabase Disk IO Budget: diagnostic + first reductions
 
 - **Supabase warned the prod project (`ltavpsikmmqmracvjtvk`, Micro compute)

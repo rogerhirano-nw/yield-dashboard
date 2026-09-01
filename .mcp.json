@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "beehiiv": {
+      "type": "http",
+      "url": "https://mcp.beehiiv.com/mcp"
+    },
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk"
