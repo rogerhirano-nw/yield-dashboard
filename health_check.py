@@ -125,6 +125,40 @@ PULLED_AT_CHECKS = [
     ("opensincera_modules pulled",    "opensincera_modules",    "_pulled_at", SWEEP_MAX_AGE_HOURS),
 ]
 
+# beehiiv: both tables rewrite on every sweep, so staleness means the
+# --mode=beehiiv job failed. Deliberately checked on _pulled_at, NOT
+# max(date): beehiiv_posts' date is the send date, which follows the
+# newsletter's own cadence — a weekly publication would fail a max(date)
+# freshness bound every day it doesn't send. beehiiv_publications' date is
+# the snapshot date, which _pulled_at already tracks.
+#
+# Held separately because they are CONDITIONAL — see active_pulled_at_checks.
+BEEHIIV_PULLED_AT_CHECKS = [
+    ("beehiiv_publications pulled", "beehiiv_publications", "_pulled_at", SWEEP_MAX_AGE_HOURS),
+    ("beehiiv_posts pulled",        "beehiiv_posts",        "_pulled_at", SWEEP_MAX_AGE_HOURS),
+]
+
+
+def active_pulled_at_checks(env: dict | None = None) -> list[tuple]:
+    """PULLED_AT_CHECKS plus the beehiiv rows *only when beehiiv is wired up*.
+
+    A freshness check on a table that has never been created is a hard error
+    (`_guard` reports the missing relation), and it isn't remediable by a
+    sweep — so adding the beehiiv rows unconditionally would fail the daily
+    check, email a ❌, and red the Actions run every day between merging the
+    client and provisioning BEEHIIV_API_KEY.
+
+    Keying on the secret rather than on `table exists` is the deliberate
+    choice: "the table is gone" must stay a failure once the source is live
+    (that's the drift this check exists to catch), while "the source was
+    never configured" isn't a failure at all. Set BEEHIIV_API_KEY in the
+    health-check environment and these become real checks."""
+    env = os.environ if env is None else env
+    if not env.get("BEEHIIV_API_KEY"):
+        return list(PULLED_AT_CHECKS)
+    return list(PULLED_AT_CHECKS) + BEEHIIV_PULLED_AT_CHECKS
+
+
 # RLS hygiene: the dashboard/refresh reach the cache only through DATABASE_URL
 # (the postgres role, which bypasses RLS), never the Supabase REST API — so
 # every public table should have RLS enabled with no anon/authenticated grants,
@@ -459,7 +493,7 @@ def run_checks() -> list[CheckResult]:
         for name, table, col, days in FRESHNESS_CHECKS:
             _guard(name, lambda n=name, t=table, c=col, d=days:
                    _check_freshness(conn, n, t, c, d))
-        for name, table, col, hours in PULLED_AT_CHECKS:
+        for name, table, col, hours in active_pulled_at_checks():
             _guard(name, lambda n=name, t=table, c=col, h=hours:
                    _check_pulled_at(conn, n, t, c, h))
         _guard(RLS_CHECK_NAME, lambda: _check_rls_hygiene(conn))

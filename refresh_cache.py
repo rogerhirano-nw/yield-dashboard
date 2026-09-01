@@ -29,6 +29,7 @@ import pandas as pd
 import sqlalchemy
 from sqlalchemy import inspect as sa_inspect, text
 
+from beehiiv_client import BeehiivClient, DEFAULT_POST_WINDOW_DAYS
 from client import MagniteClient
 from dv_attention_client import pull_dv_attention
 from dv_ivt_client import pull_dv_ivt
@@ -190,6 +191,8 @@ _INDEXES = [
     ("dv_ivt",                "idx_dv_ivt_date",                  '"date"'),
     ("ttd_chumba",            "idx_ttd_chumba_date",              '"date"'),
     ("opensincera_ecosystem", "idx_opensincera_ecosystem_date",   '"date"'),
+    ("beehiiv_publications",  "idx_beehiiv_publications_date",    '"date"'),
+    ("beehiiv_posts",         "idx_beehiiv_posts_date",           '"date"'),
     ("gam_deal_bid_daily",    "idx_gam_deal_bid_daily_date",      '"date"'),
     ("gam_pmp_deals",         "idx_gam_pmp_deals_date",           '"date"'),
     # Join/filter columns on metadata tables and LICA/creatives
@@ -1322,6 +1325,90 @@ def refresh_opensincera_modules() -> int:
     return len(df)
 
 
+def _beehiiv_configured() -> bool:
+    """True when BEEHIIV_API_KEY is set.
+
+    beehiiv is optional: without the key its refreshes skip quietly instead
+    of raising. Letting them raise would be caught by _run_with_alert, but
+    the logged exception is a WARNING+ record — so every `--mode=all` run
+    would email a sweep alert until the key is provisioned. Same gate as
+    the `beehiiv` job's step `if` in refresh.yml and the health check's
+    active_pulled_at_checks."""
+    return bool(os.environ.get("BEEHIIV_API_KEY"))
+
+
+def refresh_beehiiv_publications() -> int:
+    """Append today's beehiiv audience snapshot to beehiiv_publications.
+
+    The API exposes only *current* subscriber counts — there is no history
+    endpoint — so each sweep appends one row per publication per day and the
+    table accumulates the trend. Same snapshot-history shape as
+    opensincera_ecosystem, including the same-day DELETE so a re-run
+    replaces today's row instead of doubling it."""
+    if not _beehiiv_configured():
+        logger.info("BEEHIIV_API_KEY not set — skipping beehiiv_publications")
+        return 0
+
+    logger.info("Refreshing beehiiv_publications")
+    client = BeehiivClient()
+    df = client.get_publications()
+    if df.empty:
+        logger.warning("beehiiv publications came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    table = "beehiiv_publications"
+    with _engine().begin() as conn:
+        created = table not in sa_inspect(conn).get_table_names()
+        if not created:
+            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+            if existing_cols != set(df.columns):
+                logger.info("Schema change detected for %s — dropping and recreating", table)
+                conn.execute(text(f'DROP TABLE "{table}"'))
+                created = True
+            else:
+                # One row per (publication, snapshot date) — replace today's
+                # on a same-day re-run.
+                conn.execute(
+                    text(f'DELETE FROM "{table}" WHERE date = :d'),
+                    {"d": df["date"].iloc[0]},
+                )
+        df.to_sql(table, conn, if_exists="append", index=False)
+        if created:
+            _lockdown_table(conn, table)
+    logger.info("Wrote %d rows to %s", len(df), table)
+    return len(df)
+
+
+def refresh_beehiiv_posts() -> int:
+    """Replace beehiiv_posts with the last DEFAULT_POST_WINDOW_DAYS of sends.
+
+    Full TRUNCATE+append (_safe_replace), deliberately: post stats keep
+    accruing for days after a send (opens and clicks trickle in), so every
+    row in the window has to be rewritten each sweep, not just the newest.
+    That also means widening the window can't duplicate rows — the
+    retention_days == pull_window + 1 rule for the append-with-DELETE tables
+    does not apply here."""
+    if not _beehiiv_configured():
+        logger.info("BEEHIIV_API_KEY not set — skipping beehiiv_posts")
+        return 0
+
+    logger.info("Refreshing beehiiv_posts (last %d days)", DEFAULT_POST_WINDOW_DAYS)
+    client = BeehiivClient()
+    df = client.get_posts_for_all()
+    if df.empty:
+        logger.warning("beehiiv posts came back empty — nothing to write")
+        return 0
+
+    df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+
+    with _engine().begin() as conn:
+        _safe_replace(df, "beehiiv_posts", conn)
+    logger.info("Wrote %d rows to beehiiv_posts", len(df))
+    return len(df)
+
+
 def _load_dotenv() -> None:
     env_file = Path(__file__).parent / ".env"
     if not env_file.exists():
@@ -1395,6 +1482,7 @@ def main() -> None:
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
         "dv", "magnite", "gam", "gam-lica", "pubmatic", "post-sweep", "ttd-chumba",
+        "beehiiv",
     )
     if mode not in _VALID_MODES:
         logger.error("Unknown --mode=%s  valid: %s", mode, ", ".join(_VALID_MODES))
@@ -1420,6 +1508,13 @@ def main() -> None:
 
     if mode == "ttd-chumba":
         _run_with_alert("ttd-chumba", [refresh_ttd_chumba])
+        return
+
+    if mode == "beehiiv":
+        _run_with_alert("beehiiv", [
+            refresh_beehiiv_publications,
+            refresh_beehiiv_posts,
+        ])
         return
 
     if mode == "opensincera":
@@ -1493,6 +1588,8 @@ def main() -> None:
         refresh_opensincera_publishers,
         refresh_opensincera_adsystems,
         refresh_opensincera_modules,
+        refresh_beehiiv_publications,
+        refresh_beehiiv_posts,
         refresh_pmp_last_bid_date,
         _ensure_indexes,
     ])

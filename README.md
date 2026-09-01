@@ -22,7 +22,8 @@ fast dashboard read. No source is queried at render time.
 - `opensincera_client.py` — `OpenSinceraClient`: ecosystem, publishers, ad systems, and Prebid module mappings from the OpenSincera API.
 - `dv_attention_client.py` — polls agentmail inbox for DV Pinnacle "Attention Metrics" CSV, parses it into `dv_attention` table.
 - `dv_ivt_client.py` — same pipeline for DV Pinnacle "IVT" CSV → `dv_ivt` table (SIVT / GIVT / Valid Traffic rows with `monitored_ads` counts).
-- `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into Postgres (`DATABASE_URL`). Wire to cron / Airflow / systemd timer. Accepts `--mode={all,direct,opensincera}`.
+- `beehiiv_client.py` — `BeehiivClient`: newsletter audience (`beehiiv_publications`) and per-send email/web performance (`beehiiv_posts`) from the beehiiv v2 REST API. Needs `BEEHIIV_API_KEY` — the REST key, *not* the browser-OAuth beehiiv MCP server.
+- `refresh_cache.py` — scheduled-job entrypoint. Pulls all sources into Postgres (`DATABASE_URL`). Wire to cron / Airflow / systemd timer. Accepts `--mode=` (`all`, `direct`, `opensincera`, `beehiiv`, `dv`, `magnite`, `gam`, `gam-lica`, `pubmatic`, `ttd-chumba`, `deal-metadata`, `gam_hourly`, `post-sweep`).
 - `dashboard.py` — Streamlit dashboard reading from the cache. Deployed to Streamlit Cloud from `main`. Skinned to the Newsweek design system (light "Paper" theme; tokens in the style block, spec in `docs/design_handoff/` — see CLAUDE.md "Dashboard design system").
 - `static/fonts/` — drop-in dir for the licensed Newsweek font binaries (Benton Modern Display + Franklin Gothic); fallbacks (Georgia / Helvetica) apply while empty. See `static/fonts/README.md`.
 
@@ -57,6 +58,10 @@ export PUBMATIC_PUBLISHER_ID=...
 
 # OpenSincera
 export OPENSINCERA_TOKEN=...
+
+# beehiiv (REST API key from the beehiiv dashboard; optional — the sweep's
+# beehiiv job no-ops when this is unset)
+export BEEHIIV_API_KEY=...
 
 # DoubleVerify (agentmail inbox that receives the DV Pinnacle daily CSVs)
 export AGENTMAIL_API_KEY=...

@@ -1,7 +1,7 @@
 name: Refresh cache
 
 # Triggered by cron-job.org at 05:00 America/New_York via workflow_dispatch.
-# Six source jobs run in parallel; post-sweep runs after the three jobs whose
+# The source jobs run in parallel; post-sweep runs after the three jobs whose
 # tables feed pmp_last_bid_date (magnite, gam, pubmatic).
 #
 # Wall-clock time: ~3-5 min. gam-lica is now incremental (video-only,
@@ -125,6 +125,32 @@ jobs:
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:  ${{ vars.REFRESH_ALERT_TO }}
+
+  beehiiv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Job-level env (not step-level) so the step's `if` can read it — the
+    # `secrets` context isn't available in a job-level `if`, and a step's own
+    # `env:` block isn't visible to that step's `if`.
+    env:
+      BEEHIIV_API_KEY: ${{ secrets.BEEHIIV_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      # No-ops until BEEHIIV_API_KEY is provisioned, so merging the client
+      # can't red the daily sweep. The health check's beehiiv freshness rows
+      # are gated on the same secret (health_check.active_pulled_at_checks).
+      - name: Refresh beehiiv
+        if: ${{ env.BEEHIIV_API_KEY != '' }}
+        run: python refresh_cache.py --mode=beehiiv
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
 
   ttd:
     runs-on: ubuntu-latest

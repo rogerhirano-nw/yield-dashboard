@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from health_check import (CheckResult, _data_day, _eval_freshness,
-                          _eval_rls_hygiene, build_report, should_send)
+from health_check import (BEEHIIV_PULLED_AT_CHECKS, PULLED_AT_CHECKS,
+                          CheckResult, _data_day, _eval_freshness,
+                          _eval_rls_hygiene, active_pulled_at_checks,
+                          build_report, should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -25,6 +27,34 @@ def test_freshness_fail_when_stale():
 def test_freshness_fail_on_empty_table():
     r = _eval_freshness("magnite fresh", None, 1, TODAY)
     assert not r.ok
+
+
+def test_beehiiv_checks_absent_until_the_key_is_configured():
+    """Without BEEHIIV_API_KEY the beehiiv tables don't exist, and a check on
+    a missing relation is a non-remediable hard failure — it would red the
+    daily run every day between merging the client and provisioning the key."""
+    checks = active_pulled_at_checks({})
+    assert checks == list(PULLED_AT_CHECKS)
+    assert not any("beehiiv" in name for name, *_ in checks)
+
+
+def test_beehiiv_checks_active_once_the_key_is_configured():
+    checks = active_pulled_at_checks({"BEEHIIV_API_KEY": "bh-secret"})
+    assert checks == list(PULLED_AT_CHECKS) + BEEHIIV_PULLED_AT_CHECKS
+    assert {name for name, *_ in checks} >= {
+        "beehiiv_publications pulled", "beehiiv_posts pulled"}
+
+
+def test_beehiiv_checks_treat_empty_key_as_unconfigured():
+    """An empty secret is how GitHub Actions surfaces "not set" — it must not
+    switch the checks on."""
+    assert active_pulled_at_checks({"BEEHIIV_API_KEY": ""}) == list(PULLED_AT_CHECKS)
+
+
+def test_active_pulled_at_checks_does_not_mutate_the_base_list():
+    before = list(PULLED_AT_CHECKS)
+    active_pulled_at_checks({"BEEHIIV_API_KEY": "bh-secret"})
+    assert PULLED_AT_CHECKS == before
 
 
 def test_report_all_pass_verdict_in_subject():
