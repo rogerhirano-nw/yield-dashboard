@@ -1092,6 +1092,27 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
   `line_item_ids`. Never set vCPM goals on breakout formats.
 
+## MCP servers
+Project-scoped servers live in the checked-in `.mcp.json`, so anyone opening
+this repo in Claude Code is offered the same set (Claude Code prompts once to
+approve project servers; approval is per-user, stored outside the repo).
+
+| Server | Transport | URL | Auth |
+|---|---|---|---|
+| `supabase` | http | `https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk` | OAuth in the browser on first use |
+| `beehiiv` | http | `https://mcp.beehiiv.com/mcp` | OAuth in the browser on first use |
+
+Both are **remote HTTP servers with browser OAuth** — no API key goes in the
+repo or in `.env`, and neither can be authorized from a headless/cloud session
+(Claude Code on the web, Actions). Authorize them once from an interactive
+local `claude` session (`/mcp`, pick the server, approve in the browser); the
+token is stored in your local Claude Code config, never here. Until then their
+tools are simply unavailable and any work that needs them has to run locally.
+
+Equivalent one-off CLI add (writes to *your* config, not the repo — prefer
+editing `.mcp.json` so the whole team gets it):
+`claude mcp add --transport http beehiiv https://mcp.beehiiv.com/mcp`
+
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
 - Magnite / GAM / Pubmatic credentials.
