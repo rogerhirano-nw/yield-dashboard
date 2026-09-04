@@ -461,6 +461,15 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     # by default so the run resembles a consenting user; CONSENT=decline
     # leaves the banner up, which is what makes the two distinguishable.
     consent_clicked = False
+    consent_controls: list[str] = []
+    try:
+        for el in pg.query_selector_all("[id*='ketch'] button, [id*='ketch'] a,"
+                                        "[class*='cmp'] button, [id*='onetrust'] button"):
+            t = (el.inner_text() or "").strip()
+            if t:
+                consent_controls.append(t[:40])
+    except Exception:
+        pass
     if CONSENT == "accept":
         for sel in ("#ketch-banner button", "[id*='ketch'] button",
                     "button[title*='Accept' i]", "button"):
@@ -512,6 +521,7 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         data["profile"] = profile
         data["consent"] = CONSENT
         data["consentClicked"] = consent_clicked
+        data["consentControls"] = consent_controls
         data["reqHosts"] = hosts.most_common(30)
         try:
             shot = SHOTS / f"{idx:02d}-{profile}.png"
@@ -629,7 +639,16 @@ def main() -> int:
     print(f"{len(pages)} page loads, {len(renders)} non-empty slot renders, "
           f"targets={','.join(TARGET_BIDDERS)}")
     ok_consent = sum(1 for p in pages if p.get("consentClicked"))
+    ctrls = sorted({c for p in pages for c in (p.get("consentControls") or [])})
     print(f"consent mode={CONSENT}, banner dismissed on {ok_consent}/{len(pages)} loads")
+    if ctrls:
+        print(f"  consent controls present: {', '.join(ctrls)}")
+        if not any(re.search(r"accept|agree|allow|got it", c, re.I) for c in ctrls):
+            # Not a failed click: there is nothing to accept. A US state
+            # privacy NOTICE permits processing by default, so "no consent"
+            # is not a reason a creative would refuse to render.
+            print("  -> NOTICE-ONLY banner (no accept control): consent is not "
+                  "being withheld, so it cannot explain a creative failing to render")
 
     # ── viewability + render mode by bidder ──────────────────────────────
     by_bidder: dict[str, list[dict]] = defaultdict(list)

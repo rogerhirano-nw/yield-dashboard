@@ -221,6 +221,29 @@ creative specifically.
 **Do not apply the iframe mirror** (above): there is nothing behind the
 frame to reveal.
 
+**Ruling out the harness as the cause.** The evidence above comes from a
+headless browser on a US datacenter IP with a privacy banner on screen — all
+of which could, in principle, make a creative refuse to paint and mimic this
+exactly. Two things close that off:
+
+* **The banner is notice-only.** Newsweek's Ketch banner offers just *Privacy
+  Policy* and *Manage Preferences* — there is no accept control, because it
+  is a US state-privacy notice rather than a GDPR consent gate. Consent is
+  not being withheld, so it cannot be why a creative declines to render.
+  (An attempt to "accept" it therefore dismissed 0 of 10 banners; the script
+  now reports the controls it found and says so explicitly, rather than
+  leaving that looking like a failed click.)
+* **The same-pageview control.** On pageviews where Ogury's sticky render
+  went blank, Ogury's *in-article* creatives rendered fine — same page, same
+  consent state, same IP, same browser, same SDK, same auction. Any
+  environmental explanation would have to suppress one slot and spare
+  another on the same load, which consent, IP and headless-ness do not do.
+
+So the failure is specific to Ogury's sticky creative, not to the test
+environment. What the harness still cannot establish is the **production
+rate** — that is the GAM audit's per-ad-unit cut, and it is what turns this
+from a reproduced defect into a sized one.
+
 Sample caveat: 2 collapsed and 1 healthy sticky render observed. The
 collapse is real and reproducible, but its *rate* — which is what decides
 how much of the 21pp gap it explains — comes from the GAM audit's per-ad-unit
