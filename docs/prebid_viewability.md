@@ -200,7 +200,9 @@ creative specifically.
 
 **So the fix for Ogury is, in order:**
 1. **Blank-detect + refresh on `dfp-ad-sticky`, excluding Ogury on the
-   retry.** The failure is precisely detectable from the page: ~1.5–2s after
+   retry** — reference implementation in
+   `docs/snippets/sticky_blank_detect_refresh.js` (site ad-stack work, not
+   in this repo's runtime).** The failure is precisely detectable from the page: ~1.5–2s after
    `slotRenderEnded`, if the slot's `google_ads_iframe_*` is still 0×0 /
    `display:none`, the impression is blank. Refresh the slot so a bidder who
    renders fills it. **The retry must exclude the bidder that just blanked** —
