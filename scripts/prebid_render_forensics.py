@@ -83,9 +83,16 @@ CHROME_PATH = os.environ.get("CHROME_PATH") or ""
 # proxy can move ports mid-session, and a stale port fails every page load
 # with ERR_PROXY_CONNECTION_FAILED while curl (which reads the env) still
 # works — an hour-wasting way to look like a tuning problem.
-BROWSER_PROXY = (os.environ.get("BROWSER_PROXY")
-                 or os.environ.get("HTTPS_PROXY")
-                 or os.environ.get("https_proxy") or "")
+def _current_proxy() -> str:
+    """Read the proxy fresh each time. The agent proxy can move ports *during*
+    a run, not just between runs, and a browser launched against the old port
+    then fails every subsequent load with ERR_PROXY_CONNECTION_FAILED — which
+    looks like the site refusing us rather than a stale socket. Reading at
+    launch time is what lets the relaunch-on-proxy-error path below recover.
+    """
+    return (os.environ.get("BROWSER_PROXY")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("https_proxy") or "")
 HEADFUL = os.environ.get("HEADFUL") == "1"
 # Use a real installed browser instead of Playwright's bundled Chromium:
 # BROWSER_CHANNEL=chrome (or chrome-beta, msedge). Worth doing from a laptop
@@ -449,8 +456,9 @@ def _launch(pw):
         kw["channel"] = BROWSER_CHANNEL
     elif CHROME_PATH:
         kw["executable_path"] = CHROME_PATH
-    if BROWSER_PROXY:
-        kw["proxy"] = {"server": BROWSER_PROXY}
+    proxy = _current_proxy()
+    if proxy:
+        kw["proxy"] = {"server": proxy}
     return pw.chromium.launch(**kw)
 
 
@@ -493,6 +501,10 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     except Exception as exc:
         print(f"[warn] {profile} {url}: {exc}")
         ctx.close()
+        # Surface proxy failures distinctly: they mean the browser is pointed
+        # at a dead socket, which no amount of retrying the URL will fix.
+        if "ERR_PROXY_CONNECTION_FAILED" in str(exc) or "ERR_TUNNEL" in str(exc):
+            return {"_proxy_error": True}
         return {}
     time.sleep(6)
     # Consent matters for what renders: a creative that refuses to paint
@@ -665,7 +677,18 @@ def main() -> int:
             for profile in PROFILES:
                 print(f"[load {i + 1}/{len(urls)} {profile}] {url}")
                 page = _run_one(browser, url, profile, i)
-                if not page:
+                if page.get("_proxy_error"):
+                    # Relaunch against whatever port the proxy is on now and
+                    # retry this load once, so a mid-sweep port move costs one
+                    # page instead of silently ending the run.
+                    print(f"    [proxy moved] relaunching browser on {_current_proxy()}")
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+                    browser = _launch(pw)
+                    page = _run_one(browser, url, profile, i)
+                if not page or page.get("_proxy_error"):
                     continue
                 pages.append(page)
                 hits = [r for r in _renders(page)
