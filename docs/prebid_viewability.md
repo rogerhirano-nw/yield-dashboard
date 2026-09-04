@@ -132,7 +132,10 @@ to the homepage itself.
 Run: `.github/workflows/prebid_render_forensics.yml` (dispatch) or locally
 with `CHROME_PATH` / `BROWSER_PROXY` set.
 
-## What the first live runs found (2026-09-04, mobile emulation)
+## What the live runs found (2026-09-04)
+
+Two sweeps from a US datacenter IP, mobile + desktop emulation, article
+pages only: 3 loads / 25 renders, then 20 loads / **152 renders**.
 
 Wrapper shape, for the record: **Prebid 10.29.0**, s2s through **Magnite
 Prebid Server** (`prebid-server.rubiconproject.com`, `mgnipbs` aliased to
@@ -143,26 +146,55 @@ nativo, triplelift, teads, criteo and **smilewanted**. Slots are
 `dfp-ad-inarticle1…10`, `dfp-ad-sticky`, `dfp-ad-interstitial` and the IMA
 video player.
 
-**Ogury renders two completely different ways, and one of them is
-Mobkoi-shaped:**
+### Ogury renders two completely different ways, and one is Mobkoi-shaped
 
-| Slot | Creative size | GPT iframe | Slot well | Max in-view |
-|---|---|---|---|---|
-| `dfp-ad-sticky` | 1×1 | **0×0, `display:none`** | 390×50 | 100% |
-| `dfp-ad-inarticle1` / `4` | 1×1 | 390×729 (+ a second at 390×1094) | 390×1094 | 65–67% |
+| Slot | Creative | GPT iframe | Slot well | Max in-view | AV threshold |
+|---|---|---|---|---|---|
+| `dfp-ad-sticky` (2 of 2) | 1×1 | **0×0, `display:none`** | 390×50 | — | n/a |
+| `dfp-ad-inarticle4` (mobile) | 1×1 | 390×730 + 390×1095 | 390×1095 | 77% | 30% (427,050px²) |
+| `dfp-ad-inarticle7` (desktop) | 1×1 | 970×250 | 1440×250 | 100% | 50% |
 
-The sticky case is the breakout signature exactly: GAM serves a **1×1**, the
-GPT iframe is hidden at 0×0, and the unit is built elsewhere. The in-article
-case is the opposite — Ogury grows the slot into a ~1,094px full-height well
-with a real iframe filling it. That second case is *not* broken; it's a
-**large creative** (426,660px², so the 30% rule) that tops out at 65–67%
-in-view, i.e. structurally harder to view than a 300×250 and a plausible
-honest reason for a sub-baseline number.
+**Every Ogury render on `dfp-ad-sticky` hides the GPT iframe at 0×0** —
+across both sweeps, 4 for 4, all attributed by pbjs `bidWon` (not by the
+weaker `hb_bidder` targeting). That is the Mobkoi breakout signature exactly:
+GAM serves a 1×1, the measured iframe is hidden, and the unit is built
+somewhere else. Ogury's in-article renders are the opposite — real iframes
+filling real wells, comfortably over threshold. Same bidder, same page, two
+render modes; only one of them is a measurement problem.
 
-Neither conclusion is final on this sample size — smilewanted, the biggest
-case, had not won a slot in the first runs (each of these bidders is only a
-few percent of impressions, so catching one takes volume). The next step is
-simply more loads plus the GAM audit, in that order of cheapness.
+Three other renders tripped the hidden-iframe flag (aps, sovrn, rubicon —
+one each) but they are a **different thing** and shouldn't be quoted as the
+same finding: all three are 1×1 iframes at `display:block` attributed only by
+`hb_bidder` targeting, i.e. almost certainly passback/tracking renders rather
+than the bidder's ad. Ogury's are `0×0 display:none` under trusted
+attribution.
+
+### OneTag's banner render is clean; its video deficit is out of reach here
+
+OneTag was caught once, on `dfp-ad-inarticle2` — a normal 300×250 iframe in a
+390×250 slot, 100% in view. But OneTag's deficit is on **in-stream video**,
+and **none of the 152 renders was video**: video plays in the page's IMA
+player container, not a GPT slot, so the slot forensics structurally cannot
+see it. The script now samples the player container's geometry and in-view
+ratio on a timer and reports pbjs video `bidWon` separately, which is what
+that case needs.
+
+### SmileWanted could not be caught from this runner
+
+**0 wins in 152 renders**, despite being ~5% of Prebid banner impressions and
+configured on every in-article slot and sticky. The likely reason is the
+runner's **US datacenter IP** — SmileWanted is a French SSP and its demand is
+geo-weighted. Catching it on-page needs an EU egress (or a residential IP);
+until then the GAM audit is the route for the largest of the four cases.
+
+### Limitation worth knowing before quoting this harness
+
+`impressionViewable` fired on **146 of 152** renders. That is not a
+viewability estimate — the script scrolls the whole article with dwell time,
+i.e. it behaves like a perfect user, so nearly everything measurable ends up
+viewable. Treat the GPT event as proof that a slot **can** be measured and
+the geometry as proof of **how** the creative renders; the rate itself comes
+from the GAM audit, never from this.
 
 ## How to read the results (decision rules)
 

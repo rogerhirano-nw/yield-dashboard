@@ -121,6 +121,28 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
       v.push([Date.now() - window.__nwf.t0, e.inViewPercentage]);
     });
   });
+  // In-stream video does NOT render in a GPT slot — it plays in the page's
+  // IMA player container — so slot forensics can't see it at all. Sample the
+  // player's geometry and in-view ratio on a timer instead; the pbjs bidWon
+  // event for the 'video' ad unit names the bidder.
+  window.__nwf.player = {max: 0, samples: 0, box: null};
+  const PLAYER_SEL = '.nw-ima-ad-container, [id*="ima-ad"], [class*="ima-ad"], ' +
+                     '[id*="video-player"], [class*="video-player"]';
+  setInterval(function () {
+    const el = document.querySelector(PLAYER_SEL);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const vis = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)) *
+                Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
+    const pct = Math.round(vis / (r.width * r.height) * 100);
+    const p = window.__nwf.player;
+    p.samples += 1;
+    if (pct > p.max) p.max = pct;
+    p.box = {w: Math.round(r.width), h: Math.round(r.height)};
+    p.sel = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
+            (el.className ? '.' + String(el.className).slice(0, 40) : '');
+  }, 500);
   window.pbjs = window.pbjs || {que: []};
   pbjs.que.push(function () {
     ['bidWon', 'adRenderSucceeded', 'adRenderFailed', 'bidderError'].forEach(function (ev) {
@@ -206,6 +228,15 @@ INSPECT_JS = r"""
     docHeight: document.documentElement.scrollHeight,
     slots, overlays,
     scriptHosts: [...new Set(scripts)],
+    player: (function () {
+      const p = (window.__nwf && window.__nwf.player) || null;
+      const el = document.querySelector('.nw-ima-ad-container, [id*="ima-ad"], [class*="ima-ad"]');
+      return Object.assign({}, p, el ? {
+        iframes: [...el.querySelectorAll('iframe')].map(f => ({box: rect(f), style: sty(f)})),
+        videos: [...el.querySelectorAll('video')].map(v => ({box: rect(v), style: sty(v)})),
+        inSlot: false
+      } : {});
+    })(),
     gpt: window.__nwf ? window.__nwf.gpt : [],
     pb: window.__nwf ? window.__nwf.pb : [],
     viz: window.__nwf ? window.__nwf.viz : {}
@@ -445,6 +476,30 @@ def main() -> int:
               f"-> {'met' if r['metThreshold'] else 'NEVER MET' if r['metThreshold'] is False else 'n/a'}")
         print(f"  {_fmt_slot(r.get('dom'))}")
         print(f"  {r['url']}")
+
+    # ── in-stream video ──────────────────────────────────────────────────
+    # Not a GPT slot, so none of the tables above can contain it. onetag's
+    # deficit is on video, so this section is the only place it can surface.
+    print("\n" + "=" * 78)
+    print("IN-STREAM VIDEO (IMA player — outside every GPT slot)")
+    print("=" * 78)
+    vid_wins = [e for p in pages for e in (p.get("pb") or [])
+                if e.get("type") == "bidWon" and (e.get("mediaType") == "video"
+                                                  or e.get("code") == "video")]
+    if vid_wins:
+        print("pbjs video bidWon: " + ", ".join(
+            f"{b}×{n}" for b, n in Counter((e.get("bidder") or "?") for e in vid_wins).most_common()))
+    else:
+        print("no video bids won in this sample")
+    for p in pages:
+        pl = p.get("player") or {}
+        if not pl.get("box"):
+            continue
+        print(f"  [{p.get('profile')}] {pl.get('sel', '?')[:60]} "
+              f"{pl['box']['w']}x{pl['box']['h']} max in-view={pl.get('max')}% "
+              f"({pl.get('samples')} samples) iframes={len(pl.get('iframes') or [])} "
+              f"videos={len(pl.get('videos') or [])}")
+        break  # geometry is per-profile, not per-page; one example each is enough
 
     # ── parent-DOM overlays, the breakout tell ───────────────────────────
     print("\n" + "=" * 78)
