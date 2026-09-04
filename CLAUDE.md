@@ -1009,6 +1009,21 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `scripts/setup_fito_top_banner.py` (970x250 between article title and
   video player). Covers the INACTIVE-until-order-reapproved, viewport/size
   eligibility, and ONE_OR_MORE roadblocking gotchas.
+- `docs/prebid_viewability.md` — why some **Prebid wrapper bidders** read
+  far below the site's Active View baseline (2026-09: smilewanted 40.4% and
+  ogury 54.4% on banner, onetag 47.7% on video, vs 78.7%/86.5% for everyone
+  else on the same slots). Covers the mix-vs-render split
+  (`dl.viewability_mix_adjusted`, leave-one-out peer baselines — a bidder is
+  never graded against its own bad impressions), the two diagnostics
+  (`scripts/prebid_viewability_audit.py` for the GAM Active View cut by
+  hb_bidder × unit × device × size, `scripts/prebid_render_forensics.py` for
+  on-page DOM/GPT forensics on **article pages** — the homepage runs a
+  different slot set and none of these bidders is configured on it), and the
+  decision rules for when the Mobkoi iframe mirror actually applies (a
+  breakout floors at ~0%, so 40–56% is a different animal). First finding:
+  ogury renders one way on `dfp-ad-sticky` (1×1, GPT iframe hidden at 0×0 —
+  Mobkoi-shaped) and another in-article (a real 390×1094 well, which grades
+  on Active View's 30% large-creative rule and tops out at 65–67% in-view).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -1090,7 +1105,9 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
   screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
   Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
-  `line_item_ids`. Never set vCPM goals on breakout formats.
+  `line_item_ids`. Never set vCPM goals on breakout formats. **Wrapper
+  demand is a separate question** — a Prebid bidder reading 40–56% is not
+  a breakout (those floor at ~0%); see `docs/prebid_viewability.md`.
 
 ## MCP servers
 Project-scoped servers live in the checked-in `.mcp.json`, so anyone opening
