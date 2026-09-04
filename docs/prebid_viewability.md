@@ -177,7 +177,16 @@ and **none of the 152 renders was video**: video plays in the page's IMA
 player container, not a GPT slot, so the slot forensics structurally cannot
 see it. The script now samples the player container's geometry and in-view
 ratio on a timer and reports pbjs video `bidWon` separately, which is what
-that case needs.
+that case needs. Confirmed working on 2026-09-04: the page's player shell is a
+**`<mux-player id="nw-video-player">`** custom element (390×219 on mobile),
+and the ads render in a **`.nw-ima-ad-container`** inside it holding 4
+iframes and 2 `<video>` elements, sampled ~95× over one article scroll at
+100% max in-view. The script resolves the ad container in preference to the
+shell — a comma-separated `querySelector` can't express that preference
+(it returns the first match in *document* order), which is how a first cut
+ended up measuring the shell and reporting 0 iframes. No video bid was won in that short sample — video
+wins are rarer than banner, so catching onetag there needs volume, same as
+smilewanted.
 
 ### SmileWanted could not be caught from this runner
 

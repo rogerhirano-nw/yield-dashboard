@@ -126,10 +126,19 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
   // player's geometry and in-view ratio on a timer instead; the pbjs bidWon
   // event for the 'video' ad unit names the bidder.
   window.__nwf.player = {max: 0, samples: 0, box: null};
-  const PLAYER_SEL = '.nw-ima-ad-container, [id*="ima-ad"], [class*="ima-ad"], ' +
-                     '[id*="video-player"], [class*="video-player"]';
+  // One resolver, exported on __nwf so the inspect pass reads the SAME
+  // element: sampling geometry off one node while listing iframes off
+  // another produces a record describing two different things.
+  // Preference order matters and a comma-list can't express it —
+  // querySelector returns the first match in DOCUMENT order, not selector
+  // order, which is how an earlier version ended up measuring the player
+  // shell (<mux-player>, no ad iframes in it) instead of the ad container.
+  window.__nwf.pickPlayer = function () {
+    return document.querySelector('.nw-ima-ad-container, [id*="ima-ad"], [class*="ima-ad"]')
+        || document.querySelector('[id*="video-player"], [class*="video-player"]');
+  };
   setInterval(function () {
-    const el = document.querySelector(PLAYER_SEL);
+    const el = window.__nwf.pickPlayer();
     if (!el) return;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;
@@ -144,7 +153,24 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
             (el.className ? '.' + String(el.className).slice(0, 40) : '');
   }, 500);
   window.pbjs = window.pbjs || {que: []};
+  window.__nwf.auction = {};   // bidder -> {requested, bid, noBid, timeout, error, cpms:[]}
   pbjs.que.push(function () {
+    const tally = (b, k, cpm) => {
+      if (!b) return;
+      const a = window.__nwf.auction[b] || (window.__nwf.auction[b] =
+        {requested: 0, bid: 0, noBid: 0, timeout: 0, error: 0, cpms: []});
+      a[k] += 1;
+      if (cpm != null) a.cpms.push(Number(cpm));
+    };
+    try {
+      pbjs.onEvent('bidRequested', d => tally(d && d.bidderCode, 'requested'));
+      pbjs.onEvent('bidResponse', d => tally(d && d.bidderCode, 'bid', d && d.cpm));
+      pbjs.onEvent('noBid', d => tally(d && (d.bidder || d.bidderCode), 'noBid'));
+      pbjs.onEvent('bidTimeout', d => (Array.isArray(d) ? d : [d]).forEach(
+        x => tally(x && (x.bidder || x.bidderCode), 'timeout')));
+      pbjs.onEvent('bidderError', d => tally(
+        d && d.bidderRequest && d.bidderRequest.bidderCode, 'error'));
+    } catch (_) {}
     ['bidWon', 'adRenderSucceeded', 'adRenderFailed', 'bidderError'].forEach(function (ev) {
       try {
         pbjs.onEvent(ev, function (d) {
@@ -230,13 +256,14 @@ INSPECT_JS = r"""
     scriptHosts: [...new Set(scripts)],
     player: (function () {
       const p = (window.__nwf && window.__nwf.player) || null;
-      const el = document.querySelector('.nw-ima-ad-container, [id*="ima-ad"], [class*="ima-ad"]');
+      const el = (window.__nwf && window.__nwf.pickPlayer) ? window.__nwf.pickPlayer() : null;
       return Object.assign({}, p, el ? {
         iframes: [...el.querySelectorAll('iframe')].map(f => ({box: rect(f), style: sty(f)})),
         videos: [...el.querySelectorAll('video')].map(v => ({box: rect(v), style: sty(v)})),
         inSlot: false
       } : {});
     })(),
+    auction: window.__nwf ? window.__nwf.auction : {},
     gpt: window.__nwf ? window.__nwf.gpt : [],
     pb: window.__nwf ? window.__nwf.pb : [],
     viz: window.__nwf ? window.__nwf.viz : {}
@@ -476,6 +503,41 @@ def main() -> int:
               f"-> {'met' if r['metThreshold'] else 'NEVER MET' if r['metThreshold'] is False else 'n/a'}")
         print(f"  {_fmt_slot(r.get('dom'))}")
         print(f"  {r['url']}")
+
+    # ── auction outcomes: why a bidder never renders ─────────────────────
+    print("\n" + "=" * 78)
+    print("AUCTION OUTCOMES BY BIDDER (a bidder absent from the tables above is")
+    print("explained here: not bidding vs bidding-and-losing vs erroring)")
+    print("=" * 78)
+    tot: dict[str, dict] = defaultdict(
+        lambda: {"requested": 0, "bid": 0, "noBid": 0, "timeout": 0, "error": 0, "cpms": []})
+    for p in pages:
+        for b, a in (p.get("auction") or {}).items():
+            for k in ("requested", "bid", "noBid", "timeout", "error"):
+                tot[b][k] += a.get(k, 0)
+            tot[b]["cpms"].extend(a.get("cpms") or [])
+    wins = Counter(r["bidder"] for r in renders if r["bidder"])
+    print(f"{'bidder':<18}{'requested':>10}{'bids':>7}{'noBid':>7}{'timeout':>9}"
+          f"{'error':>7}{'wins':>6}{'median cpm':>12}")
+    for b, a in sorted(tot.items(), key=lambda kv: -kv[1]["requested"]):
+        cpms = sorted(a["cpms"])
+        med = f"{cpms[len(cpms) // 2]:.2f}" if cpms else "-"
+        print(f"{b:<18}{a['requested']:>10}{a['bid']:>7}{a['noBid']:>7}"
+              f"{a['timeout']:>9}{a['error']:>7}{wins.get(b, 0):>6}{med:>12}")
+    for b in TARGET_BIDDERS:
+        a = tot.get(b)
+        if not a:
+            print(f"\n  {b}: never even requested — not configured on these slots, "
+                  f"or dropped before the auction (consent/geo module).")
+        elif a["bid"] == 0:
+            print(f"\n  {b}: requested {a['requested']}× and NEVER BID "
+                  f"(noBid {a['noBid']}, timeout {a['timeout']}, error {a['error']}). "
+                  f"No amount of extra page loads will catch a render — the demand "
+                  f"isn't reaching this client. Geo/IP is the first suspect.")
+        elif not wins.get(b):
+            print(f"\n  {b}: bid {a['bid']}× (median cpm "
+                  f"{sorted(a['cpms'])[len(a['cpms']) // 2]:.2f}) but won 0 — "
+                  f"losing the auction, so more loads may eventually catch one.")
 
     # ── in-stream video ──────────────────────────────────────────────────
     # Not a GPT slot, so none of the tables above can contain it. onetag's
