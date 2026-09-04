@@ -152,6 +152,83 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
     p.sel = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
             (el.className ? '.' + String(el.className).slice(0, 40) : '');
   }, 500);
+  // WHO hides the ad iframe? The end state (0x0 display:none) doesn't say
+  // whether the creative's own script did it, GPT collapsed an empty render,
+  // or a slot refresh orphaned the frame — and the publisher-side fix is
+  // different for each. Patch the style/attribute paths to grab a stack at
+  // the moment an AV-measured frame is hidden or zeroed. Purely
+  // observational: every patch calls through to the original, and any
+  // failure is swallowed so the page behaves normally either way.
+  window.__nwf.hides = [];
+  (function () {
+    const isAdFrame = el => {
+      try { return el && el.tagName === 'IFRAME' && /^google_ads_iframe_/.test(el.id || ''); }
+      catch (_) { return false; }
+    };
+    const note = (el, how, value) => {
+      try {
+        window.__nwf.hides.push({
+          t: Date.now() - window.__nwf.t0, id: (el.id || '').slice(0, 80),
+          how: how, value: String(value).slice(0, 40),
+          slot: (function () { let n = el.parentElement;
+            while (n) { if (/^dfp-ad-/.test(n.id || '')) return n.id; n = n.parentElement; }
+            return null; })(),
+          // The stack names the script that did it — vendor CDN vs GPT vs ours.
+          stack: (new Error()).stack.split('\n').slice(1, 7).join(' | ').slice(0, 700)
+        });
+      } catch (_) {}
+    };
+    const hiding = (prop, val) => {
+      const v = String(val).trim().toLowerCase();
+      return (prop === 'display' && v === 'none') || (prop === 'visibility' && v === 'hidden') ||
+             ((prop === 'width' || prop === 'height') && (v === '0' || v === '0px'));
+    };
+    try {
+      const sp = CSSStyleDeclaration.prototype.setProperty;
+      CSSStyleDeclaration.prototype.setProperty = function (prop, val) {
+        try { if (hiding(prop, val)) {
+          const el = this.parentRule ? null : (this.__nwfEl || null);
+          if (isAdFrame(el)) note(el, 'style.setProperty:' + prop, val);
+        } } catch (_) {}
+        return sp.apply(this, arguments);
+      };
+      // el.style.display = 'none' goes through the accessor, not setProperty.
+      ['display', 'visibility', 'width', 'height'].forEach(function (prop) {
+        const d = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, prop);
+        if (!d || !d.set) return;
+        Object.defineProperty(CSSStyleDeclaration.prototype, prop, Object.assign({}, d, {
+          set: function (val) {
+            try { if (hiding(prop, val) && isAdFrame(this.__nwfEl)) {
+              note(this.__nwfEl, 'style.' + prop, val);
+            } } catch (_) {}
+            return d.set.call(this, val);
+          }
+        }));
+      });
+      // CSSStyleDeclaration doesn't expose its element, so tag it on access.
+      const sd = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'style');
+      if (sd && sd.get) {
+        Object.defineProperty(HTMLElement.prototype, 'style', Object.assign({}, sd, {
+          get: function () { const st = sd.get.call(this);
+            try { st.__nwfEl = this; } catch (_) {} return st; }
+        }));
+      }
+      const sa = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, val) {
+        try {
+          if (isAdFrame(this)) {
+            const n = String(name).toLowerCase();
+            if ((n === 'width' || n === 'height') && String(val).trim() === '0') {
+              note(this, 'setAttribute:' + n, val);
+            } else if (n === 'style' && /display\s*:\s*none|visibility\s*:\s*hidden/i.test(String(val))) {
+              note(this, 'setAttribute:style', val);
+            }
+          }
+        } catch (_) {}
+        return sa.apply(this, arguments);
+      };
+    } catch (_) {}
+  })();
   window.pbjs = window.pbjs || {que: []};
   window.__nwf.auction = {};   // bidder -> {requested, bid, noBid, timeout, error, cpms:[]}
   pbjs.que.push(function () {
@@ -311,6 +388,7 @@ INSPECT_JS = r"""
     })(),
     auction: window.__nwf ? window.__nwf.auction : {},
     snaps: window.__nwf ? window.__nwf.snaps : [],
+    hides: window.__nwf ? window.__nwf.hides : [],
     gpt: window.__nwf ? window.__nwf.gpt : [],
     pb: window.__nwf ? window.__nwf.pb : [],
     viz: window.__nwf ? window.__nwf.viz : {}
@@ -599,6 +677,21 @@ def main() -> int:
             print(f"    slot innerHTML ({len(html)} chars): {html[:300] or '(EMPTY)'}")
     if not any_snap:
         print("no target-bidder wins in this sample")
+
+    # ── who hid the ad iframe ────────────────────────────────────────────
+    print("\n" + "=" * 78)
+    print("WHO HID THE AV-MEASURED IFRAME (stack at the hiding call)")
+    print("=" * 78)
+    hides = [(p, h) for p in pages for h in (p.get("hides") or [])]
+    if not hides:
+        print("no ad iframe was hidden or zeroed in this sample")
+    for p, h in hides:
+        print(f"\n[{p.get('profile')}] t={h.get('t')}ms {h.get('slot')} "
+              f"via {h.get('how')}={h.get('value')}")
+        print(f"    frame: {h.get('id')}")
+        for line in (h.get("stack") or "").split(" | "):
+            if line.strip():
+                print(f"    {line.strip()[:140]}")
 
     # ── auction outcomes: why a bidder never renders ─────────────────────
     print("\n" + "=" * 78)
