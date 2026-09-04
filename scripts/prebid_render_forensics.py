@@ -171,6 +171,49 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
       pbjs.onEvent('bidderError', d => tally(
         d && d.bidderRequest && d.bidderRequest.bidderCode, 'error'));
     } catch (_) {}
+    // On every win, immediately record the slot's contents and any large
+    // node that is NOT inside an ad slot. For a 0x0/display:none iframe this
+    // is what separates "the unit rendered somewhere else" (a breakout, i.e.
+    // a measurement problem) from "nothing rendered at all" (an impression
+    // counted with no ad, a different and worse problem).
+    window.__nwf.snaps = [];
+    try {
+      pbjs.onEvent('bidWon', function (b) {
+        setTimeout(function () {
+          const code = b && b.adUnitCode;
+          const div = code && document.getElementById(code);
+          const bx = el => { const r = el.getBoundingClientRect();
+            return {w: Math.round(r.width), h: Math.round(r.height),
+                    y: Math.round(r.y + scrollY)}; };
+          const slotEls = [...document.querySelectorAll('[id^="dfp-ad-"]')];
+          const big = [...document.querySelectorAll('body *')].filter(el => {
+            const c = getComputedStyle(el);
+            if (!['fixed', 'absolute', 'sticky'].includes(c.position)) return false;
+            if (c.display === 'none' || c.visibility === 'hidden') return false;
+            const r = el.getBoundingClientRect();
+            if (r.width * r.height < 20000) return false;
+            return !slotEls.some(s => s.contains(el));
+          }).slice(0, 25).map(el => ({
+            tag: el.tagName.toLowerCase(), id: (el.id || '').slice(0, 50),
+            cls: String(el.className || '').slice(0, 70), box: bx(el),
+            position: getComputedStyle(el).position,
+            iframes: el.querySelectorAll('iframe').length,
+            srcs: [...el.querySelectorAll('iframe')].map(
+              f => (f.getAttribute('src') || f.getAttribute('name') || '').slice(0, 90))
+          }));
+          window.__nwf.snaps.push({
+            t: Date.now() - window.__nwf.t0,
+            bidder: b && b.bidder, code: code,
+            slotHTML: div ? div.innerHTML.slice(0, 1200) : null,
+            slotBox: div ? bx(div) : null,
+            iframes: div ? [...div.querySelectorAll('iframe')].map(f => ({
+              box: bx(f), display: getComputedStyle(f).display,
+              src: (f.getAttribute('src') || '').slice(0, 90)})) : [],
+            bodyBig: big
+          });
+        }, 400);   // let the creative's own JS run before looking
+      });
+    } catch (_) {}
     ['bidWon', 'adRenderSucceeded', 'adRenderFailed', 'bidderError'].forEach(function (ev) {
       try {
         pbjs.onEvent(ev, function (d) {
@@ -264,6 +307,7 @@ INSPECT_JS = r"""
       } : {});
     })(),
     auction: window.__nwf ? window.__nwf.auction : {},
+    snaps: window.__nwf ? window.__nwf.snaps : [],
     gpt: window.__nwf ? window.__nwf.gpt : [],
     pb: window.__nwf ? window.__nwf.pb : [],
     viz: window.__nwf ? window.__nwf.viz : {}
@@ -330,9 +374,28 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     # Scroll the article in viewport-ish steps with dwell time: lazy slots need
     # to enter view, and Active View needs the ad on screen for >=1s to count.
     step = PROFILE_CFG[profile]["viewport"]["height"] // 2
+    shot_n = 0
+    seen_snaps = 0
     for _ in range(24):
         pg.mouse.wheel(0, step)
         time.sleep(1.6)
+        # Catch a target bidder's render while it is still on screen — the
+        # end-of-scroll pass would only see whatever survived.
+        try:
+            snaps = pg.evaluate("() => (window.__nwf && window.__nwf.snaps) || []")
+        except Exception:
+            continue
+        if len(snaps) > seen_snaps:
+            for sn in snaps[seen_snaps:]:
+                if (sn.get("bidder") or "").lower() in TARGET_BIDDERS:
+                    shot_n += 1
+                    try:
+                        pg.screenshot(path=str(
+                            SHOTS / f"{idx:02d}-{profile}-win{shot_n}-"
+                                    f"{sn['bidder']}-{sn.get('code', 'x')}.png"))
+                    except Exception:
+                        pass
+            seen_snaps = len(snaps)
     time.sleep(4)
     try:
         data = pg.evaluate(INSPECT_JS)
@@ -503,6 +566,35 @@ def main() -> int:
               f"-> {'met' if r['metThreshold'] else 'NEVER MET' if r['metThreshold'] is False else 'n/a'}")
         print(f"  {_fmt_slot(r.get('dom'))}")
         print(f"  {r['url']}")
+
+    # ── win-time snapshots ───────────────────────────────────────────────
+    print("\n" + "=" * 78)
+    print("WIN-TIME DOM SNAPSHOTS (target bidders, captured 400ms after bidWon)")
+    print("=" * 78)
+    any_snap = False
+    for p in pages:
+        for sn in p.get("snaps") or []:
+            if (sn.get("bidder") or "").lower() not in TARGET_BIDDERS:
+                continue
+            any_snap = True
+            sb = sn.get("slotBox") or {}
+            print(f"\n[{p.get('profile')}] {sn.get('bidder')} -> {sn.get('code')} "
+                  f"at t={sn.get('t')}ms, slot {sb.get('w')}x{sb.get('h')}")
+            for f in sn.get("iframes") or []:
+                print(f"    iframe {f['box']['w']}x{f['box']['h']} "
+                      f"display={f['display']} src={f.get('src') or '-'}")
+            big = sn.get("bodyBig") or []
+            # The decisive line: with a hidden slot iframe, is there anything
+            # big outside the slots that could BE the unit?
+            print(f"    {len(big)} large node(s) outside ad slots at win time:")
+            for b in big[:10]:
+                print(f"      {b['tag']}#{b['id'] or '-'} .{(b['cls'] or '-')[:38]} "
+                      f"{b['box']['w']}x{b['box']['h']} {b['position']} "
+                      f"iframes={b['iframes']} {';'.join(b.get('srcs') or [])[:70]}")
+            html = (sn.get("slotHTML") or "").strip()
+            print(f"    slot innerHTML ({len(html)} chars): {html[:300] or '(EMPTY)'}")
+    if not any_snap:
+        print("no target-bidder wins in this sample")
 
     # ── auction outcomes: why a bidder never renders ─────────────────────
     print("\n" + "=" * 78)
