@@ -74,6 +74,13 @@ HEADFUL = os.environ.get("HEADFUL") == "1"
 # "decline" leaves it up. Comparing the two separates "this creative is
 # broken" from "this creative won't render without consent".
 CONSENT = (os.environ.get("CONSENT") or "accept").lower()
+# Capture throughput knobs. The default dwell exists so Active View's 1s
+# clock can run; when the goal is catching a rare bidder's RENDER rather than
+# measuring viewability, a shorter dwell buys far more page loads per hour.
+SCROLL_STEPS = int(os.environ.get("SCROLL_STEPS") or "24")
+SCROLL_DWELL = float(os.environ.get("SCROLL_DWELL") or "1.6")
+# Write results after every load so a long sweep survives being interrupted.
+INCREMENTAL = os.environ.get("INCREMENTAL", "1") == "1"
 
 # Article URLs look like /slug-1234567 — the homepage also links sections and
 # live blogs, which run a different slot set, so match the numeric id suffix.
@@ -491,9 +498,9 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     step = PROFILE_CFG[profile]["viewport"]["height"] // 2
     shot_n = 0
     seen_snaps = 0
-    for _ in range(24):
+    for _ in range(SCROLL_STEPS):
         pg.mouse.wheel(0, step)
-        time.sleep(1.6)
+        time.sleep(SCROLL_DWELL)
         # Catch a target bidder's render while it is still on screen — the
         # end-of-scroll pass would only see whatever survived.
         try:
@@ -626,8 +633,21 @@ def main() -> int:
             for profile in PROFILES:
                 print(f"[load {i + 1}/{len(urls)} {profile}] {url}")
                 page = _run_one(browser, url, profile, i)
-                if page:
-                    pages.append(page)
+                if not page:
+                    continue
+                pages.append(page)
+                hits = [r for r in _renders(page)
+                        if (r.get("bidder") or "") in TARGET_BIDDERS]
+                for h in hits:
+                    blank = (h.get("dom") or {}).get("iframeHidden")
+                    print(f"    *** CAPTURED {h['bidder']} on {h['slot']} "
+                          f"({'BLANK' if blank else 'rendered'})")
+                if INCREMENTAL:
+                    try:
+                        (SHOTS / "renders.json").write_text(json.dumps(
+                            [r for p in pages for r in _renders(p)], indent=1))
+                    except Exception:
+                        pass
         browser.close()
 
     renders = [r for p in pages for r in _renders(p)]
