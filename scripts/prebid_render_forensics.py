@@ -40,7 +40,18 @@ Usage:
     TARGET_BIDDERS=smilewanted,oms,onetag,ogury LOADS=12 python …
 
 Env knobs: ARTICLE_URLS, LOADS, TARGET_BIDDERS, PROFILES (mobile,desktop),
-SHOTS_DIR, CHROME_PATH, BROWSER_PROXY, HEADFUL=1.
+SHOTS_DIR, CHROME_PATH, BROWSER_PROXY, HEADFUL=1, BROWSER_CHANNEL=chrome,
+INCOGNITO=1, SCROLL_STEPS, SCROLL_DWELL.
+
+Running it from a laptop (recommended for SmileWanted):
+
+    pip install playwright && playwright install chromium
+    BROWSER_CHANNEL=chrome INCOGNITO=1 HEADFUL=1 LOADS=15 \
+      TARGET_BIDDERS=smilewanted python scripts/prebid_render_forensics.py
+
+A residential IP is the point: from a datacenter runner SmileWanted is
+requested on every auction and essentially never bids, so its render cannot
+be observed there at all.
 Output is plain text (the companion workflow posts it as a PR comment) plus
 a JSON dump of every observed render at $SHOTS_DIR/renders.json.
 """
@@ -76,6 +87,16 @@ BROWSER_PROXY = (os.environ.get("BROWSER_PROXY")
                  or os.environ.get("HTTPS_PROXY")
                  or os.environ.get("https_proxy") or "")
 HEADFUL = os.environ.get("HEADFUL") == "1"
+# Use a real installed browser instead of Playwright's bundled Chromium:
+# BROWSER_CHANNEL=chrome (or chrome-beta, msedge). Worth doing from a laptop
+# rather than a datacenter runner — SmileWanted is requested on every auction
+# here and essentially never bids, and a residential IP + a real Chrome build
+# is the most likely way to see its demand at all.
+BROWSER_CHANNEL = os.environ.get("BROWSER_CHANNEL") or ""
+# Playwright's default context is already incognito-equivalent (throwaway
+# profile, no cookies, history or extensions). INCOGNITO=1 additionally passes
+# Chrome's own --incognito flag.
+INCOGNITO = os.environ.get("INCOGNITO") == "1"
 # "accept" (default) dismisses the consent banner before the scroll pass;
 # "decline" leaves it up. Comparing the two separates "this creative is
 # broken" from "this creative won't render without consent".
@@ -420,8 +441,13 @@ def _launch(pw):
             # Chromium's TLS 1.3 ClientHello; capping the version keeps
             # certificate verification fully on. Harmless off-proxy.
             "--ssl-version-max=tls1.2"]
+    if INCOGNITO:
+        args.append("--incognito")
     kw = {"headless": not HEADFUL, "args": args}
-    if CHROME_PATH:
+    if BROWSER_CHANNEL:
+        # channel and executable_path are mutually exclusive; channel wins.
+        kw["channel"] = BROWSER_CHANNEL
+    elif CHROME_PATH:
         kw["executable_path"] = CHROME_PATH
     if BROWSER_PROXY:
         kw["proxy"] = {"server": BROWSER_PROXY}
