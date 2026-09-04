@@ -207,6 +207,9 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
             slotHTML: div ? div.innerHTML.slice(0, 1200) : null,
             slotBox: div ? bx(div) : null,
             iframes: div ? [...div.querySelectorAll('iframe')].map(f => ({
+              // id is decisive: google_ads_iframe_* is the GPT-served frame
+              // Active View measures; anything else is a vendor frame.
+              id: (f.id || '').slice(0, 80), gpt: /^google_ads_iframe_/.test(f.id || ''),
               box: bx(f), display: getComputedStyle(f).display,
               src: (f.getAttribute('src') || '').slice(0, 90)})) : [],
             bodyBig: big
@@ -581,8 +584,9 @@ def main() -> int:
             print(f"\n[{p.get('profile')}] {sn.get('bidder')} -> {sn.get('code')} "
                   f"at t={sn.get('t')}ms, slot {sb.get('w')}x{sb.get('h')}")
             for f in sn.get("iframes") or []:
-                print(f"    iframe {f['box']['w']}x{f['box']['h']} "
-                      f"display={f['display']} src={f.get('src') or '-'}")
+                tag = "GPT/AV-measured" if f.get("gpt") else "vendor"
+                print(f"    iframe [{tag}] {f['box']['w']}x{f['box']['h']} "
+                      f"display={f['display']} id={f.get('id') or '-'}")
             big = sn.get("bodyBig") or []
             # The decisive line: with a hidden slot iframe, is there anything
             # big outside the slots that could BE the unit?

@@ -146,28 +146,58 @@ nativo, triplelift, teads, criteo and **smilewanted**. Slots are
 `dfp-ad-inarticle1…10`, `dfp-ad-sticky`, `dfp-ad-interstitial` and the IMA
 video player.
 
-### Ogury renders two completely different ways, and one is Mobkoi-shaped
+### Ogury: the sticky slot collapses, and it is NOT a breakout
 
-| Slot | Creative | GPT iframe | Slot well | Max in-view | AV threshold |
-|---|---|---|---|---|---|
-| `dfp-ad-sticky` (2 of 2) | 1×1 | **0×0, `display:none`** | 390×50 | — | n/a |
-| `dfp-ad-inarticle4` (mobile) | 1×1 | 390×730 + 390×1095 | 390×1095 | 77% | 30% (427,050px²) |
-| `dfp-ad-inarticle7` (desktop) | 1×1 | 970×250 | 1440×250 | 100% | 50% |
+The iframe **ids** settle what the geometry alone could not. `google_ads_iframe_*`
+is the GPT-served frame — the one Active View measures; anything else is a
+vendor frame.
 
-**Every Ogury render on `dfp-ad-sticky` hides the GPT iframe at 0×0** —
-across both sweeps, 4 for 4, all attributed by pbjs `bidWon` (not by the
-weaker `hb_bidder` targeting). That is the Mobkoi breakout signature exactly:
-GAM serves a 1×1, the measured iframe is hidden, and the unit is built
-somewhere else. Ogury's in-article renders are the opposite — real iframes
-filling real wells, comfortably over threshold. Same bidder, same page, two
-render modes; only one of them is a measurement problem.
+| Slot | Iframes present (id → size, display) | Verdict |
+|---|---|---|
+| `dfp-ad-sticky` (2 of 2, 152-render sweep) | `google_ads_iframe_…/sticky_0` → **0×0, `display:none`**, and nothing else | **collapsed** |
+| `dfp-ad-sticky` (later run) | `google_ads_iframe_…/sticky_0` → 300×50, visible | healthy |
+| `dfp-ad-inarticle4` (mobile) | `ogy-iframe-wm-hb-iart-…` → 390×730 visible **+** `google_ads_iframe_…/inarticle4_0` → **390×1095 visible** | healthy |
+| `dfp-ad-inarticle7` (desktop) | `google_ads_iframe_…/inarticle7_0` → 970×250 visible | healthy |
 
-Three other renders tripped the hidden-iframe flag (aps, sovrn, rubicon —
-one each) but they are a **different thing** and shouldn't be quoted as the
-same finding: all three are 1×1 iframes at `display:block` attributed only by
-`hb_bidder` targeting, i.e. almost certainly passback/tracking renders rather
-than the bidder's ad. Ogury's are `0×0 display:none` under trusted
-attribution.
+**On the collapsed sticky renders the GPT iframe is the *only* iframe in the
+slot, and it is hidden at 0×0.** Win-time DOM snapshots (400ms after
+`bidWon`, before anything can be torn down) confirm there is no Ogury node
+anywhere outside the ad slots and no vendor iframe inside the slot. So
+nothing renders in its place: **the impression is counted, no ad is shown,
+and Active View reports it non-viewable — correctly.**
+
+That is the opposite of the Mobkoi diagnosis. Mobkoi's number was *wrong*
+because a real, visible unit was being measured in the wrong element. Here
+the number is *right*: there is nothing to view. The distinction decides the
+fix, so it is worth stating plainly — **do not mirror this.** An iframe
+mirror on a slot with no content behind it would manufacture viewable
+impressions for an ad that was never shown, which is precisely the thing the
+mirror was careful *not* to do.
+
+Ogury's in-article renders are healthy and need nothing: the GPT iframe stays
+visible and large (390×1095 mobile — it, not the vendor's 390×730 frame, is
+what AV measures; 970×250 desktop), reaching 65–77% in view against a 30%
+large-creative threshold.
+
+**So the fix for Ogury is:**
+1. **Raise it with Ogury as a delivery defect, not a viewability one.** The
+   evidence is specific: on the sticky slot their creative sets the
+   GPT-served iframe to `display:none` at 0×0 and renders nothing, on a
+   share of impressions. We are being served blank and paying attention
+   cost for it. This is a render bug on their side, not a measurement
+   disagreement — a much stronger and simpler conversation than the Mobkoi
+   one.
+2. **Pending a fix, stop Ogury on `dfp-ad-sticky`** (PBS-side or wrapper
+   config), leaving its healthy in-article demand alone. The revenue cost is
+   only the *delta* to the next-best bid on those impressions, and what is
+   being lost is blank renders.
+3. **Do not apply the iframe mirror**, per above.
+
+Sample caveat: 2 collapsed and 1 healthy sticky render observed. The
+collapse is real and reproducible, but its *rate* — which is what decides
+how much of the 21pp gap it explains — comes from the GAM audit's per-ad-unit
+cut, not from this. If Ogury reads near 0% on `sticky` and 80%+ in-article,
+the story is confirmed and the fix scopes to one slot.
 
 ### OneTag's banner render is clean; its video deficit is out of reach here
 
@@ -188,13 +218,38 @@ ended up measuring the shell and reporting 0 iframes. No video bid was won in th
 wins are rarer than banner, so catching onetag there needs volume, same as
 smilewanted.
 
-### SmileWanted could not be caught from this runner
+### SmileWanted never bids from this runner — so it cannot be caught here
 
-**0 wins in 152 renders**, despite being ~5% of Prebid banner impressions and
-configured on every in-article slot and sticky. The likely reason is the
-runner's **US datacenter IP** — SmileWanted is a French SSP and its demand is
-geo-weighted. Catching it on-page needs an EU egress (or a residential IP);
-until then the GAM audit is the route for the largest of the four cases.
+Instrumenting the auction (rather than sampling more pages) answered this in
+one run of 4 articles × 2 profiles:
+
+    bidder          requested   bids  noBid  timeout  error  wins
+    smilewanted            67      0     67        2      7     0
+
+**Requested on every auction, never bids.** Not losing on price, not a
+sampling problem — the demand does not reach this client at all, so no
+number of page loads or device profiles will ever produce a render here.
+(Confirmed across both device profiles: the 152-render sweep was 75 mobile +
+77 desktop, iPhone emulation with touch, and SmileWanted won zero in each.)
+Leading suspect is the runner's **US datacenter IP** against a French SSP;
+the **Ketch consent banner** visible on these loads is a second candidate,
+since consent state gates which bidders are called.
+
+Consequences: seeing how SmileWanted renders needs a browser on an
+EU/residential IP — a colleague loading an article with `?pbjs_debug=true`,
+or this script run from an EU egress. Failing that, the GAM audit still
+answers whether its 40.4% is placement mix or bidder-specific; it just
+cannot supply the DOM picture.
+
+Two more results from the same table:
+* **onetag bids but loses** — 4 bids, median $0.48, 0 wins. Catchable with
+  more loads, unlike smilewanted.
+* **oms was never requested** on these slots at all, consistent with its tiny
+  38k volume.
+
+Reading note: s2s bidders show `requested 0` because the client only requests
+`mgnipbs` (Magnite Prebid Server) and PBS-sourced bids return under their own
+bidder codes. Expected, and it confirms attribution works.
 
 ### Limitation worth knowing before quoting this harness
 

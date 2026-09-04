@@ -1020,10 +1020,18 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   on-page DOM/GPT forensics on **article pages** — the homepage runs a
   different slot set and none of these bidders is configured on it), and the
   decision rules for when the Mobkoi iframe mirror actually applies (a
-  breakout floors at ~0%, so 40–56% is a different animal). First finding:
-  ogury renders one way on `dfp-ad-sticky` (1×1, GPT iframe hidden at 0×0 —
-  Mobkoi-shaped) and another in-article (a real 390×1094 well, which grades
-  on Active View's 30% large-creative rule and tops out at 65–67% in-view).
+  breakout floors at ~0%, so 40–56% is a different animal). **Ogury,
+  resolved:** on `dfp-ad-sticky` the GPT-served iframe is the slot's *only*
+  iframe and is hidden at 0×0 `display:none` with nothing rendered in its
+  place — an impression counted with no ad, which Active View reports
+  non-viewable **correctly**. That is the opposite of Mobkoi (whose number
+  was wrong because a real unit was measured in the wrong element), so
+  **never mirror it** — a mirror there would manufacture viewability for an
+  ad that was never shown. It is a delivery defect to raise with Ogury, and
+  a reason to drop them from that slot meanwhile; their in-article renders
+  are healthy and need nothing. **SmileWanted** is requested on every
+  auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
+  forensics for it needs an EU/residential egress.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
