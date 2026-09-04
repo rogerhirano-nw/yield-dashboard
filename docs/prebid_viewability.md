@@ -291,10 +291,21 @@ Leading suspect is the runner's **US datacenter IP** against a French SSP;
 the **Ketch consent banner** visible on these loads is a second candidate,
 since consent state gates which bidders are called.
 
-**The two renders it did produce were healthy**: `dfp-ad-sticky`, GPT iframe
-320×50 `display:inline`, 100% in view, `impressionViewable` fired — no sign
-of the Ogury failure mode. Two renders is far too thin to clear it, but it
-is the only direct render evidence for SmileWanted so far and it is clean.
+**Every render it has produced is healthy.** Four captured so far across the
+sweeps, on two different slot types, none showing the Ogury failure mode:
+
+| Slot | GPT iframe | Blank? |
+|---|---|---|
+| `dfp-ad-sticky` ×2 | 320×50 `display:inline`, 100% in view | no |
+| `dfp-ad-inarticle6` | 300×250 `display:block` | no |
+| `dfp-ad-inarticle7` | 300×250 `display:block` | no |
+
+Four renders against 4.6M impressions cannot clear a bidder, and they are all
+from a datacenter IP on the rare occasions it does bid — plausibly not the
+traffic that makes up its 40.4%. But the evidence points **away** from a
+render defect and toward **placement mix**, which is the opposite of Ogury and
+means the GAM audit's mix-vs-render split is the deciding test rather than
+more page loads.
 
 Consequences: seeing how SmileWanted renders needs a browser on an
 EU/residential IP — a colleague loading an article with `?pbjs_debug=true`,
