@@ -68,7 +68,13 @@ TARGET_BIDDERS = [b.strip().lower() for b in (
 PROFILES = [p.strip() for p in (os.environ.get("PROFILES") or "mobile,desktop").split(",") if p.strip()]
 SHOTS = Path(os.environ.get("SHOTS_DIR") or "/tmp/prebid-forensics")
 CHROME_PATH = os.environ.get("CHROME_PATH") or ""
-BROWSER_PROXY = os.environ.get("BROWSER_PROXY") or ""
+# Default to the session's own proxy rather than a hardcoded port: the agent
+# proxy can move ports mid-session, and a stale port fails every page load
+# with ERR_PROXY_CONNECTION_FAILED while curl (which reads the env) still
+# works — an hour-wasting way to look like a tuning problem.
+BROWSER_PROXY = (os.environ.get("BROWSER_PROXY")
+                 or os.environ.get("HTTPS_PROXY")
+                 or os.environ.get("https_proxy") or "")
 HEADFUL = os.environ.get("HEADFUL") == "1"
 # "accept" (default) dismisses the consent banner before the scroll pass;
 # "decline" leaves it up. Comparing the two separates "this creative is
