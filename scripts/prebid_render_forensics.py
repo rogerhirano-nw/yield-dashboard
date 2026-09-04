@@ -70,6 +70,10 @@ SHOTS = Path(os.environ.get("SHOTS_DIR") or "/tmp/prebid-forensics")
 CHROME_PATH = os.environ.get("CHROME_PATH") or ""
 BROWSER_PROXY = os.environ.get("BROWSER_PROXY") or ""
 HEADFUL = os.environ.get("HEADFUL") == "1"
+# "accept" (default) dismisses the consent banner before the scroll pass;
+# "decline" leaves it up. Comparing the two separates "this creative is
+# broken" from "this creative won't render without consent".
+CONSENT = (os.environ.get("CONSENT") or "accept").lower()
 
 # Article URLs look like /slug-1234567 — the homepage also links sections and
 # live blogs, which run a different slot set, so match the numeric id suffix.
@@ -452,6 +456,27 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         ctx.close()
         return {}
     time.sleep(6)
+    # Consent matters for what renders: a creative that refuses to paint
+    # without consent looks identical to one that is simply broken. Accept
+    # by default so the run resembles a consenting user; CONSENT=decline
+    # leaves the banner up, which is what makes the two distinguishable.
+    consent_clicked = False
+    if CONSENT == "accept":
+        for sel in ("#ketch-banner button", "[id*='ketch'] button",
+                    "button[title*='Accept' i]", "button"):
+            try:
+                for btn in pg.query_selector_all(sel)[:12]:
+                    txt = (btn.inner_text() or "").strip().lower()
+                    if txt in ("accept all", "accept", "i agree", "agree",
+                               "got it", "ok", "allow all", "accept cookies"):
+                        btn.click(timeout=2000)
+                        consent_clicked = True
+                        break
+            except Exception:
+                pass
+            if consent_clicked:
+                break
+        time.sleep(3)
     # Scroll the article in viewport-ish steps with dwell time: lazy slots need
     # to enter view, and Active View needs the ad on screen for >=1s to count.
     step = PROFILE_CFG[profile]["viewport"]["height"] // 2
@@ -485,6 +510,8 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         data = {}
     if data:
         data["profile"] = profile
+        data["consent"] = CONSENT
+        data["consentClicked"] = consent_clicked
         data["reqHosts"] = hosts.most_common(30)
         try:
             shot = SHOTS / f"{idx:02d}-{profile}.png"
@@ -601,6 +628,8 @@ def main() -> int:
     print("=" * 78)
     print(f"{len(pages)} page loads, {len(renders)} non-empty slot renders, "
           f"targets={','.join(TARGET_BIDDERS)}")
+    ok_consent = sum(1 for p in pages if p.get("consentClicked"))
+    print(f"consent mode={CONSENT}, banner dismissed on {ok_consent}/{len(pages)} loads")
 
     # ── viewability + render mode by bidder ──────────────────────────────
     by_bidder: dict[str, list[dict]] = defaultdict(list)
