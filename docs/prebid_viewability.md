@@ -179,19 +179,47 @@ visible and large (390×1095 mobile — it, not the vendor's 390×730 frame, is
 what AV measures; 970×250 desktop), reaching 65–77% in view against a 30%
 large-creative threshold.
 
-**So the fix for Ogury is:**
-1. **Raise it with Ogury as a delivery defect, not a viewability one.** The
-   evidence is specific: on the sticky slot their creative sets the
-   GPT-served iframe to `display:none` at 0×0 and renders nothing, on a
-   share of impressions. We are being served blank and paying attention
-   cost for it. This is a render bug on their side, not a measurement
-   disagreement — a much stronger and simpler conversation than the Mobkoi
-   one.
-2. **Pending a fix, stop Ogury on `dfp-ad-sticky`** (PBS-side or wrapper
-   config), leaving its healthy in-article demand alone. The revenue cost is
-   only the *delta* to the next-best bid on those impressions, and what is
-   being lost is blank renders.
-3. **Do not apply the iframe mirror**, per above.
+**Mechanism, pinned down (10-load run, ogury won sticky on 6 pages):**
+Patching the style and attribute paths to capture a stack trace whenever an
+`google_ads_iframe_*` element is hidden or zeroed caught **nothing** — across
+8 blank renders, no script ever hid the frame. Win-time snapshots (400ms
+after `bidWon`) show it already at 0×0 `display:none` on the failures and
+already 300×50 visible on the successes. So the frame is not *hidden*; it is
+**never revealed** — GPT creates it hidden and shows it when the creative
+renders, and on these impressions the creative never renders. Nobody breaks
+anything; Ogury's sticky creative simply fails to paint.
+
+The failure is **page-consistent and frequent**: the sticky slot refreshes
+(2 renders/page), and both renders on a page share the outcome — 5 of 6
+pages blank on both, 1 of 6 fine on both, i.e. **8 of 10 sticky renders
+blank**. It is not "the second render fails", and it does not correlate with
+Ogury also winning an in-article slot on the same page (two all-blank pages
+had no in-article Ogury at all). Their in-article renders on those same
+pages work fine, so their SDK is alive on the page — it is the sticky
+creative specifically.
+
+**So the fix for Ogury is, in order:**
+1. **Blank-detect + refresh on `dfp-ad-sticky`, excluding Ogury on the
+   retry.** The failure is precisely detectable from the page: ~1.5–2s after
+   `slotRenderEnded`, if the slot's `google_ads_iframe_*` is still 0×0 /
+   `display:none`, the impression is blank. Refresh the slot so a bidder who
+   renders fills it. **The retry must exclude the bidder that just blanked** —
+   the page-consistent double-blank above is exactly what happens when the
+   refresh re-serves Ogury. This needs no vendor cooperation and *keeps* the
+   revenue that dropping them would forfeit.
+   Honest limit: the blank impression is already counted, so this does not
+   erase it — it converts a dead impression into a second, live one
+   (slot blended ≈ (0 + viewable)/2 rather than 0). Keep it scoped to
+   blank-detection rather than becoming a general refresh.
+2. **Send Ogury the bug report in parallel.** The reproduction is tight and
+   hard to dismiss: 8 of 10 sticky wins paint nothing, the GPT iframe never
+   leaves its pre-render state, *no script in the page hides it*, and their
+   own in-article creatives render fine on the same pageviews.
+3. **Drop them from sticky** only if (1) fails to recover the slot and (2)
+   stalls.
+
+**Do not apply the iframe mirror** (above): there is nothing behind the
+frame to reveal.
 
 Sample caveat: 2 collapsed and 1 healthy sticky render observed. The
 collapse is real and reproducible, but its *rate* — which is what decides
@@ -226,14 +254,22 @@ one run of 4 articles × 2 profiles:
     bidder          requested   bids  noBid  timeout  error  wins
     smilewanted            67      0     67        2      7     0
 
-**Requested on every auction, never bids.** Not losing on price, not a
-sampling problem — the demand does not reach this client at all, so no
-number of page loads or device profiles will ever produce a render here.
+**Requested on every auction, essentially never bids.** A later 10-load run
+put it at **1 bid in 70 requests** (and 2 wins off that one bid), so the
+right statement is a ~1% bid rate from this runner, not a flat zero — an
+earlier note here said "never bids", which the second run disproved. Either
+way it is not losing on price: the demand barely arrives, so catching a
+render is a matter of many loads and luck rather than sampling technique.
 (Confirmed across both device profiles: the 152-render sweep was 75 mobile +
 77 desktop, iPhone emulation with touch, and SmileWanted won zero in each.)
 Leading suspect is the runner's **US datacenter IP** against a French SSP;
 the **Ketch consent banner** visible on these loads is a second candidate,
 since consent state gates which bidders are called.
+
+**The two renders it did produce were healthy**: `dfp-ad-sticky`, GPT iframe
+320×50 `display:inline`, 100% in view, `impressionViewable` fired — no sign
+of the Ogury failure mode. Two renders is far too thin to clear it, but it
+is the only direct render evidence for SmileWanted so far and it is clean.
 
 Consequences: seeing how SmileWanted renders needs a browser on an
 EU/residential IP — a colleague loading an article with `?pbjs_debug=true`,
