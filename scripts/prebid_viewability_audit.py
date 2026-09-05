@@ -245,9 +245,11 @@ def main() -> int:
         peer_i = allc["impressions"].reindex(mine.index).fillna(0) - mine["impressions"]
         peer_v = allc["viewable_impressions"].reindex(mine.index).fillna(0) - mine["viewable_impressions"]
         print(f"\n-- {b} ({int(sub['impressions'].sum()):,} imps) --")
-        print(f"{'unit / device / size':<52}{'imps':>10}{'this%':>8}{'peers%':>8}")
+        print(f"{' / '.join(cell_cols):<52}{'imps':>10}{'this%':>8}{'peers%':>8}")
         for k, r in mine.sort_values("impressions", ascending=False).head(12).iterrows():
-            label = " / ".join(str(x) for x in k)[:50]
+            # A one-column groupby gives scalar keys; only tuples get joined.
+            label = (" / ".join(str(x) for x in k) if isinstance(k, tuple)
+                     else str(k))[:50]
             print(f"{label:<52}{int(r.impressions):>10,}"
                   f"{_rate(r.viewable_impressions, r.impressions):>7.1f}%"
                   f"{_rate(peer_v.loc[k], peer_i.loc[k]):>7.1f}%")
