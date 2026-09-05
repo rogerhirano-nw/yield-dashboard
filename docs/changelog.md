@@ -46,6 +46,40 @@ and why" index, keyed by PR. Newest first.
   in-article a real 390x1094 well whose 65-67% in-view is simply what a
   large creative does under the 30% rule. Docs: `docs/prebid_viewability.md`.
 
+## 2026-09-02 — Ad performance benchmark workbook
+
+- **`docs/Newsweek_Digital_Ads_Benchmarks_Master.xlsx`** — the benchmark
+  companion to the sales team's `Newsweek_Digital_Ads_Specs_Master.xlsx`, built
+  by **`scripts/build_ad_benchmarks.py`**. The specs master keeps its benchmark
+  per placement as **free text in one column** (`"0.15% CTR, 40% VCR, 65%
+  Engagement, 70% Viewability"`), which can't be sorted, averaged or graded
+  against; this splits all 56 placements into numeric per-metric targets.
+- Four sheets: **Benchmarks** (targets + canonical format + measurement column +
+  review flags), **Performance Tracker** (paste GAM delivery, pick a placement,
+  get PASS/WATCH/MISS), **Thresholds** (banding levers + rollups by format),
+  **Definitions** (metric definitions, caveats, open questions).
+- **Grading is two levers**: WATCH at ≥90% of target (below that MISS), and a
+  10,000-impression floor under which the verdict reads THIN so a day-one line
+  isn't escalated on noise. A metric with **no target is not graded** — the
+  build hit exactly the bug that rule prevents: `INDEX` on a blank target cell
+  returns `0`, and a 0% target grades every line PASS.
+- The **measurement column** carries the viewability caveats that decide whether
+  a target means anything: breakout / parent-DOM renders read ~0% in Active View
+  (never sell vCPM there), interscrollers are gradeable only with the iframe
+  mirror live, Apple News 100% is Apple's guaranteed-view model not Active View,
+  social/newsletter are platform-reported.
+- **30 rows carry a review flag** — transcription issues found in the source:
+  Video Interscroller's `0.70% viewability` (entered as 70%, flagged
+  INTERPRETED), Newsletter MREC's `0.0006%` CTR (~370× below its sibling unit),
+  Apple News / Interstitial CTRs written without a `%` sign, six video units
+  with no VCR target, four placements with no benchmark at all, and two
+  intra-family CTR gaps worth a sanity check.
+- Docs: `docs/ad_benchmarks.md` (why it exists, grading rules, regeneration, the
+  open questions) + a `CLAUDE.md` subsystem pointer. Committed copy is
+  recalculated — 425 formulas, 0 errors. No dashboard or cache surface; this is
+  a standalone sales/AM-facing artifact.
+
+
 ## 2026-09-01 — beehiiv MCP server wired into the project config (#359)
 
 - **Added `beehiiv` (remote HTTP, `https://mcp.beehiiv.com/mcp`) to the
