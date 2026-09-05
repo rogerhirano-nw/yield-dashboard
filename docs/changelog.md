@@ -4,6 +4,48 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-04 — Prebid bidders below the Active View baseline: diagnostics
+
+- **Finding.** The *PreBid Display and Video* GAM report (Aug 14 - Sep 3)
+  recomputed impression-weighted: **smilewanted 40.4%** viewable on 4.6M
+  banner imps and **ogury 54.4%** on 2.8M (the report's pivot averages daily
+  rates unweighted and buried ogury), **oms 56.3%** on 38k, and **onetag
+  47.7%** on 138k in-stream video - against 78.7% banner / 86.5% video for
+  every other bidder on the same slots. Flat across all 21 days, so
+  structural rather than a regression. SmileWanted alone is 1.63M viewable
+  impressions short of baseline; lifting it moves the whole Prebid banner
+  number 75.8% -> 77.8%. All of them pay *above* average eCPM, so the answer
+  is fix-the-render-or-the-mix, not block-the-bidder.
+- **`dashboard_logic.viewability_mix_adjusted` + `av_threshold_pct`** (tested):
+  splits a bidder's viewability gap into **MIX** (it wins on less-viewable
+  slots/devices - a yield conversation) and **RENDER** (worse than peers in
+  the *same* unit/device/size cell - a creative problem). Baselines are
+  leave-one-out on both terms, so a bidder is never graded against its own
+  bad impressions; `mix_gap + render_gap` reconstructs the total gap.
+- **`scripts/prebid_viewability_audit.py`** (+ `prebid_viewability_audit.yml`):
+  GAM Active View eligible/measurable/viewable by hb_bidder x ad unit x
+  device x rendered size x format, run through the split, plus a per-day
+  series and the measurable rate (which is where an unmeasurable render
+  shows up, rather than in viewable%).
+- **`GAMClient._run_report` gained an optional `filters` argument** (v1 REST
+  `ReportDefinition.filters`, `(dimension, operation, values)` tuples, AND-ed)
+  - needed because `hb_bidder` reaches reporting as the high-cardinality
+  `KEY_VALUES_NAME` dimension and must be narrowed server-side. Existing
+  callers are unchanged.
+- **`scripts/prebid_render_forensics.py`** (+ `prebid_render_forensics.yml`):
+  the Mobkoi DOM forensics adapted to wrapper demand, which GAM's on-site
+  preview can't reach (the GAM creative is the Prebid universal creative, not
+  the bidder's markup). Loads real **article** pages in headless Chromium,
+  instruments GPT + Prebid before boot, scrolls with dwell time, and records
+  per render: the pbjs `bidWon` winner (trusted over `hb_bidder` targeting,
+  which only names the client-auction winner), GPT's own `impressionViewable`
+  verdict, the in-view% timeline vs Active View's 50%/30% threshold, and
+  iframe-vs-slot geometry.
+- **First live finding:** ogury renders two ways - on `dfp-ad-sticky` a 1x1
+  with the GPT iframe hidden at 0x0 (the Mobkoi breakout signature), and
+  in-article a real 390x1094 well whose 65-67% in-view is simply what a
+  large creative does under the 30% rule. Docs: `docs/prebid_viewability.md`.
+
 ## 2026-09-02 — Ad performance benchmark workbook
 
 - **`docs/Newsweek_Digital_Ads_Benchmarks_Master.xlsx`** — the benchmark
@@ -36,6 +78,7 @@ and why" index, keyed by PR. Newest first.
   open questions) + a `CLAUDE.md` subsystem pointer. Committed copy is
   recalculated — 425 formulas, 0 errors. No dashboard or cache surface; this is
   a standalone sales/AM-facing artifact.
+
 
 ## 2026-09-01 — beehiiv MCP server wired into the project config (#359)
 

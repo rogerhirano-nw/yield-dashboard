@@ -1298,3 +1298,106 @@ def ttd_cpa_for_li(df, key, start=None, end=None):
     if df.empty:
         return None
     return _ttd_cpa_aggregate(df)
+
+
+# Active View's own MRC thresholds: 50% of a creative's pixels in view for
+# 1 continuous second, or 30% when the creative is larger than 242,500px²
+# (Google's "large creative" cutoff — a full-height in-article unit).
+AV_LARGE_CREATIVE_PX = 242_500
+AV_THRESHOLD_SMALL_PCT = 50
+AV_THRESHOLD_LARGE_PCT = 30
+
+
+def av_threshold_pct(width, height) -> int:
+    """The in-view share Active View requires for this creative size."""
+    try:
+        area = float(width) * float(height)
+    except (TypeError, ValueError):
+        return AV_THRESHOLD_SMALL_PCT
+    return AV_THRESHOLD_LARGE_PCT if area > AV_LARGE_CREATIVE_PX else AV_THRESHOLD_SMALL_PCT
+
+
+def viewability_mix_adjusted(df, group_col, cell_cols,
+                             imp_col="impressions", view_col="viewable_impressions"):
+    """Split each group's viewability gap vs the site into MIX and RENDER.
+
+    A bidder can read low on Active View for two very different reasons, and
+    the fix is different for each:
+
+    * **mix** — it wins on slots/devices that are inherently less viewable
+      (below-the-fold in-article positions, refreshed slots, desktop rails).
+      Nothing is broken; it's a yield conversation.
+    * **render** — on the *same* slot and device as everyone else it still
+      measures worse, which points at how the creative renders (the Mobkoi
+      breakout class of problem — see docs/mobkoi_viewability.md).
+
+    Method: for every (group, cell) pair, compare the group's actual viewable
+    rate against what the *site* achieves in that same cell, then re-weight to
+    the group's own impression mix:
+
+        expected = Σ_cells (group_imps_cell × site_rate_cell) / Σ group_imps
+
+    `expected` is "what this bidder should score given only where it buys".
+    So `mix_gap = expected − peers_pct` (placement effect) and
+    `render_gap = actual − expected` (bidder-specific effect); the two add up
+    to the group's total gap vs its peers. A large negative render_gap on
+    decent volume is the signal worth a DOM investigation.
+
+    Every baseline here is leave-one-out — both the per-cell rates and the
+    overall `peers_pct` exclude the group being scored. Grading a bidder
+    partly against its own bad impressions would leak the render effect into
+    the mix term (a bidder alone in one cell would show a positive "mix"
+    advantage purely because it dragged the site average down).
+
+    `cell_cols` are the columns defining a comparable cell (typically ad unit
+    + device + creative size). Site rates are computed from `df` itself, so
+    pass the full population, not a pre-filtered slice. Cells where the site
+    has no impressions contribute nothing to `expected` and are reported as
+    `uncovered_impressions` — a group living entirely in cells nobody else
+    touches can't be mix-adjusted, and saying so beats a fake number.
+
+    Returns a DataFrame, one row per group, sorted by impressions desc.
+    """
+    cols = [group_col, *cell_cols, imp_col, view_col]
+    d = df[cols].copy()
+    for c in (imp_col, view_col):
+        d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0.0)
+    d = d[d[imp_col] > 0]
+    if d.empty:
+        return pd.DataFrame(columns=[group_col, "impressions", "actual_pct",
+                                     "expected_pct", "mix_gap_pp", "render_gap_pp",
+                                     "peers_pct", "uncovered_impressions"])
+
+    total_imp = d[imp_col].sum()
+    total_view = d[view_col].sum()
+
+    # Per-cell rates EXCLUDING the group being scored, so a bidder that
+    # dominates a cell isn't measured against its own broken number.
+    cell = d.groupby(list(cell_cols), dropna=False)[[imp_col, view_col]].sum()
+
+    rows = []
+    for name, g in d.groupby(group_col, dropna=False):
+        gi = g.groupby(list(cell_cols), dropna=False)[[imp_col, view_col]].sum()
+        others_imp = cell[imp_col].reindex(gi.index).fillna(0.0) - gi[imp_col]
+        others_view = cell[view_col].reindex(gi.index).fillna(0.0) - gi[view_col]
+        covered = others_imp > 0
+        rate = (others_view[covered] / others_imp[covered])
+        weights = gi.loc[covered, imp_col]
+        imps = float(g[imp_col].sum())
+        views = float(g[view_col].sum())
+        expected = float((rate * weights).sum() / weights.sum() * 100.0) if weights.sum() else float("nan")
+        actual = views / imps * 100.0
+        peer_imp = total_imp - imps
+        peers = (total_view - views) / peer_imp * 100.0 if peer_imp > 0 else float("nan")
+        rows.append({
+            group_col: name,
+            "impressions": imps,
+            "actual_pct": actual,
+            "expected_pct": expected,
+            "mix_gap_pp": expected - peers,
+            "render_gap_pp": actual - expected,
+            "peers_pct": peers,
+            "uncovered_impressions": float(gi.loc[~covered, imp_col].sum()),
+        })
+    out = pd.DataFrame(rows).sort_values("impressions", ascending=False)
+    return out.reset_index(drop=True)
