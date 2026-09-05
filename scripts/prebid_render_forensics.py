@@ -494,6 +494,13 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     ctx = browser.new_context(**PROFILE_CFG[profile])
     ctx.add_init_script(INIT_JS)
     pg = ctx.new_page()
+    # Bound every Playwright call. Without this a browser whose proxy died
+    # mid-load waits indefinitely and the sweep stalls silently at that load
+    # — indistinguishable, from the outside, from a slow page. The
+    # relaunch-on-proxy-error path fired correctly once and the run still
+    # hung, which is what this covers.
+    pg.set_default_timeout(30_000)
+    pg.set_default_navigation_timeout(45_000)
     hosts: Counter = Counter()
     pg.on("request", lambda r: hosts.update([urlparse(r.url).netloc]))
     try:

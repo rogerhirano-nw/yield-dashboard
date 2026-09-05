@@ -299,8 +299,9 @@ sweeps, on two different slot types, none showing the Ogury failure mode:
 | `dfp-ad-sticky` ×2 | 320×50 `display:inline`, 100% in view | no |
 | `dfp-ad-inarticle6` | 300×250 `display:block` | no |
 | `dfp-ad-inarticle7` | 300×250 `display:block` | no |
+| `dfp-ad-inarticle2` ×2 | 390×400 `display:block` | no |
 
-Four renders against 4.6M impressions cannot clear a bidder, and they are all
+Six renders against 4.6M impressions cannot clear a bidder, and they are all
 from a datacenter IP on the rare occasions it does bid — plausibly not the
 traffic that makes up its 40.4%. But the evidence points **away** from a
 render defect and toward **placement mix**, which is the opposite of Ogury and
