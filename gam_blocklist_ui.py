@@ -385,16 +385,21 @@ class GAMBlocklistBrowser:
         rewrote the page entirely" case that needs a human to update
         _PROTECTION_URL_CANDIDATES.
         """
-        # Per-candidate timeout for the "Advertiser URLs" element to appear.
-        # Replaces the previous 20s hardcoded sleep. Polls instead of waiting
-        # blindly — happy path returns as soon as the element is visible
-        # (typically 4-10s), and the candidate-rejection path waits up to
-        # this many seconds before deciding the URL is wrong. 45s comfortably
-        # covers the slow-GAM window that broke run #34 on 2026-06-22 at
-        # 04:04 EDT (transient: probe minutes later got the element back in
-        # ~7s on the same URL chain).
+        # Per-candidate timeout for the drawer to open. Polls instead of
+        # sleeping blindly — happy path returns as soon as the drawer's
+        # title is visible (typically 4-10s), and the candidate-rejection
+        # path waits up to this many seconds before deciding the URL is
+        # wrong. 90s (2026-09) because interactive testing 2026-09-05
+        # showed cold-load rendering the drawer in ~14s in real Chrome
+        # after Google's mid-August SPA update; the automated Playwright
+        # context with the persistent profile has been consistently
+        # slower and the previous 45s was hitting the timeout even when
+        # the URL was correct (verified: same profile's ARC session
+        # worked in the same run, so it's not session expiry). 3 * 90s
+        # worst-case = 270s URL chain — well under launchd's tolerance
+        # since AbandonProcessGroup=true.
         from playwright.sync_api import TimeoutError as PWTimeout
-        _PER_CANDIDATE_TIMEOUT_MS = 45_000
+        _PER_CANDIDATE_TIMEOUT_MS = 90_000
 
         for i, url_fmt in enumerate(_PROTECTION_URL_CANDIDATES):
             url = url_fmt.format(network_id=self.network_id,
@@ -473,14 +478,35 @@ class GAMBlocklistBrowser:
                       f"open within {_PER_CANDIDATE_TIMEOUT_MS//1000}s — trying next",
                       file=sys.stderr)
 
+        # Final-failure diagnostic: capture the actual page state so future
+        # investigation doesn't need to reproduce interactively. Screenshot
+        # + full DOM dump, always (not gated on --debug). Cheap on the
+        # failure path; never runs on the happy path.
+        try:
+            page.screenshot(
+                path=str(self.profile_dir / "debug-url-chain-exhausted.png"),
+                full_page=True,
+            )
+            (self.profile_dir / "debug-url-chain-exhausted.html").write_text(
+                page.content()
+            )
+            print(f"  [browser] wrote final-failure diagnostics to "
+                  f"{self.profile_dir}/debug-url-chain-exhausted.{{png,html}}",
+                  file=sys.stderr)
+        except Exception as diag_err:
+            print(f"  [browser] failed to write final diagnostics: {diag_err}",
+                  file=sys.stderr)
         raise RuntimeError(
             f"None of {len(_PROTECTION_URL_CANDIDATES)} known Protection URL "
             "patterns opened the Protection drawer within "
             f"{_PER_CANDIDATE_TIMEOUT_MS//1000}s each. Either Google moved the "
             "page again (find the new URL hash and prepend it to "
-            "_PROTECTION_URL_CANDIDATES) or the GAM session has expired "
+            "_PROTECTION_URL_CANDIDATES), the GAM session has expired "
             "(re-run with --inspect to log in manually and re-establish "
-            f"the profile at {self.profile_dir})."
+            f"the profile at {self.profile_dir}), or the persistent profile "
+            "has grown too slow (nuke the profile dir and re-inspect). See "
+            f"{self.profile_dir}/debug-url-chain-exhausted.png for what "
+            "the page actually looked like at timeout."
         )
 
     def _open_protection_page(self, protection_id: int):
