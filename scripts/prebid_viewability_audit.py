@@ -96,6 +96,53 @@ def _bidder(kv: object) -> str | None:
     return s.split("=", 1)[1].strip().lower() if s.startswith(_HB_PREFIX) else None
 
 
+# GAM rejects some dimension combinations outright with
+# REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY, and which ones is not documented
+# — gam_client already carries three separate notes about it (DEAL_ID,
+# INVENTORY_FORMAT_NAME, VIDEO_AD_DURATION each have to be pulled in their
+# own report). Rather than burn a workflow round-trip per guess, try the
+# richest grain first and fall back a dimension at a time, reporting which
+# set the API actually accepted.
+_CELL_DIMS_LADDER = [
+    ["KEY_VALUES_NAME", "AD_UNIT_NAME", "DEVICE_CATEGORY_NAME",
+     "RENDERED_CREATIVE_SIZE", "INVENTORY_FORMAT_NAME"],
+    ["KEY_VALUES_NAME", "AD_UNIT_NAME", "DEVICE_CATEGORY_NAME",
+     "RENDERED_CREATIVE_SIZE"],
+    ["KEY_VALUES_NAME", "AD_UNIT_NAME", "DEVICE_CATEGORY_NAME"],
+    ["KEY_VALUES_NAME", "AD_UNIT_NAME"],
+    ["KEY_VALUES_NAME"],
+]
+# Rendered size is the decisive cut for smilewanted (is an outstream-shaped
+# unit carrying the deficit?), so if it falls out of the cell grain above,
+# pull it on its own — the same "incompatible dimensions go in their own
+# report" pattern the delivery reports already use.
+_SIZE_DIMS_LADDER = [
+    ["KEY_VALUES_NAME", "RENDERED_CREATIVE_SIZE", "INVENTORY_FORMAT_NAME"],
+    ["KEY_VALUES_NAME", "RENDERED_CREATIVE_SIZE"],
+]
+
+
+def _is_incompatible(exc: Exception) -> bool:
+    return "CONSTRAINTS_INCOMPATIBILITY" in str(exc)
+
+
+def _pull_first_workable(gam: GAMClient, ladder: list[list[str]],
+                         start: date, end: date, label: str):
+    """Return (df, dims) for the first dimension set GAM accepts."""
+    last: Exception | None = None
+    for dims in ladder:
+        try:
+            df = _pull(gam, dims, start, end)
+            print(f"[{label}] grain accepted: {', '.join(dims)}")
+            return df, dims
+        except Exception as exc:  # noqa: BLE001 — only retry the known refusal
+            if not _is_incompatible(exc):
+                raise
+            print(f"[{label}] rejected ({len(dims)} dims): {', '.join(dims)}")
+            last = exc
+    raise SystemExit(f"[{label}] every dimension set was rejected: {last}")
+
+
 def _pull(gam: GAMClient, dims: list[str], start: date, end: date) -> pd.DataFrame:
     df = gam._run_report(
         dimensions=dims,
@@ -151,8 +198,12 @@ def main() -> int:
     # Cell grain: ad unit + device + rendered size is what makes two bidders
     # comparable. INVENTORY_FORMAT_NAME keeps banner and video apart, since
     # their baselines differ by ~10pp and mixing them would fake a mix effect.
-    cell = _pull(gam, ["KEY_VALUES_NAME", "AD_UNIT_NAME", "DEVICE_CATEGORY_NAME",
-                       "RENDERED_CREATIVE_SIZE", "INVENTORY_FORMAT_NAME"], start, end)
+    cell, cell_dims = _pull_first_workable(gam, _CELL_DIMS_LADDER, start, end, "cells")
+    # Everything downstream keys off whatever grain survived.
+    cell_cols = [d.lower() for d in cell_dims if d != "KEY_VALUES_NAME"
+                 and d != "INVENTORY_FORMAT_NAME"]
+    if "inventory_format_name" not in cell.columns:
+        cell["inventory_format_name"] = "(all formats)"
     cell.to_csv(OUT_DIR / "by_cell.csv", index=False)
     print(f"\n{len(cell):,} bidder×unit×device×size×format rows, "
           f"{int(cell['impressions'].sum()):,} impressions")
@@ -168,9 +219,7 @@ def main() -> int:
     for fmt, sub in cell.groupby("inventory_format_name", dropna=False):
         if sub["impressions"].sum() < 1000:
             continue
-        adj = dl.viewability_mix_adjusted(
-            sub, "bidder",
-            ["ad_unit_name", "device_category_name", "rendered_creative_size"])
+        adj = dl.viewability_mix_adjusted(sub, "bidder", cell_cols)
         adj = adj[adj["impressions"] >= 1000]
         print(f"\n-- {fmt} --")
         print(f"{'bidder':<18}{'imps':>12}{'actual%':>9}{'expected%':>11}"
@@ -190,7 +239,7 @@ def main() -> int:
         if sub.empty:
             print(f"\n-- {b}: no impressions in the window --")
             continue
-        keys = ["ad_unit_name", "device_category_name", "rendered_creative_size"]
+        keys = cell_cols
         mine = sub.groupby(keys)[["impressions", "viewable_impressions"]].sum()
         allc = cell.groupby(keys)[["impressions", "viewable_impressions"]].sum()
         peer_i = allc["impressions"].reindex(mine.index).fillna(0) - mine["impressions"]
@@ -203,8 +252,42 @@ def main() -> int:
                   f"{_rate(r.viewable_impressions, r.impressions):>7.1f}%"
                   f"{_rate(peer_v.loc[k], peer_i.loc[k]):>7.1f}%")
 
+    # ── viewability by rendered creative size ────────────────────────────
+    # The smilewanted question in one table: does an outstream-shaped unit
+    # carry the deficit while its standard display measures like peers?
+    if "rendered_creative_size" not in cell.columns:
+        try:
+            size_df, _ = _pull_first_workable(gam, _SIZE_DIMS_LADDER, start, end, "sizes")
+        except SystemExit as exc:
+            print(exc)
+            size_df = None
+    else:
+        size_df = cell
+    if size_df is not None and not size_df.empty:
+        print("\n" + "=" * 78)
+        print("VIEWABILITY BY RENDERED CREATIVE SIZE (focus bidders vs peers)")
+        print("=" * 78)
+        for b in FOCUS:
+            sub = size_df[size_df["bidder"] == b]
+            if sub.empty:
+                continue
+            g = sub.groupby("rendered_creative_size")[
+                ["impressions", "viewable_impressions"]].sum()
+            allg = size_df.groupby("rendered_creative_size")[
+                ["impressions", "viewable_impressions"]].sum()
+            print(f"\n-- {b} --")
+            print(f"{'size':<20}{'imps':>12}{'this%':>9}{'peers%':>9}")
+            for k, r in g.sort_values("impressions", ascending=False).head(10).iterrows():
+                pi = allg["impressions"].get(k, 0) - r.impressions
+                pv = allg["viewable_impressions"].get(k, 0) - r.viewable_impressions
+                print(f"{str(k):<20}{int(r.impressions):>12,}"
+                      f"{_rate(r.viewable_impressions, r.impressions):>8.1f}%"
+                      f"{_rate(pv, pi):>8.1f}%")
+
     # ── regression check: structural, or did it start on a date? ─────────
-    daily = _pull(gam, ["DATE", "KEY_VALUES_NAME", "INVENTORY_FORMAT_NAME"], start, end)
+    daily, _ = _pull_first_workable(
+        gam, [["DATE", "KEY_VALUES_NAME", "INVENTORY_FORMAT_NAME"],
+              ["DATE", "KEY_VALUES_NAME"]], start, end, "daily")
     daily.to_csv(OUT_DIR / "by_day.csv", index=False)
     print("\n" + "=" * 78)
     print("DAILY viewable% — a step change dates a regression; a flat line is structural")
