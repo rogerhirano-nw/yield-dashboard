@@ -227,9 +227,9 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
 /* ---------- 970x250 billboard: header band, story left, image right ---------- */
 @media (min-width: 860px) and (min-height: 200px) {
   #nw-insights-injected {
-    --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 24px; --divider-mb: 12px;
+    --pad-x: 34px; --head-pt: 18px; --head-pb: 0px; --tick-w: 24px; --divider-mb: 12px;
     --title-fs: 22px; --logo-h: 20px; --sponsor-fs: 10px;
-    --text-pt: 8px; --text-pb: 24px;
+    --text-pt: 8px; --text-pb: 27px;
     --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 8px;
     --hed-fs: 24px; --hed-lh: 1.3; --hed-lines: 2; --hed-mb: 10px;
     /* 3 dek lines, not 2: a 160-char SUBTITLE (the Infiniti copy) needs the
