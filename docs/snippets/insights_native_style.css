@@ -213,7 +213,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   /* Centered against the text block, not top:0 -- at the top it sat immediately
      under the sponsor logo and the two right-hand elements crowded each other. */
   #nw-insights-injected .insights-hero__cta {
-    position: absolute; right: var(--pad-x); top: 50%; transform: translateY(-50%);
+    position: absolute; right: var(--pad-x); top: 50%;
+    transform: translateY(calc(-50% + 6px));   /* nudged below centre */
     margin: 0; align-self: auto;
   }
   #nw-insights-injected .insights-hero__content {
