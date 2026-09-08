@@ -246,13 +246,13 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   /* The hero spans BOTH rows and bleeds to the card edges, so it runs the full
      height of the unit; the header band is confined to the left column with it. */
   #nw-insights-injected .insights-hero__content {
-    grid-template-columns: 1fr 340px;
+    grid-template-columns: 340px 1fr;
     grid-template-rows: auto 1fr;
-    grid-template-areas: "head media" "text media";
+    grid-template-areas: "media head" "media text";
   }
   #nw-insights-injected .insights-hero__media { padding: 0; }
-  /* the header band is confined to the left column now the hero spans both
-     rows, so "right" here is the column's right edge, against the image */
+  /* hero on the left, story on the right -- the same shape as the leaderboard.
+     The lockup's margin-left:auto now reaches the card's own right edge. */
   #nw-insights-injected .insights-hero__sponsor { margin-left: auto; }
   #nw-insights-injected .insights-hero__description { display: -webkit-box; }
 }
