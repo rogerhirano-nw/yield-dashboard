@@ -169,6 +169,19 @@ ink box in a canvas and prints one of:
 
 Anything under 70% is flagged. Run the preview before a creative ships.
 
+### Click-through opens in a new tab
+
+The card's anchor is `target="_blank"` (Roger, 2026-09-08) — the sponsored
+article opens in a new tab and the reader keeps their place in the article they
+were reading. It was `target="_top"`, which replaced the host page.
+
+`rel="noopener"` stays: without it the opened tab receives a `window.opener`
+handle back into the ad document. **Do not add `noreferrer`** — it strips
+`document.referrer` on the landing page, and advertiser-side analytics commonly
+attribute on it. The click itself is tracked by Google's
+`%%CLICK_URL_UNESC%%` redirect, not by the referrer, so GAM's click counting is
+unaffected either way.
+
 ### The live slot clips the iframe's last pixel row
 
 On the real in-article 300x250 the card rendered **249px tall in a 250px unit**
