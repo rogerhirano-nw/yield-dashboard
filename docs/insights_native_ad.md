@@ -169,6 +169,38 @@ ink box in a canvas and prints one of:
 
 Anything under 70% is flagged. Run the preview before a creative ships.
 
+### The section-header rule is the site's, matched to source
+
+The red tick over a hairline is the site's own section-header device (the one
+above "Recommended For You" on the same article page). Two components ship it
+identically in the page's CSS — `FeaturedWinners__divider` and
+`RankingRelatedPosts__titleBar` — and both agree:
+
+```
+divider    display:flex; align-items:center; width:100%
+red tick   width:24px;  height:2px;  #e91d0c   (--brand-default)
+grey line  flex:1;      height:1px;  #e7e0c9   (--border-subtle)
+gap below  16px, before a 28px Playfair title
+```
+
+**The tick is taller than the line and vertically centred on it**, so it stands
+proud on both sides. The unit's first version drew one flat 2px bar with a red
+segment at its left — same colours, but it read as a single heavy rule rather
+than a tick over a hairline, which is what made it look unlike the page
+(Roger, 2026-09-08). Verified in the render at 2×:
+
+```
+tick  : 24 x 2 css px, rgb(233,29,12), rows 38-41
+line  : 1 css px,      rgb(231,224,201), rows 40-41   -> tick straddles the line
+```
+
+The tick is a **fixed 24px at every breakpoint on the site**, so `--tick-w` is a
+single base token here too rather than a per-size override.
+
+The one deliberate deviation is `--divider-mb`: the site allows 16px under the
+rule before a 28px title, which a 250px-tall ad cannot spend. It runs 4–10px by
+size.
+
 ### The card shadow has no y-offset
 
 `box-shadow: 0 0 3px rgba(31,30,25,0.07)`, deliberately not the original
