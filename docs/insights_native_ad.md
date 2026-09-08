@@ -119,6 +119,33 @@ Two things that surprise people:
 Live copy for reference: the Infiniti creative is an **84-char** `TITLE`, which
 is *right at* the cap — a word longer and it ellipses. Cognizant is 80.
 
+#### These are NOT the homepage native's limits
+
+The homepage / in-article unit (fluid style `989975`) has **no copy cap at
+all**. Its stylesheet carries no `-webkit-line-clamp` and no fixed height — the
+`clamp()` calls in it are font-*size* clamps (responsive type), which is easy to
+misread as line clamping. Copy never truncates there; the unit just grows
+taller. Measured with the Infiniti copy vs. the same copy doubled:
+
+| Container | Normal copy | Doubled copy | Clipped? |
+|---|---|---|---|
+| 970px | 477px tall | 707px tall | never |
+| 728px | 424px | 651px | never |
+| 300px | 476px | 657px | never |
+
+So the two surfaces fail in opposite directions: **the homepage unit absorbs
+long copy by growing; the banners absorb it by ellipsing.** The practical
+consequence, since one native creative's `TITLE`/`SUBTITLE` feeds *every* style
+on the template:
+
+- **Write to the banner spec (85 / 200), not the homepage's.** It is the
+  strictest surface, and copy that fits it also reads fine on the homepage.
+- Copy authored for the homepage native will silently truncate on the banners.
+  A homepage headline is under no pressure to be short, so this is the likely
+  direction of the mistake.
+- The homepage unit shows the dek at every width; the banners show it on
+  970x250 only.
+
 The limits are a property of the type scale, not a constant: change a
 font-size, column width or line count in the stylesheet and they move.
 **Re-derive rather than trusting this table:**

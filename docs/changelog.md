@@ -59,6 +59,15 @@ and why" index, keyed by PR. Newest first.
   TITLE "the practical ceiling because it fills every clamp exactly" — it fits,
   but only just, and the real ceiling is 85. The limits track the type scale,
   so the script is the source of truth and the doc's table is a snapshot.
+- **The banner limits are NOT the homepage native's.** The fluid in-article
+  style `989975` has no `-webkit-line-clamp` and no fixed height (its `clamp()`
+  calls are font-*size* clamps — easy to misread), so copy there never
+  truncates, the unit grows: measured 477px tall at a 970 container with the
+  Infiniti copy, 707px with that copy doubled, never clipped at any width. The
+  two surfaces fail in opposite directions, and one creative's TITLE/SUBTITLE
+  feeds every style on the template — so **copy must be written to the banner
+  spec (85/200)**, which is strictest and also reads fine on the homepage.
+  Homepage-authored copy will silently ellipse on the banners.
 - **Both QA tools take `--values-json` + `--prefix`** (added while building a
   Cognizant sample), so copy can be proofed *before* the creative is trafficked
   — a values file supplies TITLE/SUBTITLE/HASHTAG/IMAGE/LOGO/DEST, and
