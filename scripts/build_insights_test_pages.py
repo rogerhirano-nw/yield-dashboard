@@ -56,7 +56,8 @@ h2.sec{font-family:Georgia,serif;font-size:19px;margin:34px 0 6px;font-weight:70
 p.note{margin:0 0 18px;color:var(--muted);font-size:13px;max-width:70ch;line-height:1.5}
 .slot{display:flex;flex-direction:column;gap:7px;margin:0 0 30px}
 .slot-l{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.slot iframe{border:1px solid var(--rule);display:block;background:var(--paper)}
+/* no box on the harness side — the unit draws its own 1px border */
+.slot iframe{border:0;display:block;background:var(--paper)}
 .page{background:#fff;border:1px solid var(--rule);padding:0 0 30px}
 .mast{border-bottom:2px solid var(--ink);margin:0 26px;padding:18px 0 12px;
   display:flex;align-items:baseline;justify-content:space-between}

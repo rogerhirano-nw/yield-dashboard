@@ -59,6 +59,14 @@ body, `system-ui` for the uppercase labels, `#F8F4E8` paper, `#1f1e19` ink,
 names match too (`insights-hero__*`), so a page audit or a GAM UI diff reads
 the same across sizes.
 
+The banners add one thing the fluid unit doesn't have: an **always-on 1px
+border** (`--rs-color-border-neutral-faded`, the warm hairline already declared
+in `989975`). The paper ground is close enough to a white page that the unit
+otherwise bleeds into the article; the hairline is what makes it read as a
+discrete card. `box-sizing` is `border-box`, so it costs 2px of the grid —
+the rectangle's `--media-h` and the leaderboard's paddings are set short to
+pay for it, which is why 728x90 in particular has no slack left.
+
 Two deliberate deviations, both forced by the height budget:
 
 1. **The hero is cropped** (2.7:1 / 16:9 / 2.2:1) rather than always 16:9.

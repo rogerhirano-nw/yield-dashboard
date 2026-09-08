@@ -19,6 +19,12 @@ and why" index, keyed by PR. Newest first.
   the 728x90 (16:9 hero left, story right), `≥860 & ≥200 tall` is the 970x250
   (header band, story left, hero right). Native styles are scoped to their
   creative template, so site-wide targeting touches Insights creatives only.
+- **Always-on 1px border** (`--rs-color-border-neutral-faded`, the warm
+  hairline already declared in `989975`): the paper ground is close enough to a
+  white page that the unit bleeds into the article without it. `box-sizing` is
+  `border-box`, so it costs 2px of the grid — the rectangle's `--media-h` and
+  the leaderboard's paddings are set short to pay for it (90px minus 2px leaves
+  728x90 with ~1px of slack).
 - **Same unit across all four surfaces.** Playfair Display 600 / Noto Serif /
   `#F8F4E8` paper / `#1f1e19` ink / the 2px `#e91d0c` tick, and the
   `insights-hero__*` class names, are lifted verbatim from `989975`. Two
