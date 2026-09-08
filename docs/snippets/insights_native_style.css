@@ -243,11 +243,15 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   #nw-insights-injected {
   }
   #nw-insights-injected .insights-hero__cta { align-self: flex-start; }
+  /* The hero spans BOTH rows and bleeds to the card edges, so it runs the full
+     height of the unit; the header band is confined to the left column with it. */
   #nw-insights-injected .insights-hero__content {
     grid-template-columns: 1fr 340px;
     grid-template-rows: auto 1fr;
-    grid-template-areas: "head head" "text media";
+    grid-template-areas: "head media" "text media";
   }
-  #nw-insights-injected .insights-hero__media { padding: 0 var(--pad-x) 24px 0; }
+  #nw-insights-injected .insights-hero__media { padding: 0; }
+  /* no top-right space left for the lockup, so it packs left in the header */
+  #nw-insights-injected .insights-hero__sponsor { margin-left: 0; }
   #nw-insights-injected .insights-hero__description { display: -webkit-box; }
 }
