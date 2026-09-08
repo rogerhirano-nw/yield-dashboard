@@ -97,7 +97,11 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
      as a discrete card. box-sizing is border-box, so the 2px it costs comes out
      of the grid — the rectangle's --media-h is set 2px short to pay for it. */
   border: 1px solid var(--card-edge);
-  box-shadow: 0 1px 3px rgba(31, 30, 25, 0.07);
+  /* No y-offset. With the card inset 2px off the clipped row (above), a
+     downward-offset shadow renders into that gap and the bottom edge reads as
+     a 1px rule plus a soft smudge -- heavier than the other three (Roger,
+     2026-09-08). A centred blur lifts the card off the ad band evenly. */
+  box-shadow: 0 0 3px rgba(31, 30, 25, 0.07);
   background-color: var(--background-page);
   font-family: var(--font-body);
   color: var(--foreground-default);

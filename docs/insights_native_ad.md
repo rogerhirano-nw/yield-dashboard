@@ -169,6 +169,23 @@ ink box in a canvas and prints one of:
 
 Anything under 70% is flagged. Run the preview before a creative ships.
 
+### The card shadow has no y-offset
+
+`box-shadow: 0 0 3px rgba(31,30,25,0.07)`, deliberately not the original
+`0 1px 3px`. The downward offset was harmless while the card ran flush to the
+iframe's last row — the shadow was simply clipped away. Once the card was inset
+2px (below), that shadow rendered into the gap and the bottom edge read as a 1px
+rule *plus* a soft smudge, heavier than the other three sides — "a 2 pixel border
+at the bottom" (Roger, 2026-09-08). Sampled at 2x on the 970x250:
+
+```
+                        rows below the border (outside -> in)
+  0 1px 3px             250, 248, 246, 244   <- visible smudge
+  0 0 3px               253, 252, 250, 248   <- fades to page white
+```
+
+The border itself was always 1px on all four sides; only the shadow changed.
+
 ### Click-through opens in a new tab
 
 The card's anchor is `target="_blank"` (Roger, 2026-09-08) — the sponsored
