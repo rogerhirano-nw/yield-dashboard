@@ -103,6 +103,24 @@ Two deliberate deviations, both forced by the height budget:
    **"Sponsored by &lt;logo&gt;" lockup and the "SPONSORED" tag both run at all
    three sizes**.
 
+### Fonts: the site's stack, not the dashboard's
+
+`docs/design_handoff/` documents **Benton Modern Display + Franklin Gothic**.
+That is the **dashboard's** system — an internal tool skinned with licensed
+binaries. **newsweek.com serves something different:** a trending-bar link on
+the live homepage inspects as **`12px "Noto Sans"`, `#1F1E19`** (2026-09-08).
+
+The unit has to match the page it renders on, not the internal tool, so the
+stack is **Noto Sans** (UI labels: SPONSORED BY, the category, the CTA),
+**Playfair Display** (headline — what the incumbent style `989975` already
+used), **Noto Serif** (body). All three are Google-hosted, which is also why a
+cross-origin creative iframe can actually load them; Benton and Franklin are
+licensed binaries the iframe could never reach.
+
+**Don't "correct" these against `design_handoff/` again** — that was done once
+on 2026-09-08 and had to be reverted. Verify against the live site with the
+element inspector instead.
+
 ### Hero asset requirements
 
 The unit renders its own headline, so the hero is a **photograph, not a

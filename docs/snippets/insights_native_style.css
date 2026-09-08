@@ -18,6 +18,8 @@
        which is the identity. Disclosure never depends on it: the "Sponsored
        by <logo>" lockup and the "SPONSORED" tag both run at all three sizes.
 */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Noto+Sans:wght@400;500;600&family=Noto+Serif:wght@400;500&display=swap');
+
 html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
 
 #nw-insights-injected {
@@ -33,16 +35,16 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
      read as part of the page. --card-edge is a firmer warm rule, plus a low
      shadow, so the unit reads as a discrete card on cream AND on white. */
   --card-edge: #e7e0c9;          /* --border, the system's warm hairline */
-  /* The Newsweek stacks. Benton Modern Display and Franklin Gothic are licensed
-     binaries that a cross-origin creative iframe cannot reach (it can't inherit
-     the parent page's faces), so in practice these resolve to the documented
-     fallbacks -- Georgia and Helvetica Neue/Arial. That is still the right
-     declaration: Georgia is a far closer match to Benton Modern than Playfair's
-     Didone was, and the day the faces are hosted publicly this picks them up
-     with no edit. */
-  --font-headline: "Benton Modern Display", Georgia, "Times New Roman", serif;
-  --font-body: "Franklin Gothic", "Helvetica Neue", Arial, sans-serif;
-  --font-sans: "Franklin Gothic", "Helvetica Neue", Arial, sans-serif;
+  /* What newsweek.com ACTUALLY serves, which is not what docs/design_handoff/
+     documents. That file is the DASHBOARD's system (Benton Modern Display +
+     Franklin Gothic, licensed binaries); the live site ships Google-hosted
+     faces -- a trending-bar link inspects as 12px "Noto Sans" #1F1E19 (Roger,
+     2026-09-08). The unit has to match the page it sits on, not the internal
+     tool, so: Noto Sans for UI labels, Playfair Display for display type (what
+     the incumbent style 989975 already used), Noto Serif for body. */
+  --font-headline: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Noto Serif", Georgia, serif;
+  --font-sans: "Noto Sans", system-ui, -apple-system, sans-serif;
 
   /* --- 300x250 medium rectangle is the base: the smallest box wins by
          default, so an unexpected size degrades to the most compact layout --- */
