@@ -1,0 +1,53 @@
+<!--
+  Newsweek "Insights" native style — fixed-size markup.
+  Paste into NativeStyleService.htmlSnippet (see scripts/setup_insights_native_styles.py).
+
+  Renders creative template 12412102 "Insights Premium Spotlight"
+  (vars: TITLE, SUBTITLE, HASHTAG, IMAGE, LOGO, 3RDPARTYTRACKING1/2) at
+  970x250, 728x90 and 300x250. ONE markup + ONE stylesheet serves all three —
+  the layout is chosen by media query, and a native style's iframe viewport IS
+  the slot size, so the match is exact.
+
+  Class names mirror the incumbent fluid in-article style (id 989975) so the
+  three banners read as the same unit in the GAM UI and in a page audit.
+  Companion stylesheet: insights_native_style.css
+-->
+<div id="nw-insights-injected">
+  <a class="insights-hero__link" href="%%CLICK_URL_UNESC%%%%DEST_URL%%" target="_top" rel="noopener">
+    <section class="insights-hero">
+      <div class="insights-hero__content">
+
+        <header class="insights-hero__header">
+          <div class="insights-hero__divider--top"></div>
+          <div class="insights-hero__header-row">
+            <h2 class="insights-hero__section-title">Insights</h2>
+            <div class="insights-hero__sponsor">
+              <span class="insights-hero__sponsor-label">Sponsored by</span>
+              <img class="insights-hero__sponsor-logo" src="[%LOGO%]" alt="Sponsor">
+            </div>
+          </div>
+        </header>
+
+        <div class="insights-hero__media">
+          <div class="insights-hero__image-wrapper">
+            <img class="insights-hero__image" src="[%IMAGE%]" alt="">
+          </div>
+        </div>
+
+        <div class="insights-hero__text">
+          <div class="insights-hero__tags">
+            <span class="insights-hero__tag">SPONSORED</span>
+            <span class="insights-hero__tag-sep"></span>
+            <span class="insights-hero__tag">#[%HASHTAG%]</span>
+          </div>
+          <h1 class="insights-hero__headline">[%TITLE%]</h1>
+          <p class="insights-hero__description">[%SUBTITLE%]</p>
+        </div>
+
+      </div>
+    </section>
+  </a>
+</div>
+
+<div style="display:none"><img src="[%3RDPARTYTRACKING1%]" border="0"></div>
+<div style="display:none"><img src="[%3RDPARTYTRACKING2%]" border="0"></div>

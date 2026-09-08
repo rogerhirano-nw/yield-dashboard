@@ -4,6 +4,51 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-08 — Insights native ad: 970x250 / 728x90 / 300x250
+
+- **Problem.** The Insights sponsored-content card (Infiniti QX65, creative
+  `138561753906`) is a GAM **native** creative on template `12412102`
+  "Insights Premium Spotlight". Its only native style, `989975`, is **fluid
+  1x1** targeted at `homepage3` — so the creative an AE has already trafficked
+  could not render in any standard banner slot.
+- **Three fixed-size native styles** on the same template, sharing **one
+  markup + one stylesheet** (`docs/snippets/insights_native_style.{html,css}`).
+  A native style renders in an iframe sized to the slot, so the creative's
+  viewport *is* the creative size and plain media queries pick the layout —
+  base (<600px) is the stacked 300x250 reference card, `≥600 & ≤150 tall` is
+  the 728x90 (16:9 hero left, story right), `≥860 & ≥200 tall` is the 970x250
+  (header band, story left, hero right). Native styles are scoped to their
+  creative template, so site-wide targeting touches Insights creatives only.
+- **Same unit across all four surfaces.** Playfair Display 600 / Noto Serif /
+  `#F8F4E8` paper / `#1f1e19` ink / the 2px `#e91d0c` tick, and the
+  `insights-hero__*` class names, are lifted verbatim from `989975`. Two
+  deviations forced by the height budget: the hero crops per size (2.7:1 /
+  16:9 / 2.2:1, `object-fit: cover`) and the dek is 970x250-only. Disclosure
+  does **not** ride on the dek — the "Sponsored by <logo>" lockup and the
+  "SPONSORED" tag both run at all three sizes.
+- **Copy is clamped, so over-long fields ellipse instead of breaking the box.**
+  The Infiniti creative (84-char TITLE, 166-char SUBTITLE) fills every clamp
+  exactly with no truncation, which makes it the practical ceiling.
+  **`scripts/preview_insights_native.py`** pulls a real creative's values from
+  GAM, renders all three sizes in headless Chromium at exact pixel size, PNGs
+  them to `data/insights_preview/` (gitignored) and flags overflow/clipping —
+  local design QA with no GAM write and no on-site preview.
+- **`scripts/build_insights_test_pages.py`** emits a **self-contained test
+  page** (`data/insights_preview/insights_test_page.html`) — the three units in
+  a mock article shell plus each isolated at 1:1, assets inlined, openable
+  locally or emailable to a seller. Every unit sits in an iframe sized to
+  exactly its slot, the same box GAM hands a native style, so what fits in the
+  file fits in the slot. Both QA tools **drop** the `3RDPARTYTRACKING1/2`
+  pixels rather than substituting them: they are real advertiser URLs (ml314
+  here) and a design render is not an impression.
+- **`scripts/setup_insights_native_styles.py`** creates the styles
+  (`NativeStyleService`), dry-run by default and lookup-first by name;
+  `--update` pushes local CSS edits onto the live styles, `--ad-unit` narrows
+  targeting from the default `newsweek` site root. Not automated: adding the
+  three sizes to the line item's creative placeholders in the GAM UI, which is
+  what makes the 1x1 native creative eligible for those slots.
+- Full write-up: `docs/insights_native_ad.md`.
+
 ## 2026-09-04 — Prebid bidders below the Active View baseline: diagnostics
 
 - **Finding.** The *PreBid Display and Video* GAM report (Aug 14 - Sep 3)

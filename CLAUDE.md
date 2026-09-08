@@ -1009,6 +1009,29 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `scripts/setup_fito_top_banner.py` (970x250 between article title and
   video player). Covers the INACTIVE-until-order-reapproved, viewport/size
   eligibility, and ONE_OR_MORE roadblocking gotchas.
+- `docs/insights_native_ad.md` — the **Insights** sponsored-content card as
+  fixed-size banners (**970x250 / 728x90 / 300x250**). It is a GAM *native*
+  creative (template `12412102` "Insights Premium Spotlight": TITLE / SUBTITLE
+  / HASHTAG / IMAGE / LOGO / 2 tracking pixels), and its only native style
+  (`989975`) is **fluid 1x1** on `homepage3` — so nothing could fill a standard
+  slot. Three fixed-size styles on the same template now share **one markup +
+  one stylesheet** (`docs/snippets/insights_native_style.{html,css}`); a native
+  style renders in an iframe sized to the slot, so the creative's viewport *is*
+  the creative size and plain **media queries** pick the layout exactly (no JS
+  sizing). A native style is scoped to its creative template, so site-wide
+  targeting only affects Insights creatives. Type/color/class names are lifted
+  verbatim from `989975` so all four surfaces are one unit; the hero crops per
+  size and the dek is 970-only, but the "Sponsored by <logo>" lockup and the
+  "SPONSORED" tag run at **all three sizes** so disclosure never depends on the
+  dek. Every size clamps its copy, so over-long TITLE/SUBTITLE fails as an
+  ellipsis, not a broken box — `scripts/preview_insights_native.py` renders a
+  real creative's values at exact pixel size in headless Chromium and flags
+  overflow before a flight ships, and `scripts/build_insights_test_pages.py`
+  emits a self-contained test page (units in a mock article shell + isolated at
+  1:1, each in an iframe sized to exactly its slot). Both **drop** the
+  `3RDPARTYTRACKING1/2` pixels instead of substituting them — a QA render is
+  not an impression. Setup: `scripts/setup_insights_native_styles.py`
+  (dry-run by default, lookup-first, `--update` pushes CSS edits to live styles).
 - `docs/prebid_viewability.md` — why some **Prebid wrapper bidders** read
   far below the site's Active View baseline (2026-09: smilewanted 40.4% and
   ogury 54.4% on banner, onetag 47.7% on video, vs 78.7%/86.5% for everyone
