@@ -35,6 +35,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
      read as part of the page. --card-edge is a firmer warm rule, plus a low
      shadow, so the unit reads as a discrete card on cream AND on white. */
   --card-edge: #e7e0c9;          /* --border, the system's warm hairline */
+  --cta-hover: #3d3b2e;          /* warm charcoal, the site's button hover */
   /* What newsweek.com ACTUALLY serves, which is not what docs/design_handoff/
      documents. That file is the DASHBOARD's system (Benton Modern Display +
      Franklin Gothic, licensed binaries); the live site ships Google-hosted
@@ -56,7 +57,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --title-fs: 15px;
   --logo-h: 13px;
   --sponsor-fs: 8.5px;
-  --media-h: 81px;
+  --media-h: 74px;
   --text-pt: 10px;
   --text-pb: 8px;
   --tag-fs: 9.5px;
@@ -68,8 +69,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --hed-mb: 0px;
   --dek-fs: 13px;
   --dek-lines: 2;
-  --cta-fs: 9px;
-  --cta-pad: 5px 9px;
+  --cta-fs: 9.5px;
+  --cta-pad: 8px 16px;
   --cta-mt: 6px;
 
   width: 100%;
@@ -188,6 +189,15 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   background-color: var(--foreground-default);   /* Newsweek ink, not pure black */
   border: 1px solid var(--foreground-default); border-radius: 2px;
   padding: var(--cta-pad); flex: none;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+#nw-insights-injected .insights-hero__cta:hover {
+  background-color: var(--cta-hover); border-color: var(--cta-hover);
+}
+/* the whole card is the click target, so the button reacts to hovering
+   anywhere on it -- not only when the pointer is over the button itself */
+#nw-insights-injected .insights-hero__link:hover .insights-hero__cta {
+  background-color: var(--cta-hover); border-color: var(--cta-hover);
 }
 #nw-insights-injected .insights-hero__cta::after { content: "\2192"; font-size: 1.15em; line-height: 1; }
 
@@ -207,7 +217,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
     --text-pt: 10px; --text-pb: 6px;  /* 90px minus the 2px border is a tight budget */
     --tag-fs: 9px; --tag-gap: 8px; --tags-mb: 4px;
     --hed-fs: 15px; --hed-lh: 1.25; --hed-lines: 2;
-    --cta-fs: 8.5px; --cta-pad: 4px 8px; --cta-mt: 0px;
+    --cta-mt: 0px;   /* size comes from the base rule -- one CTA everywhere */
   }
   #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
   #nw-insights-injected .insights-hero__sponsor--body { display: none; }
@@ -220,7 +230,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
      under the sponsor logo and the two right-hand elements crowded each other. */
   #nw-insights-injected .insights-hero__cta {
     position: absolute; right: var(--pad-x); top: 50%;
-    transform: translateY(calc(-50% + 6px));   /* nudged below centre */
+    transform: translateY(calc(-50% + 8px));   /* nudged below centre */
     margin: 0; align-self: auto;
   }
   #nw-insights-injected .insights-hero__content {
@@ -236,20 +246,20 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   #nw-insights-injected {
     --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 34px; --divider-mb: 10px;
     --title-fs: 22px; --logo-h: 20px; --sponsor-fs: 10px;
-    --text-pt: 8px; --text-pb: 22px;
+    --text-pt: 8px; --text-pb: 12px;   /* CTA sits lower in the card */
     --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 8px;
     --hed-fs: 24px; --hed-lh: 1.3; --hed-lines: 2; --hed-mb: 10px;
     /* 3 dek lines, not 2: a 160-char SUBTITLE (the Infiniti copy) needs the
        third to land its final clause instead of ellipsing mid-sentence, and
        the column has the room. */
     --dek-fs: 14px; --dek-lines: 3;
-    --cta-fs: 10px; --cta-pad: 13px 26px; --cta-mt: 9px;
+    --cta-mt: 9px;
   }
   #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
   #nw-insights-injected .insights-hero__sponsor--body { display: none; }
   #nw-insights-injected {
   }
-  #nw-insights-injected .insights-hero__cta { align-self: flex-end; }
+  #nw-insights-injected .insights-hero__cta { align-self: flex-end; margin-top: auto; }
   /* The hero spans BOTH rows and bleeds to the card edges, so it runs the full
      height of the unit; the header band is confined to the left column with it. */
   #nw-insights-injected .insights-hero__content {
