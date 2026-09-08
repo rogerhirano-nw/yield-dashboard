@@ -17,6 +17,22 @@ so the existing `insighttest` demo is left exactly as it is:
 
 Everything is gated, so nothing serves to a reader who doesn't have the param.
 
+Two GAM facts this encodes, both learned by getting them wrong first:
+
+  - A native creative associates ONLY to a line item whose placeholder is
+    **1x1 with creativeSizeType NATIVE**, bound to the creative template.
+    Banner-sized placeholders are rejected with
+    `RequiredSizeError.NOT_ALLOWED @ size; trigger:'1x1-NATIVE'`. The banner
+    sizes live on the *native styles*, not on the line item -- the LI stays
+    native-shaped and the style decides how each slot size renders.
+  - `skipInventoryCheck` / `allowOverbook` must be re-asserted on **update**,
+    not only at create. A 1x1 native placeholder forecasts ~no inventory, so an
+    update without them is refused with `ForecastingError.NOT_ENOUGH_INVENTORY`.
+
+Also: `createNativeStyles` returns styles as **INACTIVE**, and a new line item
+is INACTIVE until activated -- so this activates both explicitly. Skipping that
+leaves a demo that is fully built and silently serves nothing.
+
 Caveat worth knowing: GAM's NativeStyle may not honour customTargeting at serve
 time (inventory targeting certainly is). The script reads each style back after
 creating it and SAYS whether the gate stuck. If it didn't, the styles are live
@@ -59,6 +75,12 @@ ADVERTISER_ID = 5131205161       # must match the order's advertiser for the LIC
 DEMO_CREATIVE_ID = 138562612084  # "Infiniti test page" -- 1x1 native, same advertiser
 NEWSWEEK_ROOT_AD_UNIT = 23207092721
 SIZES = [(970, 250), (728, 90), (300, 250)]
+# The line item is native-shaped; the SIZES above are the styles' business.
+NATIVE_PLACEHOLDER = [{
+    "size": {"width": 1, "height": 1, "isAspectRatio": False},
+    "creativeSizeType": "NATIVE",
+    "creativeTemplateId": CREATIVE_TEMPLATE_ID,
+}]
 STYLE_NAME = "Insights Premium Spotlight DEMO ({w}x{h})"
 LI_NAME = "Newsweek_Test_Insights-Native-Banner-DEMO"
 
@@ -179,6 +201,10 @@ def main() -> int:
                 "targeting": {"inventoryTargeting": inventory, "customTargeting": gate},
             }])[0]
             print(f"created style id={st.id}  {name}")
+        if getattr(st, "status", None) != "ACTIVE":
+            st.status = "ACTIVE"           # createNativeStyles returns INACTIVE
+            st = ns.updateNativeStyles([st])[0]
+        print(f"    status={st.status}")
         stuck = getattr(getattr(st, "targeting", None), "customTargeting", None) is not None
         print(f"    nwdemocr gate honoured by the style: {'YES' if stuck else 'NO -- see docstring'}")
 
@@ -195,13 +221,21 @@ def main() -> int:
             "creativeRotationType": "EVEN", "roadblockingType": "ONE_OR_MORE",
             "skipInventoryCheck": True, "allowOverbook": True,
             "primaryGoal": {"goalType": "DAILY", "unitType": "IMPRESSIONS", "units": 100},
-            "creativePlaceholders": [
-                {"size": {"width": w, "height": h, "isAspectRatio": False}} for w, h in SIZES],
+            "creativePlaceholders": NATIVE_PLACEHOLDER,
             "targeting": {"inventoryTargeting": inventory, "customTargeting": gate},
         }])[0]
         print(f"created line item id={li['id']}  status={li['status']}")
     else:
         print(f"line item exists id={li['id']}  status={li['status']}")
+        shapes = [(p["size"]["width"], p["size"]["height"], p.get("creativeSizeType"))
+                  for p in li["creativePlaceholders"]]
+        if shapes != [(1, 1, "NATIVE")]:
+            li["creativePlaceholders"] = NATIVE_PLACEHOLDER
+            # both required again on update, not just at create -- see docstring
+            li["skipInventoryCheck"] = True
+            li["allowOverbook"] = True
+            li = li_svc.updateLineItems([li])[0]
+            print(f"    repaired placeholders {shapes} -> [(1, 1, 'NATIVE')]")
 
     try:
         a = lica_svc.createLineItemCreativeAssociations(
@@ -209,6 +243,16 @@ def main() -> int:
         print(f"LICA status={a['status']}")
     except Exception as e:
         print("LICA already exists" if "ALREADY_EXISTS" in str(e) else f"LICA error: {e}")
+
+    # a fresh line item is INACTIVE; without this the demo is built but dead
+    li_svc.performLineItemAction(
+        {"xsi_type": "ActivateLineItems"},
+        ad_manager.StatementBuilder(version=V)
+        .Where("id = :i").WithBindVariable("i", li["id"]).ToStatement())
+    live = one(li_svc.getLineItemsByStatement(
+        ad_manager.StatementBuilder(version=V)
+        .Where("id = :i").WithBindVariable("i", li["id"]).Limit(1).ToStatement()))
+    print(f"line item status now: {live['status']}")
 
     print("\nDemo URLs:")
     for label, url in DEMO_PAGES:
