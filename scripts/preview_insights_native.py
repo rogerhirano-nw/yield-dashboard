@@ -190,6 +190,10 @@ _LOGO_INK_MIN = 0.70
 # as colliding even before the boxes actually intersect.
 _CTA_MIN_GAP = 8
 
+# The live in-article slot clips the iframe's bottom pixel row, so a card that
+# ends flush with the viewport loses its bottom border. Keep 2px of daylight.
+_EDGE_MIN_CLEARANCE = 2
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -254,7 +258,12 @@ def main() -> int:
               const above = (d.clientHeight ? d : h).getBoundingClientRect();
               const gap = abs ? Math.round(bb.left - h.getBoundingClientRect().right)
                               : Math.round(bb.top - above.bottom);
-              return {text: t.scrollHeight - t.clientHeight,
+              // The live slot clips the iframe's last pixel row, which ate the
+              // card's bottom border. Keep the card's edge off that row.
+              const card = q('#nw-insights-injected');
+              const clear = Math.round(innerHeight - card.getBoundingClientRect().bottom);
+              return {edgeClearance: clear,
+                      text: t.scrollHeight - t.clientHeight,
                       content: c.scrollHeight - c.clientHeight,
                       dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0,
                       hedSqueeze: Math.max(0, Math.round(wanted - h.clientHeight)),
@@ -269,6 +278,9 @@ def main() -> int:
                 flags.append(f"dek clipped +{fit['dek']}px")
             if fit["hedSqueeze"] > 0:
                 flags.append(f"HEADLINE SQUEEZED -{fit['hedSqueeze']}px")
+            if fit["edgeClearance"] < _EDGE_MIN_CLEARANCE:
+                flags.append(f"CARD EDGE ON THE CLIPPED ROW"
+                             f" (clearance {fit['edgeClearance']}px)")
             if fit["ctaGap"] is not None and fit["ctaGap"] < _CTA_MIN_GAP:
                 flags.append(f"CTA OVERLAPS TEXT (gap {fit['ctaGap']}px)"
                              if fit["ctaGap"] < 0 else

@@ -169,6 +169,33 @@ ink box in a canvas and prints one of:
 
 Anything under 70% is flagged. Run the preview before a creative ships.
 
+### The live slot clips the iframe's last pixel row
+
+On the real in-article 300x250 the card rendered **249px tall in a 250px unit**
+and its **bottom border vanished** while the other three edges drew normally
+(Roger, 2026-09-08). Rendered in isolation the document is exactly the viewport
+at all three sizes — `documentElement.scrollHeight == innerHeight`, zero overflow
+— so this is the page's slot container, not the style.
+
+**Likely page-side root cause:** an `<iframe>` is inline by default, so it sits on
+the text baseline; a fixed-height `overflow: hidden` slot then clips the bottom of
+it. The standard fix is `iframe { display: block }` (or `vertical-align: bottom`)
+on the slot — worth raising with engineering, since it affects every creative in
+that unit, not just this one.
+
+**Creative-side mitigation, since a creative cannot see or style its container:**
+keep the visible edge off the row that gets clipped. The card is
+`height: calc(100% - 2px)` rather than `height: 100%`, so it ends 2px above the
+viewport and those two transparent rows absorb the clip. They read as part of the
+page's cream ad band. The rectangle has no slack, so the 2px are paid for out of
+`--text-pb` below the CTA (8px → 6px).
+
+`preview_insights_native.py` measures the clearance and flags a flush card:
+
+```
+  300x250  -> ...  CARD EDGE ON THE CLIPPED ROW (clearance 0px)
+```
+
 ### The CTA needs reserved room on every size
 
 All three layouts hit the same bug in three different ways: the button and the

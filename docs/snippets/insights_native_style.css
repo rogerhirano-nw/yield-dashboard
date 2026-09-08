@@ -59,7 +59,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --sponsor-fs: 8.5px;
   --media-h: 74px;
   --text-pt: 8px;
-  --text-pb: 8px;
+  --text-pb: 6px;   /* 2px handed to the clipped-edge inset above */
   --tag-fs: 9.5px;
   --tag-gap: 9px;
   --tags-mb: 7px;
@@ -81,7 +81,17 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --cta-mt: 14px;
 
   width: 100%;
-  height: 100%;
+  /* NOT height:100%. The live in-article slot clips the iframe's last pixel row
+     -- the card measured 249px in a 250px unit and its bottom border vanished
+     while the other three edges rendered (Roger, 2026-09-08). A creative cannot
+     see or style its container, so the only defence is to keep the visible edge
+     off the row that gets clipped: the card gives up its bottom 2px, which are
+     transparent and read as part of the page's ad band. The rectangle has no
+     slack, so those 2px are paid for out of --text-pb below the CTA.
+     (Page-side root cause worth fixing separately: an inline iframe sits on the
+     text baseline, so a fixed-height overflow:hidden slot clips it. The usual
+     fix is iframe { display: block } on the slot.) */
+  height: calc(100% - 2px);
   /* Always bordered. The paper ground is close enough to a white page that the
      unit otherwise bleeds into the article; the hairline is what makes it read
      as a discrete card. box-sizing is border-box, so the 2px it costs comes out
