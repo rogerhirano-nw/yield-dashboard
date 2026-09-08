@@ -169,6 +169,49 @@ ink box in a canvas and prints one of:
 
 Anything under 70% is flagged. Run the preview before a creative ships.
 
+### The CTA needs reserved room on every size
+
+All three layouts hit the same bug in three different ways: the button and the
+copy collided because nothing reserved the space between them. Fixed
+2026-09-08, and the fix is different per size because the CTA is positioned
+differently:
+
+| Size | CTA positioning | Gap before | after |
+|---|---|---|---|
+| 728x90 | `position: absolute` in the meta row | **-27px** (headline ran under it) | **14.5px** |
+| 970x250 | in flow, `margin-top: auto` (pinned bottom) | **8.2px** at the dek's 3-line clamp | **14.6px** |
+| 300x250 | in flow, `margin-top: var(--cta-mt)` | **6px** | **14px** |
+
+- **728x90** — absolute means out of flow, so the button does *not* push the
+  headline; the gutter is hand-reserved by `--cta-gutter`, which was 108px for a
+  119.5px button. Now 150px = 120 (button) + 16 (`--pad-x`) + 14 (air).
+- **970x250** — the button is pinned to the bottom, so the gap is simply
+  whatever vertical space is left over. With a short dek that reads fine (28px),
+  but as the dek grows toward its 3-line clamp the gap collapses to 8px. Room was
+  bought back above it: `--text-pt` 8→4, `--hed-mb` 10→6, `--hed-lh` 1.3→1.25,
+  and `--text-pb` 12→16 to lift the button off the card's bottom edge (13→17px).
+- **300x250** — the gap *is* `--cta-mt`, which was 6px. The rectangle has **zero
+  vertical slack** (10px already overflows by 4px), so the 8px was taken from the
+  header rhythm — `--head-pt` 10→8, `--head-pb` 6→4, `--divider-mb` 6→4,
+  `--text-pt` 10→8 — rather than from `--media-h` (raised on request) or
+  `--hed-lines` (which sets this size's 100-char TITLE cap).
+
+**Copy caps are unchanged by all of this** — TITLE 100 / SUBTITLE 220 /
+HASHTAG 40, re-derived after the change. The caps are width-driven and every
+headline stays on the same clamp.
+
+`preview_insights_native.py` measures this gap on all three sizes now — a
+horizontal gap where the CTA is absolute, a vertical one where it is in flow —
+and flags anything under 8px:
+
+```
+  728x90   -> ...  CTA OVERLAPS TEXT (gap -27px)
+  300x250  -> ...  cta gap only 6px
+```
+
+That check is what found the 300x250 case: it was never reported, only noticed
+once the same measurement was applied to every size.
+
 ### Copy limits (the ad spec)
 
 Every size clamps its headline (2 lines, 3 on the rectangle) and the 970's dek

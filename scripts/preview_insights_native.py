@@ -236,14 +236,24 @@ def main() -> int:
               const lh = parseFloat(getComputedStyle(h).lineHeight);
               const lines = parseInt(getComputedStyle(h).webkitLineClamp) || 99;
               const wanted = Math.min(Math.round(h.scrollHeight / lh), lines) * lh;
-              // On 728x90 the CTA is position:absolute, so it is out of flow and
-              // does NOT push the text -- the gutter is reserved by hand via
-              // --cta-gutter. Under-reserve it and nothing clips or wraps: the
-              // headline just runs under the button. Measure the gap directly.
+              // How much air is there between the copy and the button? Two
+              // different failure modes, one number:
+              //   728x90  -- the CTA is position:absolute, so it is out of flow
+              //     and does NOT push the text; the gutter is reserved by hand
+              //     via --cta-gutter, and under-reserving it neither clips nor
+              //     wraps -- the headline simply runs under the button. The gap
+              //     is horizontal: button left edge vs headline right edge.
+              //   970x250 / 300x250 -- the CTA is in flow and pinned to the
+              //     bottom (margin-top:auto), so the gap is whatever vertical
+              //     space is left over. It shrinks as the dek grows toward its
+              //     clamp, which is the worst case worth reporting.
               const b = q('.insights-hero__cta');
               const abs = getComputedStyle(b).position === 'absolute';
-              const gap = abs ? Math.round(b.getBoundingClientRect().left
-                                           - h.getBoundingClientRect().right) : null;
+              const bb = b.getBoundingClientRect();
+              // last copy element above an in-flow CTA (the dek when shown)
+              const above = (d.clientHeight ? d : h).getBoundingClientRect();
+              const gap = abs ? Math.round(bb.left - h.getBoundingClientRect().right)
+                              : Math.round(bb.top - above.bottom);
               return {text: t.scrollHeight - t.clientHeight,
                       content: c.scrollHeight - c.clientHeight,
                       dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0,
