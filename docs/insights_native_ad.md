@@ -265,10 +265,27 @@ https://www.newsweek.com/?nwdemocr=insightsbanner
 https://www.newsweek.com/insights/<any-article>?nwdemocr=insightsbanner
 ```
 
-**The one uncertainty:** GAM's `NativeStyle` may not honour `customTargeting` at
+### Three GAM facts this cost a round to learn
+
+- **A native creative associates only to a 1x1 `NATIVE` placeholder**, bound to
+  the creative template. Banner-sized placeholders are rejected outright with
+  `RequiredSizeError.NOT_ALLOWED @ size; trigger:'1x1-NATIVE'`. The banner sizes
+  belong to the **native styles**, not to the line item — the LI stays
+  native-shaped, and the style decides how each slot size renders. (The
+  incumbent demo LI `7330346837` is exactly `1x1 / NATIVE / 12412102`.)
+- **`skipInventoryCheck` and `allowOverbook` must be re-asserted on update**, not
+  just at create. A 1x1 native placeholder forecasts ~no inventory, so an update
+  without them fails with `ForecastingError.NOT_ENOUGH_INVENTORY`.
+- **`createNativeStyles` returns styles as `INACTIVE`**, and a new line item is
+  `INACTIVE` too. Both need activating explicitly — miss it and you get a demo
+  that is fully built and silently serves nothing.
+
+**The customTargeting question:** GAM's `NativeStyle` may not honour it at
 serve time — inventory targeting certainly is honoured, custom is unverified.
 The script reads each style back after creating it and prints whether the gate
-stuck. If it did not, the styles are live for template `12412102` generally;
+stuck. **Confirmed stored** on all three demo styles (the API accepts and
+persists it); whether the ad server evaluates it is still only provable by
+loading a page with and without the param. If it did not, the styles are live for template `12412102` generally;
 today the only *delivering* creative on that template is the already-gated demo
 LI above, so the practical effect is that the `insighttest` demo would start
 rendering the fixed 970x250 banner on `homepage3` instead of the fluid unit.
