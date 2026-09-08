@@ -44,7 +44,10 @@ WORDS = (
 FIELDS = {
     "TITLE": ".insights-hero__headline",
     "SUBTITLE": ".insights-hero__description",
-    "HASHTAG": ".insights-hero__tags",
+    # the category moved into the header lockup; probing .insights-hero__tags
+    # measured the wrong element (395 chars on the rectangle, "not shown" on the
+    # wide sizes -- both artifacts, not real limits).
+    "HASHTAG": ".insights-hero__cat",
 }
 
 

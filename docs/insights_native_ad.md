@@ -59,7 +59,33 @@ body, `system-ui` for the uppercase labels, `#F8F4E8` paper, `#1f1e19` ink,
 names match too (`insights-hero__*`), so a page audit or a GAM UI diff reads
 the same across sizes.
 
-The banners add one thing the fluid unit doesn't have: an **always-on 1px
+### The card must separate from the page's ad band
+
+The live page wraps ads in its own full-bleed warm **ADVERTISING** band, and the
+unit's paper ground is close enough to it that a 12%-ink hairline vanished — the
+card read as part of the page (Roger, on the live render, 2026-09-08). The
+border is therefore a firmer warm rule (`--card-edge: #d5cdb6`) plus a low
+shadow, so the unit reads as a discrete card on **cream and on white**.
+
+`build_insights_test_pages.py` now reproduces that cream band, because the
+original harness put the units on white and so could never have caught this.
+**A QA harness that doesn't reproduce the host page's ad wrapper will miss
+exactly this class of bug.**
+
+### CTA
+
+Every size carries a **READ MORE** button. On 970x250 and 300x250 it is pinned
+to the bottom of the text column (`margin-top:auto`), so it sits on the card's
+baseline no matter how many headline/dek lines a creative uses. **On 728x90 it
+rides the meta row instead** — absolutely positioned top-right of the text
+column — because 90px leaves no vertical room for a button under a two-line
+headline; that placement costs zero height but reserves ~108px of width, which
+is why the leaderboard's copy caps are tighter than the other two.
+
+The CTA label is **hardcoded in the style markup**, not a template variable — so
+changing it changes it for every creative on the template.
+
+The banners also add something the fluid unit doesn't have: an **always-on 1px
 border** (`--rs-color-border-neutral-faded`, the warm hairline already declared
 in `989975`). The paper ground is close enough to a white page that the unit
 otherwise bleeds into the article; the hairline is what makes it read as a
@@ -76,6 +102,24 @@ Two deliberate deviations, both forced by the height budget:
    the headline, which is the identity. Disclosure never depends on it: the
    **"Sponsored by &lt;logo&gt;" lockup and the "SPONSORED" tag both run at all
    three sizes**.
+
+### Fonts: the site's stack, not the dashboard's
+
+`docs/design_handoff/` documents **Benton Modern Display + Franklin Gothic**.
+That is the **dashboard's** system — an internal tool skinned with licensed
+binaries. **newsweek.com serves something different:** a trending-bar link on
+the live homepage inspects as **`12px "Noto Sans"`, `#1F1E19`** (2026-09-08).
+
+The unit has to match the page it renders on, not the internal tool, so the
+stack is **Noto Sans** (UI labels: SPONSORED BY, the category, the CTA),
+**Playfair Display** (headline — what the incumbent style `989975` already
+used), **Noto Serif** (body). All three are Google-hosted, which is also why a
+cross-origin creative iframe can actually load them; Benton and Franklin are
+licensed binaries the iframe could never reach.
+
+**Don't "correct" these against `design_handoff/` again** — that was done once
+on 2026-09-08 and had to be reverted. Verify against the live site with the
+element inspector instead.
 
 ### Hero asset requirements
 
@@ -94,6 +138,137 @@ poster**. Two rules, both learned the hard way on the Cognizant sample:
   is the asset, not the style. Re-crop to a clean landscape region before
   uploading.
 
+### Logo asset requirements — crop it to the mark
+
+**The logo must be cropped tight to the wordmark, with no transparent
+margin.** The stylesheet sizes it by *height* (`--logo-h`: 20px on 970x250,
+14px on 728x90, 13px on 300x250) and lets width follow the aspect ratio, so
+padding baked into the file shrinks the visible mark by exactly that
+proportion.
+
+Proven on the Cognizant sample (Roger, 2026-09-08: "the logo is appearing very
+small"). The uploaded asset was a **3840x2160 logo-gallery export** — a 16:9
+canvas with the wordmark floating in the middle band. Its ink filled 98% of the
+width but only **31% of the height**, so at `--logo-h: 20px` the reader got
+~6px of actual logo, rendered 35px wide next to an 88px "SPONSORED BY" label.
+Re-cropped to its ink box (3780x691, 5.5:1) the same 20px renders **109px
+wide** and the brand is legible at all three sizes.
+
+No CSS can fix this — the padding is inside the image, and a native style's
+rules are shared by every creative on the template, so there is no per-creative
+`object-position` escape. Same conclusion as the hero: **the fix is the asset.**
+
+`scripts/preview_insights_native.py` now canaries it. It measures the asset's
+ink box in a canvas and prints one of:
+
+```
+  logo    -> ok (3780x691, mark fills 98% of height)
+  logo    -> PADDED ASSET: mark fills 31% of the 3840x2160 file's height, so it
+             renders 31% of --logo-h. Crop it to the mark.
+```
+
+Anything under 70% is flagged. Run the preview before a creative ships.
+
+### The card shadow has no y-offset
+
+`box-shadow: 0 0 3px rgba(31,30,25,0.07)`, deliberately not the original
+`0 1px 3px`. The downward offset was harmless while the card ran flush to the
+iframe's last row — the shadow was simply clipped away. Once the card was inset
+2px (below), that shadow rendered into the gap and the bottom edge read as a 1px
+rule *plus* a soft smudge, heavier than the other three sides — "a 2 pixel border
+at the bottom" (Roger, 2026-09-08). Sampled at 2x on the 970x250:
+
+```
+                        rows below the border (outside -> in)
+  0 1px 3px             250, 248, 246, 244   <- visible smudge
+  0 0 3px               253, 252, 250, 248   <- fades to page white
+```
+
+The border itself was always 1px on all four sides; only the shadow changed.
+
+### Click-through opens in a new tab
+
+The card's anchor is `target="_blank"` (Roger, 2026-09-08) — the sponsored
+article opens in a new tab and the reader keeps their place in the article they
+were reading. It was `target="_top"`, which replaced the host page.
+
+`rel="noopener"` stays: without it the opened tab receives a `window.opener`
+handle back into the ad document. **Do not add `noreferrer`** — it strips
+`document.referrer` on the landing page, and advertiser-side analytics commonly
+attribute on it. The click itself is tracked by Google's
+`%%CLICK_URL_UNESC%%` redirect, not by the referrer, so GAM's click counting is
+unaffected either way.
+
+### The live slot clips the iframe's last pixel row
+
+On the real in-article 300x250 the card rendered **249px tall in a 250px unit**
+and its **bottom border vanished** while the other three edges drew normally
+(Roger, 2026-09-08). Rendered in isolation the document is exactly the viewport
+at all three sizes — `documentElement.scrollHeight == innerHeight`, zero overflow
+— so this is the page's slot container, not the style.
+
+**Likely page-side root cause:** an `<iframe>` is inline by default, so it sits on
+the text baseline; a fixed-height `overflow: hidden` slot then clips the bottom of
+it. The standard fix is `iframe { display: block }` (or `vertical-align: bottom`)
+on the slot — worth raising with engineering, since it affects every creative in
+that unit, not just this one.
+
+**Creative-side mitigation, since a creative cannot see or style its container:**
+keep the visible edge off the row that gets clipped. The card is
+`height: calc(100% - 2px)` rather than `height: 100%`, so it ends 2px above the
+viewport and those two transparent rows absorb the clip. They read as part of the
+page's cream ad band. The rectangle has no slack, so the 2px are paid for out of
+`--text-pb` below the CTA (8px → 6px).
+
+`preview_insights_native.py` measures the clearance and flags a flush card:
+
+```
+  300x250  -> ...  CARD EDGE ON THE CLIPPED ROW (clearance 0px)
+```
+
+### The CTA needs reserved room on every size
+
+All three layouts hit the same bug in three different ways: the button and the
+copy collided because nothing reserved the space between them. Fixed
+2026-09-08, and the fix is different per size because the CTA is positioned
+differently:
+
+| Size | CTA positioning | Gap before | after |
+|---|---|---|---|
+| 728x90 | `position: absolute` in the meta row | **-27px** (headline ran under it) | **14.5px** |
+| 970x250 | in flow, `margin-top: auto` (pinned bottom) | **8.2px** at the dek's 3-line clamp | **14.6px** |
+| 300x250 | in flow, `margin-top: var(--cta-mt)` | **6px** | **14px** |
+
+- **728x90** — absolute means out of flow, so the button does *not* push the
+  headline; the gutter is hand-reserved by `--cta-gutter`, which was 108px for a
+  119.5px button. Now 150px = 120 (button) + 16 (`--pad-x`) + 14 (air).
+- **970x250** — the button is pinned to the bottom, so the gap is simply
+  whatever vertical space is left over. With a short dek that reads fine (28px),
+  but as the dek grows toward its 3-line clamp the gap collapses to 8px. Room was
+  bought back above it: `--text-pt` 8→4, `--hed-mb` 10→6, `--hed-lh` 1.3→1.25,
+  and `--text-pb` 12→16 to lift the button off the card's bottom edge (13→17px).
+- **300x250** — the gap *is* `--cta-mt`, which was 6px. The rectangle has **zero
+  vertical slack** (10px already overflows by 4px), so the 8px was taken from the
+  header rhythm — `--head-pt` 10→8, `--head-pb` 6→4, `--divider-mb` 6→4,
+  `--text-pt` 10→8 — rather than from `--media-h` (raised on request) or
+  `--hed-lines` (which sets this size's 100-char TITLE cap).
+
+**Copy caps are unchanged by all of this** — TITLE 100 / SUBTITLE 220 /
+HASHTAG 40, re-derived after the change. The caps are width-driven and every
+headline stays on the same clamp.
+
+`preview_insights_native.py` measures this gap on all three sizes now — a
+horizontal gap where the CTA is absolute, a vertical one where it is in flow —
+and flags anything under 8px:
+
+```
+  728x90   -> ...  CTA OVERLAPS TEXT (gap -27px)
+  300x250  -> ...  cta gap only 6px
+```
+
+That check is what found the 300x250 case: it was never reported, only noticed
+once the same measurement was applied to every size.
+
 ### Copy limits (the ad spec)
 
 Every size clamps its headline (2 lines, 3 on the rectangle) and the 970's dek
@@ -102,22 +277,41 @@ nothing errors, the sentence just stops. These are the numbers to give an AE:
 
 | Field | Target | Hard cap | Binding size | Notes |
 |---|---|---|---|---|
-| `TITLE` (headline) | **55–75 chars** | **85** | 970x250 | Renders at all three sizes |
-| `SUBTITLE` (blurb) | **120–170 chars** | **200** | 970x250 | **970x250 only** — see below |
-| `HASHTAG` | one word | **20** | 300x250 | Markup adds the `#` |
+| `TITLE` (headline) | **55–85 chars** | **100** | 970x250 & 300x250 | Renders at all three sizes |
+| `SUBTITLE` (blurb) | **150–210 chars** | **250** | 970x250 | **970x250 only** — see below |
+| `HASHTAG` | one word | **40** | 970x250 | Rendered bare — the markup no longer prefixes a `#`. Re-measured 2026-09-08 against `.insights-hero__cat`, where the category actually lives now (the old 20 probed the retired `.insights-hero__tags` node). |
 
 Two things that surprise people:
 
-- **The 970x250 is the tightest for the headline, not the rectangle.** The
-  billboard gives the headline 2 lines in a ~528px column at 24px; the
-  rectangle gives it 3 lines at 15.5px and tolerates ~100 chars. The widest
-  size is the binding constraint.
+- **The 970x250 and the 300x250 bind equally at ~100 chars**, for opposite
+  reasons: the billboard gives the headline 2 lines in a ~580px column at 24px,
+  the rectangle 3 lines at 15.5px in 272px. The 728x90 is still the *loosest*
+  (110), which is the reverse of the intuition that the smallest box is the
+  tightest — though it tightened from 125 when its CTA gutter was widened to
+  stop the button overlapping the headline (see below).
 - **The blurb only ever renders on the 970x250.** 728x90 and 300x250 stop at
   the headline. So the headline has to stand alone — write the dek as an
   addition, never as the second half of a sentence the headline started.
 
-Live copy for reference: the Infiniti creative is an **84-char** `TITLE`, which
-is *right at* the cap — a word longer and it ellipses. Cognizant is 80.
+Live copy for reference: Infiniti is an **84-char** `TITLE`, Cognizant 80 —
+both comfortably inside the 100 cap.
+
+**These numbers moved on 2026-09-08** (from 85 / 200) when the CTA was added:
+the CTA needed vertical room on the billboard, which was bought by narrowing the
+hero column 392→340px — and the wider text measure raised the headline and dek
+caps more than the CTA cost. Widening the *measure* beat squeezing the vertical
+rhythm; the 728x90's caps went the other way (150→125 TITLE, 65→50 HASHTAG)
+because its CTA sits in the meta row and reserves horizontal space.
+
+**The 728x90 tightened again to 110 on the same day**, when `--cta-gutter` went
+108px → 150px. Its CTA is `position: absolute`, so it is **out of flow and does
+not push the headline** — the gutter is hand-reserved, and 108px was less than
+the ~120px button is wide, so the headline ran *under* it (Roger: "the read more
+button for the 728x90 is being overlapped"). Under-reserving an out-of-flow
+gutter does not clip or wrap; it silently overlaps, which is why
+`preview_insights_native.py` now measures the headline-to-CTA gap directly and
+prints `CTA OVERLAPS TEXT` below 8px. The binding caps are unchanged — TITLE is
+still governed by the 970x250/300x250 pair at 100.
 
 #### These are NOT the homepage native's limits
 
@@ -220,6 +414,23 @@ previews into the buyer's counts. Nothing visual depends on them; they render
 hidden.
 
 ## Trafficking
+
+**The live styles are NOT the ones this repo created.** The originals on
+template `12412102` were archived; what serves today is
+**`Native (970x250|728x90|300x250)` = ids `1014148` / `1014151` / `1014379`** on
+creative template **`12552841`** ("native", same seven variables), gated behind
+`?nwdemocr=native`. They run byte-identical copies of
+`insights_native_style.{html,css}`, so a change here reaches them only when it is
+pushed onto those ids:
+
+```bash
+python3 scripts/setup_insights_native_styles.py --style-ids 1014148,1014151,1014379
+python3 scripts/setup_insights_native_styles.py --style-ids 1014148,1014151,1014379 --apply
+```
+
+or dispatch `.github/workflows/push_insights_native_style.yml`. `--style-ids`
+updates styles by id whatever template or name they carry, and skips the
+lookup-by-name/create path entirely.
 
 ```bash
 python3 scripts/setup_insights_native_styles.py                    # dry run

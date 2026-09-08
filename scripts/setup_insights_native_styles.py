@@ -76,6 +76,12 @@ def main() -> int:
                     help="also push the local html/css onto styles that already exist")
     ap.add_argument("--ad-unit", type=int, default=DEFAULT_AD_UNIT_ID,
                     help=f"ad unit to target (default {DEFAULT_AD_UNIT_ID}, the newsweek site root)")
+    ap.add_argument("--style-ids",
+                    help="comma-separated NativeStyle ids to push the local html/css onto, "
+                         "whatever template or name they carry. Use this to update styles this "
+                         "script did not create (e.g. the live 'Native (WxH)' set on template "
+                         "12552841, which runs byte-identical copies of these files). Everything "
+                         "else -- lookup-by-name, create -- is skipped.")
     args = ap.parse_args()
 
     html = HTML_PATH.read_text()
@@ -96,6 +102,32 @@ def main() -> int:
             "targetedAdUnits": [{"adUnitId": str(args.ad_unit), "includeDescendants": True}]
         }
     }
+
+    if args.style_ids:
+        ids = [int(x) for x in args.style_ids.split(",") if x.strip()]
+        print("=" * 72)
+        print(f"PUSH STYLE HTML/CSS TO {ids}  ({'APPLY' if args.apply else 'DRY RUN'})")
+        print("=" * 72)
+        found = list(getattr(svc.getNativeStylesByStatement(
+            ad_manager.StatementBuilder(version=V)
+            .Where(f"id IN ({', '.join(str(i) for i in ids)})").Limit(50).ToStatement()),
+            "results", []) or [])
+        for st in found:
+            same = (st.cssSnippet or "") == css and (st.htmlSnippet or "") == html
+            print(f"  {st.id} {st.name!r} tmpl={st.creativeTemplateId} "
+                  f"size={(st.size.width, st.size.height)} status={st.status} "
+                  f"{'already current' if same else 'WILL UPDATE'}")
+        missing = set(ids) - {s_.id for s_ in found}
+        if missing:
+            print(f"  !! not found: {sorted(missing)}")
+        if not args.apply:
+            print("\nRe-run with --apply to write to GAM.")
+            return 0
+        for st in found:
+            st.htmlSnippet, st.cssSnippet = html, css
+            out = svc.updateNativeStyles([st])[0]
+            print(f"updated {out.id} {out.name!r} status={out.status}")
+        return 0
 
     print("=" * 72)
     print(f"INSIGHTS NATIVE STYLES  ({'APPLY' if args.apply else 'DRY RUN'})")

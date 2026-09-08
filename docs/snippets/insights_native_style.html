@@ -13,7 +13,13 @@
   Companion stylesheet: insights_native_style.css
 -->
 <div id="nw-insights-injected">
-  <a class="insights-hero__link" href="%%CLICK_URL_UNESC%%%%DEST_URL%%" target="_top" rel="noopener">
+  <!-- target="_blank", not "_top": the click opens the sponsored article in a
+       new tab and leaves the reader's article in place (Roger, 2026-09-08).
+       rel="noopener" stays -- without it the opened tab gets a window.opener
+       handle back into this document. NOT noreferrer: that strips
+       document.referrer on the landing page, which advertiser-side analytics
+       often attribute on. -->
+  <a class="insights-hero__link" href="%%CLICK_URL_UNESC%%%%DEST_URL%%" target="_blank" rel="noopener">
     <section class="insights-hero">
       <div class="insights-hero__content">
 
@@ -21,7 +27,16 @@
           <div class="insights-hero__divider--top"></div>
           <div class="insights-hero__header-row">
             <h2 class="insights-hero__section-title">Insights</h2>
-            <div class="insights-hero__sponsor">
+            <i class="insights-hero__tag-sep"></i>
+            <span class="insights-hero__cat">[%HASHTAG%]</span>
+            <!-- Two instances of the sponsor lockup, one shown at a time (the
+                 incumbent style 989975 toggles desktop/mobile headers the same
+                 way): the wide sizes have free space at the top right, the
+                 rectangle does not and carries it above the headline instead.
+                 CSS cannot move a node between containers, so it is duplicated
+                 and the unused one is display:none -- which also takes it out
+                 of the accessibility tree, so "Sponsored by" is announced once. -->
+            <div class="insights-hero__sponsor insights-hero__sponsor--head">
               <span class="insights-hero__sponsor-label">Sponsored by</span>
               <img class="insights-hero__sponsor-logo" src="[%LOGO%]" alt="Sponsor">
             </div>
@@ -35,13 +50,13 @@
         </div>
 
         <div class="insights-hero__text">
-          <div class="insights-hero__tags">
-            <span class="insights-hero__tag">SPONSORED</span>
-            <span class="insights-hero__tag-sep"></span>
-            <span class="insights-hero__tag">#[%HASHTAG%]</span>
+          <div class="insights-hero__tags insights-hero__sponsor--body">
+            <span class="insights-hero__tag">Sponsored by</span>
+            <img class="insights-hero__sponsor-logo" src="[%LOGO%]" alt="Sponsor">
           </div>
           <h1 class="insights-hero__headline">[%TITLE%]</h1>
           <p class="insights-hero__description">[%SUBTITLE%]</p>
+          <span class="insights-hero__cta">Read More</span>
         </div>
 
       </div>

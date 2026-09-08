@@ -150,6 +150,51 @@ def build_doc(values: dict) -> str:
             f"<style>{css}</style></head><body>{html}</body></html>")
 
 
+# A logo asset is sized by HEIGHT in the stylesheet, so transparent padding
+# baked into the file shrinks the visible mark by exactly that proportion. The
+# Cognizant asset shipped as a 3840x2160 gallery export whose wordmark filled
+# 31% of the canvas height -- at --logo-h:20px that left ~6px of actual logo,
+# which read as a speck (Roger, 2026-09-08). Nothing in CSS can crop padding it
+# cannot see, so the check belongs here: measure the asset's ink box in a canvas
+# (a data: URI never taints it) and say so before the creative ships.
+_LOGO_INK_JS = """() => {
+  const img = document.querySelector('.insights-hero__sponsor-logo');
+  if (!img || !img.naturalWidth) return null;
+  const W = Math.min(img.naturalWidth, 600);
+  const H = Math.max(1, Math.round(img.naturalHeight * W / img.naturalWidth));
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', {willReadFrequently: true});
+  cx.drawImage(img, 0, 0, W, H);
+  let d;
+  try { d = cx.getImageData(0, 0, W, H).data; } catch (e) { return null; }
+  let top = H, bot = -1, left = W, right = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4;
+    // ink = not transparent AND not paper-white (covers flattened exports)
+    const inked = d[i+3] > 16 && !(d[i] > 244 && d[i+1] > 244 && d[i+2] > 244);
+    if (!inked) continue;
+    if (y < top) top = y; if (y > bot) bot = y;
+    if (x < left) left = x; if (x > right) right = x;
+  }
+  if (bot < 0) return null;
+  return {natW: img.naturalWidth, natH: img.naturalHeight,
+          inkH: (bot - top + 1) / H, inkW: (right - left + 1) / W};
+}"""
+
+# Below this the mark is small enough that a reader cannot identify the brand at
+# the leaderboard's --logo-h:14px, which is what disclosure depends on.
+_LOGO_INK_MIN = 0.70
+
+# Minimum air between the headline and an out-of-flow CTA. Below this they read
+# as colliding even before the boxes actually intersect.
+_CTA_MIN_GAP = 8
+
+# The live in-article slot clips the iframe's bottom pixel row, so a card that
+# ends flush with the viewport loses its bottom border. Keep 2px of daylight.
+_EDGE_MIN_CLEARANCE = 2
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--creative-id", type=int, default=DEFAULT_CREATIVE_ID)
@@ -187,10 +232,42 @@ def main() -> int:
             fit = page.evaluate("""() => {
               const q = s => document.querySelector(s);
               const t = q('.insights-hero__text'), d = q('.insights-hero__description');
-              const c = q('.insights-hero__content');
-              return {text: t.scrollHeight - t.clientHeight,
+              const c = q('.insights-hero__content'), h = q('.insights-hero__headline');
+              // A flex child can be squeezed below its natural height and clip
+              // internally (a clamped headline crops its descenders) while the
+              // CONTAINER still reports no overflow -- so measure the headline's
+              // own box against the lines it is clamped to, not just the parents.
+              const lh = parseFloat(getComputedStyle(h).lineHeight);
+              const lines = parseInt(getComputedStyle(h).webkitLineClamp) || 99;
+              const wanted = Math.min(Math.round(h.scrollHeight / lh), lines) * lh;
+              // How much air is there between the copy and the button? Two
+              // different failure modes, one number:
+              //   728x90  -- the CTA is position:absolute, so it is out of flow
+              //     and does NOT push the text; the gutter is reserved by hand
+              //     via --cta-gutter, and under-reserving it neither clips nor
+              //     wraps -- the headline simply runs under the button. The gap
+              //     is horizontal: button left edge vs headline right edge.
+              //   970x250 / 300x250 -- the CTA is in flow and pinned to the
+              //     bottom (margin-top:auto), so the gap is whatever vertical
+              //     space is left over. It shrinks as the dek grows toward its
+              //     clamp, which is the worst case worth reporting.
+              const b = q('.insights-hero__cta');
+              const abs = getComputedStyle(b).position === 'absolute';
+              const bb = b.getBoundingClientRect();
+              // last copy element above an in-flow CTA (the dek when shown)
+              const above = (d.clientHeight ? d : h).getBoundingClientRect();
+              const gap = abs ? Math.round(bb.left - h.getBoundingClientRect().right)
+                              : Math.round(bb.top - above.bottom);
+              // The live slot clips the iframe's last pixel row, which ate the
+              // card's bottom border. Keep the card's edge off that row.
+              const card = q('#nw-insights-injected');
+              const clear = Math.round(innerHeight - card.getBoundingClientRect().bottom);
+              return {edgeClearance: clear,
+                      text: t.scrollHeight - t.clientHeight,
                       content: c.scrollHeight - c.clientHeight,
-                      dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0};
+                      dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0,
+                      hedSqueeze: Math.max(0, Math.round(wanted - h.clientHeight)),
+                      ctaGap: gap};
             }""")
             flags = []
             if fit["content"] > 0:
@@ -199,7 +276,27 @@ def main() -> int:
                 flags.append(f"text overflow +{fit['text']}px")
             if fit["dek"] > 0:
                 flags.append(f"dek clipped +{fit['dek']}px")
+            if fit["hedSqueeze"] > 0:
+                flags.append(f"HEADLINE SQUEEZED -{fit['hedSqueeze']}px")
+            if fit["edgeClearance"] < _EDGE_MIN_CLEARANCE:
+                flags.append(f"CARD EDGE ON THE CLIPPED ROW"
+                             f" (clearance {fit['edgeClearance']}px)")
+            if fit["ctaGap"] is not None and fit["ctaGap"] < _CTA_MIN_GAP:
+                flags.append(f"CTA OVERLAPS TEXT (gap {fit['ctaGap']}px)"
+                             if fit["ctaGap"] < 0 else
+                             f"cta gap only {fit['ctaGap']}px")
             print(f"  {w}x{h:<4} -> {path.name}  {'  '.join(flags) or 'fits'}")
+            if (w, h) == SIZES[0]:
+                ink = page.evaluate(_LOGO_INK_JS)
+                if ink is None:
+                    print("  logo    -> could not measure (no asset?)")
+                elif ink["inkH"] < _LOGO_INK_MIN:
+                    print(f"  logo    -> PADDED ASSET: mark fills {ink['inkH']:.0%} of the"
+                          f" {ink['natW']}x{ink['natH']} file's height, so it renders"
+                          f" {ink['inkH']:.0%} of --logo-h. Crop it to the mark.")
+                else:
+                    print(f"  logo    -> ok ({ink['natW']}x{ink['natH']},"
+                          f" mark fills {ink['inkH']:.0%} of height)")
             page.close()
         browser.close()
     print(f"\nPNGs in {out}")

@@ -4,6 +4,35 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
+
+- **The unit blended into the page.** The live article page wraps ads in its own
+  full-bleed warm ADVERTISING band, and the card's paper ground sits close enough
+  to it that the 12%-ink hairline vanished. Border is now a firmer warm rule
+  (`--card-edge #d5cdb6`) + a low shadow, so it reads as a discrete card on cream
+  and on white. **`build_insights_test_pages.py` now reproduces that band** — the
+  original harness rendered onto white and structurally could not have caught it.
+- **READ MORE CTA on all three sizes.** Pinned to the bottom of the text column
+  on 970x250 / 300x250 (`margin-top:auto`, so it sits on the baseline whatever
+  the line counts); on 728x90 it rides the meta row (absolute, top-right) because
+  90px has no vertical room for a button under a two-line headline. The label is
+  hardcoded in the style markup, not a template variable.
+- **Copy caps moved, and improved: TITLE 85→100, SUBTITLE 200→220.** The
+  billboard CTA needed vertical room, bought by narrowing the hero column
+  392→340px — and the wider text measure raised the caps more than the CTA cost.
+  **Widening the measure beat squeezing the vertical rhythm.** The 728x90 went
+  the other way (TITLE 150→125, HASHTAG 65→50): its meta-row CTA reserves
+  horizontal space. Re-derived with `measure_insights_copy_limits.py`, not
+  assumed.
+- **The live styles are not this repo's.** The originals on template `12412102`
+  were archived; what serves is `Native (WxH)` — ids **1014148 / 1014151 /
+  1014379** on template **12552841** ("native"), gated `?nwdemocr=native`, running
+  byte-identical copies of `insights_native_style.{html,css}`. So
+  `setup_insights_native_styles.py` gained **`--style-ids`** (update styles by id
+  whatever template/name they carry) plus
+  `.github/workflows/push_insights_native_style.yml`, which is now the path from
+  a repo CSS edit to the live demo.
+
 ## 2026-09-08 — Insights native ad: 970x250 / 728x90 / 300x250
 
 - **Problem.** The Insights sponsored-content card (Infiniti QX65, creative
