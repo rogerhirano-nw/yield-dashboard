@@ -229,20 +229,20 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   #nw-insights-injected {
     --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 24px; --divider-mb: 12px;
     --title-fs: 22px; --logo-h: 20px; --sponsor-fs: 10px;
-    --text-pt: 8px; --text-pb: 20px;   /* the CTA spends the old slack */
+    --text-pt: 8px; --text-pb: 24px;
     --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 8px;
     --hed-fs: 24px; --hed-lh: 1.3; --hed-lines: 2; --hed-mb: 10px;
     /* 3 dek lines, not 2: a 160-char SUBTITLE (the Infiniti copy) needs the
        third to land its final clause instead of ellipsing mid-sentence, and
        the column has the room. */
     --dek-fs: 14px; --dek-lines: 3;
-    --cta-fs: 10px; --cta-pad: 7px 14px; --cta-mt: 4px;
+    --cta-fs: 10px; --cta-pad: 9px 18px; --cta-mt: 12px;
   }
   #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
   #nw-insights-injected .insights-hero__sponsor--body { display: none; }
   #nw-insights-injected {
   }
-  #nw-insights-injected .insights-hero__cta { align-self: flex-start; }
+  #nw-insights-injected .insights-hero__cta { align-self: flex-end; }
   /* The hero spans BOTH rows and bleeds to the card edges, so it runs the full
      height of the unit; the header band is confined to the left column with it. */
   #nw-insights-injected .insights-hero__content {
