@@ -186,6 +186,10 @@ _LOGO_INK_JS = """() => {
 # the leaderboard's --logo-h:14px, which is what disclosure depends on.
 _LOGO_INK_MIN = 0.70
 
+# Minimum air between the headline and an out-of-flow CTA. Below this they read
+# as colliding even before the boxes actually intersect.
+_CTA_MIN_GAP = 8
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -232,10 +236,19 @@ def main() -> int:
               const lh = parseFloat(getComputedStyle(h).lineHeight);
               const lines = parseInt(getComputedStyle(h).webkitLineClamp) || 99;
               const wanted = Math.min(Math.round(h.scrollHeight / lh), lines) * lh;
+              // On 728x90 the CTA is position:absolute, so it is out of flow and
+              // does NOT push the text -- the gutter is reserved by hand via
+              // --cta-gutter. Under-reserve it and nothing clips or wraps: the
+              // headline just runs under the button. Measure the gap directly.
+              const b = q('.insights-hero__cta');
+              const abs = getComputedStyle(b).position === 'absolute';
+              const gap = abs ? Math.round(b.getBoundingClientRect().left
+                                           - h.getBoundingClientRect().right) : null;
               return {text: t.scrollHeight - t.clientHeight,
                       content: c.scrollHeight - c.clientHeight,
                       dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0,
-                      hedSqueeze: Math.max(0, Math.round(wanted - h.clientHeight))};
+                      hedSqueeze: Math.max(0, Math.round(wanted - h.clientHeight)),
+                      ctaGap: gap};
             }""")
             flags = []
             if fit["content"] > 0:
@@ -246,6 +259,10 @@ def main() -> int:
                 flags.append(f"dek clipped +{fit['dek']}px")
             if fit["hedSqueeze"] > 0:
                 flags.append(f"HEADLINE SQUEEZED -{fit['hedSqueeze']}px")
+            if fit["ctaGap"] is not None and fit["ctaGap"] < _CTA_MIN_GAP:
+                flags.append(f"CTA OVERLAPS TEXT (gap {fit['ctaGap']}px)"
+                             if fit["ctaGap"] < 0 else
+                             f"cta gap only {fit['ctaGap']}px")
             print(f"  {w}x{h:<4} -> {path.name}  {'  '.join(flags) or 'fits'}")
             if (w, h) == SIZES[0]:
                 ink = page.evaluate(_LOGO_INK_JS)

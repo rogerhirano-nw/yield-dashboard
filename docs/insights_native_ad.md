@@ -179,14 +179,16 @@ nothing errors, the sentence just stops. These are the numbers to give an AE:
 |---|---|---|---|---|
 | `TITLE` (headline) | **55–85 chars** | **100** | 970x250 & 300x250 | Renders at all three sizes |
 | `SUBTITLE` (blurb) | **150–210 chars** | **250** | 970x250 | **970x250 only** — see below |
-| `HASHTAG` | one word | **20** ⚠️ | 300x250 | Rendered bare — the markup no longer prefixes a `#`. **Stale** — measured before the category moved into the header lockup; re-derive. |
+| `HASHTAG` | one word | **40** | 970x250 | Rendered bare — the markup no longer prefixes a `#`. Re-measured 2026-09-08 against `.insights-hero__cat`, where the category actually lives now (the old 20 probed the retired `.insights-hero__tags` node). |
 
 Two things that surprise people:
 
 - **The 970x250 and the 300x250 bind equally at ~100 chars**, for opposite
   reasons: the billboard gives the headline 2 lines in a ~580px column at 24px,
-  the rectangle 3 lines at 15.5px in 272px. The 728x90 is the *loosest* (125),
-  which is the reverse of the intuition that the smallest box is the tightest.
+  the rectangle 3 lines at 15.5px in 272px. The 728x90 is still the *loosest*
+  (110), which is the reverse of the intuition that the smallest box is the
+  tightest — though it tightened from 125 when its CTA gutter was widened to
+  stop the button overlapping the headline (see below).
 - **The blurb only ever renders on the 970x250.** 728x90 and 300x250 stop at
   the headline. So the headline has to stand alone — write the dek as an
   addition, never as the second half of a sentence the headline started.
@@ -200,6 +202,16 @@ hero column 392→340px — and the wider text measure raised the headline and d
 caps more than the CTA cost. Widening the *measure* beat squeezing the vertical
 rhythm; the 728x90's caps went the other way (150→125 TITLE, 65→50 HASHTAG)
 because its CTA sits in the meta row and reserves horizontal space.
+
+**The 728x90 tightened again to 110 on the same day**, when `--cta-gutter` went
+108px → 150px. Its CTA is `position: absolute`, so it is **out of flow and does
+not push the headline** — the gutter is hand-reserved, and 108px was less than
+the ~120px button is wide, so the headline ran *under* it (Roger: "the read more
+button for the 728x90 is being overlapped"). Under-reserving an out-of-flow
+gutter does not clip or wrap; it silently overlaps, which is why
+`preview_insights_native.py` now measures the headline-to-CTA gap directly and
+prints `CTA OVERLAPS TEXT` below 8px. The binding caps are unchanged — TITLE is
+still governed by the 970x250/300x250 pair at 100.
 
 #### These are NOT the homepage native's limits
 

@@ -218,14 +218,23 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
     --tag-fs: 9px; --tag-gap: 8px; --tags-mb: 4px;
     --hed-fs: 15px; --hed-lh: 1.25; --hed-lines: 2;
     --cta-mt: 0px;   /* size comes from the base rule -- one CTA everywhere */
+    --cta-gutter: 150px;   /* out-of-flow CTA: reserve its width by hand */
   }
   #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
   #nw-insights-injected .insights-hero__sponsor--body { display: none; }
   #nw-insights-injected {
   }
   /* 90px leaves no room for a CTA under the headline, so it rides the meta row
-     instead -- absolute, top-right of the text column, costing zero height. */
-  #nw-insights-injected .insights-hero__text { position: relative; padding-right: 108px; }
+     instead -- absolute, top-right of the text column, costing zero height.
+     The catch: an absolute CTA is out of flow, so it does NOT push the headline
+     -- the gutter has to be reserved by hand, and 108px was less than the button
+     is wide. The button measures ~120px (9.5px/600 "READ MORE" + arrow + 16px
+     side padding), sits var(--pad-x) in from the edge, and needs air between it
+     and the text, so the reserve is 120 + 16 + 14 = 150px. Under-reserving does
+     not clip or wrap -- the headline simply runs under the button. */
+  #nw-insights-injected .insights-hero__text {
+    position: relative; padding-right: var(--cta-gutter);
+  }
   /* Centered against the text block, not top:0 -- at the top it sat immediately
      under the sponsor logo and the two right-hand elements crowded each other. */
   #nw-insights-injected .insights-hero__cta {
