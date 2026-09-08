@@ -77,6 +77,23 @@ Two deliberate deviations, both forced by the height budget:
    **"Sponsored by &lt;logo&gt;" lockup and the "SPONSORED" tag both run at all
    three sizes**.
 
+### Hero asset requirements
+
+The unit renders its own headline, so the hero is a **photograph, not a
+poster**. Two rules, both learned the hard way on the Cognizant sample:
+
+- **Landscape, ≥1200px wide, subject centered.** The hero is cropped per size
+  (2.7:1 / 16:9 / 2.2:1) with `object-fit: cover`, centered. **16:9 is the
+  safe master** — it is the leaderboard's native ratio and crops cleanly into
+  the other two.
+- **No burned-in copy.** A square social asset with a headline baked into it
+  (the Cognizant `…1200x1200…` file carries "Building the bridge to AI impact"
+  across its top-left) gets sliced through that text at every size, because the
+  crop is a centered band. There is no per-creative `object-position` escape —
+  a native style's CSS is shared by every creative on the template — so the fix
+  is the asset, not the style. Re-crop to a clean landscape region before
+  uploading.
+
 ### Copy limits
 
 Every size clamps its headline (2 lines, 3 on the rectangle) and the 970's dek
@@ -88,6 +105,28 @@ will ellipse. Check before a flight goes live:
 ```bash
 python3 scripts/preview_insights_native.py --creative-id <id>
 ```
+
+For copy that **isn't trafficked yet** — proofing a headline and hero before
+the creative exists — both QA tools also take a values file, which is when an
+over-long title is cheapest to fix:
+
+```bash
+python3 scripts/preview_insights_native.py    --values-json vals.json --prefix cognizant
+python3 scripts/build_insights_test_pages.py  --values-json vals.json --prefix cognizant
+```
+
+```json
+{
+  "TITLE": "...", "SUBTITLE": "...", "HASHTAG": "Technology",
+  "IMAGE": "<url | local path | data: uri>",
+  "LOGO":  "<url | local path | data: uri>",
+  "DEST":  "https://www.newsweek.com/insights/..."
+}
+```
+
+`IMAGE`/`LOGO` are inlined as data URIs, so a URL, a local file and an already
+-inlined asset all work the same way. `--prefix` keeps one advertiser's output
+from overwriting another's.
 
 It pulls that creative's real values from GAM, renders all three sizes in
 headless Chromium at exact pixel size, writes PNGs to

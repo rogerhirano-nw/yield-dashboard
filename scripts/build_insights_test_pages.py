@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 from preview_insights_native import (  # noqa: E402
     CSS_PATH, DEFAULT_CREATIVE_ID, build_doc, fetch_creative_values,
+    load_values_file,
 )
 
 SIZES = [(970, 250), (728, 90), (300, 250)]
@@ -148,16 +149,22 @@ def build_page(values: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--creative-id", type=int, default=DEFAULT_CREATIVE_ID)
+    ap.add_argument("--values-json", help="proof un-trafficked copy instead of a GAM creative")
     ap.add_argument("--out-dir", default=str(REPO / "data" / "insights_preview"))
+    ap.add_argument("--prefix", default="insights", help="output filename prefix")
     args = ap.parse_args()
 
-    values = fetch_creative_values(args.creative_id)
-    values["_creative_id"] = args.creative_id
+    if args.values_json:
+        values = load_values_file(args.values_json)
+        values["_creative_id"] = "not trafficked yet"
+    else:
+        values = fetch_creative_values(args.creative_id)
+        values["_creative_id"] = args.creative_id
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / "insights_test_page.html"
+    path = out / f"{args.prefix}_test_page.html"
     path.write_text(build_page(values))
-    print(f"creative {args.creative_id}: {values['_name']}")
+    print(f"source: {values['_name']}")
     print(f"stylesheet: {CSS_PATH.relative_to(REPO)}")
     print(f"wrote {path}  ({path.stat().st_size/1024:.0f} KB, self-contained)")
     return 0

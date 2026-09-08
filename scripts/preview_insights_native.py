@@ -66,6 +66,37 @@ def _data_uri(url: str) -> str:
     return f"data:{mime};base64," + base64.b64encode(blob).decode()
 
 
+def load_values_file(path: str) -> dict:
+    """Read template values from a JSON file, for copy that isn't in GAM yet.
+
+    Lets an AE proof a headline/dek/hero against the real layouts *before* the
+    creative is trafficked — which is when a too-long TITLE is cheap to fix.
+    Schema (all optional except TITLE):
+
+        {"TITLE": "...", "SUBTITLE": "...", "HASHTAG": "Technology",
+         "IMAGE": "<url | local path | data: uri>",
+         "LOGO":  "<url | local path | data: uri>",
+         "DEST":  "https://www.newsweek.com/insights/..."}
+
+    IMAGE/LOGO are inlined as data URIs so the render never depends on network
+    timing, exactly as the GAM asset path does.
+    """
+    values = json.loads(Path(path).read_text())
+    for key in ("IMAGE", "LOGO"):
+        ref = values.get(key)
+        if not ref or ref.startswith("data:"):
+            continue
+        if ref.startswith(("http://", "https://")):
+            values[key] = _data_uri(ref)
+        else:
+            blob = Path(ref).read_bytes()
+            mime = mimetypes.guess_type(ref)[0] or "image/png"
+            values[key] = f"data:{mime};base64," + base64.b64encode(blob).decode()
+    values.setdefault("_name", Path(path).stem)
+    values["_dest"] = values.get("DEST", "") or values.get("_dest", "") or "#"
+    return values
+
+
 def fetch_creative_values(creative_id: int) -> dict:
     from googleads import ad_manager, oauth2
 
@@ -122,20 +153,26 @@ def build_doc(values: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--creative-id", type=int, default=DEFAULT_CREATIVE_ID)
+    ap.add_argument("--values-json", help="proof un-trafficked copy instead of a GAM creative")
     ap.add_argument("--out-dir", default=str(REPO / "data" / "insights_preview"))
+    ap.add_argument("--prefix", default="insights", help="output filename prefix")
     args = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
 
-    values = fetch_creative_values(args.creative_id)
-    print(f"creative {args.creative_id}: {values['_name']}")
+    if args.values_json:
+        values = load_values_file(args.values_json)
+        print(f"values file {args.values_json}: {values['_name']}")
+    else:
+        values = fetch_creative_values(args.creative_id)
+        print(f"creative {args.creative_id}: {values['_name']}")
     print(f"  TITLE    ({len(values.get('TITLE',''))} chars) {values.get('TITLE','')[:70]}...")
     print(f"  SUBTITLE ({len(values.get('SUBTITLE',''))} chars)")
     print(f"  HASHTAG  #{values.get('HASHTAG','')}\n")
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    doc = out / "preview_doc.html"
+    doc = out / f"{args.prefix}_preview_doc.html"
     doc.write_text(build_doc(values))
 
     exe = next((p for p in _CHROMIUM_CANDIDATES if Path(p).exists()), None)
@@ -145,7 +182,7 @@ def main() -> int:
             page = browser.new_page(viewport={"width": w, "height": h}, device_scale_factor=2)
             page.goto(doc.resolve().as_uri())
             page.wait_for_timeout(2500)   # webfonts + inlined assets
-            path = out / f"insights_{w}x{h}.png"
+            path = out / f"{args.prefix}_{w}x{h}.png"
             page.screenshot(path=str(path))
             fit = page.evaluate("""() => {
               const q = s => document.querySelector(s);

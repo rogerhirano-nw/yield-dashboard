@@ -47,6 +47,18 @@ and why" index, keyed by PR. Newest first.
   file fits in the slot. Both QA tools **drop** the `3RDPARTYTRACKING1/2`
   pixels rather than substituting them: they are real advertiser URLs (ml314
   here) and a design render is not an impression.
+- **Both QA tools take `--values-json` + `--prefix`** (added while building a
+  Cognizant sample), so copy can be proofed *before* the creative is trafficked
+  — a values file supplies TITLE/SUBTITLE/HASHTAG/IMAGE/LOGO/DEST, and
+  IMAGE/LOGO inline from a URL, a local path or an existing data URI.
+- **Hero asset rule, learned on that sample.** The hero is cropped per size
+  with a centered `object-fit: cover`, so a **square asset with burned-in copy**
+  gets sliced through its own text at every size (the Cognizant 1200x1200 file
+  carries "Building the bridge to AI impact" across its top-left). A native
+  style's CSS is shared by every creative on the template, so there is no
+  per-creative `object-position` escape: the fix is the asset. **16:9 is the
+  safe master** — the leaderboard's native ratio, and it crops cleanly into the
+  other two. Documented in `docs/insights_native_ad.md`.
 - **`scripts/setup_insights_native_styles.py`** creates the styles
   (`NativeStyleService`), dry-run by default and lookup-first by name;
   `--update` pushes local CSS edits onto the live styles, `--ad-unit` narrows
