@@ -50,7 +50,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --head-pt: 10px;
   --head-pb: 10px;
   --tick-w: 20px;
-  --divider-mb: 8px;
+  --divider-mb: 6px;
   --title-fs: 15px;
   --logo-h: 13px;
   --sponsor-fs: 8.5px;
@@ -108,12 +108,15 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   padding: var(--text-pt) var(--pad-x) var(--text-pb); }
 
 /* red rule above the wordmark — zero-height flex row, bar drawn by ::before */
+/* The homepage section-header rule: a short brand-red tick that continues as a
+   warm hairline across the full width, with the wordmark sitting under it. */
 #nw-insights-injected .insights-hero__divider--top {
-  display: flex; align-items: center; width: 100%; position: relative;
+  display: block; width: 100%; position: relative;
+  height: 2px; background-color: var(--card-edge);
   margin-bottom: var(--divider-mb);
 }
 #nw-insights-injected .insights-hero__divider--top::before {
-  content: ""; display: inline-block; position: absolute;
+  content: ""; display: block; position: absolute; left: 0; top: 0;
   width: var(--tick-w); height: 2px; background-color: var(--brand-default);
 }
 #nw-insights-injected .insights-hero__header-row {
@@ -228,7 +231,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
 /* ---------- 970x250 billboard: header band, story left, image right ---------- */
 @media (min-width: 860px) and (min-height: 200px) {
   #nw-insights-injected {
-    --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 24px; --divider-mb: 12px;
+    --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 34px; --divider-mb: 10px;
     --title-fs: 22px; --logo-h: 20px; --sponsor-fs: 10px;
     --text-pt: 8px; --text-pb: 22px;
     --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 8px;
