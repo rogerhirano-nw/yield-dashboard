@@ -238,6 +238,42 @@ CSS fix reaches every live Insights banner without touching a creative.
 line item's **creative placeholders** in the GAM UI. The creative itself stays
 1x1 native; the placeholders are what make it eligible for those slots.
 
+## On-site demo (`?nwdemocr=`)
+
+The network already demos the *fluid* Insights unit this way: **LI 7330346837**
+sits on the Newsweek_Test-2 order, targets `homepage3`, and is gated to
+`nwdemocr=insighttest`. With the param the unit renders; without it, real
+traffic sees nothing different.
+
+`scripts/setup_insights_native_demo.py` does the same for the three fixed-size
+banners, on **its own** nwdemocr value so the existing `insighttest` demo is
+untouched:
+
+```bash
+python3 scripts/setup_insights_native_demo.py                 # dry run
+python3 scripts/setup_insights_native_demo.py --apply
+python3 scripts/setup_insights_native_demo.py --apply --undo  # deactivate
+```
+
+It creates the `nwdemocr=insightsbanner` value, the three native styles gated to
+it, a demo line item on the test order carrying all three sizes with the same
+gate, and a LICA to creative `138562612084` (a 1x1 Insights native whose
+advertiser matches the test order — a LICA requires that match). Then open:
+
+```
+https://www.newsweek.com/?nwdemocr=insightsbanner
+https://www.newsweek.com/insights/<any-article>?nwdemocr=insightsbanner
+```
+
+**The one uncertainty:** GAM's `NativeStyle` may not honour `customTargeting` at
+serve time — inventory targeting certainly is honoured, custom is unverified.
+The script reads each style back after creating it and prints whether the gate
+stuck. If it did not, the styles are live for template `12412102` generally;
+today the only *delivering* creative on that template is the already-gated demo
+LI above, so the practical effect is that the `insighttest` demo would start
+rendering the fixed 970x250 banner on `homepage3` instead of the fluid unit.
+`--undo` deactivates the styles and pauses the demo LI.
+
 ## Gotchas
 
 - **The styles are fixed-size only.** The stylesheet sets `html, body { height:

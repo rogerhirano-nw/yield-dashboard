@@ -86,6 +86,15 @@ and why" index, keyed by PR. Newest first.
   targeting from the default `newsweek` site root. Not automated: adding the
   three sizes to the line item's creative placeholders in the GAM UI, which is
   what makes the 1x1 native creative eligible for those slots.
+- **`scripts/setup_insights_native_demo.py`** — on-site demo gated by
+  `?nwdemocr=`, following the pattern already in the network (LI 7330346837
+  demos the *fluid* unit at `nwdemocr=insighttest` on `homepage3`). Creates its
+  own `nwdemocr=insightsbanner` value, the three styles gated to it, a demo line
+  item on the test order with all three sizes, and a LICA to creative
+  `138562612084` — chosen because a LICA needs the creative's advertiser to
+  match the order's, and that one is on the test advertiser. `--undo` reverses
+  it. Open question the script reports on: whether `NativeStyle` honours
+  `customTargeting` at serve time.
 - Full write-up: `docs/insights_native_ad.md`.
 
 ## 2026-09-04 — Prebid bidders below the Active View baseline: diagnostics
