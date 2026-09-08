@@ -150,6 +150,43 @@ def build_doc(values: dict) -> str:
             f"<style>{css}</style></head><body>{html}</body></html>")
 
 
+# A logo asset is sized by HEIGHT in the stylesheet, so transparent padding
+# baked into the file shrinks the visible mark by exactly that proportion. The
+# Cognizant asset shipped as a 3840x2160 gallery export whose wordmark filled
+# 31% of the canvas height -- at --logo-h:20px that left ~6px of actual logo,
+# which read as a speck (Roger, 2026-09-08). Nothing in CSS can crop padding it
+# cannot see, so the check belongs here: measure the asset's ink box in a canvas
+# (a data: URI never taints it) and say so before the creative ships.
+_LOGO_INK_JS = """() => {
+  const img = document.querySelector('.insights-hero__sponsor-logo');
+  if (!img || !img.naturalWidth) return null;
+  const W = Math.min(img.naturalWidth, 600);
+  const H = Math.max(1, Math.round(img.naturalHeight * W / img.naturalWidth));
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', {willReadFrequently: true});
+  cx.drawImage(img, 0, 0, W, H);
+  let d;
+  try { d = cx.getImageData(0, 0, W, H).data; } catch (e) { return null; }
+  let top = H, bot = -1, left = W, right = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4;
+    // ink = not transparent AND not paper-white (covers flattened exports)
+    const inked = d[i+3] > 16 && !(d[i] > 244 && d[i+1] > 244 && d[i+2] > 244);
+    if (!inked) continue;
+    if (y < top) top = y; if (y > bot) bot = y;
+    if (x < left) left = x; if (x > right) right = x;
+  }
+  if (bot < 0) return null;
+  return {natW: img.naturalWidth, natH: img.naturalHeight,
+          inkH: (bot - top + 1) / H, inkW: (right - left + 1) / W};
+}"""
+
+# Below this the mark is small enough that a reader cannot identify the brand at
+# the leaderboard's --logo-h:14px, which is what disclosure depends on.
+_LOGO_INK_MIN = 0.70
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--creative-id", type=int, default=DEFAULT_CREATIVE_ID)
@@ -210,6 +247,17 @@ def main() -> int:
             if fit["hedSqueeze"] > 0:
                 flags.append(f"HEADLINE SQUEEZED -{fit['hedSqueeze']}px")
             print(f"  {w}x{h:<4} -> {path.name}  {'  '.join(flags) or 'fits'}")
+            if (w, h) == SIZES[0]:
+                ink = page.evaluate(_LOGO_INK_JS)
+                if ink is None:
+                    print("  logo    -> could not measure (no asset?)")
+                elif ink["inkH"] < _LOGO_INK_MIN:
+                    print(f"  logo    -> PADDED ASSET: mark fills {ink['inkH']:.0%} of the"
+                          f" {ink['natW']}x{ink['natH']} file's height, so it renders"
+                          f" {ink['inkH']:.0%} of --logo-h. Crop it to the mark.")
+                else:
+                    print(f"  logo    -> ok ({ink['natW']}x{ink['natH']},"
+                          f" mark fills {ink['inkH']:.0%} of height)")
             page.close()
         browser.close()
     print(f"\nPNGs in {out}")

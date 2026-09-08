@@ -138,6 +138,37 @@ poster**. Two rules, both learned the hard way on the Cognizant sample:
   is the asset, not the style. Re-crop to a clean landscape region before
   uploading.
 
+### Logo asset requirements — crop it to the mark
+
+**The logo must be cropped tight to the wordmark, with no transparent
+margin.** The stylesheet sizes it by *height* (`--logo-h`: 20px on 970x250,
+14px on 728x90, 13px on 300x250) and lets width follow the aspect ratio, so
+padding baked into the file shrinks the visible mark by exactly that
+proportion.
+
+Proven on the Cognizant sample (Roger, 2026-09-08: "the logo is appearing very
+small"). The uploaded asset was a **3840x2160 logo-gallery export** — a 16:9
+canvas with the wordmark floating in the middle band. Its ink filled 98% of the
+width but only **31% of the height**, so at `--logo-h: 20px` the reader got
+~6px of actual logo, rendered 35px wide next to an 88px "SPONSORED BY" label.
+Re-cropped to its ink box (3780x691, 5.5:1) the same 20px renders **109px
+wide** and the brand is legible at all three sizes.
+
+No CSS can fix this — the padding is inside the image, and a native style's
+rules are shared by every creative on the template, so there is no per-creative
+`object-position` escape. Same conclusion as the hero: **the fix is the asset.**
+
+`scripts/preview_insights_native.py` now canaries it. It measures the asset's
+ink box in a canvas and prints one of:
+
+```
+  logo    -> ok (3780x691, mark fills 98% of height)
+  logo    -> PADDED ASSET: mark fills 31% of the 3840x2160 file's height, so it
+             renders 31% of --logo-h. Crop it to the mark.
+```
+
+Anything under 70% is flagged. Run the preview before a creative ships.
+
 ### Copy limits (the ad spec)
 
 Every size clamps its headline (2 lines, 3 on the rectangle) and the 970's dek
