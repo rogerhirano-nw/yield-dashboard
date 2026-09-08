@@ -94,13 +94,43 @@ poster**. Two rules, both learned the hard way on the Cognizant sample:
   is the asset, not the style. Re-crop to a clean landscape region before
   uploading.
 
-### Copy limits
+### Copy limits (the ad spec)
 
 Every size clamps its headline (2 lines, 3 on the rectangle) and the 970's dek
-(3 lines), so **over-long copy fails as an ellipsis, not as a broken box**.
-The Infiniti creative — an 84-char `TITLE` and a 166-char `SUBTITLE` — is the
-practical ceiling: it fills every clamp exactly with no truncation. Longer copy
-will ellipse. Check before a flight goes live:
+(3 lines), so **over-long copy fails as an ellipsis, not as a broken box** —
+nothing errors, the sentence just stops. These are the numbers to give an AE:
+
+| Field | Target | Hard cap | Binding size | Notes |
+|---|---|---|---|---|
+| `TITLE` (headline) | **55–75 chars** | **85** | 970x250 | Renders at all three sizes |
+| `SUBTITLE` (blurb) | **120–170 chars** | **200** | 970x250 | **970x250 only** — see below |
+| `HASHTAG` | one word | **20** | 300x250 | Markup adds the `#` |
+
+Two things that surprise people:
+
+- **The 970x250 is the tightest for the headline, not the rectangle.** The
+  billboard gives the headline 2 lines in a ~528px column at 24px; the
+  rectangle gives it 3 lines at 15.5px and tolerates ~100 chars. The widest
+  size is the binding constraint.
+- **The blurb only ever renders on the 970x250.** 728x90 and 300x250 stop at
+  the headline. So the headline has to stand alone — write the dek as an
+  addition, never as the second half of a sentence the headline started.
+
+Live copy for reference: the Infiniti creative is an **84-char** `TITLE`, which
+is *right at* the cap — a word longer and it ellipses. Cognizant is 80.
+
+The limits are a property of the type scale, not a constant: change a
+font-size, column width or line count in the stylesheet and they move.
+**Re-derive rather than trusting this table:**
+
+```bash
+python3 scripts/measure_insights_copy_limits.py
+```
+
+It binary-searches each field against every size with many randomly-built
+editorial-style strings per length, and reports `safe` (every sample fits — the
+number to publish) vs `max` (lucky short words). Then check a specific
+creative before its flight goes live:
 
 ```bash
 python3 scripts/preview_insights_native.py --creative-id <id>

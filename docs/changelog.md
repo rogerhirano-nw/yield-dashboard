@@ -47,6 +47,18 @@ and why" index, keyed by PR. Newest first.
   file fits in the slot. Both QA tools **drop** the `3RDPARTYTRACKING1/2`
   pixels rather than substituting them: they are real advertiser URLs (ml314
   here) and a design render is not an impression.
+- **The copy spec is now measured, not guessed** —
+  `scripts/measure_insights_copy_limits.py` binary-searches each field against
+  every size with many randomly-built editorial strings per length, reporting
+  `safe` (every sample fits) vs `max` (lucky wording). Results: **TITLE 85
+  chars, SUBTITLE 200, HASHTAG 20**. Two counterintuitive findings: the
+  **970x250 is the binding size for the headline**, not the rectangle (2 lines
+  in a ~528px column at 24px beats 3 lines at 15.5px), and the **blurb renders
+  only on the 970x250**, so the headline must stand alone at the other two.
+  This corrects an earlier note that called the Infiniti creative's 84-char
+  TITLE "the practical ceiling because it fills every clamp exactly" — it fits,
+  but only just, and the real ceiling is 85. The limits track the type scale,
+  so the script is the source of truth and the doc's table is a snapshot.
 - **Both QA tools take `--values-json` + `--prefix`** (added while building a
   Cognizant sample), so copy can be proofed *before* the creative is trafficked
   — a values file supplies TITLE/SUBTITLE/HASHTAG/IMAGE/LOGO/DEST, and
