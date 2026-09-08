@@ -1024,13 +1024,23 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   size and the dek is 970-only, but the "Sponsored by <logo>" lockup and the
   "SPONSORED" tag run at **all three sizes** so disclosure never depends on the
   dek. Every size clamps its copy, so over-long TITLE/SUBTITLE fails as an
-  ellipsis, not a broken box. **Measured spec: TITLE 85 chars / SUBTITLE 200 /
-  HASHTAG 20** — the **970x250 is the binding size for the headline** (2 lines
-  in a ~528px column beats the rectangle's 3 narrow lines) and the **dek renders
-  only on the 970x250**, so the headline must stand alone at the other two.
-  Limits track the type scale, so re-derive with
+  ellipsis, not a broken box. **Measured spec: TITLE 100 chars / SUBTITLE 220 /
+  HASHTAG 20** — 970x250 and 300x250 bind equally on the headline, the 728x90 is
+  loosest (125), and the **dek renders only on the 970x250**, so the headline
+  must stand alone at the other two. Every size carries a **READ MORE** CTA
+  (bottom of the text column; on 728x90 it rides the meta row, absolute
+  top-right, since 90px has no vertical room — which is why that size's caps are
+  tighter). The card border is a firm warm rule + low shadow, because the live
+  page wraps ads in its own cream ADVERTISING band that a faint hairline
+  disappeared into. Limits track the type scale, so re-derive with
   `scripts/measure_insights_copy_limits.py` after any font-size/line-count
-  change rather than trusting the doc's table.
+  change rather than trusting the doc's table. **The live styles are NOT the
+  ones this repo created** — the `12412102` set is archived; what serves is
+  `Native (WxH)` (ids **1014148 / 1014151 / 1014379**) on template **12552841**,
+  gated `?nwdemocr=native`, running byte-identical copies of the repo's two
+  files, so a CSS edit reaches production only via
+  `setup_insights_native_styles.py --style-ids …` (or the
+  `push_insights_native_style.yml` workflow).
   `scripts/preview_insights_native.py` renders a
   real creative's values at exact pixel size in headless Chromium and flags
   overflow before a flight ships, and `scripts/build_insights_test_pages.py`

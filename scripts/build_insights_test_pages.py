@@ -69,6 +69,13 @@ p.note{margin:0 0 18px;color:var(--muted);font-size:13px;max-width:70ch;line-hei
 .art p{font-size:15.5px;line-height:1.65;color:#2e2d27;margin:0 0 15px}
 .art .ph{color:#8d8776}
 .rail{display:flex;flex-direction:column;gap:9px}
+/* The live page wraps ads in a full-bleed warm "ADVERTISING" band. The first
+   harness put the units on white, which hid the fact that the unit's own paper
+   ground blended straight into that band on a real article (Roger, 2026-09-08).
+   Reproduce the band so the QA render can actually catch it. */
+.adband{background:#f6f2e6;margin:26px -26px;padding:14px 0 20px;
+  display:flex;flex-direction:column;align-items:center;gap:9px}
+.adband-l{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#9a9384}
 .center{display:flex;justify-content:center;margin:26px 0}
 @media(max-width:980px){.art{grid-template-columns:1fr}
   .slot iframe,.center iframe{max-width:100%}}
@@ -120,13 +127,13 @@ def build_page(values: dict) -> str:
      mid-article, rectangle in the rail.</p>
 
   <div class="page">
-    <div class="center">{iframe(doc, 970, 250)}</div>
+    <div class="adband"><span class="adband-l">Advertising</span>{iframe(doc, 970, 250)}</div>
     <div class="mast"><b>Ad QA Harness</b><i>Test page &middot; not a live page</i></div>
     <div class="art">
       <div>
         <h1>{title}</h1>
         {paras}
-        <div class="center">{iframe(doc, 728, 90)}</div>
+        <div class="adband"><span class="adband-l">Advertising</span>{iframe(doc, 728, 90)}</div>
         {paras}
       </div>
       <div class="rail">

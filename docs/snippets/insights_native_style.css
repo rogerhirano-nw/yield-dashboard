@@ -29,6 +29,11 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --foreground-muted: #68645a;
   --background-page: #F8F4E8;
   --rs-color-border-neutral-faded: rgba(31, 30, 25, 0.12);
+  /* The page wraps ads in its own warm "ADVERTISING" band, and the unit's paper
+     ground is close enough to it that a 12%-ink hairline disappears -- the card
+     read as part of the page. --card-edge is a firmer warm rule, plus a low
+     shadow, so the unit reads as a discrete card on cream AND on white. */
+  --card-edge: #d5cdb6;
   --font-headline: "Playfair Display", Georgia, serif;
   --font-body: "Noto Serif", Georgia, serif;
   --font-sans: system-ui, -apple-system, sans-serif;
@@ -43,7 +48,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --title-fs: 15px;
   --logo-h: 15px;
   --sponsor-fs: 8.5px;
-  --media-h: 98px;
+  --media-h: 72px;
   --text-pt: 10px;
   --text-pb: 12px;
   --tag-fs: 9.5px;
@@ -55,6 +60,9 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --hed-mb: 0px;
   --dek-fs: 13px;
   --dek-lines: 2;
+  --cta-fs: 9px;
+  --cta-pad: 5px 9px;
+  --cta-mt: 9px;
 
   width: 100%;
   height: 100%;
@@ -62,7 +70,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
      unit otherwise bleeds into the article; the hairline is what makes it read
      as a discrete card. box-sizing is border-box, so the 2px it costs comes out
      of the grid — the rectangle's --media-h is set 2px short to pay for it. */
-  border: 1px solid var(--rs-color-border-neutral-faded);
+  border: 1px solid var(--card-edge);
+  box-shadow: 0 1px 3px rgba(31, 30, 25, 0.07);
   background-color: var(--background-page);
   font-family: var(--font-body);
   color: var(--foreground-default);
@@ -87,6 +96,9 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   padding: var(--head-pt) var(--pad-x) var(--head-pb); }
 #nw-insights-injected .insights-hero__media  { grid-area: media; min-height: 0; }
 #nw-insights-injected .insights-hero__text   { grid-area: text; min-height: 0; overflow: hidden;
+  /* a real flex column: the CTA's align-self only works in a flex container --
+     as a plain block it silently fell into normal flow, left-aligned. */
+  display: flex; flex-direction: column; align-items: stretch;
   padding: var(--text-pt) var(--pad-x) var(--text-pb); }
 
 /* red rule above the wordmark — zero-height flex row, bar drawn by ::before */
@@ -118,6 +130,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
 #nw-insights-injected .insights-hero__image { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 #nw-insights-injected .insights-hero__tags {
+  flex: none;
   display: flex; align-items: center; gap: var(--tag-gap); margin-bottom: var(--tags-mb);
   white-space: nowrap; overflow: hidden;
 }
@@ -129,12 +142,26 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   width: 1px; height: calc(var(--tag-fs) + 2px); background-color: var(--foreground-muted); opacity: 0.5; flex: none;
 }
 #nw-insights-injected .insights-hero__headline {
+  flex: none;
   margin: 0 0 var(--hed-mb); font-family: var(--font-headline); font-weight: 600;
   font-size: var(--hed-fs); line-height: var(--hed-lh);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--hed-lines);
   overflow: hidden;
 }
+#nw-insights-injected .insights-hero__cta {
+  margin-top: var(--cta-mt);
+  align-self: flex-end;   /* rectangle: bottom-right, opposite the headline */
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: var(--cta-fs); font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase; white-space: nowrap;
+  color: var(--foreground-default);
+  border: 1px solid var(--foreground-default); border-radius: 2px;
+  padding: var(--cta-pad); flex: none;
+}
+#nw-insights-injected .insights-hero__cta::after { content: "\2192"; font-size: 1.15em; line-height: 1; }
+
 #nw-insights-injected .insights-hero__description {
+  flex: none;
   display: none;  /* 970x250 only */
   margin: 0; font-family: var(--font-sans);
   font-size: var(--dek-fs); line-height: 1.45; color: var(--foreground-muted);
@@ -149,6 +176,16 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
     --text-pt: 0px; --text-pb: 5px;   /* 90px minus the 2px border is a tight budget */
     --tag-fs: 9px; --tag-gap: 8px; --tags-mb: 4px;
     --hed-fs: 15px; --hed-lh: 1.25; --hed-lines: 2;
+    --cta-fs: 8.5px; --cta-pad: 4px 8px; --cta-mt: 0px;
+  }
+  /* 90px leaves no room for a CTA under the headline, so it rides the meta row
+     instead -- absolute, top-right of the text column, costing zero height. */
+  #nw-insights-injected .insights-hero__text { position: relative; padding-right: 108px; }
+  /* Centered against the text block, not top:0 -- at the top it sat immediately
+     under the sponsor logo and the two right-hand elements crowded each other. */
+  #nw-insights-injected .insights-hero__cta {
+    position: absolute; right: var(--pad-x); top: 50%; transform: translateY(-50%);
+    margin: 0; align-self: auto;
   }
   #nw-insights-injected .insights-hero__content {
     grid-template-columns: 160px 1fr;
@@ -163,16 +200,18 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   #nw-insights-injected {
     --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --tick-w: 24px; --divider-mb: 12px;
     --title-fs: 22px; --logo-h: 22px; --sponsor-fs: 11px;
-    --text-pt: 6px; --text-pb: 24px;
+    --text-pt: 6px; --text-pb: 16px;   /* the CTA spends the old slack */
     --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 10px;
     --hed-fs: 24px; --hed-lh: 1.3; --hed-lines: 2; --hed-mb: 10px;
     /* 3 dek lines, not 2: a 160-char SUBTITLE (the Infiniti copy) needs the
        third to land its final clause instead of ellipsing mid-sentence, and
        the column has the room. */
     --dek-fs: 14px; --dek-lines: 3;
+    --cta-fs: 10px; --cta-pad: 7px 14px; --cta-mt: 4px;
   }
+  #nw-insights-injected .insights-hero__cta { align-self: flex-start; }
   #nw-insights-injected .insights-hero__content {
-    grid-template-columns: 1fr 392px;
+    grid-template-columns: 1fr 340px;
     grid-template-rows: auto 1fr;
     grid-template-areas: "head head" "text media";
   }

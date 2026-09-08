@@ -1,0 +1,51 @@
+name: Push Insights native style
+
+# Pushes docs/snippets/insights_native_style.{html,css} onto live NativeStyles
+# by id, using the repo's GAM secrets.
+#
+# The live set is "Native (970x250|728x90|300x250)" -- ids 1014148 / 1014151 /
+# 1014379 -- on creative template 12552841 ("native"), NOT the 12412102 styles
+# this repo originally created (those are archived). They run byte-identical
+# copies of these two files, so this workflow is how a CSS change in the repo
+# reaches the live demo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      style_ids:
+        description: 'Comma-separated NativeStyle ids to update'
+        required: false
+        default: '1014148,1014151,1014379'
+      mode:
+        description: 'dry-run (default, writes nothing) | apply'
+        required: false
+        default: 'dry-run'
+        type: choice
+        options: [dry-run, apply]
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Push style
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          MODE: ${{ inputs.mode }}
+          STYLE_IDS: ${{ inputs.style_ids }}
+        run: |
+          set -o pipefail
+          [ "$MODE" = "apply" ] && ARGS="--apply" || ARGS=""
+          python scripts/setup_insights_native_styles.py $ARGS --style-ids "$STYLE_IDS"

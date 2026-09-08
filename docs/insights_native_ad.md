@@ -59,7 +59,33 @@ body, `system-ui` for the uppercase labels, `#F8F4E8` paper, `#1f1e19` ink,
 names match too (`insights-hero__*`), so a page audit or a GAM UI diff reads
 the same across sizes.
 
-The banners add one thing the fluid unit doesn't have: an **always-on 1px
+### The card must separate from the page's ad band
+
+The live page wraps ads in its own full-bleed warm **ADVERTISING** band, and the
+unit's paper ground is close enough to it that a 12%-ink hairline vanished — the
+card read as part of the page (Roger, on the live render, 2026-09-08). The
+border is therefore a firmer warm rule (`--card-edge: #d5cdb6`) plus a low
+shadow, so the unit reads as a discrete card on **cream and on white**.
+
+`build_insights_test_pages.py` now reproduces that cream band, because the
+original harness put the units on white and so could never have caught this.
+**A QA harness that doesn't reproduce the host page's ad wrapper will miss
+exactly this class of bug.**
+
+### CTA
+
+Every size carries a **READ MORE** button. On 970x250 and 300x250 it is pinned
+to the bottom of the text column (`margin-top:auto`), so it sits on the card's
+baseline no matter how many headline/dek lines a creative uses. **On 728x90 it
+rides the meta row instead** — absolutely positioned top-right of the text
+column — because 90px leaves no vertical room for a button under a two-line
+headline; that placement costs zero height but reserves ~108px of width, which
+is why the leaderboard's copy caps are tighter than the other two.
+
+The CTA label is **hardcoded in the style markup**, not a template variable — so
+changing it changes it for every creative on the template.
+
+The banners also add something the fluid unit doesn't have: an **always-on 1px
 border** (`--rs-color-border-neutral-faded`, the warm hairline already declared
 in `989975`). The paper ground is close enough to a white page that the unit
 otherwise bleeds into the article; the hairline is what makes it read as a
@@ -102,22 +128,29 @@ nothing errors, the sentence just stops. These are the numbers to give an AE:
 
 | Field | Target | Hard cap | Binding size | Notes |
 |---|---|---|---|---|
-| `TITLE` (headline) | **55–75 chars** | **85** | 970x250 | Renders at all three sizes |
-| `SUBTITLE` (blurb) | **120–170 chars** | **200** | 970x250 | **970x250 only** — see below |
+| `TITLE` (headline) | **55–85 chars** | **100** | 970x250 & 300x250 | Renders at all three sizes |
+| `SUBTITLE` (blurb) | **140–190 chars** | **220** | 970x250 | **970x250 only** — see below |
 | `HASHTAG` | one word | **20** | 300x250 | Markup adds the `#` |
 
 Two things that surprise people:
 
-- **The 970x250 is the tightest for the headline, not the rectangle.** The
-  billboard gives the headline 2 lines in a ~528px column at 24px; the
-  rectangle gives it 3 lines at 15.5px and tolerates ~100 chars. The widest
-  size is the binding constraint.
+- **The 970x250 and the 300x250 bind equally at ~100 chars**, for opposite
+  reasons: the billboard gives the headline 2 lines in a ~580px column at 24px,
+  the rectangle 3 lines at 15.5px in 272px. The 728x90 is the *loosest* (125),
+  which is the reverse of the intuition that the smallest box is the tightest.
 - **The blurb only ever renders on the 970x250.** 728x90 and 300x250 stop at
   the headline. So the headline has to stand alone — write the dek as an
   addition, never as the second half of a sentence the headline started.
 
-Live copy for reference: the Infiniti creative is an **84-char** `TITLE`, which
-is *right at* the cap — a word longer and it ellipses. Cognizant is 80.
+Live copy for reference: Infiniti is an **84-char** `TITLE`, Cognizant 80 —
+both comfortably inside the 100 cap.
+
+**These numbers moved on 2026-09-08** (from 85 / 200) when the CTA was added:
+the CTA needed vertical room on the billboard, which was bought by narrowing the
+hero column 392→340px — and the wider text measure raised the headline and dek
+caps more than the CTA cost. Widening the *measure* beat squeezing the vertical
+rhythm; the 728x90's caps went the other way (150→125 TITLE, 65→50 HASHTAG)
+because its CTA sits in the meta row and reserves horizontal space.
 
 #### These are NOT the homepage native's limits
 
@@ -220,6 +253,23 @@ previews into the buyer's counts. Nothing visual depends on them; they render
 hidden.
 
 ## Trafficking
+
+**The live styles are NOT the ones this repo created.** The originals on
+template `12412102` were archived; what serves today is
+**`Native (970x250|728x90|300x250)` = ids `1014148` / `1014151` / `1014379`** on
+creative template **`12552841`** ("native", same seven variables), gated behind
+`?nwdemocr=native`. They run byte-identical copies of
+`insights_native_style.{html,css}`, so a change here reaches them only when it is
+pushed onto those ids:
+
+```bash
+python3 scripts/setup_insights_native_styles.py --style-ids 1014148,1014151,1014379
+python3 scripts/setup_insights_native_styles.py --style-ids 1014148,1014151,1014379 --apply
+```
+
+or dispatch `.github/workflows/push_insights_native_style.yml`. `--style-ids`
+updates styles by id whatever template or name they carry, and skips the
+lookup-by-name/create path entirely.
 
 ```bash
 python3 scripts/setup_insights_native_styles.py                    # dry run

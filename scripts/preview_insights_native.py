@@ -187,10 +187,18 @@ def main() -> int:
             fit = page.evaluate("""() => {
               const q = s => document.querySelector(s);
               const t = q('.insights-hero__text'), d = q('.insights-hero__description');
-              const c = q('.insights-hero__content');
+              const c = q('.insights-hero__content'), h = q('.insights-hero__headline');
+              // A flex child can be squeezed below its natural height and clip
+              // internally (a clamped headline crops its descenders) while the
+              // CONTAINER still reports no overflow -- so measure the headline's
+              // own box against the lines it is clamped to, not just the parents.
+              const lh = parseFloat(getComputedStyle(h).lineHeight);
+              const lines = parseInt(getComputedStyle(h).webkitLineClamp) || 99;
+              const wanted = Math.min(Math.round(h.scrollHeight / lh), lines) * lh;
               return {text: t.scrollHeight - t.clientHeight,
                       content: c.scrollHeight - c.clientHeight,
-                      dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0};
+                      dek: d.clientHeight ? d.scrollHeight - d.clientHeight : 0,
+                      hedSqueeze: Math.max(0, Math.round(wanted - h.clientHeight))};
             }""")
             flags = []
             if fit["content"] > 0:
@@ -199,6 +207,8 @@ def main() -> int:
                 flags.append(f"text overflow +{fit['text']}px")
             if fit["dek"] > 0:
                 flags.append(f"dek clipped +{fit['dek']}px")
+            if fit["hedSqueeze"] > 0:
+                flags.append(f"HEADLINE SQUEEZED -{fit['hedSqueeze']}px")
             print(f"  {w}x{h:<4} -> {path.name}  {'  '.join(flags) or 'fits'}")
             page.close()
         browser.close()
