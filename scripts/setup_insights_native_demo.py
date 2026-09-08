@@ -227,9 +227,12 @@ def main() -> int:
         print(f"created line item id={li['id']}  status={li['status']}")
     else:
         print(f"line item exists id={li['id']}  status={li['status']}")
-        shapes = [(p["size"]["width"], p["size"]["height"], p.get("creativeSizeType"))
+        # zeep objects are not dicts: .get() raises AttributeError, so read the
+        # optional field with getattr (this crashed the first repair run).
+        shapes = [(p["size"]["width"], p["size"]["height"],
+                   getattr(p, "creativeSizeType", None))
                   for p in li["creativePlaceholders"]]
-        if shapes != [(1, 1, "NATIVE")]:
+        if sorted(shapes) != [(1, 1, "NATIVE")]:
             li["creativePlaceholders"] = NATIVE_PLACEHOLDER
             # both required again on update, not just at create -- see docstring
             li["skipInventoryCheck"] = True
