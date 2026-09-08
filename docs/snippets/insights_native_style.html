@@ -23,6 +23,17 @@
             <h2 class="insights-hero__section-title">Insights</h2>
             <i class="insights-hero__tag-sep"></i>
             <span class="insights-hero__cat">#[%HASHTAG%]</span>
+            <!-- Two instances of the sponsor lockup, one shown at a time (the
+                 incumbent style 989975 toggles desktop/mobile headers the same
+                 way): the wide sizes have free space at the top right, the
+                 rectangle does not and carries it above the headline instead.
+                 CSS cannot move a node between containers, so it is duplicated
+                 and the unused one is display:none -- which also takes it out
+                 of the accessibility tree, so "Sponsored by" is announced once. -->
+            <div class="insights-hero__sponsor insights-hero__sponsor--head">
+              <span class="insights-hero__sponsor-label">Sponsored by</span>
+              <img class="insights-hero__sponsor-logo" src="[%LOGO%]" alt="Sponsor">
+            </div>
           </div>
         </header>
 
@@ -33,7 +44,7 @@
         </div>
 
         <div class="insights-hero__text">
-          <div class="insights-hero__tags">
+          <div class="insights-hero__tags insights-hero__sponsor--body">
             <span class="insights-hero__tag">Sponsored by</span>
             <img class="insights-hero__sponsor-logo" src="[%LOGO%]" alt="Sponsor">
           </div>
