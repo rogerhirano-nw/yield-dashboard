@@ -148,7 +148,7 @@ nothing errors, the sentence just stops. These are the numbers to give an AE:
 |---|---|---|---|---|
 | `TITLE` (headline) | **55–85 chars** | **100** | 970x250 & 300x250 | Renders at all three sizes |
 | `SUBTITLE` (blurb) | **150–210 chars** | **250** | 970x250 | **970x250 only** — see below |
-| `HASHTAG` | one word | **20** ⚠️ | 300x250 | Markup adds the `#`. **Stale** — measured before the category moved into the header lockup; re-derive. |
+| `HASHTAG` | one word | **20** ⚠️ | 300x250 | Rendered bare — the markup no longer prefixes a `#`. **Stale** — measured before the category moved into the header lockup; re-derive. |
 
 Two things that surprise people:
 
