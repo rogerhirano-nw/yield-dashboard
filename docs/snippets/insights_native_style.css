@@ -184,7 +184,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-sans); font-size: var(--cta-fs); font-weight: 600;
   letter-spacing: 0.07em; text-transform: uppercase; white-space: nowrap;
-  color: var(--foreground-default);
+  color: #ffffff;
+  background-color: var(--foreground-default);   /* Newsweek ink, not pure black */
   border: 1px solid var(--foreground-default); border-radius: 2px;
   padding: var(--cta-pad); flex: none;
 }
