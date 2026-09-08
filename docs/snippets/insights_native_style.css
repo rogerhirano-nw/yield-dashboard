@@ -50,15 +50,15 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
          default, so an unexpected size degrades to the most compact layout --- */
   --pad-x: 14px;
   --head-pt: 10px;
-  --head-pb: 10px;
+  --head-pb: 6px;
   --tick-w: 20px;
   --divider-mb: 6px;
   --title-fs: 15px;
   --logo-h: 13px;
   --sponsor-fs: 8.5px;
-  --media-h: 70px;
+  --media-h: 81px;
   --text-pt: 10px;
-  --text-pb: 12px;
+  --text-pb: 8px;
   --tag-fs: 9.5px;
   --tag-gap: 9px;
   --tags-mb: 7px;
@@ -70,7 +70,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --dek-lines: 2;
   --cta-fs: 9px;
   --cta-pad: 5px 9px;
-  --cta-mt: 9px;
+  --cta-mt: 6px;
 
   width: 100%;
   height: 100%;
@@ -203,7 +203,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   #nw-insights-injected {
     --pad-x: 16px; --head-pt: 6px; --head-pb: 0px; --tick-w: 18px; --divider-mb: 5px;
     --title-fs: 13px; --logo-h: 14px; --sponsor-fs: 8.5px;
-    --text-pt: 2px; --text-pb: 6px;   /* 90px minus the 2px border is a tight budget */
+    --text-pt: 10px; --text-pb: 6px;  /* 90px minus the 2px border is a tight budget */
     --tag-fs: 9px; --tag-gap: 8px; --tags-mb: 4px;
     --hed-fs: 15px; --hed-lh: 1.25; --hed-lines: 2;
     --cta-fs: 8.5px; --cta-pad: 4px 8px; --cta-mt: 0px;
