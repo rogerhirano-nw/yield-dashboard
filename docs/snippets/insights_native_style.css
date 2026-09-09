@@ -81,17 +81,18 @@ html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
   --cta-mt: 14px;
 
   width: 100%;
-  /* NOT height:100%. The live in-article slot clips the iframe's last pixel row
-     -- the card measured 249px in a 250px unit and its bottom border vanished
-     while the other three edges rendered (Roger, 2026-09-08). A creative cannot
-     see or style its container, so the only defence is to keep the visible edge
-     off the row that gets clipped: the card gives up its bottom 2px, which are
-     transparent and read as part of the page's ad band. The rectangle has no
-     slack, so those 2px are paid for out of --text-pb below the CTA.
-     (Page-side root cause worth fixing separately: an inline iframe sits on the
-     text baseline, so a fixed-height overflow:hidden slot clips it. The usual
-     fix is iframe { display: block } on the slot.) */
-  height: calc(100% - 2px);
+  /* vh, NOT a percentage. GAM does not serve the style's markup as a child of
+     <body>: it wraps it in a plain <div> with no height of its own (visible in
+     any served creative -- body > div > #nw-insights-injected). A percentage
+     height against an auto-height parent is indeterminate, so `height:100%`
+     silently fell back to CONTENT height and the card stopped filling its slot:
+     970x250 rendered 215px tall, which left zero space above the bottom-pinned
+     CTA and made the button sit on the dek; 728x90 rendered 92px and overflowed
+     its 90px box. Measured against a reproduction of GAM's DOM, 2026-09-09.
+     `vh` resolves against the iframe viewport and no wrapper can break it.
+     The 2px is precautionary headroom so the bottom border can never be lost to
+     an off-by-one in the slot; the rectangle pays for it out of --text-pb. */
+  height: calc(100vh - 2px);
   /* Always bordered. The paper ground is close enough to a white page that the
      unit otherwise bleeds into the article; the hairline is what makes it read
      as a discrete card. box-sizing is border-box, so the 2px it costs comes out
