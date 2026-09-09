@@ -231,32 +231,50 @@ attribute on it. The click itself is tracked by Google's
 `%%CLICK_URL_UNESC%%` redirect, not by the referrer, so GAM's click counting is
 unaffected either way.
 
-### The live slot clips the iframe's last pixel row
+### The card must size itself in `vh`, never a percentage
 
-On the real in-article 300x250 the card rendered **249px tall in a 250px unit**
-and its **bottom border vanished** while the other three edges drew normally
-(Roger, 2026-09-08). Rendered in isolation the document is exactly the viewport
-at all three sizes — `documentElement.scrollHeight == innerHeight`, zero overflow
-— so this is the page's slot container, not the style.
-
-**Likely page-side root cause:** an `<iframe>` is inline by default, so it sits on
-the text baseline; a fixed-height `overflow: hidden` slot then clips the bottom of
-it. The standard fix is `iframe { display: block }` (or `vertical-align: bottom`)
-on the slot — worth raising with engineering, since it affects every creative in
-that unit, not just this one.
-
-**Creative-side mitigation, since a creative cannot see or style its container:**
-keep the visible edge off the row that gets clipped. The card is
-`height: calc(100% - 2px)` rather than `height: 100%`, so it ends 2px above the
-viewport and those two transparent rows absorb the clip. They read as part of the
-page's cream ad band. The rectangle has no slack, so the 2px are paid for out of
-`--text-pb` below the CTA (8px → 6px).
-
-`preview_insights_native.py` measures the clearance and flags a flush card:
+**GAM does not serve the style's markup as a child of `<body>`.** It emits an
+Active View container and then wraps the markup in a plain `<div>` that has no
+height of its own — visible in any served creative:
 
 ```
-  300x250  -> ...  CARD EDGE ON THE CLIPPED ROW (clearance 0px)
+<body><div class="GoogleActiveViewInnerContainer" …></div><script …></script>
+      <div > …the style's markup… </div>
 ```
+
+A percentage height against an auto-height parent is indeterminate, so the
+card's `height: calc(100% - 2px)` silently fell back to **content height** and
+the unit stopped filling its slot. Measured against a reproduction of that DOM
+(2026-09-09):
+
+| Size | `height: calc(100% - 2px)` | `height: calc(100vh - 2px)` |
+|---|---|---|
+| 970x250 | card **215px**, dek→CTA gap **0px** | 248px, 33px |
+| 728x90 | card **92px — overflows its 90px box** | 88px, fits |
+| 300x250 | 247px, 14px | 248px, 14px |
+
+That single bug is what produced both live symptoms: on the billboard the
+bottom-pinned CTA had no leftover space, so the button sat on the dek; on the
+leaderboard the card ran 2px past its own slot. The rectangle happened to land
+near 250px by content, which is why it looked nearly right and masked the cause.
+
+**This also supersedes an earlier, wrong diagnosis.** The 300x250's missing
+bottom border was attributed to the page's slot clipping the iframe's last pixel
+row, with a recommendation to set `iframe { display: block }` on the ad slot.
+That was wrong: at the time the rectangle's content ran past 250px, so the
+content-sized card overflowed its own iframe and the border went with it.
+Nothing needs changing on the page.
+
+The `- 2px` is now precautionary headroom, not a fix for anything observed — it
+guarantees the bottom border cannot be lost to an off-by-one in the slot, and
+the rectangle pays for it out of `--text-pb`.
+
+**The harness could not have caught this**, exactly like rendering onto white
+instead of the page's cream ad band: it rendered the markup straight into
+`<body>`, where `height:100%` resolves. `preview_insights_native.py` now wraps
+every render in `_GAM_SHELL`, the real serving DOM. Reverting the CSS to `100%`
+makes it report `cta gap only 0px` on the billboard and
+`CARD EDGE ON THE CLIPPED ROW (clearance -2px)` on the leaderboard.
 
 ### The CTA needs reserved room on every size
 

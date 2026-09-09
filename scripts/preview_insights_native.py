@@ -128,6 +128,23 @@ def fetch_creative_values(creative_id: int) -> dict:
     return values
 
 
+# GAM does not serve the markup as a child of <body>. It emits an Active View
+# container and then wraps the style's HTML in a plain <div> with no height:
+#
+#     <body><div class="GoogleActiveViewInnerContainer" …></div><script …></script>
+#           <div > …the style's markup… </div> …
+#
+# That wrapper is why a percentage height on the card resolved against an
+# auto-height parent and collapsed to content height in production while every
+# local preview looked right (2026-09-09: 970x250 served 215px tall, 728x90
+# served 92px in a 90px box). A harness that renders the markup straight into
+# <body> cannot see that class of bug -- the same lesson as rendering onto white
+# instead of the page's cream ad band. Reproduce the serving DOM, always.
+_GAM_SHELL = ('<div class="GoogleActiveViewInnerContainer" style="left:0px;top:0px;'
+              'width:100%;height:100%;position:fixed;pointer-events:none;'
+              'z-index:-9999"></div><div >{}</div>')
+
+
 # The hidden 3rd-party pixel divs, stripped before any local render — see below.
 _TRACKING_DIV = re.compile(
     r'\n?<div style="display:none"><img src="\[%3RDPARTYTRACKING[12]%\]" border="0"></div>')
@@ -147,7 +164,7 @@ def build_doc(values: dict) -> str:
         html = html.replace(f"[%{key}%]", values.get(key, "") or "")
     html = html.replace("%%CLICK_URL_UNESC%%%%DEST_URL%%", values.get("_dest", "#"))
     return (f"<!doctype html><html><head><meta charset='utf-8'>"
-            f"<style>{css}</style></head><body>{html}</body></html>")
+            f"<style>{css}</style></head><body>{_GAM_SHELL.format(html)}</body></html>")
 
 
 # A logo asset is sized by HEIGHT in the stylesheet, so transparent padding
