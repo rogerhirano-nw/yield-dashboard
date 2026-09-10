@@ -1166,13 +1166,40 @@ approve project servers; approval is per-user, stored outside the repo).
 |---|---|---|---|
 | `supabase` | http | `https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk` | OAuth in the browser on first use |
 | `beehiiv` | http | `https://mcp.beehiiv.com/mcp` | OAuth in the browser on first use |
+| `assertive-yield` | http | `https://suite.assertiveyield.com/mcp/reporting/v1` | static bearer token, `${AY_MCP_TOKEN}` from the shell env |
 
-Both are **remote HTTP servers with browser OAuth** — no API key goes in the
-repo or in `.env`, and neither can be authorized from a headless/cloud session
-(Claude Code on the web, Actions). Authorize them once from an interactive
-local `claude` session (`/mcp`, pick the server, approve in the browser); the
-token is stored in your local Claude Code config, never here. Until then their
-tools are simply unavailable and any work that needs them has to run locally.
+`supabase` and `beehiiv` are **remote HTTP servers with browser OAuth** — no
+API key goes in the repo or in `.env`, and neither can be authorized from a
+headless/cloud session (Claude Code on the web, Actions). Authorize them once
+from an interactive local `claude` session (`/mcp`, pick the server, approve in
+the browser); the token is stored in your local Claude Code config, never here.
+Until then their tools are simply unavailable and any work that needs them has
+to run locally.
+
+**`assertive-yield` is the odd one out — a bearer token, not OAuth.** The
+endpoint answers an unauthenticated request with a flat
+`401 {"error":"Missing Authorization: Bearer <token> header"}` and serves the
+SPA's HTML at every `/.well-known/oauth-*` path, i.e. it publishes no OAuth
+metadata and there is no browser flow to run. The config therefore injects an
+`Authorization: Bearer ${AY_MCP_TOKEN}` header, and the value comes from the
+**shell environment of whatever launches `claude`** — *not* from `.env`, which
+only the Python scripts in this repo read (`_load_dotenv()`), and never from a
+literal in `.mcp.json`. Export it in your shell profile (or
+`export $(grep -E '^AY_MCP_TOKEN=' .env | xargs)` before starting a session);
+with the var unset Claude Code reports the missing variable and skips that one
+server, leaving the others alone. The token is minted per-user in the AY Suite
+and AY scopes the MCP to **read-only reporting under that user's own
+permissions**, so it is a personal credential — treat it like the Magnite/GAM
+creds below and keep it out of the repo. Because it is a plain header, this is
+the one project server that *can* work from a headless/cloud session, provided
+the token is present in that environment.
+
+What it is for: AY's **Reporting** MCP answers natural-language questions
+against the same reports that back the AY Suite UI (per-site/bidder CPM and
+fill-rate movements, prebid bid activity, anomaly and trend sweeps), so the
+numbers match the dashboard. It reads AY only — it has no view of the caches
+in this repo, so cross-checking AY against `magnite_*`/`gam_*`/`pubmatic_*`
+still means pulling both sides.
 
 Equivalent one-off CLI add (writes to *your* config, not the repo — prefer
 editing `.mcp.json` so the whole team gets it):
@@ -1181,3 +1208,6 @@ editing `.mcp.json` so the whole team gets it):
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).
 - Magnite / GAM / Pubmatic credentials.
+- `AY_MCP_TOKEN` — the Assertive Yield MCP bearer token. It is per-user and
+  read-only, but it is still a credential: keep it in your shell env, never as
+  a literal in `.mcp.json`.
