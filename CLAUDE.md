@@ -1194,6 +1194,20 @@ creds below and keep it out of the repo. Because it is a plain header, this is
 the one project server that *can* work from a headless/cloud session, provided
 the token is present in that environment.
 
+**The token is bound once, at MCP-client startup — a mid-session expiry is not
+recoverable in that session.** Verified 2026-09-10: the server connected and
+served 14 reporting queries, then began returning
+`AUTH_HEADER_REJECTED … {"error":"Invalid or expired token"}` partway through the
+same session. Refreshing `AY_MCP_TOKEN` in the environment does *not* revive it —
+Claude Code expands `${AY_MCP_TOKEN}` and hands it to the client at startup only,
+and the running client never re-reads it. Nor is there a fallback: the variable is
+not exported into the agent's own shell (`echo $AY_MCP_TOKEN` is empty in a cloud
+session), so the endpoint can't be called directly with curl either, and OAuth
+fallback is disabled whenever `headers.Authorization` is set. **The fix is a new
+session**, which re-expands the variable. Budget for this on long analyses: pull
+the rows you need early, and keep them, because a token that dies mid-run takes
+the rest of the analysis with it.
+
 What it is for: AY's **Reporting** MCP answers natural-language questions
 against the same reports that back the AY Suite UI (per-site/bidder CPM and
 fill-rate movements, prebid bid activity, anomaly and trend sweeps), so the
