@@ -4,6 +4,33 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-10 — Assertive Yield Reporting MCP wired into `.mcp.json`
+
+- **Third project-scoped MCP server**, `assertive-yield` →
+  `https://suite.assertiveyield.com/mcp/reporting/v1`. AY's Reporting MCP
+  answers natural-language questions against the same reports that back the AY
+  Suite UI (per-site/bidder CPM and fill-rate movement, prebid bid activity,
+  anomaly sweeps), so its numbers match that dashboard. It sees AY only —
+  nothing in this repo's caches — so an AY-vs-`magnite_*`/`gam_*`/`pubmatic_*`
+  cross-check still means pulling both sides.
+- **It authenticates with a bearer token, not OAuth** — unlike `supabase` and
+  `beehiiv`. Probed the endpoint rather than assuming: an unauthenticated
+  request returns a flat `401 {"error":"Missing Authorization: Bearer <token>
+  header"}` with no `WWW-Authenticate`, and every `/.well-known/oauth-*` path
+  serves the AY SPA's HTML — no OAuth metadata, so there is no browser flow to
+  run. The config injects `Authorization: Bearer ${AY_MCP_TOKEN}`.
+- **The token comes from the shell env, not `.env`.** Claude Code expands
+  `${…}` in `.mcp.json` from the environment of the process that launched it;
+  `.env` is only read by this repo's Python (`_load_dotenv()`). Unset, Claude
+  Code reports the missing variable and skips that one server — the other two
+  are unaffected. Added to the never-commit list: it is a personal credential,
+  minted per-user in the AY Suite and scoped read-only to that user's own
+  permissions.
+- **Consequence worth knowing:** because it is a plain header, this is the one
+  project server that can work from a **headless/cloud** session (Claude Code on
+  the web, Actions) when the token is present there — the OAuth pair can only be
+  authorized from an interactive local session.
+
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
 - **The unit blended into the page.** The live article page wraps ads in its own
