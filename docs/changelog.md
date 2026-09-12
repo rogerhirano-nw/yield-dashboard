@@ -4,6 +4,193 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+
+## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
+
+- **The unit blended into the page.** The live article page wraps ads in its own
+  full-bleed warm ADVERTISING band, and the card's paper ground sits close enough
+  to it that the 12%-ink hairline vanished. Border is now a firmer warm rule
+  (`--card-edge #d5cdb6`) + a low shadow, so it reads as a discrete card on cream
+  and on white. **`build_insights_test_pages.py` now reproduces that band** — the
+  original harness rendered onto white and structurally could not have caught it.
+- **READ MORE CTA on all three sizes.** Pinned to the bottom of the text column
+  on 970x250 / 300x250 (`margin-top:auto`, so it sits on the baseline whatever
+  the line counts); on 728x90 it rides the meta row (absolute, top-right) because
+  90px has no vertical room for a button under a two-line headline. The label is
+  hardcoded in the style markup, not a template variable.
+- **Copy caps moved, and improved: TITLE 85→100, SUBTITLE 200→220.** The
+  billboard CTA needed vertical room, bought by narrowing the hero column
+  392→340px — and the wider text measure raised the caps more than the CTA cost.
+  **Widening the measure beat squeezing the vertical rhythm.** The 728x90 went
+  the other way (TITLE 150→125, HASHTAG 65→50): its meta-row CTA reserves
+  horizontal space. Re-derived with `measure_insights_copy_limits.py`, not
+  assumed.
+- **The live styles are not this repo's.** The originals on template `12412102`
+  were archived; what serves is `Native (WxH)` — ids **1014148 / 1014151 /
+  1014379** on template **12552841** ("native"), gated `?nwdemocr=native`, running
+  byte-identical copies of `insights_native_style.{html,css}`. So
+  `setup_insights_native_styles.py` gained **`--style-ids`** (update styles by id
+  whatever template/name they carry) plus
+  `.github/workflows/push_insights_native_style.yml`, which is now the path from
+  a repo CSS edit to the live demo.
+
+## 2026-09-08 — Insights native ad: 970x250 / 728x90 / 300x250
+
+- **Problem.** The Insights sponsored-content card (Infiniti QX65, creative
+  `138561753906`) is a GAM **native** creative on template `12412102`
+  "Insights Premium Spotlight". Its only native style, `989975`, is **fluid
+  1x1** targeted at `homepage3` — so the creative an AE has already trafficked
+  could not render in any standard banner slot.
+- **Three fixed-size native styles** on the same template, sharing **one
+  markup + one stylesheet** (`docs/snippets/insights_native_style.{html,css}`).
+  A native style renders in an iframe sized to the slot, so the creative's
+  viewport *is* the creative size and plain media queries pick the layout —
+  base (<600px) is the stacked 300x250 reference card, `≥600 & ≤150 tall` is
+  the 728x90 (16:9 hero left, story right), `≥860 & ≥200 tall` is the 970x250
+  (header band, story left, hero right). Native styles are scoped to their
+  creative template, so site-wide targeting touches Insights creatives only.
+- **Always-on 1px border** (`--rs-color-border-neutral-faded`, the warm
+  hairline already declared in `989975`): the paper ground is close enough to a
+  white page that the unit bleeds into the article without it. `box-sizing` is
+  `border-box`, so it costs 2px of the grid — the rectangle's `--media-h` and
+  the leaderboard's paddings are set short to pay for it (90px minus 2px leaves
+  728x90 with ~1px of slack).
+- **Same unit across all four surfaces.** Playfair Display 600 / Noto Serif /
+  `#F8F4E8` paper / `#1f1e19` ink / the 2px `#e91d0c` tick, and the
+  `insights-hero__*` class names, are lifted verbatim from `989975`. Two
+  deviations forced by the height budget: the hero crops per size (2.7:1 /
+  16:9 / 2.2:1, `object-fit: cover`) and the dek is 970x250-only. Disclosure
+  does **not** ride on the dek — the "Sponsored by <logo>" lockup and the
+  "SPONSORED" tag both run at all three sizes.
+- **Copy is clamped, so over-long fields ellipse instead of breaking the box.**
+  The Infiniti creative (84-char TITLE, 166-char SUBTITLE) fills every clamp
+  exactly with no truncation, which makes it the practical ceiling.
+  **`scripts/preview_insights_native.py`** pulls a real creative's values from
+  GAM, renders all three sizes in headless Chromium at exact pixel size, PNGs
+  them to `data/insights_preview/` (gitignored) and flags overflow/clipping —
+  local design QA with no GAM write and no on-site preview.
+- **`scripts/build_insights_test_pages.py`** emits a **self-contained test
+  page** (`data/insights_preview/insights_test_page.html`) — the three units in
+  a mock article shell plus each isolated at 1:1, assets inlined, openable
+  locally or emailable to a seller. Every unit sits in an iframe sized to
+  exactly its slot, the same box GAM hands a native style, so what fits in the
+  file fits in the slot. Both QA tools **drop** the `3RDPARTYTRACKING1/2`
+  pixels rather than substituting them: they are real advertiser URLs (ml314
+  here) and a design render is not an impression.
+- **The copy spec is now measured, not guessed** —
+  `scripts/measure_insights_copy_limits.py` binary-searches each field against
+  every size with many randomly-built editorial strings per length, reporting
+  `safe` (every sample fits) vs `max` (lucky wording). Results: **TITLE 85
+  chars, SUBTITLE 200, HASHTAG 20**. Two counterintuitive findings: the
+  **970x250 is the binding size for the headline**, not the rectangle (2 lines
+  in a ~528px column at 24px beats 3 lines at 15.5px), and the **blurb renders
+  only on the 970x250**, so the headline must stand alone at the other two.
+  This corrects an earlier note that called the Infiniti creative's 84-char
+  TITLE "the practical ceiling because it fills every clamp exactly" — it fits,
+  but only just, and the real ceiling is 85. The limits track the type scale,
+  so the script is the source of truth and the doc's table is a snapshot.
+- **The banner limits are NOT the homepage native's.** The fluid in-article
+  style `989975` has no `-webkit-line-clamp` and no fixed height (its `clamp()`
+  calls are font-*size* clamps — easy to misread), so copy there never
+  truncates, the unit grows: measured 477px tall at a 970 container with the
+  Infiniti copy, 707px with that copy doubled, never clipped at any width. The
+  two surfaces fail in opposite directions, and one creative's TITLE/SUBTITLE
+  feeds every style on the template — so **copy must be written to the banner
+  spec (85/200)**, which is strictest and also reads fine on the homepage.
+  Homepage-authored copy will silently ellipse on the banners.
+- **Both QA tools take `--values-json` + `--prefix`** (added while building a
+  Cognizant sample), so copy can be proofed *before* the creative is trafficked
+  — a values file supplies TITLE/SUBTITLE/HASHTAG/IMAGE/LOGO/DEST, and
+  IMAGE/LOGO inline from a URL, a local path or an existing data URI.
+- **Hero asset rule, learned on that sample.** The hero is cropped per size
+  with a centered `object-fit: cover`, so a **square asset with burned-in copy**
+  gets sliced through its own text at every size (the Cognizant 1200x1200 file
+  carries "Building the bridge to AI impact" across its top-left). A native
+  style's CSS is shared by every creative on the template, so there is no
+  per-creative `object-position` escape: the fix is the asset. **16:9 is the
+  safe master** — the leaderboard's native ratio, and it crops cleanly into the
+  other two. Documented in `docs/insights_native_ad.md`.
+- **`scripts/setup_insights_native_styles.py`** creates the styles
+  (`NativeStyleService`), dry-run by default and lookup-first by name;
+  `--update` pushes local CSS edits onto the live styles, `--ad-unit` narrows
+  targeting from the default `newsweek` site root. Not automated: adding the
+  three sizes to the line item's creative placeholders in the GAM UI, which is
+  what makes the 1x1 native creative eligible for those slots.
+- **`scripts/setup_insights_native_demo.py`** — on-site demo gated by
+  `?nwdemocr=`, following the pattern already in the network (LI 7330346837
+  demos the *fluid* unit at `nwdemocr=insighttest` on `homepage3`). Creates its
+  own `nwdemocr=insightsbanner` value, the three styles gated to it, a demo line
+  item on the test order with all three sizes, and a LICA to creative
+  `138562612084` — chosen because a LICA needs the creative's advertiser to
+  match the order's, and that one is on the test advertiser. `--undo` reverses
+  it. Open question the script reports on: whether `NativeStyle` honours
+  `customTargeting` at serve time.
+- Full write-up: `docs/insights_native_ad.md`.
+
+## 2026-09-04 — Prebid bidders below the Active View baseline: diagnostics
+
+- **Finding.** The *PreBid Display and Video* GAM report (Aug 14 - Sep 3)
+  recomputed impression-weighted: **smilewanted 40.4%** viewable on 4.6M
+  banner imps and **ogury 54.4%** on 2.8M (the report's pivot averages daily
+  rates unweighted and buried ogury), **oms 56.3%** on 38k, and **onetag
+  47.7%** on 138k in-stream video - against 78.7% banner / 86.5% video for
+  every other bidder on the same slots. Flat across all 21 days, so
+  structural rather than a regression. SmileWanted alone is 1.63M viewable
+  impressions short of baseline; lifting it moves the whole Prebid banner
+  number 75.8% -> 77.8%. All of them pay *above* average eCPM, so the answer
+  is fix-the-render-or-the-mix, not block-the-bidder.
+- **`dashboard_logic.viewability_mix_adjusted` + `av_threshold_pct`** (tested):
+  splits a bidder's viewability gap into **MIX** (it wins on less-viewable
+  slots/devices - a yield conversation) and **RENDER** (worse than peers in
+  the *same* unit/device/size cell - a creative problem). Baselines are
+  leave-one-out on both terms, so a bidder is never graded against its own
+  bad impressions; `mix_gap + render_gap` reconstructs the total gap.
+- **`scripts/prebid_viewability_audit.py`** (+ `prebid_viewability_audit.yml`):
+  GAM Active View eligible/measurable/viewable by hb_bidder x ad unit x
+  device x rendered size x format, run through the split, plus a per-day
+  series and the measurable rate (which is where an unmeasurable render
+  shows up, rather than in viewable%).
+- **`GAMClient._run_report` gained an optional `filters` argument** (v1 REST
+  `ReportDefinition.filters`, `(dimension, operation, values)` tuples, AND-ed)
+  - needed because `hb_bidder` reaches reporting as the high-cardinality
+  `KEY_VALUES_NAME` dimension and must be narrowed server-side. Existing
+  callers are unchanged.
+- **`scripts/prebid_render_forensics.py`** (+ `prebid_render_forensics.yml`):
+  the Mobkoi DOM forensics adapted to wrapper demand, which GAM's on-site
+  preview can't reach (the GAM creative is the Prebid universal creative, not
+  the bidder's markup). Loads real **article** pages in headless Chromium,
+  instruments GPT + Prebid before boot, scrolls with dwell time, and records
+  per render: the pbjs `bidWon` winner (trusted over `hb_bidder` targeting,
+  which only names the client-auction winner), GPT's own `impressionViewable`
+  verdict, the in-view% timeline vs Active View's 50%/30% threshold, and
+  iframe-vs-slot geometry.
+- **First live finding:** ogury renders two ways - on `dfp-ad-sticky` a 1x1
+  with the GPT iframe hidden at 0x0 (the Mobkoi breakout signature), and
+  in-article a real 390x1094 well whose 65-67% in-view is simply what a
+  large creative does under the 30% rule. Docs: `docs/prebid_viewability.md`.
+
+## 2026-09-01 — beehiiv MCP server wired into the project config (#359)
+
+- **Added `beehiiv` (remote HTTP, `https://mcp.beehiiv.com/mcp`) to the
+  checked-in `.mcp.json`**, alongside the existing `supabase` server, so every
+  Claude Code session opened on this repo is offered it rather than each person
+  running `claude mcp add` into their own config. Servers are sorted
+  alphabetically in the file for a stable diff.
+- **Auth is browser OAuth, per-user, and never lands in the repo** — no API key
+  in `.mcp.json` or `.env`. Consequence worth knowing before relying on it:
+  **it cannot be authorized from a headless session** (Claude Code on the web,
+  Actions runners), so the first authorization has to happen in an interactive
+  local `claude` session via `/mcp`; until then the beehiiv tools are simply
+  absent. Same constraint the Supabase connector already has (see
+  `docs/supabase_disk_io.md`, where an unauthorized Supabase MCP blocked the
+  measurement step).
+- New **`## MCP servers`** section in `CLAUDE.md` records both servers, the
+  transport/URL/auth for each, and the "edit `.mcp.json`, don't `claude mcp
+  add`" preference.
+- Config only — no client module, no refresh path, no dashboard surface. This
+  does not wire beehiiv data into the cache or any tab; it just makes the
+  server available to interactive sessions.
+
 ## 2026-08-25 — OpenX Prebid signal audit: field-coverage analysis
 
 - **OpenX sent a bid-request field-coverage scorecard** for the

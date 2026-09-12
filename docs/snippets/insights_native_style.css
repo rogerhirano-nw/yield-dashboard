@@ -1,0 +1,328 @@
+/* Newsweek "Insights" native style — fixed-size stylesheet.
+   Paste into NativeStyleService.cssSnippet. Companion markup:
+   insights_native_style.html
+
+   Three layouts, one sheet. A native style renders in an iframe sized to the
+   slot, so the creative's viewport == the creative size and plain media
+   queries pick the layout exactly:
+
+     base (<600px wide)                  -> 300x250  stacked  (header/image/text)
+     >=600px wide AND <=150px tall       -> 728x90   image left, story right
+     >=860px wide AND >=200px tall       -> 970x250  header band, story left, image right
+
+   Tokens, type and color are lifted verbatim from the incumbent fluid
+   in-article style (id 989975) so all four surfaces are one unit. The two
+   deviations, both forced by the height budget:
+     - the image is cropped (2.6:1 / 16:9 / 2.2:1) instead of always 16:9
+     - the dek shows on 970x250 only; 728x90 and 300x250 end at the headline,
+       which is the identity. Disclosure never depends on it: the "Sponsored
+       by <logo>" lockup and the "SPONSORED" tag both run at all three sizes.
+*/
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Noto+Sans:wght@400;500;600&family=Noto+Serif:wght@400;500&display=swap');
+
+html, body { margin: 0; padding: 0; height: 100%; background: transparent; }
+
+#nw-insights-injected {
+  --brand-red: #e91d0c;
+  --brand-default: var(--brand-red);
+  --foreground-default: #1f1e19;
+  --foreground-muted: #57564f;   /* --text-secondary */
+  --background-page: #F8F4E8;    /* deeper than --surface-0 #fefcf6 on purpose:
+                                    sponsored content sits on its own ground */
+  --rs-color-border-neutral-faded: rgba(31, 30, 25, 0.12);
+  /* The page wraps ads in its own warm "ADVERTISING" band, and the unit's paper
+     ground is close enough to it that a 12%-ink hairline disappears -- the card
+     read as part of the page. --card-edge is a firmer warm rule, plus a low
+     shadow, so the unit reads as a discrete card on cream AND on white. */
+  --card-edge: #e7e0c9;          /* --border, the system's warm hairline */
+  --cta-hover: #3d3b2e;          /* warm charcoal, the site's button hover */
+  /* What newsweek.com ACTUALLY serves, which is not what docs/design_handoff/
+     documents. That file is the DASHBOARD's system (Benton Modern Display +
+     Franklin Gothic, licensed binaries); the live site ships Google-hosted
+     faces -- a trending-bar link inspects as 12px "Noto Sans" #1F1E19 (Roger,
+     2026-09-08). The unit has to match the page it sits on, not the internal
+     tool, so: Noto Sans for UI labels, Playfair Display for display type (what
+     the incumbent style 989975 already used), Noto Serif for body. */
+  --font-headline: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Noto Serif", Georgia, serif;
+  --font-sans: "Noto Sans", system-ui, -apple-system, sans-serif;
+
+  /* --- 300x250 medium rectangle is the base: the smallest box wins by
+         default, so an unexpected size degrades to the most compact layout --- */
+  --pad-x: 14px;
+  --head-pt: 8px;
+  --head-pb: 4px;
+  --tick-w: 24px;   /* the site's fixed tick, not scaled per size */
+  --divider-mb: 4px;
+  --title-fs: 15px;
+  --logo-h: 13px;
+  --sponsor-fs: 8.5px;
+  --media-h: 74px;
+  --text-pt: 8px;
+  --text-pb: 6px;   /* 2px handed to the clipped-edge inset above */
+  --tag-fs: 9.5px;
+  --tag-gap: 9px;
+  --tags-mb: 7px;
+  --hed-fs: 15px;
+  --hed-lh: 1.28;
+  --hed-lines: 3;
+  --hed-mb: 0px;
+  --dek-fs: 13px;
+  --dek-lines: 2;
+  --cta-fs: 9.5px;
+  --cta-pad: 8px 16px;
+  /* The rectangle's CTA is in flow, so this IS the gap between the headline
+     and the button -- at 6px they read as touching (the 300x250 case of the
+     same collision found on the other two sizes, 2026-09-08). The box has no
+     slack, so the 8px this costs is taken back from the header rhythm above
+     rather than from the hero height or the headline's 3 lines, both of which
+     are load-bearing (--media-h was raised on request; --hed-lines sets the
+     100-char TITLE cap this size binds). */
+  --cta-mt: 14px;
+
+  width: 100%;
+  /* vh, NOT a percentage. GAM does not serve the style's markup as a child of
+     <body>: it wraps it in a plain <div> with no height of its own (visible in
+     any served creative -- body > div > #nw-insights-injected). A percentage
+     height against an auto-height parent is indeterminate, so `height:100%`
+     silently fell back to CONTENT height and the card stopped filling its slot:
+     970x250 rendered 215px tall, which left zero space above the bottom-pinned
+     CTA and made the button sit on the dek; 728x90 rendered 92px and overflowed
+     its 90px box. Measured against a reproduction of GAM's DOM, 2026-09-09.
+     `vh` resolves against the iframe viewport and no wrapper can break it.
+     The 2px is precautionary headroom so the bottom border can never be lost to
+     an off-by-one in the slot; the rectangle pays for it out of --text-pb. */
+  height: calc(100vh - 2px);
+  /* Always bordered. The paper ground is close enough to a white page that the
+     unit otherwise bleeds into the article; the hairline is what makes it read
+     as a discrete card. box-sizing is border-box, so the 2px it costs comes out
+     of the grid — the rectangle's --media-h is set 2px short to pay for it. */
+  border: 1px solid var(--card-edge);
+  /* No y-offset. With the card inset 2px off the clipped row (above), a
+     downward-offset shadow renders into that gap and the bottom edge reads as
+     a 1px rule plus a soft smudge -- heavier than the other three (Roger,
+     2026-09-08). A centred blur lifts the card off the ad band evenly. */
+  box-shadow: 0 0 3px rgba(31, 30, 25, 0.07);
+  background-color: var(--background-page);
+  font-family: var(--font-body);
+  color: var(--foreground-default);
+  box-sizing: border-box;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+#nw-insights-injected * { box-sizing: border-box; }
+
+#nw-insights-injected .insights-hero__link { display: block; height: 100%; text-decoration: none; color: inherit; }
+#nw-insights-injected .insights-hero { height: 100%; background-color: var(--background-page); overflow: hidden; }
+
+#nw-insights-injected .insights-hero__content {
+  display: grid;
+  height: 100%;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto var(--media-h) 1fr;
+  grid-template-areas: "head" "media" "text";
+  overflow: hidden;
+}
+#nw-insights-injected .insights-hero__header { grid-area: head;
+  padding: var(--head-pt) var(--pad-x) var(--head-pb); }
+#nw-insights-injected .insights-hero__media  { grid-area: media; min-height: 0; }
+#nw-insights-injected .insights-hero__text   { grid-area: text; min-height: 0; overflow: hidden;
+  /* a real flex column: the CTA's align-self only works in a flex container --
+     as a plain block it silently fell into normal flow, left-aligned. */
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: var(--text-pt) var(--pad-x) var(--text-pb); }
+
+/* The site's own section-header rule, matched to the source rather than to the
+   eye. Two components ship it identically (`FeaturedWinners__divider` and
+   `RankingRelatedPosts__titleBar`, both in the article page's CSS):
+
+     divider   display:flex; align-items:center; width:100%
+     red tick  width:24px;  height:2px;  #e91d0c   (--brand-default)
+     grey line flex:1;      height:1px;  #e7e0c9   (--border-subtle)
+
+   The tick is TALLER than the line and vertically centred on it, so it stands
+   proud on both sides. Our earlier version drew one flat 2px bar with a red
+   segment at its left, which read as a single heavy rule instead of a tick over
+   a hairline (Roger, 2026-09-08, comparing the unit against "Recommended For
+   You" on the same page). The tick is a fixed 24px on the site at every
+   breakpoint, so it is fixed here too rather than scaled per size.
+
+   The one deliberate deviation is the gap under the rule: the site allows 16px
+   before a 28px title, which a 250px-tall ad cannot spend -- see --divider-mb. */
+#nw-insights-injected .insights-hero__divider--top {
+  display: flex; align-items: center; width: 100%; height: 2px;
+  margin-bottom: var(--divider-mb);
+}
+#nw-insights-injected .insights-hero__divider--top::before {
+  content: ""; flex: none;
+  width: var(--tick-w); height: 2px; background-color: var(--brand-default);
+}
+#nw-insights-injected .insights-hero__divider--top::after {
+  content: ""; flex: 1; height: 1px; background-color: var(--card-edge);
+}
+#nw-insights-injected .insights-hero__header-row {
+  /* packed left, not space-between: it now reads as one lockup,
+     "Insights | #Technology", rather than two opposed corners. */
+  display: flex; align-items: center; gap: var(--tag-gap); min-width: 0; overflow: hidden;
+}
+#nw-insights-injected .insights-hero__cat {
+  font-family: var(--font-sans); font-size: var(--tag-fs); font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--foreground-muted);
+  white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+/* the rule between them scales to the wordmark, not to the small type */
+#nw-insights-injected .insights-hero__header-row .insights-hero__tag-sep {
+  height: calc(var(--title-fs) * 0.8);
+}
+#nw-insights-injected .insights-hero__section-title {
+  margin: 0; font-family: var(--font-headline); font-weight: 600;
+  font-size: var(--title-fs); line-height: 1.25; white-space: nowrap;
+}
+/* Sponsor lockup: in the header on the two wide sizes (free space at the top
+   right), above the headline on the rectangle (no such space). */
+#nw-insights-injected .insights-hero__sponsor {
+  display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto;
+}
+#nw-insights-injected .insights-hero__sponsor-label {
+  font-family: var(--font-sans); font-size: var(--sponsor-fs); font-weight: 500;
+  letter-spacing: 0.08em; color: var(--foreground-muted); text-transform: uppercase;
+  white-space: nowrap;
+}
+#nw-insights-injected .insights-hero__sponsor--head { display: none; }
+
+#nw-insights-injected .insights-hero__sponsor-logo {
+  display: block; height: var(--logo-h); width: auto; max-width: 130px; object-fit: contain;
+  object-position: left center; flex: none;
+}
+
+#nw-insights-injected .insights-hero__image-wrapper { width: 100%; height: 100%; overflow: hidden; background: #e8e2d2; }
+#nw-insights-injected .insights-hero__image { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+#nw-insights-injected .insights-hero__tags {
+  flex: none;
+  display: flex; align-items: center; gap: 8px; margin-bottom: var(--tags-mb);
+  white-space: nowrap; overflow: hidden;
+}
+#nw-insights-injected .insights-hero__tag {
+  font-family: var(--font-sans); font-size: var(--tag-fs); font-weight: 500;
+  letter-spacing: 0.08em; color: var(--foreground-muted); text-transform: uppercase;
+}
+#nw-insights-injected .insights-hero__tag-sep {
+  width: 1px; height: calc(var(--tag-fs) + 2px); background-color: var(--foreground-muted); opacity: 0.5; flex: none;
+}
+#nw-insights-injected .insights-hero__headline {
+  flex: none;
+  margin: 0 0 var(--hed-mb); font-family: var(--font-headline); font-weight: 600;
+  font-size: var(--hed-fs); line-height: var(--hed-lh);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--hed-lines);
+  overflow: hidden;
+}
+#nw-insights-injected .insights-hero__cta {
+  margin-top: var(--cta-mt);
+  align-self: flex-end;   /* rectangle: bottom-right, opposite the headline */
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: var(--cta-fs); font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase; white-space: nowrap;
+  color: #ffffff;
+  background-color: var(--foreground-default);   /* Newsweek ink, not pure black */
+  border: 1px solid var(--foreground-default); border-radius: 2px;
+  padding: var(--cta-pad); flex: none;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+#nw-insights-injected .insights-hero__cta:hover {
+  background-color: var(--cta-hover); border-color: var(--cta-hover);
+}
+/* the whole card is the click target, so the button reacts to hovering
+   anywhere on it -- not only when the pointer is over the button itself */
+#nw-insights-injected .insights-hero__link:hover .insights-hero__cta {
+  background-color: var(--cta-hover); border-color: var(--cta-hover);
+}
+#nw-insights-injected .insights-hero__cta::after { content: "\2192"; font-size: 1.15em; line-height: 1; }
+
+#nw-insights-injected .insights-hero__description {
+  flex: none;
+  display: none;  /* 970x250 only */
+  margin: 0; font-family: var(--font-sans);
+  font-size: var(--dek-fs); line-height: 1.45; color: var(--foreground-muted);
+  -webkit-box-orient: vertical; -webkit-line-clamp: var(--dek-lines); overflow: hidden;
+}
+
+/* ---------- 728x90 leaderboard: 16:9 image left, story right ---------- */
+@media (min-width: 600px) and (max-height: 150px) {
+  #nw-insights-injected {
+    --pad-x: 16px; --head-pt: 6px; --head-pb: 0px; --divider-mb: 5px;
+    --title-fs: 13px; --logo-h: 14px; --sponsor-fs: 8.5px;
+    --text-pt: 10px; --text-pb: 6px;  /* 90px minus the 2px border is a tight budget */
+    --tag-fs: 9px; --tag-gap: 8px; --tags-mb: 4px;
+    --hed-fs: 15px; --hed-lh: 1.25; --hed-lines: 2;
+    --cta-mt: 0px;   /* size comes from the base rule -- one CTA everywhere */
+    --cta-gutter: 150px;   /* out-of-flow CTA: reserve its width by hand */
+  }
+  #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
+  #nw-insights-injected .insights-hero__sponsor--body { display: none; }
+  #nw-insights-injected {
+  }
+  /* 90px leaves no room for a CTA under the headline, so it rides the meta row
+     instead -- absolute, top-right of the text column, costing zero height.
+     The catch: an absolute CTA is out of flow, so it does NOT push the headline
+     -- the gutter has to be reserved by hand, and 108px was less than the button
+     is wide. The button measures ~120px (9.5px/600 "READ MORE" + arrow + 16px
+     side padding), sits var(--pad-x) in from the edge, and needs air between it
+     and the text, so the reserve is 120 + 16 + 14 = 150px. Under-reserving does
+     not clip or wrap -- the headline simply runs under the button. */
+  #nw-insights-injected .insights-hero__text {
+    position: relative; padding-right: var(--cta-gutter);
+  }
+  /* Centered against the text block, not top:0 -- at the top it sat immediately
+     under the sponsor logo and the two right-hand elements crowded each other. */
+  #nw-insights-injected .insights-hero__cta {
+    position: absolute; right: var(--pad-x); top: 50%;
+    transform: translateY(calc(-50% + 8px));   /* nudged below centre */
+    margin: 0; align-self: auto;
+  }
+  #nw-insights-injected .insights-hero__content {
+    grid-template-columns: 160px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "media head" "media text";
+  }
+  #nw-insights-injected .insights-hero__media { grid-row: 1 / -1; }
+}
+
+/* ---------- 970x250 billboard: header band, story left, image right ---------- */
+@media (min-width: 860px) and (min-height: 200px) {
+  #nw-insights-injected {
+    --pad-x: 26px; --head-pt: 18px; --head-pb: 0px; --divider-mb: 10px;
+    --title-fs: 22px; --logo-h: 20px; --sponsor-fs: 10px;
+    /* The CTA is pinned to the bottom (margin-top:auto), so every pixel saved
+       above it becomes air between the dek and the button. At the dek's full
+       3-line clamp that gap collapsed to 8px and the pair read as colliding --
+       the 970's version of the leaderboard's overlap (Roger, 2026-09-08). Four
+       from the text top and four from the headline margin buy the worst case
+       back up, and --text-pb lifts the button off the card's bottom edge. */
+    --text-pt: 4px; --text-pb: 16px;   /* CTA sits lower in the card */
+    --tag-fs: 10px; --tag-gap: 12px; --tags-mb: 8px;
+    --hed-fs: 24px; --hed-lh: 1.25; --hed-lines: 2; --hed-mb: 6px;
+    /* 3 dek lines, not 2: a 160-char SUBTITLE (the Infiniti copy) needs the
+       third to land its final clause instead of ellipsing mid-sentence, and
+       the column has the room. */
+    --dek-fs: 14px; --dek-lines: 3;
+    --cta-mt: 0px;   /* dead here -- the CTA rule below overrides it with auto */
+  }
+  #nw-insights-injected .insights-hero__sponsor--head { display: flex; }
+  #nw-insights-injected .insights-hero__sponsor--body { display: none; }
+  #nw-insights-injected {
+  }
+  #nw-insights-injected .insights-hero__cta { align-self: flex-end; margin-top: auto; }
+  /* The hero spans BOTH rows and bleeds to the card edges, so it runs the full
+     height of the unit; the header band is confined to the left column with it. */
+  #nw-insights-injected .insights-hero__content {
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "media head" "media text";
+  }
+  #nw-insights-injected .insights-hero__media { padding: 0; }
+  /* hero on the left, story on the right -- the same shape as the leaderboard.
+     The lockup's margin-left:auto now reaches the card's own right edge. */
+  #nw-insights-injected .insights-hero__sponsor { margin-left: auto; }
+  #nw-insights-injected .insights-hero__description { display: -webkit-box; }
+}

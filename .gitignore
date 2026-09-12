@@ -24,3 +24,6 @@ static/fonts/*
 .venv/
 .playwright-mcp/
 sponsor-logo-top.png
+
+# Locally-rendered Insights native previews (scripts/preview_insights_native.py).
+data/insights_preview/

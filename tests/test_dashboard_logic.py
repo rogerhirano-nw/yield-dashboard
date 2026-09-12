@@ -1135,3 +1135,96 @@ def test_ttd_cpa_for_deal():
     assert ttd_cpa_for_deal(df, "0") is None
     assert ttd_cpa_for_deal(df, "9999999") is None
     assert ttd_cpa_for_deal(_ttd_df([{"date": "2026-06-02", "spend_usd": 1.0}]), "4211124") is None
+
+
+# ── Active View thresholds + the mix-vs-render viewability split ──────────
+# Context: the 2026-08-14→09-03 PreBid report showed smilewanted at 40.4%
+# viewable and ogury at 54.4% against a 75.8% banner baseline. "Low" alone
+# doesn't say whether the bidder renders badly or just buys worse slots, and
+# those have completely different fixes (a creative/render fix like the
+# Mobkoi iframe mirror vs a yield/mix conversation).
+
+def test_av_threshold_pct():
+    from dashboard_logic import av_threshold_pct
+    assert av_threshold_pct(300, 250) == 50          # 75,000px² — standard MREC
+    assert av_threshold_pct(970, 250) == 50          # 242,500px² — exactly the cutoff
+    assert av_threshold_pct(970, 251) == 30          # just over -> large-creative rule
+    assert av_threshold_pct(390, 1094) == 30         # full-height in-article unit
+    assert av_threshold_pct(None, 250) == 50         # unknown size falls back to 50
+
+
+def _vw_frame(rows):
+    return pd.DataFrame(rows, columns=["bidder", "unit", "device",
+                                       "impressions", "viewable_impressions"])
+
+
+def test_viewability_mix_adjusted_pure_mix():
+    """A bidder that only buys a bad slot, but performs exactly like everyone
+    else there, is a MIX story: render_gap ~0, mix_gap strongly negative."""
+    from dashboard_logic import viewability_mix_adjusted
+    df = _vw_frame([
+        ("target", "inarticle8", "smartphone", 1000, 400),   # 40% on a bad slot
+        ("peer1", "inarticle8", "smartphone", 1000, 400),    # peers: same 40%
+        ("peer1", "inarticle1", "smartphone", 1000, 800),    # good slot: 80%
+        ("peer2", "inarticle1", "smartphone", 1000, 800),
+    ])
+    out = viewability_mix_adjusted(df, "bidder", ["unit", "device"]).set_index("bidder")
+    row = out.loc["target"]
+    assert round(row.actual_pct, 1) == 40.0
+    assert round(row.expected_pct, 1) == 40.0        # peers score 40% there too
+    assert abs(row.render_gap_pp) < 1e-9             # nothing bidder-specific
+    assert row.mix_gap_pp < -10                      # the slot is the whole story
+
+
+def test_viewability_mix_adjusted_pure_render():
+    """Same slots as everyone else, still worse: that gap is the bidder's own
+    and is what justifies a DOM investigation."""
+    from dashboard_logic import viewability_mix_adjusted
+    df = _vw_frame([
+        ("target", "inarticle1", "smartphone", 1000, 400),   # 40% where peers get 80%
+        ("peer1", "inarticle1", "smartphone", 1000, 800),
+        ("peer2", "inarticle1", "smartphone", 1000, 800),
+    ])
+    out = viewability_mix_adjusted(df, "bidder", ["unit", "device"]).set_index("bidder")
+    row = out.loc["target"]
+    assert round(row.expected_pct, 1) == 80.0        # peers in the same cell
+    assert round(row.render_gap_pp, 1) == -40.0
+    assert abs(row.mix_gap_pp) < 1e-9                # no placement disadvantage
+
+
+def test_viewability_mix_adjusted_gaps_sum_to_total():
+    """mix_gap + render_gap must reconstruct the bidder's total gap vs its
+    peers — the identity that makes the two safe to quote separately."""
+    from dashboard_logic import viewability_mix_adjusted
+    df = _vw_frame([
+        ("a", "u1", "smartphone", 500, 250),
+        ("a", "u2", "desktop", 1500, 900),
+        ("b", "u1", "smartphone", 2000, 1400),
+        ("b", "u2", "desktop", 800, 600),
+        ("c", "u2", "desktop", 300, 100),
+    ])
+    out = viewability_mix_adjusted(df, "bidder", ["unit", "device"])
+    for _, r in out.iterrows():
+        assert abs((r.mix_gap_pp + r.render_gap_pp) - (r.actual_pct - r.peers_pct)) < 1e-9
+
+
+def test_viewability_mix_adjusted_excludes_self_from_baseline():
+    """A bidder that IS the whole cell can't be graded against itself: with no
+    other impressions there, the cell is uncovered rather than self-scored."""
+    from dashboard_logic import viewability_mix_adjusted
+    df = _vw_frame([
+        ("solo", "private_unit", "smartphone", 1000, 200),   # only bidder there
+        ("solo", "shared", "smartphone", 1000, 500),
+        ("peer", "shared", "smartphone", 1000, 900),
+    ])
+    out = viewability_mix_adjusted(df, "bidder", ["unit", "device"]).set_index("bidder")
+    row = out.loc["solo"]
+    assert row.uncovered_impressions == 1000                  # the private unit
+    assert round(row.expected_pct, 1) == 90.0                 # peer's rate on 'shared'
+    assert round(row.render_gap_pp, 1) == round(35.0 - 90.0, 1)
+
+
+def test_viewability_mix_adjusted_empty_frame():
+    from dashboard_logic import viewability_mix_adjusted
+    out = viewability_mix_adjusted(_vw_frame([]), "bidder", ["unit", "device"])
+    assert out.empty and "render_gap_pp" in out.columns

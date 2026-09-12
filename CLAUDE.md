@@ -1022,6 +1022,69 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `scripts/setup_fito_top_banner.py` (970x250 between article title and
   video player). Covers the INACTIVE-until-order-reapproved, viewport/size
   eligibility, and ONE_OR_MORE roadblocking gotchas.
+- `docs/insights_native_ad.md` — the **Insights** sponsored-content card as
+  fixed-size banners (**970x250 / 728x90 / 300x250**). It is a GAM *native*
+  creative (template `12412102` "Insights Premium Spotlight": TITLE / SUBTITLE
+  / HASHTAG / IMAGE / LOGO / 2 tracking pixels), and its only native style
+  (`989975`) is **fluid 1x1** on `homepage3` — so nothing could fill a standard
+  slot. Three fixed-size styles on the same template now share **one markup +
+  one stylesheet** (`docs/snippets/insights_native_style.{html,css}`); a native
+  style renders in an iframe sized to the slot, so the creative's viewport *is*
+  the creative size and plain **media queries** pick the layout exactly (no JS
+  sizing). A native style is scoped to its creative template, so site-wide
+  targeting only affects Insights creatives. Type/color/class names are lifted
+  verbatim from `989975` so all four surfaces are one unit; the hero crops per
+  size and the dek is 970-only, but the "Sponsored by <logo>" lockup and the
+  "SPONSORED" tag run at **all three sizes** so disclosure never depends on the
+  dek. Every size clamps its copy, so over-long TITLE/SUBTITLE fails as an
+  ellipsis, not a broken box. **Measured spec: TITLE 100 chars / SUBTITLE 220 /
+  HASHTAG 20** — 970x250 and 300x250 bind equally on the headline, the 728x90 is
+  loosest (125), and the **dek renders only on the 970x250**, so the headline
+  must stand alone at the other two. Every size carries a **READ MORE** CTA
+  (bottom of the text column; on 728x90 it rides the meta row, absolute
+  top-right, since 90px has no vertical room — which is why that size's caps are
+  tighter). The card border is a firm warm rule + low shadow, because the live
+  page wraps ads in its own cream ADVERTISING band that a faint hairline
+  disappeared into. Limits track the type scale, so re-derive with
+  `scripts/measure_insights_copy_limits.py` after any font-size/line-count
+  change rather than trusting the doc's table. **The live styles are NOT the
+  ones this repo created** — the `12412102` set is archived; what serves is
+  `Native (WxH)` (ids **1014148 / 1014151 / 1014379**) on template **12552841**,
+  gated `?nwdemocr=native`, running byte-identical copies of the repo's two
+  files, so a CSS edit reaches production only via
+  `setup_insights_native_styles.py --style-ids …` (or the
+  `push_insights_native_style.yml` workflow).
+  `scripts/preview_insights_native.py` renders a
+  real creative's values at exact pixel size in headless Chromium and flags
+  overflow before a flight ships, and `scripts/build_insights_test_pages.py`
+  emits a self-contained test page (units in a mock article shell + isolated at
+  1:1, each in an iframe sized to exactly its slot). Both **drop** the
+  `3RDPARTYTRACKING1/2` pixels instead of substituting them — a QA render is
+  not an impression. Setup: `scripts/setup_insights_native_styles.py`
+  (dry-run by default, lookup-first, `--update` pushes CSS edits to live styles).
+- `docs/prebid_viewability.md` — why some **Prebid wrapper bidders** read
+  far below the site's Active View baseline (2026-09: smilewanted 40.4% and
+  ogury 54.4% on banner, onetag 47.7% on video, vs 78.7%/86.5% for everyone
+  else on the same slots). Covers the mix-vs-render split
+  (`dl.viewability_mix_adjusted`, leave-one-out peer baselines — a bidder is
+  never graded against its own bad impressions), the two diagnostics
+  (`scripts/prebid_viewability_audit.py` for the GAM Active View cut by
+  hb_bidder × unit × device × size, `scripts/prebid_render_forensics.py` for
+  on-page DOM/GPT forensics on **article pages** — the homepage runs a
+  different slot set and none of these bidders is configured on it), and the
+  decision rules for when the Mobkoi iframe mirror actually applies (a
+  breakout floors at ~0%, so 40–56% is a different animal). **Ogury,
+  resolved:** on `dfp-ad-sticky` the GPT-served iframe is the slot's *only*
+  iframe and is hidden at 0×0 `display:none` with nothing rendered in its
+  place — an impression counted with no ad, which Active View reports
+  non-viewable **correctly**. That is the opposite of Mobkoi (whose number
+  was wrong because a real unit was measured in the wrong element), so
+  **never mirror it** — a mirror there would manufacture viewability for an
+  ad that was never shown. It is a delivery defect to raise with Ogury, and
+  a reason to drop them from that slot meanwhile; their in-article renders
+  are healthy and need nothing. **SmileWanted** is requested on every
+  auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
+  forensics for it needs an EU/residential egress.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -1103,7 +1166,30 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `preview_mobkoi_dom.yml` (SOAP `getPreviewUrl` + headless Chromium;
   screenshots in artifacts). Debrief: `docs/mobkoi_viewability.md`.
   Per-LI AV pulls: dispatch `diagnose_mobkoi_viewability.yml` with any
-  `line_item_ids`. Never set vCPM goals on breakout formats.
+  `line_item_ids`. Never set vCPM goals on breakout formats. **Wrapper
+  demand is a separate question** — a Prebid bidder reading 40–56% is not
+  a breakout (those floor at ~0%); see `docs/prebid_viewability.md`.
+
+## MCP servers
+Project-scoped servers live in the checked-in `.mcp.json`, so anyone opening
+this repo in Claude Code is offered the same set (Claude Code prompts once to
+approve project servers; approval is per-user, stored outside the repo).
+
+| Server | Transport | URL | Auth |
+|---|---|---|---|
+| `supabase` | http | `https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk` | OAuth in the browser on first use |
+| `beehiiv` | http | `https://mcp.beehiiv.com/mcp` | OAuth in the browser on first use |
+
+Both are **remote HTTP servers with browser OAuth** — no API key goes in the
+repo or in `.env`, and neither can be authorized from a headless/cloud session
+(Claude Code on the web, Actions). Authorize them once from an interactive
+local `claude` session (`/mcp`, pick the server, approve in the browser); the
+token is stored in your local Claude Code config, never here. Until then their
+tools are simply unavailable and any work that needs them has to run locally.
+
+Equivalent one-off CLI add (writes to *your* config, not the repo — prefer
+editing `.mcp.json` so the whole team gets it):
+`claude mcp add --transport http beehiiv https://mcp.beehiiv.com/mcp`
 
 ## Things to never commit
 - `.env`, `*.db`, `*.csv`, `.streamlit/secrets.toml` (already in `.gitignore`).

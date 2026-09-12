@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from google.ads import admanager_v1
+from google.ads.admanager_v1.types import report_value
 from google.oauth2 import service_account
 from google.type import date_pb2
 
@@ -180,12 +181,41 @@ class GAMClient:
     def _gam_date(d: date) -> date_pb2.Date:
         return date_pb2.Date(year=d.year, month=d.month, day=d.day)
 
+    @staticmethod
+    def _field_filter(dimension: str, operation: str, values: list):
+        """Build one ReportDefinition.Filter on a dimension.
+
+        `operation` is a Filter.Operation name (IN, NOT_IN, CONTAINS,
+        NOT_CONTAINS, …). Values are typed by their Python type, which is what
+        the API wants: an IDENTIFIER dimension (ADVERTISER_ID) filters on
+        int_value, a STRING one (KEY_VALUES_NAME) on string_value.
+        """
+        _F = admanager_v1.ReportDefinition.Filter
+
+        def _val(v):
+            if isinstance(v, bool):
+                return report_value.ReportValue(bool_value=v)
+            if isinstance(v, int):
+                return report_value.ReportValue(int_value=v)
+            if isinstance(v, float):
+                return report_value.ReportValue(double_value=v)
+            return report_value.ReportValue(string_value=str(v))
+
+        return _F(
+            field_filter=_F.FieldFilter(
+                field=admanager_v1.ReportDefinition.Field(dimension=_D[dimension]),
+                operation=_F.Operation[operation],
+                values=[_val(v) for v in values],
+            )
+        )
+
     def _run_report(
         self,
         dimensions: list[str],
         metrics: list[str],
         start_date: date,
         end_date: date,
+        filters: list | None = None,
     ) -> pd.DataFrame:
         """
         Create, run, and fetch a GAM Historical report.
@@ -193,13 +223,23 @@ class GAMClient:
         Dimension and metric names must match the ReportDefinition.Dimension /
         Metric enum identifiers (e.g. "DATE", "LINE_ITEM_ID", "AD_SERVER_IMPRESSIONS").
 
+        `filters` is an optional list of `(dimension, operation, values)` tuples
+        (or ready-made ReportDefinition.Filter objects); the API AND-s them.
+        Filtering server-side is what keeps a high-cardinality dimension like
+        KEY_VALUES_NAME from returning every key-value pair the site sends.
+
         Returns a DataFrame with snake_cased column names in the same order as
         the requested dimensions followed by the requested metrics.
         """
+        built = [
+            f if not isinstance(f, tuple) else self._field_filter(*f)
+            for f in (filters or [])
+        ]
         report = admanager_v1.Report(
             report_definition=admanager_v1.ReportDefinition(
                 dimensions=[_D[d] for d in dimensions],
                 metrics=[_M[m] for m in metrics],
+                filters=built,
                 date_range=admanager_v1.ReportDefinition.DateRange(
                     fixed=admanager_v1.ReportDefinition.DateRange.FixedDateRange(
                         start_date=self._gam_date(start_date),
