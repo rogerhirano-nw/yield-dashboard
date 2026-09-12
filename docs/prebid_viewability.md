@@ -333,6 +333,82 @@ viewable. Treat the GPT event as proof that a slot **can** be measured and
 the geometry as proof of **how** the creative renders; the rate itself comes
 from the GAM audit, never from this.
 
+
+## THE AUDIT RESULT (2026-09-05, 21 days, production GAM)
+
+`prebid_viewability_audit.py` ran against prod and settled every case. The
+accepted grain was `KEY_VALUES_NAME + AD_UNIT_NAME` (GAM refused device and
+rendered-size alongside it, so the ladder dropped them); rendered size came
+from its own pull.
+
+| Bidder | Imps | Actual | Expected (peers, same units) | MIX | **RENDER** |
+|---|---:|---:|---:|---:|---:|
+| **smilewanted** | 4.74M | 41.0% | 79.2% | +0.3 | **−38.2** |
+| **ogury** | 2.91M | 54.6% | 83.0% | +5.2 | **−28.4** |
+| **oms** | 39k | 56.3% | 78.8% | +1.7 | **−22.5** |
+| kargo | 1.22M | 64.6% | 71.5% | −5.8 | −6.9 |
+| onetag | 608k | 71.8% | 77.1% | +0.0 | −5.4 |
+| mobkoi | 1.05M | 68.2% | 71.7% | −5.5 | −3.4 |
+
+**Measurable is 100% for every bidder**, so nothing here is an
+instrumentation failure — Active View sees these impressions and scores them
+non-viewable.
+
+### SmileWanted: a render problem, not a mix problem
+
+The mix-adjusted split is unambiguous: **mix +0.3pp, render −38.2pp**. It buys
+the same units as everyone else and measures ~38pp worse *in those same
+units*, uniformly:
+
+| Ad unit | Imps | smilewanted | peers |
+|---|---:|---:|---:|
+| sticky | 1,796,968 | **47.1%** | 91.7% |
+| inarticle2 | 891,208 | 35.0% | 68.0% |
+| inarticle1 | 810,299 | 43.2% | 73.0% |
+| inarticle3 | 457,555 | 32.8% | 73.5% |
+| inarticle4…10 | ~680k | 29–38% | 72–76% |
+
+Every unit, same story. That is not placement and it is not format — the
+earlier outstream-video hypothesis is **not supported**: GAM sees all of its
+impressions as `1x1` (the Prebid universal creative's placeholder size), and
+the deficit is uniform rather than concentrated in one size. Rendered size is
+simply not a usable cut for wrapper demand.
+
+The six clean renders captured on-page do not contradict this; they are the
+rare exceptions from a datacenter IP where smilewanted bids ~1% of the time.
+**This now warrants the SSP conversation** — with the per-unit table above,
+which is far stronger than anything the on-page work produced.
+
+### Ogury: confirmed sticky-only, exactly as the DOM forensics said
+
+| Ad unit | Imps | ogury | peers |
+|---|---:|---:|---:|
+| **sticky** | 1,689,478 | **43.0%** | 91.8% |
+| inarticle1 | 390,185 | 73.6% | 71.0% |
+| inarticle4 | 399,718 | 68.0% | 70.7% |
+| inarticle2/3/5-10 | ~325k | 66–75% | 66–75% |
+
+In-article is **at parity with peers on every unit**; the entire 28pp gap
+comes from sticky, which is 58% of Ogury's volume. Production over 21 days
+and 1.69M impressions confirms the blank-render mechanism found on page —
+and gives a quotable number (43.0% vs a 91.8% peer rate on the same unit)
+that does not depend on any sampling rate.
+
+### OneTag: video-only
+
+| Unit / size | Imps | onetag | peers |
+|---|---:|---:|---:|
+| video player | 132,570 | **47.7%** | 86.2% |
+| 1x1 display | 475,097 | 78.5% | 75.8% |
+
+Its display demand measures *above* peers. Only the in-stream video unit is
+deficient, which is why the banner-focused DOM work found nothing wrong.
+
+### kargo / mobkoi: mild, and half of it is mix
+
+Both sit around −3 to −7pp render with a similar amount of mix. Worth a look
+after the three above; not the same class of problem.
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take
