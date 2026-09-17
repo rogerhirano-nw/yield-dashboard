@@ -210,6 +210,22 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
         ) from e
 
 
+# agentmail has used more than one name for a message's timestamp; try them in
+# order rather than depending on a single guessed key.  A missing key made every
+# sort key "" in `pull_ttd`, so "newest first" silently became "whatever order
+# the API returned" — which is how a *July* forwarded report got picked on
+# 2026-09-17 while the needle was matching 50 messages.
+_TS_KEYS = ("sent_at", "received_at", "created_at", "timestamp", "date", "updated_at")
+
+
+def _msg_ts(m: dict) -> str:
+    for k in _TS_KEYS:
+        v = m.get(k)
+        if v:
+            return str(v)
+    return ""
+
+
 def _messages_from(raw) -> list[dict]:
     if isinstance(raw, dict):
         return raw.get("messages") or raw.get("data") or []
@@ -243,7 +259,7 @@ def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> Non
 def list_ttd_messages(
     api_key: str,
     inbox_id: str,
-    limit: int = 50,
+    limit: int = 100,
     *,
     subject_needle: str = TTD_SUBJECT_NEEDLE,
 ) -> list[dict]:
@@ -500,10 +516,18 @@ def pull_ttd(
     if not messages:
         return pd.DataFrame(), {}
 
-    # Newest first
-    messages.sort(
-        key=lambda m: m.get("sent_at") or m.get("created_at") or "",
-        reverse=True,
+    # Newest first.  Log the shortlist: when the pull lands on a stale report,
+    # this is what says whether a fresher one was even in the inbox.
+    messages.sort(key=_msg_ts, reverse=True)
+    if not _msg_ts(messages[0]):
+        logger.warning(
+            "agentmail: no recognizable timestamp on these messages (keys=%r) — "
+            "'newest first' is not ordering anything; add the right key to _TS_KEYS",
+            sorted(messages[0].keys()),
+        )
+    logger.info(
+        "TTD candidates, newest first: %r",
+        [(_msg_ts(m), (m.get("subject") or "")[:110]) for m in messages[:6]],
     )
 
     for m in messages:
