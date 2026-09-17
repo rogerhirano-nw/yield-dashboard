@@ -4,6 +4,32 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-17 (later) — Why smilewanted and oms specifically, and is it the creative
+
+- **They share a signature no other bidder has.** Their gap vs peers *widens*
+  down the page (slope −1.82 and −1.45 pp per in-article position, against peers
+  at +0.29); the next-worst bidder's excess is −0.55. Everyone else's viewability
+  improves slightly with depth, which is lazy rendering working. **Correction:**
+  oms first read as "uniform, a different shape" from its absolute rates — against
+  the peer curve it is the same shape, shallower. Grade against peers, not absolutes.
+- **The dwell test rules out the slow-creative family.** New in the forensics
+  script: `ACTIVE_VIEW_AVERAGE_VIEWABLE_TIME`. smilewanted and oms match their
+  peers' seconds-in-view to within a second on every unit, so when their ad is
+  seen it is seen as long as anyone's — a **binary** failure (fully seen or never
+  seen), not a late or heavy creative. Ogury is the control: half the peer dwell
+  on sticky and 7.1s vs 12.7s in-article, i.e. its known blank/late render showing
+  up in an independent measure.
+- **The unanswerable creative property is rendered size** — Active View needs 50%
+  of the *creative's* pixels in view, and GAM logs every wrapper impression as
+  `1x1` (the universal creative placeholder), so a creative taller than its slot
+  would produce exactly this depth pattern and be invisible in reporting. First
+  question for both SSPs; needs on-page measurement.
+- **Two GAM limits recorded so nobody re-runs them:** `AD_SERVER_CLICKS` is 0 for
+  *all* wrapper demand (the click leaves through the buyer's tracker), so the
+  Mobkoi clicks-vs-viewable tell is unavailable; and `KEY_VALUES_NAME` is
+  incompatible with device / country / browser as dimension *and* as filter, at
+  rich and lean metric sets — so no per-bidder mix cut of those exists.
+
 ## 2026-09-17 — Prebid viewability: audit results landed, refreshed on live data
 
 - **The production audit's verdicts are now on `main`** (#363, merged today —

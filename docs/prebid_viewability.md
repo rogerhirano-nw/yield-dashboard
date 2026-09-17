@@ -589,6 +589,102 @@ Four things the per-unit cut shows that no site-wide average could:
 4. **OMS is uniform** — −23 to −27pp on *every* unit including sticky, the same
    shape as SmileWanted at 1/56th the volume. Same conversation, same fix.
 
+### Why only these two, and is it the creative? (2026-09-17)
+
+The audit says smilewanted and oms are RENDER defects. Two follow-up questions —
+*why are they the only ones* and *is there a creative red flag* — are answered by
+`scripts/prebid_smilewanted_forensics.py`, which adds **average viewable time**
+to the pull. Run:
+[35260403806](https://github.com/rogerhirano-nw/yield-dashboard/actions/runs/35260403806).
+
+**They share a signature no other bidder has: the gap widens down the page.**
+Fitting viewability against in-article position 1→10 (min 1k impressions/unit):
+
+| Bidder | Slope (pp/position) | Its peers | Gap at pos 1 → 10 |
+|---|---:|---:|---|
+| **smilewanted** | **−1.82** | +0.29 | −22.0 → **−49.1** |
+| **oms** | **−1.45** | +0.30 | −8.7 → **−26.6** |
+| ogury | +0.53 | +0.39 | −1.0 → +2.2 |
+| kargo | +1.26 | +0.36 | −9.6 → +2.8 |
+| everyone else | −0.15…+1.0 | ~+0.4 | flat |
+
+The next-worst bidder's excess slope is **−0.55**, against smilewanted's −2.11 —
+this is not a tail of a distribution, it is two bidders and then everyone else.
+Note the sign of the peer column: for every other bidder viewability *improves*
+slightly with depth, which is what lazy rendering looks like when it works (the
+ad renders as the reader approaches). These two go the other way.
+
+**Correction to an earlier reading of oms.** Its per-unit rates look flat in
+absolute terms (46.1 / 46.1 / 45.2 / 45.7 …), which first read as "uniformly
+−25pp, a different shape from smilewanted". Measured against *peers* it is the
+same shape: peers climb with depth while oms does not, so its gap widens −8.7 →
+−26.6. Two bidders with one signature is a likelier single cause than two
+coincidences; grade against the peer curve, not the absolute one.
+
+#### The dwell test: binary failure, not a slow creative
+
+Active View cannot show us the markup, but `ACTIVE_VIEW_AVERAGE_VIEWABLE_TIME`
+says how long the ads that *did* become viewable stayed in view. That
+discriminates two very different creative faults:
+
+* a creative that renders late, paints slowly, or is heavy is viewable for
+  **less** time than its peers in the same slot — the reader has already been
+  on the page a while when it finally appears;
+* a creative whose dwell **matches** its peers while far fewer of its
+  impressions ever become viewable is failing in a **binary** way: fully seen,
+  or never seen at all.
+
+| Bidder · unit | Viewable % | Its dwell | Peer dwell |
+|---|---:|---:|---:|
+| smilewanted · sticky | 54.5% | 37.4s | 34.9s |
+| smilewanted · inarticle2 | 34.1% | 11.7s | 11.8s |
+| smilewanted · inarticle7 | 31.3% | 12.5s | 12.7s |
+| oms · sticky | 66.1% | 33.5s | 35.0s |
+| oms · inarticle2 | 46.1% | 11.6s | 11.8s |
+| **ogury · sticky** | 45.8% | **18.1s** | 35.6s |
+| **ogury · inarticle4** | 66.7% | **7.1s** | 12.7s |
+
+**smilewanted and oms match their peers to within a second on every unit.** So
+the whole "slow / heavy / late-painting creative" family is ruled out for them:
+when their ad is seen, it is seen exactly as long as everybody else's. Ogury is
+the control that proves the metric discriminates — half the peer dwell on
+sticky, and 7.1s vs 12.7s on `inarticle4` where its viewability looks *normal*,
+which is its own (already diagnosed) blank/late-render defect showing up in a
+second, independent measure.
+
+So the question for smilewanted and oms is **not** what their creative does once
+it is on screen. It is **when the impression is booked relative to when the
+reader arrives** — the signature of impressions counted for slots the reader
+never reaches, which is also exactly what the depth gradient predicts.
+
+#### The one creative property GAM cannot see: rendered size
+
+Active View needs **50% of the creative's pixels** in view (30% above
+242,500px²). A creative that renders **taller than its slot** is therefore
+mechanically harder to make viewable, and harder still further down the page —
+which fits every fact above. And GAM cannot see it: every wrapper impression
+logs as **`1x1`**, the Prebid universal creative's placeholder, so a size
+difference is invisible in reporting by construction. **This is the first thing
+to ask both SSPs, and the thing to measure on page** (rendered iframe height vs
+slot height when they win).
+
+#### Two GAM limits, so nobody re-runs these
+
+* **Clicks cannot test wrapper demand.** `AD_SERVER_CLICKS` is **0 for every
+  wrapper bidder**, the healthy ones included — the Prebid universal creative
+  renders the buyer's markup inside the GPT iframe and the click leaves through
+  the buyer's own tracker, so GAM's click server never sees it. The Mobkoi-style
+  "clicks exceed viewable impressions" tell is unavailable here. A 0.000% CTR in
+  this report is the integration, not a finding.
+* **No per-bidder device / country / browser cut exists.** GAM refuses
+  `DEVICE_CATEGORY_NAME`, `COUNTRY_NAME` and `BROWSER_NAME` alongside hb_bidder
+  with `CONSTRAINTS_INCOMPATIBILITY` — as a dimension *and* as a filter, with
+  the full metric set *and* with just impressions + viewable. Tried both ways,
+  twice. So those mix hypotheses cannot be tested from GAM reporting at all;
+  the per-unit leave-one-out is the strongest control available, and it already
+  puts mix at +0.5pp (smilewanted) and +5.5pp (oms) — i.e. their placement mix
+  makes them look *better*, not worse.
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take
