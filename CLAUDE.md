@@ -71,15 +71,42 @@ different link:
 - `primary_conv_col` takes **several candidates**, tried in order, so one
   campaign spans a report changeover that renames its pixel columns.
 
-**Conversion-pixel caveat.** In the replacement report the **Registered pixel
+**Conversion-pixel rule.** In the replacement report the **Registered pixel
 reads 0 across every row**; the conversions present are First Purchase, under
 *two attribution models* — `IdentityAlliance` and `IdentityAllianceWithHousehold`
 — which are the **same pixel counted two ways**, so anything that sums them
 double-counts FTPs. All three are mapped explicitly (`conversions_registered`,
 `conversions_first_purchase`, `conversions_first_purchase_household`) so the
-`"conversion"` auto-sum can't silently add them together, and exactly one is
-designated the KPI via `primary_conv_col`. **Which pixel + which attribution
-model is the Chumba CPA KPI is an owner decision** — it swings CPA by ~19×.
+`"conversion"` auto-sum can't silently add them together, and exactly **one** is
+designated the KPI via `primary_conv_col`. **The Chumba KPI is First Purchase ·
+`IdentityAllianceWithHousehold`** (Roger, 2026-09-17) — 95 conversions over
+09-06..09-16 (CPA ≈ $344 against the $150 goal) vs 5 for the device-only
+`IdentityAlliance` column. Picking the other model, or summing the two, moves CPA
+by ~19×, so **never let this fall through to the auto-sum** — if a future report
+renames the pixel again, add the new name as a `primary_conv_col` candidate
+rather than letting the fallback pick it up.
+
+**The KPI changes definition at the 09-06 seam.** The retired report's KPI was
+*registrations* (pixel 01); the replacement's is *first purchases*. Both land in
+`attributed_conversions`, so a CPA series spanning 09-05/09-06 compares two
+different events either side of that date — registrations are far cheaper and
+more numerous than FTPs, so the seam reads as a CPA step-up that is **not** a
+performance change. The per-era raw columns are preserved (`conversions_pixel_01`
+on the old rows, `conversions_first_purchase_household` on the new), so the
+series can be rebuilt on a single definition if the comparison ever matters.
+
+**A replaced report widens the table; it no longer drops it.**
+`_refresh_ttd_campaign` used to DROP and recreate on any column-set change,
+which silently discarded every row the new export doesn't cover — and a
+replacement report only reaches back to its own start date (the new Chumba
+export starts 09-06, so a drop would have taken all of August with it).
+`_widen_table_to` now ALTERs the table to the **union** of both schemas: a
+column only the retired report had reads NULL on new rows and vice versa, and
+columns are only ever ADDed, never dropped or retyped. Keeping the table also
+keeps its RLS grants — the daily DROP+recreate is what re-opened RLS on
+`ttd_luckyland` and drove the 2026-07-27 health-check loop. Verified on a
+SQLite sim seeded with the old schema: 2 old rows + 499 new = 501 rows over
+20 union columns, August values intact.
 
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 

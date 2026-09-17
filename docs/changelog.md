@@ -39,11 +39,23 @@ is the deal name; no `Ad Group`/`Supply Vendor`, so there's no `media_type` and
 the scorecard's by-format table is empty. All mapped, with tests
 (`tests/test_ttd_client.py`, 14 cases) on synthetic rows.
 
-**Left for the owner:** which conversion pixel is the CPA KPI. The Registered
-pixel reads **0 on every row** of the replacement report; the conversions are
-First Purchase under two attribution models (`IdentityAlliance` vs
-`IdentityAllianceWithHousehold`) — the same pixel counted two ways, ~19× apart.
-All three are mapped separately so nothing auto-sums them.
+**The CPA KPI is now First Purchase · `IdentityAllianceWithHousehold`**
+(Roger's call): the Registered pixel reads **0 on every row** of the replacement
+report, and the two First Purchase columns are the same pixel under two
+attribution models — 95 conversions (CPA ≈ $344) vs 5 — so exactly one is
+designated and all three are mapped separately so nothing auto-sums them.
+**Caveat:** the retired report's KPI was *registrations*, so a CPA series
+spanning 09-05/09-06 changes definition at that seam; the per-era raw columns
+are kept so it can be rebuilt on one definition.
+
+**History is merged, not dropped.** `_refresh_ttd_campaign` used to DROP and
+recreate the table on any column-set change, which would have discarded
+everything before 09-06 (all the new export covers). `_widen_table_to` now
+ALTERs to the **union** of both schemas — columns are only ever added, never
+dropped or retyped — so both eras live in one table, and the table keeps its RLS
+grants instead of being reborn RLS-off (the `ttd_luckyland` loop of 2026-07-27).
+Proven on a SQLite sim seeded with the retired schema: 2 old + 499 new = 501
+rows across 20 union columns, August values intact.
 
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
