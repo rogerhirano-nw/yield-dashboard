@@ -97,6 +97,12 @@ def _known(names: list[str], enum=_M, label: str = "metrics") -> list[str]:
 
 
 METRICS = _known(_WANT_METRICS)
+# The cuts below were refused even with hb_bidder demoted to a filter, which
+# points at the METRIC set rather than the dimensions: GAM's compatibility
+# rules cover metrics too, and the audit's leaner set survives cuts this one
+# does not. So the cuts retry with the minimum that still answers the question.
+_MIN_METRICS = [m for m in ("AD_SERVER_IMPRESSIONS",
+                            "ACTIVE_VIEW_VIEWABLE_IMPRESSIONS") if m in METRICS]
 
 _REN = {
     "ad_server_impressions": "impressions",
@@ -113,7 +119,7 @@ def _bidder(kv: object) -> str | None:
 
 
 def _pull(gam: GAMClient, dims: list[str], start: date, end: date,
-          kv_value: str | None = None):
+          kv_value: str | None = None, metrics: list[str] | None = None):
     """Return the cut as a frame, or None if GAM refuses this dimension set.
 
     `kv_value` narrows the hb_bidder filter to one bidder, which is how the
@@ -126,7 +132,7 @@ def _pull(gam: GAMClient, dims: list[str], start: date, end: date,
     needle = _HB_PREFIX + (kv_value or "")
     try:
         df = gam._run_report(
-            dimensions=dims, metrics=METRICS, start_date=start, end_date=end,
+            dimensions=dims, metrics=metrics or METRICS, start_date=start, end_date=end,
             filters=[("ADVERTISER_ID", "IN", [ADVERTISER_ID]),
                      ("KEY_VALUES_NAME", "CONTAINS", [needle])],
         )
@@ -208,7 +214,15 @@ def _cut_by_filter(gam: GAMClient, dim: str, start: date, end: date,
     wrapper demand; peers are then the book minus that bidder, which is the
     same leave-one-out comparison by subtraction.
     """
+    metrics = METRICS
     book = _pull(gam, [dim], start, end, kv_value="")
+    if book is None:
+        # Retry with the leanest metric set before giving up on the cut.
+        metrics = _MIN_METRICS
+        book = _pull(gam, [dim], start, end, kv_value="", metrics=metrics)
+        if book is not None:
+            print(f"  [{dim}] accepted with the lean metric set "
+                  f"({', '.join(metrics)})")
     if book is None or book.empty:
         return
     book = book.groupby(dim)[["impressions", "viewable_impressions"]].sum()
@@ -216,7 +230,7 @@ def _cut_by_filter(gam: GAMClient, dim: str, start: date, end: date,
     print(title)
     print("=" * 78)
     for b in FOCUS:
-        mine = _pull(gam, [dim], start, end, kv_value=b)
+        mine = _pull(gam, [dim], start, end, kv_value=b, metrics=metrics)
         if mine is None or mine.empty:
             continue
         mine = mine.groupby(dim)[["impressions", "viewable_impressions"]].sum()
