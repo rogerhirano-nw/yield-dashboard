@@ -21,13 +21,6 @@ on:
         default: 'display'
         type: choice
         options: [display, video, all]
-      forensics:
-        description: 'TEMPORARY shim: also run the SmileWanted/OMS forensics script.
-          Its own workflow cannot be dispatched until it lands on the default branch,
-          so this runs it from here. Remove once prebid_smilewanted_forensics.yml is on main.'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -58,18 +51,6 @@ jobs:
         run: |
           set -o pipefail
           python scripts/prebid_viewability_audit.py 2>&1 | tee /tmp/output.txt
-
-      - name: Run SmileWanted/OMS forensics (temporary shim)
-        if: inputs.forensics
-        env:
-          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
-          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
-          DAYS: ${{ inputs.days }}
-          BIDDERS: ${{ inputs.bidders }}
-          OUT_DIR: /tmp/prebid-viewability-audit/forensics
-        run: |
-          set -o pipefail
-          python scripts/prebid_smilewanted_forensics.py 2>&1 | tee -a /tmp/output.txt
 
       - name: Upload CSVs
         if: always()
