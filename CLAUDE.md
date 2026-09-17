@@ -1149,6 +1149,39 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   - `MONTH_YEAR` comes back as an int code = `(year - 1900) * 12 +
     (month - 1)` (1519 = 2026-08); the script asserts the decode against the
     requested window rather than trusting it.
+- **Forecasting a month that hasn't happened** is a different API:
+  `scripts/gam_avails_forecast.py` (SOAP `ForecastService` v202605). The REST
+  v1 surface has **no forecast service at all**, so this is the one path that
+  still needs the legacy `googleads` library; the historical pull stays REST.
+  `getAvailabilityForecast` returns **`matchedUnits`** (gross pool matching the
+  targeting) and **`availableUnits`** (what is still unreserved after other
+  line items) — quote *available*. Gotchas:
+  - A **VIDEO_PLAYER line item needs three fields set together** or the call
+    fails: `environmentType=VIDEO_PLAYER`, `targeting.requestPlatformTargeting`
+    (else `NotNullError.NULL @ targeting.requestPlatformTargeting`), and
+    `videoMaxDuration` (else `INVALID_MAX_VIDEO_CREATIVE_DURATION`,
+    trigger `'0'`). The fault message names **`maxVideoCreativeDuration`**, but
+    that field **does not exist** in the v202605 WSDL — zeep rejects it as an
+    unknown key. The real field is `videoMaxDuration`. Don't chase the name in
+    the error.
+  - **One line item with several creative placeholders forecasts the UNION**
+    of those sizes — which is exactly the de-duplicated "eligible for at least
+    one of the four" figure, in a single call. Per-size calls still overlap.
+  - **`ForecastingError.EXCEEDED_QUOTA` is the throttle**, and it is easy to
+    burn: ~1400 calls at 5 workers tripped it. Retry on that exact string
+    (not "QuotaExceeded", which never matches), keep workers ≤3, and treat a
+    dropped call as **missing, never zero** — a failed cut rendered as 0
+    reads as "no inventory in France", which is a very different claim. The
+    script keeps gaps as NaN, reports the count, and takes `--resume-from` to
+    fill them on a second pass.
+  - Countries join to `Geo_Target` by **ISO country code, not name** — the
+    reporting API and Geo_Target disagree on wording ("The Netherlands" vs
+    "Netherlands", "Türkiye", "Czechia").
+  - Sanity-check any forecast against the trailing-28d run-rate before
+    quoting it. On 2026-09, GAM's Oct forecast came in at 82% of run-rate for
+    display and 77% for video, against a 0.88× Sep→Oct seasonal factor
+    observed in 2025 — i.e. GAM is modestly conservative, which is the
+    expected shape and a signal the call was built right.
 - **Active View reads ~0% viewable on any creative that renders in the
   parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
   uniscroller, the `addImageToHomepage`-style takeover customs, the Kia
