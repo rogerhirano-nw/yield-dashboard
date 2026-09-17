@@ -4,6 +4,34 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-17 (on-page) — The size hypothesis is dead, and SmileWanted bids fine now
+
+- **Ran the browser sweep** (22 articles × mobile/desktop, 276 renders) with two
+  new measurements: creative height vs peers *in the same slot*, and the in-view
+  ceiling `viewport_h / creative_h` — below a creative's AV threshold means
+  unviewable by construction.
+- **Falsified the leading hypothesis.** Every SmileWanted render is a 300×250 in
+  a 390×250 slot (OMS 970×250 on desktop), in-frame, visible, not SafeFrame,
+  ceiling **100%**, nothing capped, 28 of 32 viewable. No breakout, no hidden
+  iframe, no oversized creative. The "creative taller than its slot" theory was a
+  good fit for the depth gradient and GAM's 1x1 blindness, and it is not what is
+  happening.
+- **SmileWanted's bid rate from a datacenter IP is 13%, not ~1%** — 42 bids /
+  32 wins on 317 requests, against 0/67 and 1/70 two weeks ago. The
+  "needs an EU/residential egress" constraint is gone. Re-measure before
+  declaring a bidder uncatchable.
+- **What the sweep did not see: sticky.** Zero `dfp-ad-sticky` renders in 44
+  loads (wrapper present, no iframes), so the two largest loss cells in the book
+  — ogury 1.19M and smilewanted 1.06M viewable impressions on that one unit —
+  are untouched, and Ogury's blank-render diagnosis is neither confirmed nor
+  refuted today. Sticky-targeted run is the follow-up. `kargo` was never
+  requested on these slots at all.
+- **Where it leaves the diagnosis:** 32 clean renders rule out a render defect
+  worth 35pp, so the remaining explanation is about *which impressions get
+  counted* — booked for slots a real reader often never reaches, which the
+  harness always reaches by design. That fits the depth gradient and the binary
+  dwell, and it is what to put to the SSP.
+
 ## 2026-09-17 (later) — Why smilewanted and oms specifically, and is it the creative
 
 - **They share a signature no other bidder has.** Their gap vs peers *widens*

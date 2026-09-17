@@ -1069,10 +1069,17 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   **never mirror it** — a mirror there would manufacture viewability for an
   ad that was never shown. It is a delivery defect to raise with Ogury, and
   a reason to drop them from that slot meanwhile; their in-article renders
-  are healthy and need nothing. **SmileWanted** is requested on every
-  auction and almost never bids from a US datacenter IP (~1% bid rate), so
-  on-page forensics for it needs an EU/residential egress — which is why the
-  **GAM audit, not the DOM sweep, is what settled it**. Audit verdicts
+  are healthy and need nothing. **SmileWanted now bids freely from a US
+  datacenter IP** — 42 bids / 32 wins on 317 requests (13%) on 2026-09-17,
+  against 0/67 then 1/70 on 2026-09-04, so the "needs an EU/residential
+  egress" constraint that shaped this investigation is gone; re-measure the
+  bid rate before assuming a bidder is uncatchable. **Its renders are
+  ordinary and the oversize theory is falsified**: 32 captures are 300×250
+  (970×250 desktop for OMS) in-frame, visible, not SafeFrame, with a 100%
+  in-view ceiling and 28/32 viewable — so no breakout, no hidden iframe, no
+  creative taller than its slot. The harness always scrolls slots into view,
+  so it still cannot measure a RATE; what it rules out is a render defect.
+  Audit verdicts
   (2026-09-05, re-confirmed 2026-09-17 on ~60% more volume): **smilewanted
   and oms are RENDER defects, not placement mix** — ~35pp and ~22pp below
   peers on *every* unit, so the early "it's probably mix" read in the doc's

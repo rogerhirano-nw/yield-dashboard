@@ -659,6 +659,11 @@ never reaches, which is also exactly what the depth gradient predicts.
 
 #### The one creative property GAM cannot see: rendered size
 
+> **Tested 2026-09-17 and FALSIFIED** — 32 SmileWanted and 11 OMS renders on
+> real article pages are ordinary 300×250 / 970×250 creatives with a 100%
+> in-view ceiling. See *The size hypothesis is DEAD* below. Kept because the
+> reasoning was sound and the test it motivated is the one that killed it.
+
 Active View needs **50% of the creative's pixels** in view (30% above
 242,500px²). A creative that renders **taller than its slot** is therefore
 mechanically harder to make viewable, and harder still further down the page —
@@ -684,6 +689,80 @@ slot height when they win).
   the per-unit leave-one-out is the strongest control available, and it already
   puts mix at +0.5pp (smilewanted) and +5.5pp (oms) — i.e. their placement mix
   makes them look *better*, not worse.
+
+### The size hypothesis is DEAD — on-page sweep, 2026-09-17
+
+Run [35264886989](https://github.com/rogerhirano-nw/yield-dashboard/actions/runs/35264886989):
+22 articles × mobile + desktop, 44 loads, **276 renders**, 0.8s dwell (tuned for
+render capture, so this sweep's viewable% is NOT a rate measurement).
+
+**Two things this overturns, both stated earlier in this doc.**
+
+**1. SmileWanted bids plenty from a datacenter IP — 13%, not ~1%.**
+
+| Bidder | Requested | Bids | Wins | Median CPM |
+|---|---:|---:|---:|---:|
+| **smilewanted** | 317 | **42** | **32** | $1.53 |
+| oms | 0 (s2s) | 20 | 11 | $0.02 |
+| ogury | 0 (s2s) | 5 | 1 | $1.07 |
+| kargo | **never requested** on these slots | | | |
+
+The 2026-09-04 sweeps measured 0/67 then 1/70 and concluded its demand barely
+arrives here. Today it bid 42 times and won 32. So **"needs an EU/residential
+egress" was wrong**, or has stopped being true — either way the constraint that
+shaped two weeks of this investigation no longer holds, and a US datacenter
+runner now captures SmileWanted renders freely.
+
+**2. Its creatives are ordinary, and the oversize theory is falsified.**
+
+| Bidder | n | Median creative h | AV threshold | In-view ceiling | Structurally capped |
+|---|---:|---:|---:|---:|---:|
+| smilewanted | 32 | **250px** | 50% | **100%** | **0** |
+| oms | 11 | **250px** | 50% | **100%** | **0** |
+| ogury | 1 | 250px | 50% | 100% | 0 |
+| peers (same slots) | ~180 | 250px | 50% | 100% | 0 |
+
+Every SmileWanted render: a **300×250 in a 390×250 slot** (970×250 on desktop
+for OMS), `display:block`, `visibility:visible`, **not** SafeFrame, in the GPT
+iframe, max in-view **100%**, and **28 of 32 scored viewable** by GPT's own
+`impressionViewable`. No breakout, no hidden or zeroed iframe (the stack-trace
+watcher caught nothing), no creative taller than its slot, nothing structurally
+capped. The ceiling metric — `viewport_h / creative_h`, the most of a creative
+that can ever be in view — is **100% for every single render**.
+
+So the hypothesis this doc carried ("their creative comes back taller than the
+slot, which GAM cannot see because wrapper impressions log as 1x1") is **dead**.
+It was a good hypothesis: it fit the depth gradient, the binary dwell, and GAM's
+blindness to rendered size. It is simply not what is happening.
+
+#### What that leaves
+
+The harness deliberately scrolls every slot into view, so **it cannot measure a
+rate** — 88% of SmileWanted's renders being viewable here says nothing against
+GAM's 43.7%, exactly as the earlier sweep's 146/152 did not. What 32 clean
+renders *do* rule out is a render defect of the kind that costs 35pp: if their
+creative broke, hid, oversized or escaped its frame, it would show up here.
+
+The remaining explanation has to be about **which impressions get counted**
+rather than what renders: impressions booked for slots this harness always
+reaches but real readers often do not. That is consistent with everything —
+the depth gradient (worse the further down the page), the binary dwell (normal
+when seen, never seen otherwise), and a clean DOM. The mechanism to ask
+SmileWanted about is **when they count an impression relative to the slot
+entering the viewport**, not what their creative does.
+
+#### What this sweep did NOT see: sticky
+
+**Zero `dfp-ad-sticky` renders across 44 loads.** The slot's wrapper is in the
+DOM (`div#dfp-ad-sticky-wrapper … 728x90 fixed`) with **no iframes in it**. So
+the largest loss cells in the whole book — ogury sticky (1.19M viewable
+impressions, 45.8% vs 92.2%) and smilewanted sticky (1.06M, 54.5% vs 91.8%) —
+are **untouched by this sweep**, and Ogury's blank-render diagnosis neither
+confirmed nor refuted today. A sticky-targeted run is the obvious follow-up.
+
+Also worth noting: **`kargo` was never requested** on these in-article slots, so
+its −13.7pp on `inarticle4` cannot be reproduced on page either — its demand
+must arrive by a path this instrumentation doesn't see.
 
 ## How to read the results (decision rules)
 
