@@ -1120,6 +1120,68 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Avails / inventory-opportunity pulls** (`scripts/gam_intl_avails.py`,
+  `.github/workflows/gam_intl_avails.yml`). An avail has to count inventory
+  we did *not* fill, so the pull needs `UNFILLED_IMPRESSIONS` — and GAM
+  rejects that metric alongside `INVENTORY_FORMAT_NAME`,
+  `LINE_ITEM_ENVIRONMENT_TYPE_NAME` and `AD_REQUEST_SIZES` with
+  `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. It **is** compatible with
+  `AD_UNIT_NAME_TOP_LEVEL` and `REQUESTED_AD_SIZES`, which is how the
+  format/size split is done instead. Three facts that follow:
+  - **The top-level ad unit is the format split.** `newsweek` is the site
+    display book, `vid.newsweek` is 100% of video ("In-stream video" /
+    "In-stream video or audio"); every other unit is 100% "Banner".
+    `applenews.newsweek`, `newsletter.newsweek` and `Default` are separate
+    top-level units and are *not* part of the site book — note that
+    `AD_UNIT_NAME` is the **leaf** name, so filtering it to `newsweek` gets
+    you the bare parent (~173 impr/mo), not the site. Use
+    `AD_UNIT_NAME_TOP_LEVEL`.
+  - **`REQUESTED_AD_SIZES` is a size *set* per request**, not one size per
+    row ("1x1, 300x250", "300x50, 320x50"). So per-size avails **overlap and
+    must never be summed** — an opportunity eligible for both 300x250 and
+    970x250 is counted under each. The script emits a de-duplicated
+    "eligible for at least one" column for when one number is needed.
+  - **`AD_REQUESTS` > impressions + unfilled.** Requests that dropped out
+    before an ad could be returned are counted in the first and neither of
+    the others, so `avails = impressions + unfilled` is the defensible
+    sellable pool and ad requests is the upper bound. On 2026 Q3 non-US
+    traffic the gap runs ~4-7%.
+  - `MONTH_YEAR` comes back as an int code = `(year - 1900) * 12 +
+    (month - 1)` (1519 = 2026-08); the script asserts the decode against the
+    requested window rather than trusting it.
+- **Forecasting a month that hasn't happened** is a different API:
+  `scripts/gam_avails_forecast.py` (SOAP `ForecastService` v202605). The REST
+  v1 surface has **no forecast service at all**, so this is the one path that
+  still needs the legacy `googleads` library; the historical pull stays REST.
+  `getAvailabilityForecast` returns **`matchedUnits`** (gross pool matching the
+  targeting) and **`availableUnits`** (what is still unreserved after other
+  line items) — quote *available*. Gotchas:
+  - A **VIDEO_PLAYER line item needs three fields set together** or the call
+    fails: `environmentType=VIDEO_PLAYER`, `targeting.requestPlatformTargeting`
+    (else `NotNullError.NULL @ targeting.requestPlatformTargeting`), and
+    `videoMaxDuration` (else `INVALID_MAX_VIDEO_CREATIVE_DURATION`,
+    trigger `'0'`). The fault message names **`maxVideoCreativeDuration`**, but
+    that field **does not exist** in the v202605 WSDL — zeep rejects it as an
+    unknown key. The real field is `videoMaxDuration`. Don't chase the name in
+    the error.
+  - **One line item with several creative placeholders forecasts the UNION**
+    of those sizes — which is exactly the de-duplicated "eligible for at least
+    one of the four" figure, in a single call. Per-size calls still overlap.
+  - **`ForecastingError.EXCEEDED_QUOTA` is the throttle**, and it is easy to
+    burn: ~1400 calls at 5 workers tripped it. Retry on that exact string
+    (not "QuotaExceeded", which never matches), keep workers ≤3, and treat a
+    dropped call as **missing, never zero** — a failed cut rendered as 0
+    reads as "no inventory in France", which is a very different claim. The
+    script keeps gaps as NaN, reports the count, and takes `--resume-from` to
+    fill them on a second pass.
+  - Countries join to `Geo_Target` by **ISO country code, not name** — the
+    reporting API and Geo_Target disagree on wording ("The Netherlands" vs
+    "Netherlands", "Türkiye", "Czechia").
+  - Sanity-check any forecast against the trailing-28d run-rate before
+    quoting it. On 2026-09, GAM's Oct forecast came in at 82% of run-rate for
+    display and 77% for video, against a 0.88× Sep→Oct seasonal factor
+    observed in 2025 — i.e. GAM is modestly conservative, which is the
+    expected shape and a signal the call was built right.
 - **Active View reads ~0% viewable on any creative that renders in the
   parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
   uniscroller, the `addImageToHomepage`-style takeover customs, the Kia
