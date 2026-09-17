@@ -308,6 +308,13 @@ render defect and toward **placement mix**, which is the opposite of Ogury and
 means the GAM audit's mix-vs-render split is the deciding test rather than
 more page loads.
 
+> **Superseded — the audit ran and said the opposite.** SmileWanted is a
+> render problem (mix −0.6pp, render −35.1pp), ~35pp below peers on *every*
+> unit. The six clean captures stand as the rare exceptions they are; they do
+> not clear it. See *THE AUDIT RESULT* and *REFRESH* below. Kept here because
+> "a handful of clean renders" is exactly the reasoning the audit exists to
+> overrule.
+
 Consequences: seeing how SmileWanted renders needs a browser on an
 EU/residential IP — a colleague loading an article with `?pbjs_debug=true`,
 or this script run from an EU egress. Failing that, the GAM audit still
@@ -408,6 +415,94 @@ deficient, which is why the banner-focused DOM work found nothing wrong.
 
 Both sit around −3 to −7pp render with a similar amount of mix. Worth a look
 after the three above; not the same class of problem.
+
+## REFRESH (2026-09-17, 21 days to 09-16, production GAM)
+
+Re-run two weeks later, after the same three bidders were raised again. Every
+verdict below holds — **and the two biggest cases grew substantially while
+staying just as broken**, so the cost of leaving them alone is rising. Run:
+[35247112812](https://github.com/rogerhirano-nw/yield-dashboard/actions/runs/35247112812).
+Site baseline this window: **77.4%** viewable/measurable. Grain accepted was
+again `KEY_VALUES_NAME + AD_UNIT_NAME` (so formats are pooled — see the OneTag
+note, which is why the pooled number hides its problem).
+
+| Bidder | Imps (was, to 09-04) | Actual | Expected (peers) | MIX | **RENDER** |
+|---|---|---:|---:|---:|---:|
+| **smilewanted** | **7.72M** (4.77M) | 43.7% | 78.8% | −0.6 | **−35.1** |
+| **ogury** | **4.75M** (2.92M) | 56.7% | 82.0% | +4.0 | **−25.3** |
+| **oms** | **138k** (39k) | 59.2% | 81.5% | +4.1 | **−22.3** |
+| onetag (pooled) | 652k | 75.6% | 75.5% | −1.8 | +0.1 |
+| kargo | 1.63M | 64.2% | 71.3% | −6.2 | −7.1 |
+| mobkoi | 1.36M | 68.6% | 71.5% | −5.9 | −3.0 |
+
+Measurable is ~100% for every bidder again. The daily series is flat across
+all 21 days (smilewanted 38–51%, ogury 47–62%, oms 45–68%) — still structural,
+still no regression date, and no sign of an upstream fix having landed.
+
+**Sizing the whole thing, for an SSP or a management conversation:** against
+**135.2M** Prebid impressions in the window, the four cases give up
+**~3.97M viewable impressions** vs what their own placement mix predicts —
+**~2.9pp on the entire Prebid book**, of which SmileWanted alone is ~2.0pp
+(2.71M), Ogury 1.20M, OMS 31k, OneTag video 26k.
+
+### SmileWanted — unchanged verdict, 62% more volume
+
+Still render, not mix (−35.1 vs −0.6), and still ~35pp down on *every* unit:
+
+| Ad unit | Imps | smilewanted | peers |
+|---|---:|---:|---:|
+| sticky | 2,844,832 | 54.5% | 91.8% |
+| inarticle2 | 1,413,991 | 34.1% | 67.5% |
+| inarticle1 | 1,250,299 | 51.4% | 73.4% |
+| inarticle3 | 773,690 | 30.8% | 73.1% |
+| inarticle4 | 526,242 | 33.0% | 71.4% |
+| inarticle5–10 | ~635k | 25.5–33.5% | 71.9–74.6% |
+
+### OMS — same shape as SmileWanted, and no longer negligible
+
+It was 39k impressions and easy to defer. At **138k (3.5×)** the per-unit cut
+is now readable, and it is the SmileWanted pattern rather than a mix story:
+
+| Ad unit | Imps | oms | peers |
+|---|---:|---:|---:|
+| sticky | 84,498 | 66.1% | 89.2% |
+| inarticle2 | 11,617 | 46.1% | 64.6% |
+| inarticle3 | 11,379 | 46.1% | 70.5% |
+| inarticle1 | 8,082 | 63.1% | 71.8% |
+| inarticle4–10 | ~15.6k | 43.7–47.4% | 69.3–73.3% |
+
+Still small in absolute terms (~31k viewable impressions), so it belongs in
+the SmileWanted conversation rather than one of its own — but it is the same
+defect, not a placement artifact.
+
+### OneTag — the pooled number now hides it entirely
+
+Pooled across formats OneTag reads **75.6% with render +0.1** — i.e. *fine*.
+It is not fine; the deficit is entirely in-stream video and pooling buries it:
+
+| Unit / size | Imps | onetag | peers |
+|---|---:|---:|---:|
+| `vid.newsweek` (video player) | 71,063 | **49.0%** | 86.0% |
+| `1x1` display | 581,045 | 78.9% | 76.0% |
+| sticky | 148,436 | 96.5% | 89.1% |
+
+**Read OneTag per-unit, never pooled.** Its display demand measures *above*
+peers on every slot, so any all-format average washes the video problem out.
+Video volume roughly halved (132k → 71k) while the rate stayed put.
+
+### Ogury — sticky-only, confirmed a second time
+
+| Ad unit | Imps | ogury | peers |
+|---|---:|---:|---:|
+| **sticky** | 2,564,507 | **45.8%** | 92.2% |
+| inarticle4 | 824,656 | 66.7% | 69.6% |
+| inarticle1 | 740,313 | 70.9% | 71.9% |
+| inarticle2/3/5–10 | ~379k | 68.1–75.4% | 64.6–73.2% |
+
+In-article at parity on every unit; the entire gap is sticky, now 54% of its
+volume. The blank-detect refresh (`docs/snippets/sticky_blank_detect_refresh.js`)
+and the vendor bug report are still the fix, and still **not** the iframe
+mirror — there is nothing behind that frame to reveal.
 
 ## How to read the results (decision rules)
 

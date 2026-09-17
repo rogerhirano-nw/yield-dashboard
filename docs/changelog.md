@@ -4,6 +4,31 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-17 — Prebid viewability: audit results landed, refreshed on live data
+
+- **The production audit's verdicts are now on `main`** (#363, merged today —
+  it had sat open since 09-05, so the doc still told readers SmileWanted was a
+  placement-mix problem). It is not: mix −0.6pp, **render −35.1pp**, ~35pp
+  below peers on *every* ad unit. The stale paragraph in the forensics section
+  is marked superseded rather than deleted — "a handful of clean on-page
+  renders" is exactly the reasoning the audit exists to overrule.
+- **Re-ran the audit for 21 days to 09-16.** Every verdict holds and the two
+  big cases grew: **smilewanted 4.77M → 7.72M** impressions at 43.7%,
+  **ogury 2.92M → 4.75M** at 56.7%, **oms 39k → 138k** at 59.2% (now large
+  enough for a per-unit cut, which shows the SmileWanted defect, not mix).
+  Flat daily series throughout — structural, no regression date, no upstream
+  fix landed.
+- **OneTag: read it per-unit, never pooled.** GAM accepted only
+  `KEY_VALUES_NAME + AD_UNIT_NAME` this run, so formats pool — and pooled,
+  OneTag reads 75.6% with render **+0.1**, i.e. healthy. It isn't: video is
+  **49.0% vs 86.0%** on `vid.newsweek` while its display measures *above*
+  peers, and the display volume washes the video out of any all-format
+  average.
+- **Sized for the SSP conversation:** the four cases give up **~3.97M viewable
+  impressions** against 135.2M Prebid impressions in the window — **~2.9pp on
+  the whole Prebid book**, SmileWanted alone ~2.0pp. Every one of them is a
+  good payer, so the answer is fix-the-render, not block-the-bidder.
+
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
 - **The unit blended into the page.** The live article page wraps ads in its own

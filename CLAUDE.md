@@ -1070,8 +1070,17 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   ad that was never shown. It is a delivery defect to raise with Ogury, and
   a reason to drop them from that slot meanwhile; their in-article renders
   are healthy and need nothing. **SmileWanted** is requested on every
-  auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
-  forensics for it needs an EU/residential egress.
+  auction and almost never bids from a US datacenter IP (~1% bid rate), so
+  on-page forensics for it needs an EU/residential egress — which is why the
+  **GAM audit, not the DOM sweep, is what settled it**. Audit verdicts
+  (2026-09-05, re-confirmed 2026-09-17 on ~60% more volume): **smilewanted
+  and oms are RENDER defects, not placement mix** — ~35pp and ~22pp below
+  peers on *every* unit, so the early "it's probably mix" read in the doc's
+  forensics section is superseded; **onetag is video-only** (49.0% on
+  `vid.newsweek` vs 86.0% peers, while its display measures *above* peers —
+  **read it per-unit, a pooled all-format average washes the problem out**);
+  **ogury is sticky-only**. Together they cost ~2.9pp of the whole Prebid
+  book. Measurable is ~100% throughout, so none of it is instrumentation.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
