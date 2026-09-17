@@ -36,9 +36,11 @@ Also reported, because it separates the failure modes further:
     renders somewhere AV can't instrument shows up here, not in viewable%.
   * per-day series — is this a regression with a start date, or structural?
 
-Env: DAYS (default 21), PREBID_ADVERTISER_ID (default 5724335726, the
-advertiser the source report filtered on), BIDDERS (extra bidders to detail),
-OUT_DIR. Requires GAM_SERVICE_ACCOUNT_JSON + GAM_NETWORK_ID, so it runs in
+Env: DAYS (default 21), SCOPE (display | video | all — default **display**,
+since banner and video have different baselines and pooling them hides a
+format-specific defect), MIN_UNIT_IMPS / MIN_BIDDER_IMPS (per-unit reporting
+floors), PREBID_ADVERTISER_ID (default 5724335726, the advertiser the source
+report filtered on), BIDDERS (extra bidders to detail), OUT_DIR. Requires GAM_SERVICE_ACCOUNT_JSON + GAM_NETWORK_ID, so it runs in
 Actions (see .github/workflows/prebid_viewability_audit.yml) or locally with
 .env — the companion workflow posts the output as a PR comment.
 """
@@ -77,6 +79,15 @@ FOCUS = [b.strip().lower() for b in (
     os.environ.get("BIDDERS") or "smilewanted,ogury,oms,onetag"
 ).split(",") if b.strip()]
 OUT_DIR = Path(os.environ.get("OUT_DIR") or "/tmp/prebid-viewability-audit")
+# SCOPE keeps banner and video apart. They are different questions with
+# different baselines (~78% vs ~86%), and pooling them hides a format-specific
+# defect inside a healthy average — onetag reads a clean 75.6% pooled while its
+# video is 49% against an 86% peer rate. Display is the default because it is
+# the book: ~99% of Prebid impressions here.
+SCOPE = (os.environ.get("SCOPE") or "display").strip().lower()
+# A unit with almost no volume produces a peer rate nobody should act on.
+MIN_UNIT_IMPS = int(os.environ.get("MIN_UNIT_IMPS") or "5000")
+MIN_BIDDER_IMPS = int(os.environ.get("MIN_BIDDER_IMPS") or "1000")
 
 METRICS = [
     "AD_SERVER_IMPRESSIONS",
@@ -143,7 +154,9 @@ def _pull_first_workable(gam: GAMClient, ladder: list[list[str]],
     raise SystemExit(f"[{label}] every dimension set was rejected: {last}")
 
 
-def _pull(gam: GAMClient, dims: list[str], start: date, end: date) -> pd.DataFrame:
+def _pull_raw(gam: GAMClient, dims: list[str], start: date, end: date) -> pd.DataFrame:
+    """Same filters and metrics, no bidder column — for reports without the KV
+    dimension (the unit→format map below)."""
     df = gam._run_report(
         dimensions=dims,
         metrics=METRICS,
@@ -154,14 +167,68 @@ def _pull(gam: GAMClient, dims: list[str], start: date, end: date) -> pd.DataFra
             ("KEY_VALUES_NAME", "CONTAINS", [_HB_PREFIX]),
         ],
     )
-    df = df.rename(columns={
+    return df.rename(columns={
         "ad_server_impressions": "impressions",
         "active_view_eligible_impressions": "eligible",
         "active_view_measurable_impressions": "measurable",
         "active_view_viewable_impressions": "viewable_impressions",
     })
+
+
+def _pull(gam: GAMClient, dims: list[str], start: date, end: date) -> pd.DataFrame:
+    df = _pull_raw(gam, dims, start, end)
     df["bidder"] = df["key_values_name"].map(_bidder)
     return df[df["bidder"].notna()]
+
+
+def _is_video_format(name: object) -> bool:
+    s = str(name or "").lower()
+    return "video" in s or "audio" in s
+
+
+def _unit_format_map(gam: GAMClient, start: date,
+                     end: date) -> tuple[dict[str, str], str]:
+    """Classify each ad unit as 'display' or 'video', by its own impressions.
+
+    INVENTORY_FORMAT_NAME cannot ride along with KEY_VALUES_NAME (GAM answers
+    CONSTRAINTS_INCOMPATIBILITY), so the format split cannot be a column on the
+    bidder report. It does not need to be: on this network the format is a
+    property of the ad unit — `vid.newsweek` is 100% of video and every other
+    unit is 100% Banner (see the GAM facts in CLAUDE.md). So pull the split
+    once WITHOUT the KV dimension and use it to scope the bidder report.
+
+    Measuring it beats hardcoding `vid.newsweek`: if a second video unit ever
+    appears, or an existing unit starts carrying outstream, this notices.
+    Falls back to the name rule only if GAM refuses the report.
+    """
+    try:
+        df = _pull_raw(gam, ["AD_UNIT_NAME", "INVENTORY_FORMAT_NAME"], start, end)
+    except Exception as exc:  # noqa: BLE001
+        if not _is_incompatible(exc):
+            raise
+        print(f"[formats] rejected, falling back to the name rule: {exc}")
+        return {}, "name-rule fallback (GAM refused AD_UNIT_NAME × format)"
+    df["_video"] = df["inventory_format_name"].map(_is_video_format)
+    out: dict[str, str] = {}
+    for unit, sub in df.groupby("ad_unit_name"):
+        vid = sub.loc[sub["_video"], "impressions"].sum()
+        tot = sub["impressions"].sum()
+        # Majority rules, so a unit that is mostly banner with a trickle of
+        # outstream still scopes as display rather than vanishing from it.
+        out[str(unit)] = "video" if tot and vid / tot > 0.5 else "display"
+        if tot and 0.02 < vid / tot <= 0.5:
+            print(f"[formats] note: {unit} is {vid / tot:.0%} video but scoped "
+                  f"display (majority rule)")
+    return out, "measured from AD_UNIT_NAME × INVENTORY_FORMAT_NAME"
+
+
+def _scope_of(unit: object, fmt_map: dict[str, str]) -> str:
+    u = str(unit)
+    if u in fmt_map:
+        return fmt_map[u]
+    # Fallback when the format report was refused: this network names its
+    # video inventory `vid.*`.
+    return "video" if u.lower().startswith("vid.") or u.lower() == "vid" else "display"
 
 
 def _rate(num, den) -> float:
@@ -204,6 +271,38 @@ def main() -> int:
                  and d != "INVENTORY_FORMAT_NAME"]
     if "inventory_format_name" not in cell.columns:
         cell["inventory_format_name"] = "(all formats)"
+
+    # ── scope to one format family ───────────────────────────────────────
+    # Done HERE, before any baseline is computed, so every number downstream
+    # — peer rates, mix/render, the per-unit tables — is computed within the
+    # scope. Filtering the output instead would grade display bidders against
+    # a baseline that still contained video.
+    if "ad_unit_name" not in cell.columns:
+        print(f"\n[scope] AD_UNIT_NAME is not in the accepted grain, so SCOPE="
+              f"{SCOPE} cannot be applied — reporting all formats.")
+    elif SCOPE in ("display", "video"):
+        fmt_map, how = _unit_format_map(gam, start, end)
+        print(f"\n[scope] unit formats {how}")
+        keep = cell["ad_unit_name"].map(lambda u: _scope_of(u, fmt_map)) == SCOPE
+        dropped = cell.loc[~keep].groupby("ad_unit_name")["impressions"].sum()
+        cell = cell[keep]
+        print(f"[scope] SCOPE={SCOPE} — keeping "
+              f"{cell['ad_unit_name'].nunique()} units, "
+              f"{int(cell['impressions'].sum()):,} impressions")
+        for unit, imps in dropped.sort_values(ascending=False).items():
+            print(f"[scope]   excluded {unit}: {int(imps):,} impressions")
+        if cell.empty:
+            raise SystemExit(f"[scope] nothing left at SCOPE={SCOPE}")
+    else:
+        print(f"\n[scope] SCOPE={SCOPE} — all formats pooled. Note that a "
+              f"format-specific defect hides in a pooled average.")
+
+    # Label the pooled-format placeholder with the scope it now represents,
+    # so the section headers read "display" rather than "(all formats)".
+    if SCOPE in ("display", "video") and \
+            set(cell["inventory_format_name"].unique()) == {"(all formats)"}:
+        cell["inventory_format_name"] = SCOPE
+
     cell.to_csv(OUT_DIR / "by_cell.csv", index=False)
     print(f"\n{len(cell):,} bidder×unit×device×size×format rows, "
           f"{int(cell['impressions'].sum()):,} impressions")
@@ -229,6 +328,94 @@ def main() -> int:
                   f"{r.expected_pct:>10.1f}%{r.mix_gap_pp:>+9.1f}{r.render_gap_pp:>+11.1f}"
                   f"{int(r.uncovered_impressions):>11,}")
         adj.to_csv(OUT_DIR / f"mix_vs_render_{str(fmt).replace(' ', '_')}.csv", index=False)
+
+    # ── the breakdown by ad unit ─────────────────────────────────────────
+    # The per-unit view is what an SSP conversation needs: "you are 37pp below
+    # everyone else ON THIS UNIT" is unanswerable, where a site-wide average
+    # invites "your inventory is hard to view". Peer rates are leave-one-out
+    # WITHIN the unit, so no bidder is graded against its own impressions.
+    #
+    # `lost` = (peer_rate − this_rate) × imps: viewable impressions given up
+    # against the rate this bidder's own peers achieve on the same unit. It is
+    # the column to sort by — a 40pp gap on 3k impressions is noise, the same
+    # gap on 2.8M is the whole problem.
+    if "ad_unit_name" in cell.columns:
+        unit_tot = cell.groupby("ad_unit_name")[
+            ["impressions", "viewable_impressions"]].sum()
+        unit_tot = unit_tot.sort_values("impressions", ascending=False)
+
+        print("\n" + "=" * 78)
+        print(f"AD UNITS ({SCOPE}) — site rate per unit")
+        print("=" * 78)
+        print(f"{'ad unit':<24}{'imps':>14}{'viewable%':>12}{'bidders':>10}")
+        for unit, r in unit_tot.iterrows():
+            n = cell.loc[cell["ad_unit_name"] == unit, "bidder"].nunique()
+            print(f"{str(unit):<24}{int(r.impressions):>14,}"
+                  f"{_rate(r.viewable_impressions, r.impressions):>11.1f}%{n:>10,}")
+
+        rows = []
+        for unit, r in unit_tot.iterrows():
+            sub = cell[cell["ad_unit_name"] == unit]
+            g = sub.groupby("bidder")[["impressions", "viewable_impressions"]].sum()
+            for b, br in g.iterrows():
+                peer_i = r.impressions - br.impressions
+                peer_v = r.viewable_impressions - br.viewable_impressions
+                this_pct = _rate(br.viewable_impressions, br.impressions)
+                peer_pct = _rate(peer_v, peer_i)
+                gap = this_pct - peer_pct
+                rows.append({
+                    "ad_unit_name": unit, "bidder": b,
+                    "impressions": int(br.impressions),
+                    "unit_impressions": int(r.impressions),
+                    "viewable_pct": round(this_pct, 1),
+                    "peer_pct": round(peer_pct, 1),
+                    "gap_pp": round(gap, 1),
+                    "lost_viewable": int(max(0.0, -gap) / 100.0 * br.impressions),
+                })
+        by_unit = pd.DataFrame(rows)
+        by_unit.to_csv(OUT_DIR / "by_ad_unit.csv", index=False)
+        by_unit.pivot_table(index="bidder", columns="ad_unit_name",
+                            values="viewable_pct").to_csv(
+            OUT_DIR / "unit_bidder_matrix.csv")
+
+        print("\n" + "=" * 78)
+        print(f"BY AD UNIT ({SCOPE}) — bidders sorted by viewable impressions lost")
+        print("vs their own peers ON THAT UNIT (leave-one-out)")
+        print("=" * 78)
+        for unit, r in unit_tot.iterrows():
+            if r.impressions < MIN_UNIT_IMPS:
+                continue
+            sub = by_unit[(by_unit["ad_unit_name"] == unit)
+                          & (by_unit["impressions"] >= MIN_BIDDER_IMPS)]
+            if sub.empty:
+                continue
+            sub = sub.sort_values(["lost_viewable", "impressions"],
+                                  ascending=[False, False])
+            print(f"\n-- {unit}  ({int(r.impressions):,} imps, unit rate "
+                  f"{_rate(r.viewable_impressions, r.impressions):.1f}%) --")
+            print(f"{'bidder':<18}{'imps':>12}{'this%':>8}{'peers%':>8}"
+                  f"{'gap pp':>9}{'lost vw':>12}")
+            for _, br in sub.iterrows():
+                print(f"{br.bidder:<18}{int(br.impressions):>12,}"
+                      f"{br.viewable_pct:>7.1f}%{br.peer_pct:>7.1f}%"
+                      f"{br.gap_pp:>+9.1f}{int(br.lost_viewable):>12,}")
+
+        print("\n" + "=" * 78)
+        print(f"WORST OFFENDERS ({SCOPE}) — biggest single bidder×unit losses")
+        print("=" * 78)
+        top = by_unit[by_unit["impressions"] >= MIN_BIDDER_IMPS].sort_values(
+            "lost_viewable", ascending=False).head(20)
+        print(f"{'bidder':<18}{'ad unit':<16}{'imps':>12}{'this%':>8}"
+              f"{'peers%':>8}{'gap pp':>9}{'lost vw':>12}")
+        for _, br in top.iterrows():
+            print(f"{br.bidder:<18}{str(br.ad_unit_name):<16}"
+                  f"{int(br.impressions):>12,}{br.viewable_pct:>7.1f}%"
+                  f"{br.peer_pct:>7.1f}%{br.gap_pp:>+9.1f}"
+                  f"{int(br.lost_viewable):>12,}")
+        print(f"\ntotal lost across all bidder×unit cells: "
+              f"{int(by_unit['lost_viewable'].sum()):,} viewable impressions "
+              f"({_rate(by_unit['lost_viewable'].sum(), cell['impressions'].sum()):.1f}"
+              f"pp of the {SCOPE} book)")
 
     # ── where the focus bidders actually buy ─────────────────────────────
     print("\n" + "=" * 78)
@@ -294,6 +481,12 @@ def main() -> int:
     print("\n" + "=" * 78)
     print("DAILY viewable% — a step change dates a regression; a flat line is structural")
     print("=" * 78)
+    # DATE + KEY_VALUES_NAME is the richest grain GAM accepts here, so this
+    # series carries no ad unit and CANNOT be scoped: for a display-only
+    # bidder it is the display series, but for one selling both (onetag) it
+    # pools formats and will look healthier than its display or video alone.
+    print(f"(pooled across formats — the daily grain has no ad unit, so SCOPE="
+          f"{SCOPE} does not apply here)")
     for b in FOCUS:
         sub = daily[daily["bidder"] == b]
         if sub.empty:

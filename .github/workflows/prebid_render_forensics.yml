@@ -24,6 +24,16 @@ on:
         description: 'Comma-separated article URLs (blank = scrape fresh ones off the homepage)'
         required: false
         default: ''
+      scroll_dwell:
+        description: 'Seconds paused at each scroll step. 1.6 measures viewability
+          honestly (Active View needs 1s in view); drop it to ~0.8 when the goal is
+          CATCHING a rare bidder''s render, which buys about twice the page loads.'
+        required: false
+        default: '1.6'
+      scroll_steps:
+        description: 'Scroll steps per article (each is half a viewport)'
+        required: false
+        default: '24'
 
 permissions:
   contents: read
@@ -51,6 +61,8 @@ jobs:
           PROFILES: ${{ inputs.profiles }}
           TARGET_BIDDERS: ${{ inputs.target_bidders }}
           ARTICLE_URLS: ${{ inputs.article_urls }}
+          SCROLL_DWELL: ${{ inputs.scroll_dwell }}
+          SCROLL_STEPS: ${{ inputs.scroll_steps }}
           SHOTS_DIR: /tmp/prebid-forensics
         run: |
           set -o pipefail
