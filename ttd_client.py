@@ -33,6 +33,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Sequence
 
 import pandas as pd
 
@@ -43,7 +44,13 @@ AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 # Match any TTD report-available notification.  The full subject
 # includes the report name and schedule; we only need a stable prefix.
 TTD_SUBJECT_NEEDLE        = "Report Available: Luckyland Casino TTD"
-CHUMBA_SUBJECT_NEEDLE     = "Report Available: Newsweek Automated report VGW Chumba Casino"
+# Match the CAMPAIGN, not the report name.  TTD replaced the Chumba schedule on
+# ~2026-09-06 ("Newsweek Automated report VGW Chumba Casino" -> "Newsweek Chumba
+# Casino Performance report"); the old full-name needle stopped matching and the
+# sweep silently re-pulled the same frozen report for 12 days.  A campaign-level
+# needle survives a schedule rename, which is the recurring failure mode here
+# (Luckyland drifted to "MonthtoDate v3" the same way).
+CHUMBA_SUBJECT_NEEDLE     = "Chumba"
 TTD_SENDER_DOMAIN         = "thetradedesk.com"
 
 # Extract the TTD report URL from an email body.  Two cases:
@@ -97,10 +104,14 @@ COLUMN_MAP: dict[str, str] = {
     "Data Spend (USD)":              "data_spend_usd",
     "Fee Spend (USD)":               "fee_spend_usd",
     "Advertiser Cost (Adv Currency)": "spend_usd",
+    "Advertiser Cost (USD)":          "spend_usd",
     "Media Cost (Adv Currency)":      "media_spend_usd",
+    "Media Cost (USD)":               "media_spend_usd",
     "Advertiser Currency Code":       "advertiser_currency_code",
     # Deal
     "Deal ID":                       "deal_id",
+    # The replacement Chumba report's name for the deal/line-item string.
+    "Inventory Contract":            "deal_name",
     # CPM / CPC
     "eCPM (USD)":                    "ecpm_usd",
     "CPM (USD)":                     "ecpm_usd",
@@ -127,6 +138,9 @@ COLUMN_MAP: dict[str, str] = {
     "Media Type":                    "media_type",
     "Format":                        "format",
     "Creative Size":                 "creative_size",
+    # The replacement Chumba report carries the size as its own column
+    # ("320x50") instead of only inside the creative name.
+    "Ad Format":                     "creative_size",
     "Creative":                      "creative",
     "Creative ID":                   "creative_id",
     # Device / geo
@@ -151,6 +165,19 @@ COLUMN_MAP: dict[str, str] = {
         "conversions_ia_purchase",
     "usergenLLC First Purchase [IdentityAlliance] - Total Click + View Conversions":
         "conversions_ia_first_purchase",
+    # VGW Chumba per-pixel columns in the replacement report (2026-09-06 →).
+    # Mapped separately so the "conversion" auto-sum can never add them up: the
+    # two First Purchase columns are ONE pixel under two attribution models
+    # (IdentityAlliance vs …WithHousehold), so summing counts FTPs twice.
+    # Exactly one is the CPA KPI, designated via `primary_conv_col` — note the
+    # Registered pixel reads 0 on every row of this report, so which pixel and
+    # which attribution model to grade on is an owner decision, not a default.
+    "usergenChumba Registered TDID & UID2 - ghjdk2k - IdentityAlliance - Total Click + View Conversions":
+        "conversions_registered",
+    "usergenChumba First Purchase TDID & UID2 - udkazz3 - IdentityAlliance - Total Click + View Conversions":
+        "conversions_first_purchase",
+    "usergenChumba First Purchase TDID & UID2 - udkazz3 - IdentityAllianceWithHousehold - Total Click + View Conversions":
+        "conversions_first_purchase_household",
 }
 
 _NON_ALPHANUM = re.compile(r"[^a-z0-9]+")
@@ -183,6 +210,36 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
         ) from e
 
 
+def _messages_from(raw) -> list[dict]:
+    if isinstance(raw, dict):
+        return raw.get("messages") or raw.get("data") or []
+    return raw or []
+
+
+def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> None:
+    """Log the subjects of TTD-sent mail that did NOT match the needle.
+
+    This is the tell for a renamed report schedule.  Without it the sweep just
+    keeps re-downloading the newest *still-matching* notification and reports
+    "N rows written" every day, which is exactly how the Chumba feed sat frozen
+    from 2026-09-06 to 2026-09-17 while the campaign was still delivering.
+    Only mail from TTD's own sender domain is logged, so this never prints
+    unrelated inbox subjects.
+    """
+    others = sorted({
+        (m.get("subject") or "").strip()
+        for m in messages
+        if TTD_SENDER_DOMAIN in str(m.get("from") or m.get("sender") or "").lower()
+        and subject_needle not in (m.get("subject") or "")
+    })
+    if others:
+        logger.warning(
+            "agentmail: %d TTD sender message(s) do NOT match needle %r — "
+            "has the report schedule been renamed? subjects=%r",
+            len(others), subject_needle, others[:10],
+        )
+
+
 def list_ttd_messages(
     api_key: str,
     inbox_id: str,
@@ -190,19 +247,46 @@ def list_ttd_messages(
     *,
     subject_needle: str = TTD_SUBJECT_NEEDLE,
 ) -> list[dict]:
-    """List recent messages whose subject contains *subject_needle*."""
-    raw = _api_get(f"/inboxes/{inbox_id}/messages?limit={limit}", api_key=api_key)
-    messages = raw.get("messages", raw.get("data", [])) if isinstance(raw, dict) else (raw or [])
-    matches = []
-    for m in messages:
-        subj = (m.get("subject") or "").strip()
-        if subject_needle in subj:
-            matches.append(m)
-    logger.info(
-        "agentmail: scanned %d message(s); %d match needle %r",
-        len(messages), len(matches), subject_needle,
-    )
-    return matches
+    """List recent messages whose subject contains *subject_needle*.
+
+    Asks agentmail to filter by subject server-side (the same `subject=` param
+    both DV clients use) so the window is *limit* MATCHING messages rather than
+    the last *limit* messages of the whole inbox.  That distinction is the bug
+    this fixes: the inbox takes two DV reports every day, so a whole-inbox
+    window of 50 covers barely a fortnight — the live Chumba report's matches
+    decayed 7 → 6 → 4 → 2 → 0 over 2026-09-06..17 purely by ageing out.
+
+    Falls back to an unfiltered scan if the filtered call yields nothing (the
+    filter is an optimization, never a hard dependency — `subject_needle` is
+    re-checked client-side either way), and then to the unauthenticated folder,
+    where forwarded reports land when the sender isn't whitelisted.
+    """
+    subject_enc = urllib.parse.quote(subject_needle, safe="")
+    base = f"/inboxes/{inbox_id}/messages?limit={limit}"
+
+    scanned: list[dict] = []
+    for path, label in (
+        (f"{base}&subject={subject_enc}", "subject-filtered"),
+        (base, "unfiltered"),
+        (f"{base}&include_unauthenticated=true", "unauthenticated"),
+    ):
+        try:
+            messages = _messages_from(_api_get(path, api_key=api_key))
+        except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
+            logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
+            continue
+        scanned = messages or scanned
+        matches = [m for m in messages
+                   if subject_needle in (m.get("subject") or "").strip()]
+        logger.info(
+            "agentmail: %s scan of %d message(s); %d match needle %r",
+            label, len(messages), len(matches), subject_needle,
+        )
+        if matches:
+            return matches
+
+    _log_unmatched_ttd_senders(scanned, subject_needle)
+    return []
 
 
 def get_message_detail(api_key: str, inbox_id: str, message_id: str) -> dict:
@@ -284,7 +368,7 @@ def _execution_id_from_url(url: str) -> str | None:
 def parse_ttd_csv(
     content: bytes,
     execution_id: str | None = None,
-    primary_conv_col: str | None = None,
+    primary_conv_col: str | Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Parse a TTD report (CSV or XLSX) into a DataFrame with standardized columns.
 
@@ -292,7 +376,8 @@ def parse_ttd_csv(
     Applies COLUMN_MAP for known columns; auto-converts unknown columns
     to snake_case.  Date and numeric columns are coerced.
 
-    `primary_conv_col` — the **pre-rename** TTD column name that is the single
+    `primary_conv_col` — the **pre-rename** TTD column name (or several
+    candidates, tried in order) that is the single
     authoritative conversion KPI for this campaign (e.g.
     ``"usergenLLC Purchase [IdentityAlliance] - Total Click + View Conversions"``
     for Luckyland, ``"01 - Total Click + View Conversions"`` for Chumba).
@@ -345,17 +430,28 @@ def parse_ttd_csv(
     # Luckyland (sums 4 pixel columns) and Chumba (sums pixel_01 + pixel_03)
     # — only the designated acquisition pixel is the campaign KPI.
     if "attributed_conversions" not in df.columns:
-        resolved = COLUMN_MAP.get(primary_conv_col, _snake(primary_conv_col)) if primary_conv_col else None
-        if resolved and resolved in df.columns:
+        # `primary_conv_col` may be a single name or several candidates — a
+        # campaign's report gets replaced and renames its pixel columns, so the
+        # candidates let one campaign span that changeover (Chumba's pixel went
+        # from "01 - …" to "usergenChumba Registered …" on 2026-09-06).  First
+        # candidate present in the report wins.
+        candidates = (
+            [primary_conv_col] if isinstance(primary_conv_col, str)
+            else list(primary_conv_col or [])
+        )
+        resolved_all = [COLUMN_MAP.get(c, _snake(c)) for c in candidates]
+        resolved = next((r for r in resolved_all if r in df.columns), None)
+        if resolved:
             df["attributed_conversions"] = (
                 pd.to_numeric(df[resolved], errors="coerce").fillna(0).astype(int)
             )
         else:
-            if primary_conv_col and resolved not in df.columns:
+            if candidates:
                 logger.warning(
-                    "primary_conv_col %r (→ %r) not in report columns — "
-                    "falling back to conversion auto-sum",
-                    primary_conv_col, resolved,
+                    "none of primary_conv_col %r (→ %r) are in the report's "
+                    "columns — falling back to the conversion auto-sum, which "
+                    "may double-count pixels",
+                    candidates, resolved_all,
                 )
             conv_cols = [c for c in df.columns
                          if "conversion" in c and c not in _str_cols]
@@ -389,7 +485,7 @@ def pull_ttd(
     inbox_id: str,
     *,
     subject_needle: str = TTD_SUBJECT_NEEDLE,
-    primary_conv_col: str | None = None,
+    primary_conv_col: str | Sequence[str] | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """End-to-end: poll inbox for latest TTD report notification matching
     *subject_needle*, extract the download URL, download the CSV, and parse it.

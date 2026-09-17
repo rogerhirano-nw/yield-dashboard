@@ -4,6 +4,47 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
+
+The daily health check had been red since 2026-09-15 on one row — `ttd_chumba
+fresh`, `max(date) 2026-09-05`. **The campaign was never the problem**: four
+September Chumba PG line items delivered on 9/14–9/16. TTD had *replaced* the
+scheduled report on ~09-06 ("Newsweek Automated report VGW Chumba Casino" →
+"Newsweek Chumba Casino Performance report"), and every link in the pull chain
+failed quietly:
+
+- The old full-name subject needle stopped matching the new report.
+- The retired notifications were still in the inbox, so the pull kept finding
+  one, re-downloading it, and logging **`1222 rows written` + exit 0 every day
+  for 12 days**. The row count had been moving daily through 09-05
+  (1374 → 1372 → 1339 → 1262) and then froze — the one visible tell, in a number
+  nobody reads.
+- `list_ttd_messages` scanned the last 50 messages of the **whole inbox** and
+  filtered client-side, unlike both DV clients which pass agentmail's
+  server-side `subject=`. The inbox takes two DV reports a day, so the
+  still-matching Chumba mails just aged out: matches decayed **7 → 6 → 4 → 2 →
+  0**, with no error at any point.
+
+Fixes: campaign-level needle (`Chumba`, not the report name); server-side
+subject filter with unfiltered → unauthenticated fallbacks and a client-side
+re-check; unmatched **TTD-sender** subjects logged as the rename tell (no other
+sender is ever logged — the Actions logs are public); `_warn_if_report_stale`
+warns when a pulled report doesn't advance the cache; `primary_conv_col` takes
+candidates so a campaign can span a changeover.
+
+The replacement report's schema also moved: `Advertiser/Media Cost **(USD)**`
+(was `(Adv Currency)`) — **unmapped, both spend columns went missing and every
+CPA would have read 0**; `Ad Format` now carries the size; `Inventory Contract`
+is the deal name; no `Ad Group`/`Supply Vendor`, so there's no `media_type` and
+the scorecard's by-format table is empty. All mapped, with tests
+(`tests/test_ttd_client.py`, 14 cases) on synthetic rows.
+
+**Left for the owner:** which conversion pixel is the CPA KPI. The Registered
+pixel reads **0 on every row** of the replacement report; the conversions are
+First Purchase under two attribution models (`IdentityAlliance` vs
+`IdentityAllianceWithHousehold`) — the same pixel counted two ways, ~19× apart.
+All three are mapped separately so nothing auto-sums them.
+
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
 - **The unit blended into the page.** The live article page wraps ads in its own
