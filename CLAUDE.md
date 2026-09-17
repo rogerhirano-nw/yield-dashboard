@@ -961,6 +961,18 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
+- `docs/ad_benchmarks.md` — the ad performance benchmark workbook
+  (`docs/Newsweek_Digital_Ads_Benchmarks_Master.xlsx`, built by
+  `scripts/build_ad_benchmarks.py`). Normalises the sales specs master's
+  free-text Benchmarks column into numeric per-metric targets for all 56
+  placements, plus a tracker that grades actual GAM delivery PASS/WATCH/MISS
+  against them. Two levers only (WATCH at 90% of target; a 10k-impression
+  THIN floor). **A metric with no target is never graded** — `INDEX` on a
+  blank target cell returns `0`, and a 0% target passes everything; the
+  lookup's blank-check exists for that and shouldn't be simplified away.
+  Carries the viewability caveats that decide whether a target is even
+  measurable (breakout formats ~0% in Active View, interscrollers need the
+  iframe mirror, Apple News 100% is guaranteed-view not Active View).
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
