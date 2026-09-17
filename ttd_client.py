@@ -211,10 +211,10 @@ def _api_get(path: str, *, api_key: str, raw: bool = False):
 
 
 # agentmail has used more than one name for a message's timestamp; try them in
-# order rather than depending on a single guessed key.  A missing key made every
-# sort key "" in `pull_ttd`, so "newest first" silently became "whatever order
-# the API returned" — which is how a *July* forwarded report got picked on
-# 2026-09-17 while the needle was matching 50 messages.
+# order rather than depending on a single guessed key, and say so loudly if none
+# of them parse — an all-empty sort key turns "newest first" into "whatever order
+# the API returned" without any error.  (`sent_at` is what it actually returns
+# today; this is defensiveness, not a fix for a live bug.)
 _TS_KEYS = ("sent_at", "received_at", "created_at", "timestamp", "date", "updated_at")
 
 
@@ -517,7 +517,10 @@ def pull_ttd(
         return pd.DataFrame(), {}
 
     # Newest first.  Log the shortlist: when the pull lands on a stale report,
-    # this is what says whether a fresher one was even in the inbox.
+    # this is what says whether a fresher one was even in the inbox — and on
+    # 2026-09-17 it's what proved the replacement report never arrives here at
+    # all (every candidate was the same daily FORWARD of a July single-run
+    # report, newest 09-06, after which the forwarding stopped too).
     messages.sort(key=_msg_ts, reverse=True)
     if not _msg_ts(messages[0]):
         logger.warning(

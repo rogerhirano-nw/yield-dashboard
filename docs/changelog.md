@@ -25,6 +25,16 @@ failed quietly:
   still-matching Chumba mails just aged out: matches decayed **7 → 6 → 4 → 2 →
   0**, with no error at any point.
 
+**Where it actually stands:** dispatching `refresh_ttd.yml` on the branch proved
+the replacement report **never arrives in `newsweek@agentmail.to`**. The newest
+Chumba mail there is 09-06, and every recent candidate is the same daily `FW:`
+forward of a **July 8 single-run** report — the forwards stopped on 09-06 too,
+which is why the feed froze instead of erroring. The parsing/needle work below is
+correct and verified against the real replacement export, but fresh data needs a
+**TTD-side** change: add `newsweek@agentmail.to` as a recipient of the "Newsweek
+Chumba Casino Performance report" schedule (or re-point the forwarding
+automation). The health check stays red until then, correctly.
+
 Fixes: campaign-level needle (`Chumba`, not the report name); server-side
 subject filter with unfiltered → unauthenticated fallbacks and a client-side
 re-check; unmatched **TTD-sender** subjects logged as the rename tell (no other
