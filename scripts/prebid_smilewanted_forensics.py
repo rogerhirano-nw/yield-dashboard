@@ -52,7 +52,7 @@ if _env.exists():
 
 import pandas as pd  # noqa: E402
 
-from gam_client import GAMClient, _M  # noqa: E402
+from gam_client import GAMClient, _D, _M  # noqa: E402
 
 DAYS = int(os.environ.get("DAYS") or "21")
 ADVERTISER_ID = int(os.environ.get("PREBID_ADVERTISER_ID") or "5724335726")
@@ -80,14 +80,19 @@ _WANT_METRICS = [
 ]
 
 
-def _known(names: list[str]) -> list[str]:
+def _known(names: list[str], enum=_M, label: str = "metrics") -> list[str]:
+    """Keep the names this API version actually carries.
+
+    These are proto enum members, so an unknown one is a KeyError at call time,
+    not an API error — OPERATING_SYSTEM_NAME crashed the first run that way.
+    """
     out = []
     for n in names:
         try:
-            _M[n]
+            enum[n]
             out.append(n)
         except (KeyError, ValueError):
-            print(f"[metrics] not in this API version, skipping: {n}")
+            print(f"[{label}] not in this API version, skipping: {n}")
     return out
 
 
@@ -98,6 +103,7 @@ _REN = {
     "active_view_measurable_impressions": "measurable",
     "active_view_viewable_impressions": "viewable_impressions",
     "ad_server_clicks": "clicks",
+    "active_view_average_viewable_time": "avg_viewable_time",
 }
 
 
@@ -106,13 +112,23 @@ def _bidder(kv: object) -> str | None:
     return s.split("=", 1)[1].strip().lower() if s.startswith(_HB_PREFIX) else None
 
 
-def _pull(gam: GAMClient, dims: list[str], start: date, end: date):
-    """Return the cut as a frame, or None if GAM refuses this dimension set."""
+def _pull(gam: GAMClient, dims: list[str], start: date, end: date,
+          kv_value: str | None = None):
+    """Return the cut as a frame, or None if GAM refuses this dimension set.
+
+    `kv_value` narrows the hb_bidder filter to one bidder, which is how the
+    cuts that cannot carry KEY_VALUES_NAME as a dimension still get a per-
+    bidder answer.
+    """
+    dims = _known(dims, _D, "dimensions")
+    if not dims:
+        return None
+    needle = _HB_PREFIX + (kv_value or "")
     try:
         df = gam._run_report(
             dimensions=dims, metrics=METRICS, start_date=start, end_date=end,
             filters=[("ADVERTISER_ID", "IN", [ADVERTISER_ID]),
-                     ("KEY_VALUES_NAME", "CONTAINS", [_HB_PREFIX])],
+                     ("KEY_VALUES_NAME", "CONTAINS", [needle])],
         )
     except Exception as exc:  # noqa: BLE001
         if "CONSTRAINTS_INCOMPATIBILITY" in str(exc):
@@ -120,8 +136,9 @@ def _pull(gam: GAMClient, dims: list[str], start: date, end: date):
             return None
         raise
     df = df.rename(columns=_REN)
-    df["bidder"] = df["key_values_name"].map(_bidder)
-    df = df[df["bidder"].notna()]
+    if "key_values_name" in df.columns:
+        df["bidder"] = df["key_values_name"].map(_bidder)
+        df = df[df["bidder"].notna()]
     if "ad_unit_name" in df.columns and EXCLUDE_UNITS:
         df = df[~df["ad_unit_name"].isin(EXCLUDE_UNITS)]
     return df
@@ -132,33 +149,90 @@ def _rate(n, d) -> float:
     return float(n or 0) / d * 100.0 if d else float("nan")
 
 
-def _cut(df: pd.DataFrame, key: str, title: str) -> None:
-    """Focus bidders vs leave-one-out peers within each value of `key`.
+def _dwell(df: pd.DataFrame) -> None:
+    """Average time in view, for the impressions that DID become viewable.
 
-    If the deficit holds inside every device / country / browser, then no
-    composition of those explains it, and only the render is left.
+    This is the sharpest thing GAM can say about a creative it cannot show us.
+    A creative that renders late, paints slowly, or is heavy would be viewable
+    for LESS time than its peers in the same slot — the user has already been
+    on the page a while when it finally appears. A creative whose dwell matches
+    its peers exactly, while far fewer of its impressions ever become viewable,
+    is failing in a BINARY way: fully seen, or never seen. Those are different
+    conversations with an SSP, and the number below decides which one.
     """
+    if "avg_viewable_time" not in df.columns:
+        print("(average viewable time unavailable in this API version)")
+        return
+    # GAM averages the time over each row's viewable impressions, so
+    # re-aggregating means weighting by viewable impressions.
+    df = df.assign(_t=df["avg_viewable_time"] * df["viewable_impressions"])
+    g = df.groupby("bidder").agg(imps=("impressions", "sum"),
+                                 vw=("viewable_impressions", "sum"),
+                                 t=("_t", "sum"))
+    g = g[g["imps"] >= 100_000].sort_values("imps", ascending=False)
+    print("\n" + "=" * 78)
+    print("DWELL — average seconds in view, of the impressions that became viewable")
+    print("=" * 78)
+    print(f"{'bidder':<18}{'imps':>12}{'viewable%':>11}{'avg secs in view':>18}")
+    for b, r in g.iterrows():
+        print(f"{b:<18}{int(r.imps):>12,}{_rate(r.vw, r.imps):>10.1f}%"
+              f"{r.t / r.vw if r.vw else float('nan'):>18.1f}")
+
+    unit = df.groupby("ad_unit_name").agg(vw=("viewable_impressions", "sum"),
+                                          t=("_t", "sum"))
+    print("\nPER UNIT, vs the peers in that same unit")
+    for b in FOCUS:
+        sub = df[df["bidder"] == b].groupby("ad_unit_name").agg(
+            imps=("impressions", "sum"), vw=("viewable_impressions", "sum"),
+            t=("_t", "sum"))
+        sub = sub[sub["vw"] >= 500].sort_values("imps", ascending=False)
+        if sub.empty:
+            continue
+        print(f"\n-- {b} --")
+        print(f"{'unit':<14}{'imps':>12}{'viewable%':>11}{'its secs':>10}{'peer secs':>11}")
+        for u, r in sub.head(8).iterrows():
+            pv = unit.loc[u, "vw"] - r.vw
+            pt = unit.loc[u, "t"] - r.t
+            print(f"{str(u):<14}{int(r.imps):>12,}{_rate(r.vw, r.imps):>10.1f}%"
+                  f"{r.t / r.vw:>10.1f}{pt / pv if pv else float('nan'):>11.1f}")
+
+
+def _cut_by_filter(gam: GAMClient, dim: str, start: date, end: date,
+                   title: str) -> None:
+    """Break one dimension down per bidder, WITHOUT KEY_VALUES_NAME as a dimension.
+
+    GAM refuses KEY_VALUES_NAME alongside device, country and browser
+    (CONSTRAINTS_INCOMPATIBILITY), which killed the first attempt at these cuts.
+    But hb_bidder is still usable as a FILTER, so pull the dimension once per
+    bidder with `hb_bidder=<name>` filtered server-side, and once for all
+    wrapper demand; peers are then the book minus that bidder, which is the
+    same leave-one-out comparison by subtraction.
+    """
+    book = _pull(gam, [dim], start, end, kv_value="")
+    if book is None or book.empty:
+        return
+    book = book.groupby(dim)[["impressions", "viewable_impressions"]].sum()
     print("\n" + "=" * 78)
     print(title)
     print("=" * 78)
-    tot = df.groupby(key)[["impressions", "viewable_impressions"]].sum()
     for b in FOCUS:
-        sub = df[df["bidder"] == b]
-        if sub.empty:
+        mine = _pull(gam, [dim], start, end, kv_value=b)
+        if mine is None or mine.empty:
             continue
-        g = sub.groupby(key)[["impressions", "viewable_impressions"]].sum()
-        g = g[g["impressions"] >= 1000].sort_values("impressions", ascending=False)
-        if g.empty:
+        mine = mine.groupby(dim)[["impressions", "viewable_impressions"]].sum()
+        mine = mine[mine["impressions"] >= 1000].sort_values(
+            "impressions", ascending=False)
+        if mine.empty:
             continue
+        total = mine["impressions"].sum()
         print(f"\n-- {b} --")
-        print(f"{key:<26}{'imps':>12}{'share':>8}{'this%':>8}{'peers%':>8}{'gap pp':>9}")
-        share_base = sub["impressions"].sum()
-        for k, r in g.head(10).iterrows():
-            pi = tot.loc[k, "impressions"] - r.impressions
-            pv = tot.loc[k, "viewable_impressions"] - r.viewable_impressions
+        print(f"{dim:<26}{'imps':>12}{'share':>8}{'this%':>8}{'peers%':>8}{'gap pp':>9}")
+        for k, r in mine.head(8).iterrows():
+            pi = book.loc[k, "impressions"] - r.impressions
+            pv = book.loc[k, "viewable_impressions"] - r.viewable_impressions
             this, peer = _rate(r.viewable_impressions, r.impressions), _rate(pv, pi)
             print(f"{str(k)[:24]:<26}{int(r.impressions):>12,}"
-                  f"{r.impressions / share_base * 100:>7.1f}%{this:>7.1f}%"
+                  f"{r.impressions / total * 100:>7.1f}%{this:>7.1f}%"
                   f"{peer:>7.1f}%{this - peer:>+9.1f}")
 
 
@@ -174,53 +248,38 @@ def main() -> int:
     print("=" * 78)
     print(f"metrics: {', '.join(METRICS)}")
 
-    # ── 1. clicks vs viewability: is the ad seen but mis-measured? ────────
+    # ── the base cut: bidder x unit, with dwell and clicks ───────────────
     base = _pull(gam, ["KEY_VALUES_NAME", "AD_UNIT_NAME"], start, end)
     if base is None:
         raise SystemExit("the base cut was refused — nothing else will work")
-    base.to_csv(OUT_DIR / "by_unit_with_clicks.csv", index=False)
+    base.to_csv(OUT_DIR / "by_unit_with_dwell.csv", index=False)
 
-    g = base.groupby("bidder")[
-        [c for c in ["impressions", "viewable_impressions", "clicks"] if c in base]].sum()
-    g = g[g["impressions"] >= 50_000].sort_values("impressions", ascending=False)
-    print("\n" + "=" * 78)
-    print("ENGAGEMENT vs VIEWABILITY — the creative test")
-    print("A bidder whose CTR holds up while Active View scores it non-viewable is")
-    print("being SEEN and mis-measured (the Mobkoi signature). One whose clicks fall")
-    print("with its viewability is genuinely not being seen.")
-    print("=" * 78)
-    if "clicks" not in g.columns:
-        print("(clicks unavailable in this API version — cannot run the test)")
-    else:
-        site_ctr = _rate(g["clicks"].sum(), g["impressions"].sum())
-        site_vw = _rate(g["viewable_impressions"].sum(), g["impressions"].sum())
-        print(f"\nbook: {site_vw:.1f}% viewable, CTR {site_ctr:.3f}%\n")
-        print(f"{'bidder':<18}{'imps':>12}{'viewable%':>11}{'CTR%':>9}"
-              f"{'CTR idx':>9}{'clicks/viewable impr%':>23}")
-        for b, r in g.iterrows():
-            ctr = _rate(r.clicks, r.impressions)
-            print(f"{b:<18}{int(r.impressions):>12,}"
-                  f"{_rate(r.viewable_impressions, r.impressions):>10.1f}%"
-                  f"{ctr:>8.3f}%{ctr / site_ctr * 100 if site_ctr else float('nan'):>9.0f}"
-                  f"{_rate(r.clicks, r.viewable_impressions):>22.3f}%")
+    # ── 1. dwell: binary failure, or a slow creative? ────────────────────
+    _dwell(base)
 
-    # ── 2. does the deficit survive inside every other cut? ───────────────
-    for dims, key, title in [
-        (["KEY_VALUES_NAME", "DEVICE_CATEGORY_NAME"], "device_category_name",
-         "BY DEVICE — is it a device-mix story?"),
-        (["KEY_VALUES_NAME", "COUNTRY_NAME"], "country_name",
+    # ── 2. clicks: kept, but GAM books none for wrapper demand ───────────
+    # The Prebid universal creative renders the buyer's markup inside the GPT
+    # iframe and the click leaves through the buyer's own click tracker, so
+    # GAM's click server never sees it: AD_SERVER_CLICKS is 0 for EVERY
+    # wrapper bidder including the healthy ones. That is a property of the
+    # integration, not a signal about any creative — so report the column as
+    # unusable rather than printing a 0.000% CTR that reads like a finding.
+    if "clicks" in base.columns:
+        tot_clicks = int(base["clicks"].sum())
+        print(f"\n[clicks] AD_SERVER_CLICKS across all wrapper demand: {tot_clicks:,}"
+              + (" — GAM books no clicks for wrapper demand (the click leaves"
+                 " through the buyer's tracker inside the creative), so the"
+                 " CTR-vs-viewability test cannot be run from GAM."
+                 if tot_clicks == 0 else ""))
+
+    # ── 3. does any mix explanation survive? ─────────────────────────────
+    for dim, title in [
+        ("DEVICE_CATEGORY_NAME", "BY DEVICE — is it a device-mix story?"),
+        ("COUNTRY_NAME",
          "BY COUNTRY — is it a geo-mix story? (smilewanted is a French SSP)"),
-        (["KEY_VALUES_NAME", "BROWSER_NAME"], "browser_name",
-         "BY BROWSER — is it a browser/webview story?"),
-        (["KEY_VALUES_NAME", "OPERATING_SYSTEM_NAME"], "operating_system_name",
-         "BY OS — is it an OS story?"),
+        ("BROWSER_NAME", "BY BROWSER — is it a browser/webview story?"),
     ]:
-        print(f"\npulling {', '.join(dims)} …")
-        df = _pull(gam, dims, start, end)
-        if df is None or df.empty:
-            continue
-        df.to_csv(OUT_DIR / f"by_{key}.csv", index=False)
-        _cut(df, key, title)
+        _cut_by_filter(gam, dim, start, end, title)
 
     print(f"\nCSVs: {OUT_DIR}")
     return 0
