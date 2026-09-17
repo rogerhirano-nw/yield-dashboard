@@ -1072,6 +1072,19 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
+- `docs/kargo_bid_request.md` — what to send when an SSP asks for "a real bid
+  request". **Kargo is server-side inside Magnite Prebid Server** (the page
+  calls the `mgnipbs` alias → `prebid-server.rubiconproject.com`, account
+  9619, wrapper `9619_Newsweek_Mobile_Server`; a second s2s path `aypbs` →
+  `pbs-us-east.ay.delivery`), so the browser never contacts Kargo and **no
+  publisher-visible Kargo bid request exists** — only Magnite can export the
+  outbound copy. What we can share is the client→PBS auction request (GPID,
+  floors, site, device, `user.ext.eids`, regs) that Kargo's copy is derived
+  from. Capture with `scripts/capture_kargo_bid_request.py`. **A `kargo.com`
+  hit is not evidence of a bid request** — PBS `/cookie_sync` fires a sync
+  pixel for every bidder on the account regardless of the page's auction; the
+  proof a bidder was called is the PBS *response*'s
+  `ext.responsetimemillis` keys.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in

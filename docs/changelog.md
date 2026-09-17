@@ -4,6 +4,34 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-10 — Kargo asked for a real bid request; there isn't one to send
+
+- **Kargo is server-side, inside Magnite Prebid Server.** Measured on four live
+  article pages: zero browser→Kargo bid requests, and `kargo` appears in no
+  client-side bidder list. The page sends one aliased imp (`mgnipbs` →
+  `prebid-server.rubiconproject.com`, account 9619) and PBS fans out to ~30
+  bidders including Kargo. So **the request Kargo receives is minted by Magnite
+  and is not observable by the publisher** — only Magnite can export it.
+- **The trap: a `kargo.com` request that isn't a bid request.** The first
+  capture pass saw `crb.kargo.com/api/v1/dsync/PrebidServer` and read it as
+  client-side wiring. It is a cookie sync, and PBS `/cookie_sync` fires one per
+  bidder on the *account*, independent of the page's auction. The signal that
+  actually proves participation is the PBS **response** — `ext.responsetimemillis`
+  carries a key per bidder PBS called, and `kargo` is in ~50% of them.
+- **New `scripts/capture_kargo_bid_request.py`** — loads real article pages in
+  headless Chromium, hooks pbjs (any global name) for the bidder's own
+  `bidRequested`/`bidResponse`/`noBid` payloads, and records the network layer,
+  separating direct bidder requests from syncs from PBS auctions. Emits
+  `captures.json` / `sample.json` / `summary.txt` with an explicit wiring
+  verdict, so the artefact is never mislabelled. Prefers a direct request and
+  falls back to the PBS one, so it still works if Kargo moves client-side.
+  `REDACT=1` masks identifier *values* while keeping eid provider names — a
+  key-name-scoped redactor was rejected because masking every `id` also guts
+  `imp.id` and `site.publisher.id`, the fields the SSP needs to correlate.
+- **`docs/kargo_bid_request.md`** — the wiring diagram, the who-has-what table,
+  and the recommendation: send the client→PBS request, label it as such, and
+  loop Magnite in for the byte-exact outbound copy.
+
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
 - **The unit blended into the page.** The live article page wraps ads in its own
