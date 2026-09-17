@@ -1120,6 +1120,35 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Avails / inventory-opportunity pulls** (`scripts/gam_intl_avails.py`,
+  `.github/workflows/gam_intl_avails.yml`). An avail has to count inventory
+  we did *not* fill, so the pull needs `UNFILLED_IMPRESSIONS` — and GAM
+  rejects that metric alongside `INVENTORY_FORMAT_NAME`,
+  `LINE_ITEM_ENVIRONMENT_TYPE_NAME` and `AD_REQUEST_SIZES` with
+  `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. It **is** compatible with
+  `AD_UNIT_NAME_TOP_LEVEL` and `REQUESTED_AD_SIZES`, which is how the
+  format/size split is done instead. Three facts that follow:
+  - **The top-level ad unit is the format split.** `newsweek` is the site
+    display book, `vid.newsweek` is 100% of video ("In-stream video" /
+    "In-stream video or audio"); every other unit is 100% "Banner".
+    `applenews.newsweek`, `newsletter.newsweek` and `Default` are separate
+    top-level units and are *not* part of the site book — note that
+    `AD_UNIT_NAME` is the **leaf** name, so filtering it to `newsweek` gets
+    you the bare parent (~173 impr/mo), not the site. Use
+    `AD_UNIT_NAME_TOP_LEVEL`.
+  - **`REQUESTED_AD_SIZES` is a size *set* per request**, not one size per
+    row ("1x1, 300x250", "300x50, 320x50"). So per-size avails **overlap and
+    must never be summed** — an opportunity eligible for both 300x250 and
+    970x250 is counted under each. The script emits a de-duplicated
+    "eligible for at least one" column for when one number is needed.
+  - **`AD_REQUESTS` > impressions + unfilled.** Requests that dropped out
+    before an ad could be returned are counted in the first and neither of
+    the others, so `avails = impressions + unfilled` is the defensible
+    sellable pool and ad requests is the upper bound. On 2026 Q3 non-US
+    traffic the gap runs ~4-7%.
+  - `MONTH_YEAR` comes back as an int code = `(year - 1900) * 12 +
+    (month - 1)` (1519 = 2026-08); the script asserts the decode against the
+    requested window rather than trusting it.
 - **Active View reads ~0% viewable on any creative that renders in the
   parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
   uniscroller, the `addImageToHomepage`-style takeover customs, the Kia
