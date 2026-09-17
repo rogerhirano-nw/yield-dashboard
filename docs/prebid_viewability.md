@@ -504,6 +504,91 @@ volume. The blank-detect refresh (`docs/snippets/sticky_blank_detect_refresh.js`
 and the vendor bug report are still the fix, and still **not** the iframe
 mirror — there is nothing behind that frame to reveal.
 
+### Display only, broken down by ad unit (2026-09-17)
+
+Same window, `SCOPE=display` — video (`vid.newsweek`, 18.28M impressions)
+excluded **before** any baseline is computed, so every peer rate below is a
+display peer rate. Display book: **116.9M impressions, 76.0% viewable**.
+Run: [35248383447](https://github.com/rogerhirano-nw/yield-dashboard/actions/runs/35248383447).
+
+**How the scope was determined, and why it is trustworthy here.** The script
+tries to *measure* which units are video (`AD_UNIT_NAME × INVENTORY_FORMAT_NAME`)
+rather than hardcode it — but GAM refused that pair too
+(`CONSTRAINTS_INCOMPATIBILITY`, the same refusal that keeps format off the
+bidder report), so it fell back to the `vid.*` name rule. Two checks say the
+fallback is right on this network: display 116.9M + `vid.newsweek` 18.28M
+reconciles exactly to the 135.2M pooled total, and OneTag's unit split
+(581,045 display / 71,063 video) matches its **independent** `RENDERED_CREATIVE_SIZE`
+split (`1x1` 581,045 / `Video/Overlay` 71,063) to the impression. If a second
+video unit ever appears the name rule will still catch it (`vid.*`); an
+existing banner unit starting to carry outstream is what would slip through,
+and nothing here would notice.
+
+Scoping barely moves the three banner cases (they have no video volume) but it
+**clears OneTag**: pooled it read 75.6% / render +0.1; on display alone it is
+**78.9% against a 74.3% expectation, render +4.6** — above its peers on every
+single unit. Its problem is video and nothing else.
+
+| Ad unit | Imps | Unit rate |
+|---|---:|---:|
+| sticky | 39.0M | **89.1%** |
+| inarticle1 | 17.0M | 71.8% |
+| inarticle2 | 16.7M | 64.6% |
+| inarticle3 | 12.3M | 70.4% |
+| inarticle4 | 9.5M | 69.3% |
+| inarticle5 | 7.2M | 70.4% |
+| inarticle6 | 5.9M | 70.8% |
+| inarticle7 | 4.2M | 70.3% |
+| inarticle8 | 2.5M | 71.3% |
+| inarticle9 | 1.5M | 71.1% |
+| inarticle10 | 912k | 73.3% |
+| top | 54k | 13.5% |
+
+`top` is bad for everyone (13.5% at 54k impressions) — a unit problem, not a
+bidder one, and too small to chase. `right1/2/3` and bare `newsweek` carry
+<1k impressions between them.
+
+**Worst bidder × unit cells, by viewable impressions lost against that unit's
+own peer rate.** Total across all cells: **4.21M lost = 3.6pp of the display
+book.**
+
+| Bidder | Unit | Imps | This | Peers | Gap | Lost |
+|---|---|---:|---:|---:|---:|---:|
+| **ogury** | sticky | 2,564,506 | 45.8% | 92.2% | −46.3 | **1,188,095** |
+| **smilewanted** | sticky | 2,844,832 | 54.5% | 91.8% | −37.4 | **1,062,928** |
+| smilewanted | inarticle2 | 1,413,991 | 34.1% | 67.5% | −33.3 | 471,336 |
+| smilewanted | inarticle3 | 773,690 | 30.8% | 73.1% | −42.3 | 327,312 |
+| smilewanted | inarticle1 | 1,250,299 | 51.4% | 73.4% | −22.0 | 275,436 |
+| smilewanted | inarticle4 | 526,243 | 33.0% | 71.4% | −38.4 | 202,020 |
+| **kargo** | inarticle4 | 480,288 | 56.3% | 70.0% | −13.7 | 65,652 |
+| **kargo** | inarticle1 | 641,854 | 62.6% | 72.2% | −9.6 | 61,668 |
+| medianet | inarticle1 | 569,572 | 67.6% | 72.0% | −4.4 | 25,133 |
+| oms | sticky | 84,498 | 66.1% | 89.2% | −23.0 | 19,466 |
+
+Four things the per-unit cut shows that no site-wide average could:
+
+1. **Sticky is where the money is.** It is the *best* display unit (89.1%, and
+   peers hit 92%+ on it), which is exactly why the two bidders that fail there
+   cost **2.25M viewable impressions between them — 53% of the entire display
+   shortfall**. A bidder rendering badly on a high-viewability unit is far more
+   expensive than the same gap on a weak one.
+2. **SmileWanted's deficit deepens down the page while its peers' does not.**
+   Peers hold 71–75% from `inarticle1` to `inarticle10`; SmileWanted falls
+   51.4% → 34.1% → 30.8% → … → **25.5%**, i.e. −22pp at position 1 widening to
+   **−49pp at position 10**. Peers are essentially flat across the same
+   positions, so this is not "deep slots are harder to view". It is the
+   signature of a creative that renders without regard to the viewport —
+   rendering on load rather than on approach, or refreshing off-screen — and it
+   is the sharpest question to put to the SSP.
+3. **Kargo is a real case the pooled view buried.** Pooled it looked mild
+   (−7.2 render, "half of it is mix"). Per unit it is concentrated and
+   *not* diffuse: **fine on sticky (97.0%, +7.9 vs peers)** but −13.7pp on
+   `inarticle4` and −9.6pp on `inarticle1`, for 127k lost. That is a
+   placement-specific render fault, not a mix story — worth raising once the
+   two big cases are moving.
+4. **OMS is uniform** — −23 to −27pp on *every* unit including sticky, the same
+   shape as SmileWanted at 1/56th the volume. Same conversation, same fix.
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take
