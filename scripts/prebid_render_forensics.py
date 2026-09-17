@@ -626,6 +626,20 @@ def _renders(page: dict) -> list[dict]:
         max_in_view = max([p[1] for p in series], default=None)
         if thresh is not None and max_in_view is not None:
             met = max_in_view >= thresh
+        # The CEILING on in-view%, set by geometry alone. In-view fraction is
+        # visible_height / creative_height, and the most that can ever be
+        # visible is the viewport, so a creative taller than the viewport can
+        # never reach 100% no matter how the reader scrolls:
+        #     max_possible = min(1, viewport_h / creative_h)
+        # If that ceiling sits below the creative's own AV threshold, the
+        # impression is UNVIEWABLE BY CONSTRUCTION — the render is fine, the
+        # size is wrong. This is the test for "does their creative come back
+        # taller than the slot", which GAM cannot answer because every wrapper
+        # impression logs as 1x1.
+        vp_h = ((page.get("viewport") or {}).get("h")) or None
+        cre_h = big["box"]["h"] if ifr else None
+        ceiling = round(min(100.0, vp_h / cre_h * 100), 1) if (vp_h and cre_h) else None
+        capped = (ceiling < thresh) if (ceiling is not None and thresh) else None
         out.append({
             "url": page.get("url"), "profile": page.get("profile"),
             "slot": sid, "unit": e.get("unit"), "size": e.get("size"),
@@ -644,6 +658,8 @@ def _renders(page: dict) -> list[dict]:
             "viewable": sid in viewable,
             "maxInView": max_in_view,
             "creativeArea": area, "avThresholdPct": thresh, "metThreshold": met,
+            "creativeH": cre_h, "viewportH": vp_h,
+            "maxPossibleInView": ceiling, "structurallyCapped": capped,
             "dom": dom,
         })
     return out
@@ -750,6 +766,47 @@ def main() -> int:
         mh = heights[len(heights) // 2] if heights else "-"
         mv = views[len(views) // 2] if views else "-"
         print(f"{bidder:<16}{len(rs):>8}{vw:>9}{fills:>13}{hid:>8}{mh:>9}{mv:>14}")
+
+    # ── creative height per SLOT: the like-for-like size test ────────────
+    # "Does this bidder render taller than everyone else?" only means anything
+    # within one slot, because slot height varies. Comparing a bidder's median
+    # creative height against its PEERS' on the same slot is the on-page
+    # equivalent of the GAM audit's leave-one-out peer rate — and it is the one
+    # creative property GAM cannot see, since wrapper impressions all log 1x1.
+    def _med(xs):
+        xs = sorted(x for x in xs if x)
+        return xs[len(xs) // 2] if xs else None
+
+    print("\n" + "=" * 78)
+    print("CREATIVE SIZE vs SLOT (the height hypothesis)")
+    print("ceiling = viewport_h / creative_h: the most of the creative that can")
+    print("EVER be in view. Below its AV threshold = unviewable by construction.")
+    print("=" * 78)
+    by_slot: dict[tuple, list[dict]] = defaultdict(list)
+    for r in renders:
+        if r.get("creativeH"):
+            by_slot[(r["profile"], r["slot"])].append(r)
+    for (prof, slot), rs in sorted(by_slot.items(), key=lambda kv: -len(kv[1])):
+        tgt = [r for r in rs if (r["bidder"] or "") in TARGET_BIDDERS]
+        if not tgt:
+            continue
+        peers = [r for r in rs if (r["bidder"] or "") not in TARGET_BIDDERS]
+        print(f"\n-- [{prof}] {slot} — slot box "
+              f"{(rs[0].get('dom') or {}).get('box', {}).get('h')}px, "
+              f"viewport {rs[0].get('viewportH')}px --")
+        print(f"{'bidder':<16}{'n':>4}{'med creative h':>16}{'thresh':>8}"
+              f"{'ceiling':>9}{'capped':>8}{'med maxInView':>14}")
+        groups = defaultdict(list)
+        for r in tgt:
+            groups[r["bidder"]].append(r)
+        if peers:
+            groups["(peers)"] = peers
+        for name, g in groups.items():
+            capped = sum(1 for r in g if r.get("structurallyCapped"))
+            print(f"{name:<16}{len(g):>4}{str(_med([r['creativeH'] for r in g])):>16}"
+                  f"{str(_med([r['avThresholdPct'] for r in g])):>8}"
+                  f"{str(_med([r['maxPossibleInView'] for r in g])):>9}"
+                  f"{capped:>8}{str(_med([r['maxInView'] for r in g])):>14}")
 
     # ── slot mix: which positions does each bidder win? ──────────────────
     print("\n-- slot mix by bidder (placement drives viewability as much as render) --")
