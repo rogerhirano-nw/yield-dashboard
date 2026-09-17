@@ -15,6 +15,12 @@ on:
         description: 'Bidders to detail cell-by-cell'
         required: false
         default: 'smilewanted,ogury,oms,onetag'
+      scope:
+        description: 'Format scope: display, video, or all (pooled)'
+        required: false
+        default: 'display'
+        type: choice
+        options: [display, video, all]
 
 permissions:
   contents: read
@@ -40,6 +46,7 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           DAYS: ${{ inputs.days }}
           BIDDERS: ${{ inputs.bidders }}
+          SCOPE: ${{ inputs.scope }}
           OUT_DIR: /tmp/prebid-viewability-audit
         run: |
           set -o pipefail
