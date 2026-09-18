@@ -4,35 +4,40 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-09-18 — OB vs Prebid Server video ad requests: the bars aren't comparable
+## 2026-09-18 — OB vs Prebid Server video ad requests: Magnite's request column is 5.11x what GAM sent
 
-Magnite raised Open Bidding video ad-request volume "in comparison to PB
-server" — their chart shows OB at **265.8M** against **128.2M** for Prebid
-Server (RP Hosted) over 2026-08-18 → 2026-09-16, a 2.07x gap.
+Magnite raised Open Bidding video ad-request volume "in comparison to PB server"
+— their chart shows OB at **265.8M** against **128.2M** for Prebid Server (RP
+Hosted) over 2026-08-18 → 2026-09-16, a 2.07x gap.
 
-**It is a counting boundary, not a volume difference.** Only **37.5%** of those
-OB ad requests become an auction, against **98.2%** for Prebid Server. On
-auctions — the first column measuring the same event on both sides — Prebid
-Server runs **more** (125.9M vs 99.8M). Magnite logs an OB ad request at the
-Google callout, before any auction decision; a Prebid Server request is counted
-at the auction. The tell: OB's auction rate sits in a **33.4–42.1%** band on
-every one of the 30 days while everything else is 92–99%.
+**GAM only sent them 52,036,623 video callouts.** Google is the side that sends
+an OB callout, so its count settles what Magnite received; Magnite's ad-request
+column is **5.11x** that. Two things make it a finding rather than a scope
+mismatch: OB calls **every** partner on every opportunity, and the report shows
+it (the ten video OB buyers span 47.3M–52.1M callouts, a 9.2% spread), so ~52.0M
+is the opportunity count; and **the bottom of the funnel reconciles** — ad
+responses 115.4M vs GAM bids 118.9M (−3.0%), paid impressions 4.66M vs GAM
+impressions 4.76M (−2.2%) — while requests run +410.8% and auctions +173.5%.
+Both sides also agree Magnite returns ~2.2–2.3 bids per callout, which is only
+coherent against the 52.0M denominator.
 
-Two findings outrank the question asked. **(1)** Per auction, OB is the table's
-best monetizer — $0.394/1k vs $0.246 for Prebid Server — on the *lowest* eCPM
-($8.44 vs $12.94), because its auction→impression fill is 4.67% against 1.90%.
-The "OB is wasteful" reading the chart invites is backwards. **(2) Prebid Server
-(3p Hosted)** turned 64.5M ad requests and 45.3M auctions into **36,971 paid
-impressions and $551** in 30 days — 0.08% fill on the table's *highest* eCPM
-($14.90), 10.9% of video requests for 0.6% of video revenue. That is the real
-money question and needs raising separately.
+Corrected, the comparison inverts: **Prebid Server carries 2.46x more** video
+request volume than OB, and OB fills **8.95%** of its real requests against
+Prebid Server's 1.87% (4.8x) at **$0.756 per 1k requests** vs $0.242 (3.1x). The
+chart's implied "OB is consuming outsized request volume" reading is backwards on
+both halves. The one legitimate explanation to put to Magnite before calling the
+column an error is **video ad pods** — several impression objects per callout,
+and 5.11 is pod-shaped.
 
-Added `docs/ob_vs_prebid_video_requests.md` (full table, the per-day auction-rate
-evidence, and why the `Ad Responses` column is unusable — it isn't per-auction)
-plus `scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that
-reconciles GAM `YIELD_GROUP_CALLOUTS` for the `video` yield group against
-Magnite's own 265,819,907 over the identical window, to confirm the callout
-theory from our own data rather than taking the SSP's word for it.
+Also flagged: **Prebid Server (3p Hosted)** turned 64.5M ad requests and 45.3M
+auctions into **36,971 paid impressions and $551** in 30 days — 0.08% fill on the
+table's *highest* eCPM ($14.90), 10.9% of video requests for 0.6% of video
+revenue. Bigger money question than the OB/PBS comparison; separate work.
+
+Added `docs/ob_vs_prebid_video_requests.md` plus
+`scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that runs the
+reconciliation (every OB buyer by yield group, the four-way comparison table, the
+daily series). First run: 35376751276.
 
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 

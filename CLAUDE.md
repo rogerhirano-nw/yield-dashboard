@@ -1151,24 +1151,29 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
-- `docs/ob_vs_prebid_video_requests.md` — why Magnite's Open Bidding video
-  **ad requests** (265.8M) run 2.07x Prebid Server (RP Hosted) (128.2M) while
-  its **auctions** run *fewer* (99.8M vs 125.9M): Magnite counts an OB ad
-  request at the **Google callout**, before any auction decision, so the two
-  bars are a callout count and an auction count. The tell is that OB's
-  auction/ad-request ratio sits in a 33.4–42.1% band on **every one of 30
-  days** while every other integration is 92–99% — a boundary in the counting,
-  not behaviour. Two findings outrank the question: per **auction** OB is the
-  best monetizer in the table ($0.394/1k vs $0.246 for Prebid Server, on the
-  *lowest* eCPM), so the chart's implied "OB is wasteful" reading is backwards;
-  and **Prebid Server (3p Hosted)** turned 45.3M auctions into 36,971 paid
-  impressions and **$551** in 30 days (0.08% fill on the table's highest eCPM),
-  which is the real money question. The `Ad Responses` column is not
-  per-auction (OB 115.6% of auctions; Exchange API logs more responses than
-  requests on some days) — don't build an argument on it. Cross-check script:
-  `scripts/pull_magnite_ob_video_requests.py` + the matching one-off workflow,
-  which reconciles GAM `YIELD_GROUP_CALLOUTS` for the `video` yield group
-  against Magnite's own 265,819,907 over the identical window.
+- `docs/ob_vs_prebid_video_requests.md` — Magnite's Open Bidding video **ad
+  request** column is **5.11x what Google actually sent**. Their chart showed OB
+  at 265.8M vs 128.2M for Prebid Server (RP Hosted) over 2026-08-18 → 2026-09-16;
+  GAM `YIELD_GROUP_CALLOUTS` for the same buyer/window/yield-group is
+  **52,036,623**. GAM is the side that *sends* an OB callout, so it settles what
+  Magnite received — and OB calls **every** partner on every opportunity, which
+  the report confirms (10 video OB buyers span 47.3M–52.1M callouts, a 9.2%
+  spread), so ~52.0M *is* the video opportunity count. **The bottom of the funnel
+  reconciles and the top doesn't**: ad responses 115.4M vs GAM bids 118.9M
+  (−3.0%) and paid impressions 4.66M vs GAM impressions 4.76M (−2.2%), while
+  requests are +410.8% and auctions +173.5%. Corrected, **Prebid Server carries
+  2.46x more** video request volume than OB, and OB fills **8.95%** of its real
+  requests vs Prebid Server's 1.87% (4.8x) at $0.756/1k requests vs $0.242
+  (3.1x) — the chart's "OB is consuming outsized volume" reading is backwards on
+  both halves. The one legitimate explanation to put to Magnite before calling it
+  an error is **video ad pods** (several impression objects per callout; 5.11 is
+  pod-shaped). Also flagged there: **Prebid Server (3p Hosted)** turned 45.3M
+  auctions into 36,971 paid impressions and **$551** in 30 days — 0.08% fill on
+  the table's highest eCPM — which is the bigger money question. The
+  `Ad Responses` column is bids across seats, not per-auction (OB 115.6% of its
+  own auctions; Exchange API logs more responses than requests on some days),
+  which is why it reconciles against GAM `BIDS` and nothing else. Script:
+  `scripts/pull_magnite_ob_video_requests.py` + matching one-off workflow.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in

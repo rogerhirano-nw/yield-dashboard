@@ -3,12 +3,15 @@ Magnite Open Bidding video ad-request volume, to cross-check the SSP's own
 "Seller Integration Type" report against GAM's view of the same callouts.
 
 Context (2026-09-18): Magnite's video report for 2026-08-18 → 2026-09-16 shows
-Open Bidding at 265,819,907 "Ad Requests" — 2.07x Prebid Server (RP Hosted) —
-but only 37.5% of those become auctions, against 98.2% for Prebid Server. The
-hypothesis is that Magnite counts an OB ad request at the Google callout,
-before any auction decision, so the two bars are a callout count and an auction
-count and are not comparable. If GAM's callouts to Magnite over the same window
-land near 266M, that is confirmed outright.
+Open Bidding at 265,819,907 "Ad Requests" — 2.07x Prebid Server (RP Hosted).
+GAM is the side that *sends* those requests, so its callout count settles what
+Magnite actually received.
+
+RESULT (run 35376751276): GAM sent 52,036,623 video callouts — Magnite reports
+5.11x that. But Magnite's ad responses match GAM's bids to -3.0% and its paid
+impressions match GAM's impressions to -2.2%, so the two systems agree on the
+whole funnel EXCEPT the request and auction columns. See
+docs/ob_vs_prebid_video_requests.md.
 
 GAM-side notes (see CLAUDE.md "GAM facts"):
 - HEADER_BIDDER_INTEGRATION_TYPE_NAME is incompatible with every YIELD_GROUP_*
@@ -48,6 +51,7 @@ END = date(2026, 9, 16)
 MAGNITE_CLAIMS = {
     "ad_requests": 265_819_907,
     "auctions": 99_800_117,
+    "ad_responses": 115_402_553,
     "paid_impressions": 4_658_480,
 }
 
@@ -116,24 +120,24 @@ def main() -> None:
     print(f"  GAM impressions            : {int(tot['yield_group_impressions']):,}")
 
     print("\n=== Reconciliation against Magnite's own report ===")
-    print(f"  Magnite 'Ad Requests'      : {claim:,}")
-    print(f"  GAM callouts               : {callouts:,}")
-    diff = callouts - claim
-    print(f"  Difference                 : {diff:+,} ({diff / claim:+.1%} vs Magnite)")
-    print(f"  Magnite 'Auctions'         : {MAGNITE_CLAIMS['auctions']:,}")
+    print(f"  {'metric':<26}{'Magnite':>14}{'GAM':>14}{'ratio':>9}{'delta':>10}")
+    pairs = [
+        ("Ad requests / callouts", MAGNITE_CLAIMS["ad_requests"], callouts),
+        ("Auctions / auctions won", MAGNITE_CLAIMS["auctions"], int(tot["yield_group_auctions_won"])),
+        ("Ad responses / bids", MAGNITE_CLAIMS["ad_responses"], int(tot["yield_group_bids"])),
+        ("Paid impr / impressions", MAGNITE_CLAIMS["paid_impressions"], int(tot["yield_group_impressions"])),
+    ]
+    for lbl, m, g in pairs:
+        print(f"  {lbl:<26}{m:>14,}{g:>14,}{m / g:>8.2f}x{(m - g) / g:>+10.1%}")
+
     print(
-        "  GAM callouts / Magnite auctions: "
-        f"{callouts / MAGNITE_CLAIMS['auctions']:.2f}x"
-    )
-    print(f"  Magnite 'Paid Impressions' : {MAGNITE_CLAIMS['paid_impressions']:,}")
-    print(
-        f"  GAM impressions            : {int(tot['yield_group_impressions']):,} "
-        "(GAM counts the OB impression it served; Magnite counts its own paid impression)"
-    )
-    print(
-        "\n  Verdict: if the difference above is within a few percent, Magnite's "
-        "'Ad Requests' for Open Bidding IS the Google callout count, and its 37.5% "
-        "auction rate is a definitional boundary rather than a delivery problem."
+        "\n  Read: GAM is the side that SENDS the request, so its callout count is "
+        "authoritative for\n  what Magnite received. A ratio near 1.00x on responses "
+        "and impressions with a much\n  larger ratio on requests means the two systems "
+        "agree on the funnel but not on its\n  denominator — the request column is "
+        "counting something finer than an opportunity\n  (per impression object / per "
+        "demand path), so it cannot be compared with a Prebid\n  Server request count "
+        "one-for-one."
     )
 
     # 3. Daily series, so a partial-day or gap at either end is visible rather
