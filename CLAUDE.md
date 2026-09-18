@@ -1194,9 +1194,19 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `securepubads.g.doubleclick.net/gampad/ads` — a GAM video callout, counted in
   the 52.0M. The sequential re-request at video end (one slot, a fresh request
   each time) therefore inflates both sides equally and explains nothing on its
-  own. To observe it for real you need `BROWSER_CHANNEL=chrome` against a real
-  Chrome install from a laptop; a datacenter headless Chromium cannot play the
-  video at all. AssertiveYield corroborates the mix: video is 14.4% of rubicon's prebid
+  own. To observe playback you need `BROWSER_CHANNEL=chrome` from a laptop.
+  **But the refresh mechanism was settled without playback, by reading the page's
+  own ad stack**: Mux Player + a custom IMA integration expose two globals whose
+  console messages are tagged `[VIDEO REFRESH]` — `prebidVideoAd_refresh()` runs
+  `pbjs.requestBids({adUnitCodes:["video"]})` (a fresh client-side Prebid auction)
+  and `amznVideoAPS_refresh()` fetches APS targeting (`%26`-joined, i.e. bound for
+  a GAM tag's `cust_params`). Their targeting is appended to the IMA ad tag and
+  **IMA requests VAST from GAM** — a video ad request, hence an OB callout to
+  every partner. So **every end-of-video refresh increments GAM's callout count**
+  (the 52.0M already contains them) *and* fires a fresh Prebid auction, making the
+  refresh **symmetric across OB and Prebid Server** and incapable of producing a
+  gap between them. Never *invoke* those two globals when probing — calling them
+  fires real production ad requests, the exact metric in dispute. AssertiveYield corroborates the mix: video is 14.4% of rubicon's prebid
   requests vs GAM's own 16.9% video share, and Magnite's video-only 265.8M is
   86% of GAM's *entire* OB callout volume across both formats (307.6M). **AY's
   absolute prebid counts run ~0.5% of GAM's — sampled or narrowly scoped, so use

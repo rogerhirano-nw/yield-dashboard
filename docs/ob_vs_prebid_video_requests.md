@@ -124,6 +124,39 @@ proprietary codecs: `BROWSER_CHANNEL=chrome` against a real Chrome install
 (the same escape hatch `scripts/prebid_render_forensics.py` documents for
 SmileWanted), run from a laptop. A datacenter headless Chromium cannot do it.
 
+## The refresh mechanism, read from the page's own code
+
+Playback is impossible in this environment, but the ad stack can be read without
+it. `window` on an article carries a purpose-built video-ad layer — Mux Player
+(`mux-player-react` 3.13.0) plus a custom IMA integration
+(`__imaIntegrationInitialized`, `__imaVastLoadTimeoutPatched`,
+`__imaGetAdsManagerPatched`, `__videoAdStackReady: true`) — and two globals whose
+own console messages are tagged **`[VIDEO REFRESH]`**:
+
+- **`prebidVideoAd_refresh()`** → `window.pbjs.requestBids({ adUnitCodes: ["video"] })`,
+  a **fresh client-side Prebid auction** for the `video` ad unit, whose winning
+  targeting is flattened to `key=value&key=value` in `window.prebid_video_bid`.
+- **`amznVideoAPS_refresh()`** → fetches **APS (Amazon) targeting** into
+  `window.amzn_video_bid`, joined with `%26` — double-encoded because it is
+  destined for the `cust_params` of a GAM ad tag.
+
+So one video ad break runs: Prebid video auction + APS fetch → their targeting is
+appended to the IMA ad tag → **IMA requests VAST from
+`securepubads.g.doubleclick.net/gampad/ads`**. That last step is a GAM video ad
+request, which is a **callout to every OB partner including Magnite**, and is
+counted in `YIELD_GROUP_CALLOUTS`.
+
+**This closes the question Roger's detail opened.** The end-of-video re-request is
+real and it is client-side, so **every refresh increments GAM's callout count** —
+the 52,036,623 already contains all of them. It also fires a fresh Prebid auction,
+so the Prebid Server leg gets a request per refresh too. The refresh is
+**symmetric across both integrations** and therefore cannot produce a gap between
+them. Magnite's 5.11x remains unexplained by anything observable on the page.
+
+(Confirmed read-only. `prebidVideoAd_refresh` and `amznVideoAPS_refresh` were
+never invoked — calling them would fire real ad requests against production,
+which is the exact metric in dispute.)
+
 ## Third-party corroboration of the request mix (AssertiveYield)
 
 AY's `prebid_analytics` for the identical window, `mediaType` x bidder:
