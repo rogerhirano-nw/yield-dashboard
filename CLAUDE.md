@@ -1256,6 +1256,30 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
 - `YIELD_GROUP_CALLOUTS` is what the GAM UI calls "Ad requests" for a yield
   partner. Bid funnel goes: `YIELD_GROUP_CALLOUTS` → `YIELD_GROUP_BIDS` →
   `YIELD_GROUP_AUCTIONS_WON` → `YIELD_GROUP_IMPRESSIONS`.
+- **The `YIELD_GROUP_*` funnel is BID-denominated after the callout step**, and
+  **`YIELD_GROUP_CALLOUTS` has no hidden multiplier** — both confirmed by Ad
+  Manager Support in chat, 2026-09-18 (specialist Aneesh), during the Magnite
+  reconciliation:
+  - **`YIELD_GROUP_CALLOUTS` counts every callout Ad Manager sends to a yield
+    partner. Ad Manager does NOT send additional requests for retries or
+    multi-slot requests.** So the callout count *is* the number of requests the
+    partner received — usable as the authoritative denominator when an SSP's
+    self-reported "ad requests" disagrees.
+  - **`YIELD_GROUP_AUCTIONS_WON` is calculated against ALL BIDS RECEIVED**, not
+    per auction. So `AUCTIONS_WON / IMPRESSIONS` is **not** a render rate and
+    means nothing — on Magnite video it read 36,487,791 won vs 4,762,385
+    impressions and looked alarming; it is winning *bids* to impressions.
+    Don't raise it as a defect again.
+  - Consequently **`YIELD_GROUP_BIDS` can exceed `YIELD_GROUP_CALLOUTS`** where an
+    exchange multi-seat-bids (a bid per seat/deal). Magnite video runs 2.29
+    bids/callout; the other nine OB partners run 0.00–0.26, and Magnite's own
+    display is 0.465. A ratio >1 is therefore a property of the partner, not a
+    reporting fault.
+  - **Split vs unsplit matters when talking to Support.** At buyer level Magnite
+    reads 307,600,758 callouts vs 237,651,418 bids (0.77, bids below callouts) and
+    Support's own aggregate agreed. The >1 ratio only appears once
+    `YIELD_GROUP_NAME` is a dimension, and the split sums back to the buyer total
+    exactly — so always state which cut you ran, or you will talk past each other.
 - `HEADER_BIDDER_INTEGRATION_TYPE_NAME` is **incompatible with every
   `YIELD_GROUP_*` metric** in the v1 REST reporting API — adding it returns
   `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. To distinguish OB from
