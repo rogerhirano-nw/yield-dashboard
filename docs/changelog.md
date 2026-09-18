@@ -4,6 +4,77 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-18 — OB vs Prebid Server video ad requests: Magnite's request column is 5.11x what GAM sent
+
+Magnite raised Open Bidding video ad-request volume "in comparison to PB server"
+— their chart shows OB at **265.8M** against **128.2M** for Prebid Server (RP
+Hosted) over 2026-08-18 → 2026-09-16, a 2.07x gap.
+
+**GAM only sent them 52,036,623 video callouts.** Google is the side that sends
+an OB callout, so its count settles what Magnite received; Magnite's ad-request
+column is **5.11x** that. Two things make it a finding rather than a scope
+mismatch: OB calls **every** partner on every opportunity, and the report shows
+it (the ten video OB buyers span 47.3M–52.1M callouts, a 9.2% spread), so ~52.0M
+is the opportunity count; and **the bottom of the funnel reconciles** — ad
+responses 115.4M vs GAM bids 118.9M (−3.0%), paid impressions 4.66M vs GAM
+impressions 4.76M (−2.2%) — while requests run +410.8% and auctions +173.5%.
+(A first draft also cited "~2.2 bids per callout on both sides" as
+corroboration. That was circular — Magnite's numerator over GAM's denominator —
+and has been withdrawn; the ten-partner spread carries the denominator alone.)
+
+**The open counter-argument, kept in the doc rather than argued away**: Magnite's
+bid rate is a normal **43.4%** on its own denominator but **229%** on GAM's, and
+it is the *only* video OB partner whose bids exceed its callouts (the other nine
+run 0.00–0.26x, and Magnite's own display is a normal 0.46x). Multi-seat bidding
+explains it; so would GAM under-counting video callouts for that one partner.
+Unresolved.
+
+Corrected, the comparison inverts: **Prebid Server carries 2.46x more** video
+request volume than OB, and OB fills **8.95%** of its real requests against
+Prebid Server's 1.87% (4.8x) at **$0.756 per 1k requests** vs $0.242 (3.1x). The
+chart's implied "OB is consuming outsized request volume" reading is backwards on
+both halves. The one legitimate explanation to put to Magnite before calling the
+column an error is **video ad pods** — several impression objects per callout,
+and 5.11 is pod-shaped.
+
+Also flagged: **Prebid Server (3p Hosted)** turned 64.5M ad requests and 45.3M
+auctions into **36,971 paid impressions and $551** in 30 days — 0.08% fill on the
+table's *highest* eCPM ($14.90), 10.9% of video requests for 0.6% of video
+revenue. Bigger money question than the OB/PBS comparison; separate work.
+
+**On-page forensics: inconclusive, and one wrong conclusion withdrawn.** Roger's
+detail — one video slot, a fresh request at the end of each video — killed the
+ad-pod explanation (a pod is several ads in *one* request; sequential
+re-requests are separate auctions GAM counts separately, so they inflate both
+sides equally). Headless probing then found zero client-side VAST requests, and
+a first pass concluded the video ad call must be served server-side by the
+player vendor. **That was wrong.** The video never played: `readyState` and
+`networkState` 0, `currentTime` frozen at 0, because Playwright's bundled
+Chromium ships **without proprietary codecs** (`canPlayType` → `''` for H.264,
+AAC, HLS) and the site's video is H.264. `paused:false` only means `play()` was
+called. What the probe does establish points the other way: the **IMA SDK loads
+and `google.ima.AdsLoader` is instantiated**, so the client-side video ad path
+exists and a real play requests VAST from GAM — a callout counted in the 52.0M.
+`scripts/video_slot_forensics.py` now checks codec support up front and reports
+INCONCLUSIVE rather than repeating the bad inference; a real answer needs
+`BROWSER_CHANNEL=chrome` from a machine with Chrome.
+
+**Google Ad Manager Support confirmed the decisive point** (2026-09-18 chat):
+`YIELD_GROUP_CALLOUTS` counts every callout sent to a yield partner, with no
+additional requests for retries or multi-slot. So 52,036,623 is what Magnite
+received and the 5.11x gap is theirs to explain. They also confirmed
+`YIELD_GROUP_AUCTIONS_WON` is calculated against **all bids received** — the
+metric is bid-denominated, which resolves the 36.5M-won vs 4.76M-impressions
+figure an earlier draft had raised as a third question, and makes the video row
+coherent under multi-seat bidding. Their aggregate matches ours (0.77 bids per
+callout at buyer level); the >1.0 ratio appears only under a
+`YIELD_GROUP_NAME` split, which they have not yet re-run.
+
+Added `docs/ob_vs_prebid_video_requests.md` plus
+`scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that runs the
+reconciliation (every OB buyer by yield group, the four-way comparison table, the
+daily series). First run: 35376751276.
+
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 
 The daily health check had been red since 2026-09-15 on one row — `ttd_chumba
