@@ -1180,8 +1180,26 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   the table's highest eCPM — which is the bigger money question. The
   `Ad Responses` column is bids across seats, not per-auction (OB 115.6% of its
   own auctions; Exchange API logs more responses than requests on some days),
-  which is why it reconciles against GAM `BIDS` and nothing else. Script:
-  `scripts/pull_magnite_ob_video_requests.py` + matching one-off workflow.
+  which is why it reconciles against GAM `BIDS` and nothing else. **The video ad
+  call is not made in the browser** (`scripts/video_slot_forensics.py`, 4 live
+  surfaces): the player plays on 3 of 4 and issues **zero** client-side
+  VAST/VMAP, and **no video ad unit is registered in GPT at all** — every slot
+  is display. It is served server-side by the player vendor
+  (cs.minutemedia-prebid.com / prebid.videostep.com), so the chain is player →
+  vendor server → GAM → OB callout, and **that hop appears in neither side's
+  report** — the one place a request can multiply without reaching GAM's callout
+  count. Corollary: **on-page instrumentation cannot count these requests**, so
+  don't chase a DOM repro; it needs the vendor's logs or Magnite's definition of
+  an OB "ad request". The sequential re-request at video end (one slot, a fresh
+  request each time) is real but explains nothing on its own — each is a
+  separate auction GAM counts as a callout, inflating both sides equally.
+  AssertiveYield corroborates the mix: video is 14.4% of rubicon's prebid
+  requests vs GAM's own 16.9% video share, and Magnite's video-only 265.8M is
+  86% of GAM's *entire* OB callout volume across both formats (307.6M). **AY's
+  absolute prebid counts run ~0.5% of GAM's — sampled or narrowly scoped, so use
+  its ratios only, never its raw numbers.** Scripts:
+  `scripts/pull_magnite_ob_video_requests.py` (+ one-off workflow) and
+  `scripts/video_slot_forensics.py`.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in

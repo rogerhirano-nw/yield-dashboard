@@ -75,7 +75,7 @@ full stop. Magnite cannot have received 265.8M **Open Bidding** requests out of
 
 ## On-page forensics: the video ad call is not made in the browser
 
-Headless Chromium against live pages, 2026-09-18 (`scripts/` probe, article +
+Headless Chromium against live pages, 2026-09-18 (`scripts/video_slot_forensics.py`, article +
 homepage, 70–200s dwell each):
 
 | Surface | `#nw-video-player` | `<video>` playing | GAM **video** ad requests | GPT slots |
