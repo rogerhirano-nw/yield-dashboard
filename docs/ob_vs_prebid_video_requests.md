@@ -83,8 +83,10 @@ homepage, 70–200s dwell each):
 | Homepage | yes | 2 | **0** | 5 display |
 | Article (texas-republicans-…) | yes | 2 | **0** | 15 display |
 | Article (trumps-russia-…) | no | 0 | **0** | 7 display |
+| Article (lindsay-clancy-…) | yes | 2 | **0** | 15 display |
 
-Two facts, both load-bearing:
+The player is present on **3 of the 4** surfaces; the request count is **0 on
+all four**. Two facts follow, both load-bearing:
 
 1. **No video ad unit is registered in GPT on any surface** — every GPT slot is
    display (`inarticle1-10`, `oop1-3`, `sticky`, `interstitial`, `homepage1-3`).
