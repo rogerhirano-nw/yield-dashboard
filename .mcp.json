@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "assertive-yield": {
+      "type": "http",
+      "url": "https://suite.assertiveyield.com/mcp/reporting/v1",
+      "headers": {
+        "Authorization": "Bearer ${AY_MCP_TOKEN}"
+      }
+    },
     "beehiiv": {
       "type": "http",
       "url": "https://mcp.beehiiv.com/mcp"
