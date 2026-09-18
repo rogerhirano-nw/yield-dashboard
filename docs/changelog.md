@@ -59,6 +59,17 @@ exists and a real play requests VAST from GAM — a callout counted in the 52.0M
 INCONCLUSIVE rather than repeating the bad inference; a real answer needs
 `BROWSER_CHANNEL=chrome` from a machine with Chrome.
 
+**Google Ad Manager Support confirmed the decisive point** (2026-09-18 chat):
+`YIELD_GROUP_CALLOUTS` counts every callout sent to a yield partner, with no
+additional requests for retries or multi-slot. So 52,036,623 is what Magnite
+received and the 5.11x gap is theirs to explain. They also confirmed
+`YIELD_GROUP_AUCTIONS_WON` is calculated against **all bids received** — the
+metric is bid-denominated, which resolves the 36.5M-won vs 4.76M-impressions
+figure an earlier draft had raised as a third question, and makes the video row
+coherent under multi-seat bidding. Their aggregate matches ours (0.77 bids per
+callout at buyer level); the >1.0 ratio appears only under a
+`YIELD_GROUP_NAME` split, which they have not yet re-run.
+
 Added `docs/ob_vs_prebid_video_requests.md` plus
 `scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that runs the
 reconciliation (every OB buyer by yield group, the four-way comparison table, the

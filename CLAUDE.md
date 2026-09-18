@@ -1156,7 +1156,16 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   at 265.8M vs 128.2M for Prebid Server (RP Hosted) over 2026-08-18 → 2026-09-16;
   GAM `YIELD_GROUP_CALLOUTS` for the same buyer/window/yield-group is
   **52,036,623**. GAM is the side that *sends* an OB callout, so it settles what
-  Magnite received — and OB calls **every** partner on every opportunity, which
+  Magnite received — and **Ad Manager Support confirmed this directly**
+  (2026-09-18 chat): `YIELD_GROUP_CALLOUTS` counts every callout sent to a
+  yield partner, with no extra requests for retries or multi-slot. They also
+  confirmed `YIELD_GROUP_AUCTIONS_WON` is **calculated against all bids
+  received**, i.e. the metric is bid-denominated — which resolves the
+  36.5M-won vs 4.76M-impressions figure (never an auctions-to-impressions
+  rate) and makes the video row coherent under multi-seat bidding. Their own
+  aggregate matches ours (307,600,758 callouts vs 237,651,418 bids, 0.77);
+  the >1.0 ratio shows up only once `YIELD_GROUP_NAME` splits the report,
+  which they have not yet re-run — and OB calls **every** partner on every opportunity, which
   the report confirms (10 video OB buyers span 47.3M–52.1M callouts, a 9.2%
   spread), so ~52.0M *is* the video opportunity count — that ten-partner spread is
   what carries the denominator, **not** the "2.2 bids per callout" agreement an
