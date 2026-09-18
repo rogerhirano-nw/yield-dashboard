@@ -178,6 +178,85 @@ volume, so that dataset is sampled or narrowly scoped. **Only the ratios within
 it are usable** — do not quote AY's raw request numbers against GAM's or
 Magnite's. The sampling rate has not been calibrated.
 
+## Is the anomaly unique to Magnite? Yes — and it is sharper than first stated
+
+Two vantage points cover every SSP. **GAM's own ledger** (`YIELD_GROUP_CALLOUTS`
+/ `YIELD_GROUP_BIDS` per OB buyer, both yield groups) and **AssertiveYield**, a
+neutral third party measuring the client-side Prebid auction.
+
+**GAM side — bids per callout, every OB partner:**
+
+| Partner | display b/c | **video b/c** | video bids | display bids | video/display bids |
+|---|---|---|---|---|---|
+| **Magnite** | 0.465 | **2.29** | 118,929,248 | 118,722,170 | **1.002** |
+| Media.net | 0.334 | 0.26 | 13,341,176 | 84,685,661 | 0.158 |
+| PubMatic | 0.346 | 0.20 | 10,570,292 | 87,862,180 | 0.120 |
+| OpenX | 0.267 | 0.19 | 9,593,299 | 67,532,417 | 0.142 |
+| Equativ | 0.265 | 0.15 | 7,268,925 | 61,990,136 | 0.117 |
+| TripleLift | 0.097 | 0.14 | 7,261,430 | 24,602,205 | 0.295 |
+| Index Exchange | 0.013 | 0.12 | 6,032,525 | 3,406,283 | 1.771 |
+| YieldMo | 0.005 | 0.01 | 286,519 | 1,270,103 | 0.226 |
+| InMobi OB | 0.008 | 0.00 | 35,685 | 1,920,299 | 0.019 |
+| Sharethrough | 0.000 | 0.00 | 916 | 49,130 | 0.019 |
+
+Magnite is the **only** partner whose video bids exceed its video callouts —
+**2.29 against a next-highest of 0.26**, nearly 9x the field. On **display** it
+is unremarkable (0.465, alongside PubMatic 0.346 and Media.net 0.334). So the
+anomaly is not "Magnite" in general; it is **Magnite × video**.
+
+**The sharper tell.** Magnite's video bids (118,929,248) and display bids
+(118,722,170) are the same number to within **0.17%** — a difference of 207,078
+across 30 days. No other partner is close: the next nearest video/display bid
+ratio is Index at 1.771, and the rest run 0.02–0.30. Two readings:
+
+- GAM is attributing **one bid total to both yield groups** for this partner, in
+  which case the video figure is a reporting artifact; or
+- Magnite genuinely returns ~2.3 bids per video callout *and* that total
+  coincidentally equals its display bid count to three decimal places.
+
+The second is not credible. This is worth raising with Google independently of
+the Magnite conversation.
+
+**AssertiveYield side — client-side bid rate, every SSP:**
+
+| SSP | requests | bid rate |
+|---|---|---|
+| aps | 3,280,279 | 64.9% |
+| **rubicon (Magnite)** | 3,280,347 | **48.6%** |
+| ix | 3,280,334 | 46.8% |
+| criteo | 2,575,753 | 45.0% |
+| smilewanted | 2,575,813 | 43.5% |
+| triplelift | 3,280,329 | 42.7% |
+| openx | 2,133,315 | 42.1% |
+| ttd | 3,280,329 | 42.1% |
+| ozone | 3,280,296 | 35.7% |
+| nativo | 1,086,635 | 33.5% |
+| teads | 2,575,775 | 20.3% |
+| pubmatic | 3,280,329 | 15.4% |
+
+Every client-side bidder receives the same ~3.28M requests (Prebid fans out to
+all of them), and **Magnite's bid rate is mid-pack**. Its *behaviour* is
+unremarkable; only the GAM-side video **accounting** is strange.
+
+**Consequence for this doc's own argument, stated plainly.** One of the three
+supports for the 52.0M was "the bottom of the funnel reconciles — GAM video bids
+118.9M vs Magnite's video ad responses 115.4M, −3.0%". If GAM's video-bids figure
+is a cross-format total double-attributed to both groups, **that match is
+coincidental and is not corroboration**. It should be dropped from the case. The
+**impressions** match (4,762,385 vs 4,658,480, −2.2%) is independent of the bids
+column and still stands, as does the ten-partner callout spread — which is the
+support that actually carries the denominator.
+
+**What this comparison cannot test.** We hold only *Magnite's* self-reported
+seller numbers. Testing whether the 5.11x request gap is unique to Magnite —
+rather than something every SSP's seller report does — needs the equivalent
+"Seller Integration Type × Ad Format × Date" export from **PubMatic, Index and
+OpenX** for the same window, compared against their own GAM callout counts
+(51,852,880 / 52,081,338 / 51,624,004 video). That is one email each and it is
+the single highest-value missing piece: if their reports also run ~5x GAM's
+callouts, this is an industry-wide definitional difference and nobody is at
+fault; if they come in at ~1x, the gap is Magnite's alone.
+
 ## What it means for the comparison
 
 Rebuilt on the request counts each side actually receives — GAM's callouts for
