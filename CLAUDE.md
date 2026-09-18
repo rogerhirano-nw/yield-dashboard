@@ -39,8 +39,87 @@ When auditing or adding data, the production sources are:
 | **DoubleVerify Attention** | `dv_attention_client.py` (`pull_dv_attention`) | `dv_attention` | DV Pinnacle "Authentic Attention" metrics per line item — 100-baseline indices (Attention / Engagement / Exposure / Intensity / Prominence / User Presence / Ad Interaction / View Presence) plus DV's view of viewability. Ingested via email: DV team mails the daily report to `newsweek@agentmail.to`, we poll the inbox via agentmail's v0 API and parse the attachment — **CSV until ~2026-06-29, XLSX since** (DV changed the export format; the `.csv`-only filter then silently skipped every mail for a month — the 2026-07-27 staleness — and `parse_dv_xlsx` now handles both; IVT stayed CSV). Surfaces as the "Attention" column on Direct + PMP tables. Subject filter: `Unified Analytics Report: Attention Metrics`. Added 2026-05-24. Both DV parsers normalize `line_item_id` to integer strings at parse — blank open-exchange cells make pandas read the CSV column as float64, and an unstripped `astype(str)` yields `"…​.0"` keys that never join `gam_campaigns` (#151); the daily health check canaries this. |
 | **DoubleVerify IVT** | `dv_ivt_client.py` (`pull_dv_ivt`) | `dv_ivt` | DV Pinnacle invalid-traffic classification rows (Valid Traffic / Fraud/SIVT / Fraud/GIVT) per line per day, with `Monitored Ads` impression counts. Same email pipeline as DV Attention; subject filter: `Unified Analytics Report: IVT`. The dashboard computes **impression-weighted IVT%** per MRC standard: `Σ Monitored Ads (Fraud rows) / Σ Monitored Ads (all rows)`. Surfaces as **separate "SIVT" and "GIVT" columns** on Direct + PMP tables (MRC distinction: SIVT = data center / bot fraud / hijacked devices / emulators / app + site fraud, hard to detect; GIVT = self-identifying bots / declared crawlers, standard detection). Color bands tuned to industry IVT thresholds: green <1%, amber 1-3%, red ≥3%. Added 2026-05-24. |
 | **TTD Luckyland Casino** | `ttd_client.py` (`pull_ttd`) | `ttd_luckyland` | The Trade Desk scheduled report for the Luckyland Casino advertiser — daily delivery/spend/conversion data (display + video) by date, ad group, supply vendor. TTD emails a notification (`noreply@thetradedesk.com`, subject `Report Available: Luckyland Casino TTD …`) with a signed 30-day download URL; we poll `newsweek@agentmail.to` via agentmail's v0 API, extract the URL (handles Outlook safelinks wrapping), and download the XLSX. Added 2026-06 (PRs #287/#291). **RETIRED 2026-07-27** — campaign ended; the scheduled report had already stopped after ~7/1 (only forwarded "MonthtoDate v3" mails remained, whose schema change triggered the daily `ttd_luckyland` recreate behind the RLS-drift loop). `refresh_ttd` / `--mode=ttd`, the health-check freshness row, and the dashboard card were removed; `ttd_luckyland` dropped from prod (`DROP TABLE IF EXISTS public.ttd_luckyland;` — nothing recreates it). `_refresh_ttd_campaign` + `ttd_client` stay as the shared pipeline (Chumba) and the pattern for the next TTD-reported flight. |
-| **TTD Chumba Casino (VGW)** | `ttd_client.py` (`pull_ttd` with `CHUMBA_SUBJECT_NEEDLE`) | `ttd_chumba` | Same pipeline as Luckyland — TTD scheduled report for VGW Chumba Casino. Subject needle: `Report Available: Newsweek Automated report VGW Chumba Casino`. Includes per-pixel conversion columns (pixel 01 = registrations, pixel 03 = FTPs) and CPA. `refresh_ttd_chumba` / `--mode=ttd-chumba`, run in the `ttd` job of `refresh.yml` (added PR #291 — **was missing before that, leaving the TTD tables un-refreshed by the daily sweep**; the job's Luckyland step was retired 2026-07-27). |
+| **TTD Chumba Casino (VGW)** | `ttd_client.py` (`pull_ttd` with `CHUMBA_SUBJECT_NEEDLE`) | `ttd_chumba` | Same pipeline as Luckyland — TTD scheduled report for VGW Chumba Casino. `refresh_ttd_chumba` / `--mode=ttd-chumba`, run in the `ttd` job of `refresh.yml` (added PR #291 — **was missing before that, leaving the TTD tables un-refreshed by the daily sweep**; the job's Luckyland step was retired 2026-07-27). **The scheduled report was REPLACED ~2026-09-06** — "Newsweek Automated report VGW Chumba Casino" → "Newsweek Chumba Casino Performance report", with a different schema (`Advertiser/Media Cost (USD)` not `(Adv Currency)`; `Ad Format` carries the size; `Inventory Contract` is the deal name; no `Ad Group`/`Supply Vendor`, so **no `media_type`** and the scorecard's by-format table is empty; pixels renamed to `usergenChumba Registered …` / `… First Purchase …`). The old full-name needle stopped matching, so `CHUMBA_SUBJECT_NEEDLE` is now just **`Chumba`** — match the campaign, not the report name, since a schedule rename is the recurring failure mode (Luckyland drifted to "MonthtoDate v3" the same way). See the TTD staleness debrief below. |
 | **Improvado betting CPA** | `improvado_client.py` (`pull_improvado`) | `betting_conversions` | Spinfinite/Improvado daily CPA report for the betting/gambling Direct campaign (order 4068491190). Improvado's AI Agent mails a tab-separated text report (subject contains `Newsweek - Daily report`) covering ~14 days of clicks, registrations, FTPs (first-time purchases), and Net Cash, bucketed by `Sub ID 1` (creative size) and optionally `Sub ID 2` (`li<line_item_id>` once test LIs are live). Same agentmail inbox as DV — reports are typically **forwarded** by the AE, so the sender filter is dropped and provenance is verified by requiring the `Generated by Improvado AI Agent` footer in the body. Joins to GAM delivery via `sub_id_2`'s `li<id>` parsing → `gam_campaigns.line_item_id`. Powered the segment-level CPA optimization loop for the IO1109 flight. Added 2026-05-25. **RETIRED 2026-06** — campaign paused mid-flight; `betting_conversions` dropped from prod. Client kept as the pattern for the next CPA-sold flight. |
+
+**The replacement report does NOT reach `newsweek@agentmail.to`** (proven
+2026-09-17 by dispatching `refresh_ttd.yml` and reading the candidate log). The
+newest Chumba mail in the inbox is **2026-09-06**, and *every* recent candidate
+is the same thing: a daily **`FW:` forward of a July 8 single-run** report
+("Report Available: Newsweek Automated report VGW Chumba Casino (Single Run)
+7_8_2026 …"). Those forwards stopped on 09-06 too, which is why the feed froze
+at 09-05 rather than erroring. So the code path below is correct and ready, but
+**it cannot produce fresh data until someone adds `newsweek@agentmail.to` as a
+recipient of the "Newsweek Chumba Casino Performance report" schedule in TTD**
+(or re-points the forwarding automation at the new report). That is a TTD-side
+action, not a code change. Until then the health check's `ttd_chumba fresh` row
+will keep failing, correctly.
+
+**TTD feed staleness — how a live campaign's report silently freezes**
+(2026-09 Chumba; the same shape as the 2026-07 Luckyland drift). TTD replaced
+the Chumba schedule on ~09-06. The retired notification mails stayed in the
+inbox, so the daily pull kept finding one, kept downloading it, and kept
+logging `1222 rows written` + exit 0 — **for 12 days, while the campaign was
+still delivering** (4 September PG line items delivered 9/14–9/16). Nothing in
+the sweep distinguished it from a healthy run; only the separate health check's
+`ttd_chumba fresh` row caught it, two days later. Three fixes, each aimed at a
+different link:
+- **The needle matches the campaign, not the report name** (`CHUMBA_SUBJECT_NEEDLE`
+  = `Chumba`). The download-URL regex already requires a real
+  `desk.thetradedesk.com/reports/view/<id>` link, so a loose needle can't pull a
+  non-TTD payload.
+- **`list_ttd_messages` asks agentmail to filter by subject server-side**, the
+  same `subject=` param both DV clients already use, so the window is N
+  *matching* messages instead of the last N of the whole inbox. That was the
+  quiet killer: the inbox takes two DV reports a day, so the still-matching
+  Chumba mails simply aged out — matches decayed **7 → 6 → 4 → 2 → 0** with no
+  error anywhere. It falls back to unfiltered, then to the unauthenticated
+  folder (where *forwarded* reports land), and re-checks the needle client-side
+  either way, so the filter is an optimization and never a hard dependency.
+- **A renamed schedule is now loud, and a frozen report is visible in the sweep
+  that causes it**: unmatched mail *from TTD's own sender domain* is logged with
+  its subject (never any other sender — the Actions logs are public), and
+  `_warn_if_report_stale` warns when a pulled report's `max(date)` doesn't
+  advance past the cache.
+- `primary_conv_col` takes **several candidates**, tried in order, so one
+  campaign spans a report changeover that renames its pixel columns.
+
+**Conversion-pixel rule.** In the replacement report the **Registered pixel
+reads 0 across every row**; the conversions present are First Purchase, under
+*two attribution models* — `IdentityAlliance` and `IdentityAllianceWithHousehold`
+— which are the **same pixel counted two ways**, so anything that sums them
+double-counts FTPs. All three are mapped explicitly (`conversions_registered`,
+`conversions_first_purchase`, `conversions_first_purchase_household`) so the
+`"conversion"` auto-sum can't silently add them together, and exactly **one** is
+designated the KPI via `primary_conv_col`. **The Chumba KPI is First Purchase ·
+`IdentityAllianceWithHousehold`** (Roger, 2026-09-17) — 95 conversions over
+09-06..09-16 (CPA ≈ $344 against the $150 goal) vs 5 for the device-only
+`IdentityAlliance` column. Picking the other model, or summing the two, moves CPA
+by ~19×, so **never let this fall through to the auto-sum** — if a future report
+renames the pixel again, add the new name as a `primary_conv_col` candidate
+rather than letting the fallback pick it up.
+
+**The KPI changes definition at the 09-06 seam.** The retired report's KPI was
+*registrations* (pixel 01); the replacement's is *first purchases*. Both land in
+`attributed_conversions`, so a CPA series spanning 09-05/09-06 compares two
+different events either side of that date — registrations are far cheaper and
+more numerous than FTPs, so the seam reads as a CPA step-up that is **not** a
+performance change. The per-era raw columns are preserved (`conversions_pixel_01`
+on the old rows, `conversions_first_purchase_household` on the new), so the
+series can be rebuilt on a single definition if the comparison ever matters.
+
+**A replaced report widens the table; it no longer drops it.**
+`_refresh_ttd_campaign` used to DROP and recreate on any column-set change,
+which silently discarded every row the new export doesn't cover — and a
+replacement report only reaches back to its own start date (the new Chumba
+export starts 09-06, so a drop would have taken all of August with it).
+`_widen_table_to` now ALTERs the table to the **union** of both schemas: a
+column only the retired report had reads NULL on new rows and vice versa, and
+columns are only ever ADDed, never dropped or retyped. Keeping the table also
+keeps its RLS grants — the daily DROP+recreate is what re-opened RLS on
+`ttd_luckyland` and drove the 2026-07-27 health-check loop. Verified on a
+SQLite sim seeded with the old schema: 2 old rows + 499 new = 501 rows over
+20 union columns, August values intact.
 
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
@@ -1120,6 +1199,68 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Avails / inventory-opportunity pulls** (`scripts/gam_intl_avails.py`,
+  `.github/workflows/gam_intl_avails.yml`). An avail has to count inventory
+  we did *not* fill, so the pull needs `UNFILLED_IMPRESSIONS` — and GAM
+  rejects that metric alongside `INVENTORY_FORMAT_NAME`,
+  `LINE_ITEM_ENVIRONMENT_TYPE_NAME` and `AD_REQUEST_SIZES` with
+  `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. It **is** compatible with
+  `AD_UNIT_NAME_TOP_LEVEL` and `REQUESTED_AD_SIZES`, which is how the
+  format/size split is done instead. Three facts that follow:
+  - **The top-level ad unit is the format split.** `newsweek` is the site
+    display book, `vid.newsweek` is 100% of video ("In-stream video" /
+    "In-stream video or audio"); every other unit is 100% "Banner".
+    `applenews.newsweek`, `newsletter.newsweek` and `Default` are separate
+    top-level units and are *not* part of the site book — note that
+    `AD_UNIT_NAME` is the **leaf** name, so filtering it to `newsweek` gets
+    you the bare parent (~173 impr/mo), not the site. Use
+    `AD_UNIT_NAME_TOP_LEVEL`.
+  - **`REQUESTED_AD_SIZES` is a size *set* per request**, not one size per
+    row ("1x1, 300x250", "300x50, 320x50"). So per-size avails **overlap and
+    must never be summed** — an opportunity eligible for both 300x250 and
+    970x250 is counted under each. The script emits a de-duplicated
+    "eligible for at least one" column for when one number is needed.
+  - **`AD_REQUESTS` > impressions + unfilled.** Requests that dropped out
+    before an ad could be returned are counted in the first and neither of
+    the others, so `avails = impressions + unfilled` is the defensible
+    sellable pool and ad requests is the upper bound. On 2026 Q3 non-US
+    traffic the gap runs ~4-7%.
+  - `MONTH_YEAR` comes back as an int code = `(year - 1900) * 12 +
+    (month - 1)` (1519 = 2026-08); the script asserts the decode against the
+    requested window rather than trusting it.
+- **Forecasting a month that hasn't happened** is a different API:
+  `scripts/gam_avails_forecast.py` (SOAP `ForecastService` v202605). The REST
+  v1 surface has **no forecast service at all**, so this is the one path that
+  still needs the legacy `googleads` library; the historical pull stays REST.
+  `getAvailabilityForecast` returns **`matchedUnits`** (gross pool matching the
+  targeting) and **`availableUnits`** (what is still unreserved after other
+  line items) — quote *available*. Gotchas:
+  - A **VIDEO_PLAYER line item needs three fields set together** or the call
+    fails: `environmentType=VIDEO_PLAYER`, `targeting.requestPlatformTargeting`
+    (else `NotNullError.NULL @ targeting.requestPlatformTargeting`), and
+    `videoMaxDuration` (else `INVALID_MAX_VIDEO_CREATIVE_DURATION`,
+    trigger `'0'`). The fault message names **`maxVideoCreativeDuration`**, but
+    that field **does not exist** in the v202605 WSDL — zeep rejects it as an
+    unknown key. The real field is `videoMaxDuration`. Don't chase the name in
+    the error.
+  - **One line item with several creative placeholders forecasts the UNION**
+    of those sizes — which is exactly the de-duplicated "eligible for at least
+    one of the four" figure, in a single call. Per-size calls still overlap.
+  - **`ForecastingError.EXCEEDED_QUOTA` is the throttle**, and it is easy to
+    burn: ~1400 calls at 5 workers tripped it. Retry on that exact string
+    (not "QuotaExceeded", which never matches), keep workers ≤3, and treat a
+    dropped call as **missing, never zero** — a failed cut rendered as 0
+    reads as "no inventory in France", which is a very different claim. The
+    script keeps gaps as NaN, reports the count, and takes `--resume-from` to
+    fill them on a second pass.
+  - Countries join to `Geo_Target` by **ISO country code, not name** — the
+    reporting API and Geo_Target disagree on wording ("The Netherlands" vs
+    "Netherlands", "Türkiye", "Czechia").
+  - Sanity-check any forecast against the trailing-28d run-rate before
+    quoting it. On 2026-09, GAM's Oct forecast came in at 82% of run-rate for
+    display and 77% for video, against a 0.88× Sep→Oct seasonal factor
+    observed in 2025 — i.e. GAM is modestly conservative, which is the
+    expected shape and a signal the call was built right.
 - **Active View reads ~0% viewable on any creative that renders in the
   parent DOM instead of the GPT slot iframe** — Mobkoi interscroller/
   uniscroller, the `addImageToHomepage`-style takeover customs, the Kia

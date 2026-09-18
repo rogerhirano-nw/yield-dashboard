@@ -53,6 +53,19 @@ jobs:
           path: /tmp/prebid-viewability-audit/
           if-no-files-found: ignore
 
+      # The audit normally runs from main, where there is no PR to comment on,
+      # so the job summary is the real output surface.
+      - name: Write output to job summary
+        if: always()
+        run: |
+          {
+            echo '### Prebid viewability audit (GAM Active View, mix vs render)'
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Post output as PR comment
         if: always()
         env:
