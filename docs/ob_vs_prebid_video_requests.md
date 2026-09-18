@@ -184,7 +184,8 @@ Two vantage points cover every SSP. **GAM's own ledger** (`YIELD_GROUP_CALLOUTS`
 / `YIELD_GROUP_BIDS` per OB buyer, both yield groups) and **AssertiveYield**, a
 neutral third party measuring the client-side Prebid auction.
 
-**GAM side — bids per callout, every OB partner:**
+**GAM side — bids per callout, every OB partner** (emitted directly by
+`scripts/pull_magnite_ob_video_requests.py`, not transcribed):
 
 | Partner | display b/c | **video b/c** | video bids | display bids | video/display bids |
 |---|---|---|---|---|---|

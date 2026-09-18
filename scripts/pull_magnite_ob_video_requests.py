@@ -140,7 +140,50 @@ def main() -> None:
         "one-for-one."
     )
 
-    # 3. Daily series, so a partial-day or gap at either end is visible rather
+    # 3. Cross-partner bids-per-callout, computed here rather than transcribed.
+    #    This is the table that shows the anomaly is Magnite x video: every
+    #    other OB partner sits well below 1.0 bids per callout on video, and
+    #    only Magnite's video bid count matches its display bid count.
+    print("\n=== Bids per callout, EVERY OB partner, by yield group ===")
+    piv = (
+        df.groupby(["yield_group_buyer_name", "yield_group_name"], as_index=False)[METRIC_COLS]
+        .sum()
+    )
+    by_buyer: dict[str, dict[str, tuple[int, int]]] = {}
+    for r in piv.itertuples(index=False):
+        by_buyer.setdefault(r.yield_group_buyer_name, {})[r.yield_group_name] = (
+            int(r.yield_group_callouts), int(r.yield_group_bids)
+        )
+
+    def _ratio(pair: tuple[int, int] | None) -> float | None:
+        if not pair or pair[0] == 0:
+            return None
+        return pair[1] / pair[0]
+
+    def _fmt(x: float | None, spec: str = ">9.3f") -> str:
+        return format(x, spec) if x is not None else " " * int(spec.split(".")[0][1:])
+
+    hdr = (f"  {'partner':<30}{'disp b/c':>10}{'video b/c':>11}"
+           f"{'video bids':>15}{'display bids':>15}{'vid/disp':>10}")
+    print(hdr)
+    rows = []
+    for buyer, groups in by_buyer.items():
+        vid, disp = groups.get("video"), groups.get("display")
+        rows.append((buyer, _ratio(disp), _ratio(vid),
+                     vid[1] if vid else 0, disp[1] if disp else 0))
+    for buyer, dr, vr, vb, db in sorted(rows, key=lambda x: -(x[2] or 0)):
+        vd = (vb / db) if db else None
+        flag = "   <== bids EXCEED callouts" if (vr or 0) > 1 else ""
+        print(f"  {buyer:<30}{_fmt(dr)}{_fmt(vr, '>11.3f')}{vb:>15,}{db:>15,}"
+              f"{_fmt(vd, '>10.3f')}{flag}")
+    over = [r[0] for r in rows if (r[2] or 0) > 1]
+    print(f"\n  partners whose VIDEO bids exceed their video callouts: "
+          f"{over if over else 'none'}")
+    print("  (>1.0 is only coherent with multi-seat bidding; a partner whose video\n"
+          "   bid count also equals its display bid count is more likely one total\n"
+          "   attributed to both yield groups — see docs/ob_vs_prebid_video_requests.md)")
+
+    # 4. Daily series, so a partial-day or gap at either end is visible rather
     #    than silently skewing the window total.
     daily = (
         video.groupby("date", as_index=False)[METRIC_COLS]
