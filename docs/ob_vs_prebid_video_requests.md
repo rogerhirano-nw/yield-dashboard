@@ -205,18 +205,44 @@ Magnite is the **only** partner whose video bids exceed its video callouts —
 is unremarkable (0.465, alongside PubMatic 0.346 and Media.net 0.334). So the
 anomaly is not "Magnite" in general; it is **Magnite × video**.
 
-**The sharper tell.** Magnite's video bids (118,929,248) and display bids
-(118,722,170) are the same number to within **0.17%** — a difference of 207,078
-across 30 days. No other partner is close: the next nearest video/display bid
-ratio is Index at 1.771, and the rest run 0.02–0.30. Two readings:
+**The sharper tell — and the theory it produced, which was then TESTED AND
+REFUTED.** Magnite's video bids (118,929,248) and display bids (118,722,170) are
+the same number to within **0.17%**. No other partner is close. That suggested
+GAM was attributing one bid total to both yield groups, which would have made the
+video figure a reporting artifact.
 
-- GAM is attributing **one bid total to both yield groups** for this partner, in
-  which case the video figure is a reporting artifact; or
-- Magnite genuinely returns ~2.3 bids per video callout *and* that total
-  coincidentally equals its display bid count to three decimal places.
+**It isn't.** Comparing the two *daily* rather than at window level
+(`pull_magnite_ob_video_requests.py` prints this):
 
-The second is not credible. This is worth raising with Google independently of
-the Magnite conversation.
+| days display bids == video bids exactly | **0 / 30** |
+|---|---|
+| days they agree within 1% | **1 / 30** |
+
+Daily video/display bid ratios range **0.639 to 1.448**. The two series move
+independently; the window-level match is coincidence. **The double-attribution
+theory is dead, and GAM's video bid count is a genuine, independently measured
+figure.**
+
+Two consequences, and they run in the analysis's favour rather than against it:
+
+**1. The responses↔bids match is restored as evidence.** An earlier revision of
+this doc said that support should be dropped in case the bids column was a
+double-attributed total. The test says it isn't, so the −3.0% agreement between
+GAM's video bids (118.9M) and Magnite's reported ad responses (115.4M) stands.
+
+**2. It yields an independent route to ~52M.** GAM measures **2.2855 bids per
+video callout** for Magnite. Applying that rate to Magnite's *own* reported
+115,402,553 ad responses implies **50,493,543 opportunities** — within **3.0%**
+of GAM's 52,036,623 callouts. For Magnite's 265.8M request figure to be an
+opportunity count instead, its bid rate would have to be 0.4341 responses per
+request, i.e. **5.26x** below the 2.29 bids/callout GAM observes — against a
+request ratio of **5.11x**. Those two ratios agreeing is exactly what you see
+when one denominator is ~5x the other.
+
+**What the video anomaly actually is**, then: Magnite genuinely returns ~2.3 bids
+per video callout — multi-seat bidding — and is the only OB partner here that
+does. That is a behavioural fact about Magnite's video integration, not a GAM
+reporting fault, and it is not by itself a problem.
 
 **AssertiveYield side — client-side bid rate, every SSP:**
 

@@ -1164,12 +1164,20 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   circular, withdrawn). **The bottom of the funnel
   reconciles and the top doesn't**: ad responses 115.4M vs GAM bids 118.9M
   (−3.0%) and paid impressions 4.66M vs GAM impressions 4.76M (−2.2%), while
-  requests are +410.8% and auctions +173.5%. **The open counter-argument**:
-  Magnite's bid rate is a normal 43.4% on its own denominator but 229% on GAM's,
-  and it is the **only** video OB partner whose bids exceed its callouts (the
-  other nine run 0.00–0.26x; Magnite's own *display* is a normal 0.46x).
-  Multi-seat bidding explains it, so would GAM under-counting video callouts for
-  that one partner — unresolved, and it goes in any conversation with Magnite. Corrected, **Prebid Server carries
+  requests are +410.8% and auctions +173.5%. **The video bids anomaly, resolved**:
+  Magnite is the **only** video OB partner whose bids exceed its callouts (2.29x;
+  the other nine run 0.00–0.26x; its own *display* is a normal 0.46x). Its video
+  and display bid **totals** match to 0.17%, which suggested GAM was attributing
+  one total to both yield groups — **tested and refuted**: compared *daily* they
+  agree exactly on 0/30 days and within 1% on 1/30, ratios ranging 0.639–1.448,
+  so the series are independent and the window match is coincidence. The
+  explanation is **multi-seat bidding** — Magnite really does return ~2.3 bids per
+  video callout, uniquely among our OB partners, which is a behavioural fact and
+  not a fault. This *restores* the responses↔bids support and adds an independent
+  route to ~52M: Magnite's own 115.4M responses at GAM's measured 2.2855
+  bids/callout implies **50.5M opportunities, within 3.0% of GAM's 52.0M**. For
+  265.8M to be opportunities, Magnite's bid rate would have to sit 5.26x below
+  what GAM observes — against a request ratio of 5.11x. Corrected, **Prebid Server carries
   2.46x more** video request volume than OB, and OB fills **8.95%** of its real
   requests vs Prebid Server's 1.87% (4.8x) at $0.756/1k requests vs $0.242
   (3.1x) — the chart's "OB is consuming outsized volume" reading is backwards on
