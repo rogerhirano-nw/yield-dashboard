@@ -1158,10 +1158,18 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   **52,036,623**. GAM is the side that *sends* an OB callout, so it settles what
   Magnite received — and OB calls **every** partner on every opportunity, which
   the report confirms (10 video OB buyers span 47.3M–52.1M callouts, a 9.2%
-  spread), so ~52.0M *is* the video opportunity count. **The bottom of the funnel
+  spread), so ~52.0M *is* the video opportunity count — that ten-partner spread is
+  what carries the denominator, **not** the "2.2 bids per callout" agreement an
+  early draft claimed (that divided Magnite's responses by GAM's callouts —
+  circular, withdrawn). **The bottom of the funnel
   reconciles and the top doesn't**: ad responses 115.4M vs GAM bids 118.9M
   (−3.0%) and paid impressions 4.66M vs GAM impressions 4.76M (−2.2%), while
-  requests are +410.8% and auctions +173.5%. Corrected, **Prebid Server carries
+  requests are +410.8% and auctions +173.5%. **The open counter-argument**:
+  Magnite's bid rate is a normal 43.4% on its own denominator but 229% on GAM's,
+  and it is the **only** video OB partner whose bids exceed its callouts (the
+  other nine run 0.00–0.26x; Magnite's own *display* is a normal 0.46x).
+  Multi-seat bidding explains it, so would GAM under-counting video callouts for
+  that one partner — unresolved, and it goes in any conversation with Magnite. Corrected, **Prebid Server carries
   2.46x more** video request volume than OB, and OB fills **8.95%** of its real
   requests vs Prebid Server's 1.87% (4.8x) at $0.756/1k requests vs $0.242
   (3.1x) — the chart's "OB is consuming outsized volume" reading is backwards on

@@ -36,11 +36,42 @@ the ten OB buyers in the `video` group, callouts run 47,314,038 to 52,081,338 �
 a 9.2% spread. The video yield group ran ~52.0M auctions in the window. It is
 not possible for Magnite alone to have received 265.8M of them.
 
-**Magnite's own bid rate corroborates it.** GAM logs 118.9M bids on 52.0M
-callouts = **2.29 bids per callout**; Magnite logs 115.4M responses = **2.22 per
-callout**. Both sides agree Magnite returns just over two bids per opportunity.
-Against Magnite's own 265.8M request figure that would be 0.43 responses per
-request, which is not what either system shows.
+**An earlier draft of this doc claimed the bid rate corroborated it — that was
+circular and has been withdrawn.** It divided *Magnite's* response count by
+*GAM's* callout count to get "2.22 bids per callout" and called the closeness to
+GAM's own 2.29 an independent agreement. It is the same denominator on both
+sides, so it only ever restated the assumption. The genuine agreement is on the
+two **numerators** (responses↔bids, impressions↔impressions); the ten-partner
+callout spread above is what carries the denominator, and it does so on its own.
+
+**The honest counter-argument, stated in full.** On Magnite's denominator its
+bid rate is 115.4M / 265.8M = **43.4%**, which is an unremarkable SSP bid rate.
+On GAM's it is 118.9M / 52.0M = **229%**, which requires Magnite to return
+multiple bids per callout. And Magnite is the **only** video OB partner whose
+bids exceed its callouts — the other nine run 0.00x to 0.26x:
+
+| Partner | video callouts | video bids | bids/callout |
+|---|---|---|---|
+| **Magnite** | 52,036,623 | 118,929,248 | **2.29** |
+| Media.net | 51,706,699 | 13,341,176 | 0.26 |
+| PubMatic | 51,852,880 | 10,570,292 | 0.20 |
+| OpenX | 51,624,004 | 9,593,299 | 0.19 |
+| Equativ | 47,314,038 | 7,268,925 | 0.15 |
+| TripleLift | 51,643,354 | 7,261,430 | 0.14 |
+| Index Exchange | 52,081,338 | 6,032,525 | 0.12 |
+| YieldMo / InMobi / Sharethrough | ~50M each | ≤287k | ≤0.01 |
+
+On **display** Magnite is unremarkable (118.7M bids on 255.6M callouts, 0.46) —
+the anomaly is video-only. Multi-seat bidding (a bid per deal/seat, which Magnite
+does expose and the others may not) explains it; so would GAM under-counting
+video callouts for this one partner. **This is unresolved**, and it is the single
+strongest argument against the conclusion below, so it belongs in any
+conversation with Magnite rather than being left out of one.
+
+What it does *not* do is rescue the 265.8M. The ~52.0M opportunity count is
+corroborated ten independent ways; GAM ran ~52.0M video auctions in the window,
+full stop. Magnite cannot have received 265.8M **Open Bidding** requests out of
+~52.0M auctions unless each auction sent it roughly five.
 
 ## What it means for the comparison
 
