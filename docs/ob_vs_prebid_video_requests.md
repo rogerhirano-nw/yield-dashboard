@@ -73,45 +73,56 @@ corroborated ten independent ways; GAM ran ~52.0M video auctions in the window,
 full stop. Magnite cannot have received 265.8M **Open Bidding** requests out of
 ~52.0M auctions unless each auction sent it roughly five.
 
-## On-page forensics: the video ad call is not made in the browser
+## On-page forensics: INCONCLUSIVE, and why (read before repeating it)
 
-Headless Chromium against live pages, 2026-09-18 (`scripts/video_slot_forensics.py`, article +
-homepage, 70–200s dwell each):
+An earlier revision of this doc concluded from these probes that "the video ad
+call is not made in the browser — it is served server-side by the player
+vendor." **That was wrong and is withdrawn.** It inferred a mechanism from an
+absence of requests in a session where the video could never have played.
 
-| Surface | `#nw-video-player` | `<video>` playing | GAM **video** ad requests | GPT slots |
-|---|---|---|---|---|
-| Homepage | yes | 2 | **0** | 5 display |
-| Article (texas-republicans-…) | yes | 2 | **0** | 15 display |
-| Article (trumps-russia-…) | no | 0 | **0** | 7 display |
-| Article (lindsay-clancy-…) | yes | 2 | **0** | 15 display |
+`scripts/video_slot_forensics.py` against
+`newsweek.com/texas-republicans-face-generational-wipeout-…`, 240s:
 
-The player is present on **3 of the 4** surfaces; the request count is **0 on
-all four**. Two facts follow, both load-bearing:
+| What was checked | Result |
+|---|---|
+| `#nw-video-player` present | yes |
+| `<video>` `paused` | `false` — **misleading, see below** |
+| `<video>` `currentTime` after 240s | **0** (never advanced) |
+| `<video>` `readyState` / `networkState` | **0 / 0** — no source ever attached |
+| GAM `/gampad/ads` requests | 3, all `output=ldjh` (display), **no VAST** |
+| `imasdk.googleapis.com/js/sdkloader/ima3.js` | **loaded** |
+| `google.ima` / `google.ima.AdsLoader` | **both present** |
+| `prebid.videostep.com/Bid/VideoAdContent` | 1 request, t=2.7s |
 
-1. **No video ad unit is registered in GPT on any surface** — every GPT slot is
-   display (`inarticle1-10`, `oop1-3`, `sticky`, `interstitial`, `homepage1-3`).
-2. **The player plays video and never issues a client-side VAST/VMAP request.**
-   Zero across every page, including ones where the player was actively playing.
+**The video never played.** `paused: false` only means `play()` was called; with
+`readyState` and `networkState` both 0 and `currentTime` frozen at 0, no media
+was ever loaded. Root cause, confirmed directly:
 
-So the video ad call happens **server-side, in the player vendor's layer** (the
-page loads `cs.minutemedia-prebid.com` and `prebid.videostep.com`), not from the
-browser. GAM still sees the resulting video requests — the `video` yield group
-logs 52.0M callouts — so the chain is player → vendor server → GAM → OB callout
-to Magnite.
+```
+video.canPlayType('video/mp4; codecs="avc1.42E01E")  -> ''   (H.264: no)
+video.canPlayType('audio/mp4; codecs="mp4a.40.2"')   -> ''   (AAC:   no)
+video.canPlayType('application/vnd.apple.mpegurl')   -> ''   (HLS:   no)
+video.canPlayType('video/webm; codecs="vp8, vorbis"') -> 'probably'
+```
 
-**Why this matters for the 5.11x.** The sequential-request behaviour (one slot,
-a fresh request at the end of each video) is real, but it cannot by itself
-explain the gap: each re-request is its own auction and GAM counts each as a
-callout, so it inflates both sides equally. What the forensics add is that there
-is a **server-side hop between the player and GAM that neither side's report
-shows**, and it is the one place a request could be multiplied without appearing
-in GAM's callout count. That is now the most likely place to look — and it is a
-question for the player vendor as much as for Magnite.
+Playwright's bundled Chromium ships **without proprietary codecs**. The site's
+video is H.264, so the player can never start, no ad break ever occurs, and no
+VAST request is ever made. The absence of video ad requests is an artifact of
+the test environment, not a fact about the page.
 
-**What browser forensics cannot settle here**, stated plainly: because the ad
-call never crosses the browser, no amount of on-page instrumentation will count
-these requests. Resolving the fan-out needs the vendor's own request logs, or
-Magnite's definition of an OB "ad request". Do not expect a DOM-level repro.
+**What the probe does establish**, and it points the opposite way from the
+withdrawn claim: **the client-side video ad path exists.** The IMA SDK is loaded
+and `google.ima.AdsLoader` is instantiated. When a real browser plays the video,
+IMA requests VAST from `securepubads.g.doubleclick.net/gampad/ads` — which *is* a
+GAM video ad request and *is* counted in the 52.0M callouts. So the
+end-of-video re-request almost certainly does reach GAM as its own callout,
+which **reinforces** the point that it inflates both sides equally and cannot
+explain the 5.11x.
+
+**To actually observe the sequential re-request** you need a browser with
+proprietary codecs: `BROWSER_CHANNEL=chrome` against a real Chrome install
+(the same escape hatch `scripts/prebid_render_forensics.py` documents for
+SmileWanted), run from a laptop. A datacenter headless Chromium cannot do it.
 
 ## Third-party corroboration of the request mix (AssertiveYield)
 

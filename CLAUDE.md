@@ -1180,20 +1180,23 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   the table's highest eCPM — which is the bigger money question. The
   `Ad Responses` column is bids across seats, not per-auction (OB 115.6% of its
   own auctions; Exchange API logs more responses than requests on some days),
-  which is why it reconciles against GAM `BIDS` and nothing else. **The video ad
-  call is not made in the browser** (`scripts/video_slot_forensics.py`, 4 live
-  surfaces): the player plays on 3 of 4 and issues **zero** client-side
-  VAST/VMAP, and **no video ad unit is registered in GPT at all** — every slot
-  is display. It is served server-side by the player vendor
-  (cs.minutemedia-prebid.com / prebid.videostep.com), so the chain is player →
-  vendor server → GAM → OB callout, and **that hop appears in neither side's
-  report** — the one place a request can multiply without reaching GAM's callout
-  count. Corollary: **on-page instrumentation cannot count these requests**, so
-  don't chase a DOM repro; it needs the vendor's logs or Magnite's definition of
-  an OB "ad request". The sequential re-request at video end (one slot, a fresh
-  request each time) is real but explains nothing on its own — each is a
-  separate auction GAM counts as a callout, inflating both sides equally.
-  AssertiveYield corroborates the mix: video is 14.4% of rubicon's prebid
+  which is why it reconciles against GAM `BIDS` and nothing else. **On-page
+  forensics are INCONCLUSIVE here and an earlier claim from them was wrong**:
+  `scripts/video_slot_forensics.py` found zero client-side VAST requests and a
+  first pass concluded the video ad call must be served server-side by the player
+  vendor — **withdrawn**. The video never played: `readyState`/`networkState` 0,
+  `currentTime` frozen at 0, because **Playwright's bundled Chromium ships without
+  proprietary codecs** (`canPlayType` returns `''` for H.264, AAC and HLS) and the
+  site's video is H.264. `paused:false` means only that `play()` was called — do
+  not read it as playback. What the probe *does* show points the other way: the
+  **IMA SDK is loaded and `google.ima.AdsLoader` is instantiated**, so the
+  client-side video ad path exists and a real play would request VAST from
+  `securepubads.g.doubleclick.net/gampad/ads` — a GAM video callout, counted in
+  the 52.0M. The sequential re-request at video end (one slot, a fresh request
+  each time) therefore inflates both sides equally and explains nothing on its
+  own. To observe it for real you need `BROWSER_CHANNEL=chrome` against a real
+  Chrome install from a laptop; a datacenter headless Chromium cannot play the
+  video at all. AssertiveYield corroborates the mix: video is 14.4% of rubicon's prebid
   requests vs GAM's own 16.9% video share, and Magnite's video-only 265.8M is
   86% of GAM's *entire* OB callout volume across both formats (307.6M). **AY's
   absolute prebid counts run ~0.5% of GAM's — sampled or narrowly scoped, so use

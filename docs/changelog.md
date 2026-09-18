@@ -42,6 +42,23 @@ auctions into **36,971 paid impressions and $551** in 30 days — 0.08% fill on 
 table's *highest* eCPM ($14.90), 10.9% of video requests for 0.6% of video
 revenue. Bigger money question than the OB/PBS comparison; separate work.
 
+**On-page forensics: inconclusive, and one wrong conclusion withdrawn.** Roger's
+detail — one video slot, a fresh request at the end of each video — killed the
+ad-pod explanation (a pod is several ads in *one* request; sequential
+re-requests are separate auctions GAM counts separately, so they inflate both
+sides equally). Headless probing then found zero client-side VAST requests, and
+a first pass concluded the video ad call must be served server-side by the
+player vendor. **That was wrong.** The video never played: `readyState` and
+`networkState` 0, `currentTime` frozen at 0, because Playwright's bundled
+Chromium ships **without proprietary codecs** (`canPlayType` → `''` for H.264,
+AAC, HLS) and the site's video is H.264. `paused:false` only means `play()` was
+called. What the probe does establish points the other way: the **IMA SDK loads
+and `google.ima.AdsLoader` is instantiated**, so the client-side video ad path
+exists and a real play requests VAST from GAM — a callout counted in the 52.0M.
+`scripts/video_slot_forensics.py` now checks codec support up front and reports
+INCONCLUSIVE rather than repeating the bad inference; a real answer needs
+`BROWSER_CHANNEL=chrome` from a machine with Chrome.
+
 Added `docs/ob_vs_prebid_video_requests.md` plus
 `scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that runs the
 reconciliation (every OB buyer by yield group, the four-way comparison table, the
