@@ -29,9 +29,18 @@ jobs:
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          CSV_OUT: /tmp/magnite_ob_gam_rows.csv
         run: |
           set -o pipefail
           python scripts/pull_magnite_ob_video_requests.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload the raw GAM rows as a shareable CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: magnite-ob-gam-rows
+          path: /tmp/magnite_ob_gam_rows.csv
+          if-no-files-found: warn
 
       - name: Post output as PR comment
         if: always()

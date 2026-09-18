@@ -224,7 +224,18 @@ def main() -> None:
     else:
         print("  (need both yield groups in the window to run this test)")
 
-    # 5. Daily series, so a partial-day or gap at either end is visible rather
+    # 5. A shareable CSV of the raw rows behind the claim — this is what goes
+    #    to Google Support / the SSP, so it is written straight from the API
+    #    response with no reshaping beyond column ordering.
+    out_csv = os.environ.get("CSV_OUT")
+    if out_csv:
+        cols = ["date", "yield_group_name", "yield_group_buyer_name"] + METRIC_COLS
+        mag.sort_values(["yield_group_name", "date"])[cols].to_csv(out_csv, index=False)
+        print(f"\n[csv] wrote {out_csv} ({len(mag)} rows: "
+              f"{mag['yield_group_name'].nunique()} yield groups x "
+              f"{mag['date'].nunique()} days)")
+
+    # 6. Daily series, so a partial-day or gap at either end is visible rather
     #    than silently skewing the window total.
     daily = (
         video.groupby("date", as_index=False)[METRIC_COLS]
