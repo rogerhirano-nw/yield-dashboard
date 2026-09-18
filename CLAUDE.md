@@ -1151,6 +1151,24 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
+- `docs/ob_vs_prebid_video_requests.md` — why Magnite's Open Bidding video
+  **ad requests** (265.8M) run 2.07x Prebid Server (RP Hosted) (128.2M) while
+  its **auctions** run *fewer* (99.8M vs 125.9M): Magnite counts an OB ad
+  request at the **Google callout**, before any auction decision, so the two
+  bars are a callout count and an auction count. The tell is that OB's
+  auction/ad-request ratio sits in a 33.4–42.1% band on **every one of 30
+  days** while every other integration is 92–99% — a boundary in the counting,
+  not behaviour. Two findings outrank the question: per **auction** OB is the
+  best monetizer in the table ($0.394/1k vs $0.246 for Prebid Server, on the
+  *lowest* eCPM), so the chart's implied "OB is wasteful" reading is backwards;
+  and **Prebid Server (3p Hosted)** turned 45.3M auctions into 36,971 paid
+  impressions and **$551** in 30 days (0.08% fill on the table's highest eCPM),
+  which is the real money question. The `Ad Responses` column is not
+  per-auction (OB 115.6% of auctions; Exchange API logs more responses than
+  requests on some days) — don't build an argument on it. Cross-check script:
+  `scripts/pull_magnite_ob_video_requests.py` + the matching one-off workflow,
+  which reconciles GAM `YIELD_GROUP_CALLOUTS` for the `video` yield group
+  against Magnite's own 265,819,907 over the identical window.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in

@@ -4,6 +4,36 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-18 — OB vs Prebid Server video ad requests: the bars aren't comparable
+
+Magnite raised Open Bidding video ad-request volume "in comparison to PB
+server" — their chart shows OB at **265.8M** against **128.2M** for Prebid
+Server (RP Hosted) over 2026-08-18 → 2026-09-16, a 2.07x gap.
+
+**It is a counting boundary, not a volume difference.** Only **37.5%** of those
+OB ad requests become an auction, against **98.2%** for Prebid Server. On
+auctions — the first column measuring the same event on both sides — Prebid
+Server runs **more** (125.9M vs 99.8M). Magnite logs an OB ad request at the
+Google callout, before any auction decision; a Prebid Server request is counted
+at the auction. The tell: OB's auction rate sits in a **33.4–42.1%** band on
+every one of the 30 days while everything else is 92–99%.
+
+Two findings outrank the question asked. **(1)** Per auction, OB is the table's
+best monetizer — $0.394/1k vs $0.246 for Prebid Server — on the *lowest* eCPM
+($8.44 vs $12.94), because its auction→impression fill is 4.67% against 1.90%.
+The "OB is wasteful" reading the chart invites is backwards. **(2) Prebid Server
+(3p Hosted)** turned 64.5M ad requests and 45.3M auctions into **36,971 paid
+impressions and $551** in 30 days — 0.08% fill on the table's *highest* eCPM
+($14.90), 10.9% of video requests for 0.6% of video revenue. That is the real
+money question and needs raising separately.
+
+Added `docs/ob_vs_prebid_video_requests.md` (full table, the per-day auction-rate
+evidence, and why the `Ad Responses` column is unusable — it isn't per-auction)
+plus `scripts/pull_magnite_ob_video_requests.py` and a one-off workflow that
+reconciles GAM `YIELD_GROUP_CALLOUTS` for the `video` yield group against
+Magnite's own 265,819,907 over the identical window, to confirm the callout
+theory from our own data rather than taking the SSP's word for it.
+
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 
 The daily health check had been red since 2026-09-15 on one row — `ttd_chumba
