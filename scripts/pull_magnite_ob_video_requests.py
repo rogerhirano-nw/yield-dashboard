@@ -183,7 +183,48 @@ def main() -> None:
           "   bid count also equals its display bid count is more likely one total\n"
           "   attributed to both yield groups — see docs/ob_vs_prebid_video_requests.md)")
 
-    # 4. Daily series, so a partial-day or gap at either end is visible rather
+    # 4. The decisive test for the bids anomaly: are Magnite's DAILY display
+    #    bids and DAILY video bids the same number? At window level they match
+    #    to 0.17%, which is either one total attributed to both yield groups or
+    #    a remarkable coincidence. A day-by-day match settles it; a day-by-day
+    #    divergence means the two figures really are independently measured and
+    #    the window-level match is chance.
+    print("\n=== Magnite: daily DISPLAY bids vs daily VIDEO bids ===")
+    mag_daily = (
+        mag.groupby(["date", "yield_group_name"], as_index=False)[METRIC_COLS].sum()
+    )
+    piv_d = mag_daily.pivot(index="date", columns="yield_group_name",
+                            values="yield_group_bids").fillna(0).astype("int64")
+    piv_c = mag_daily.pivot(index="date", columns="yield_group_name",
+                            values="yield_group_callouts").fillna(0).astype("int64")
+    if "display" in piv_d.columns and "video" in piv_d.columns:
+        print(f"  {'date':<12}{'display bids':>15}{'video bids':>15}{'vid/disp':>10}"
+              f"{'video callouts':>16}{'vid b/c':>9}")
+        exact = near = 0
+        for d in piv_d.index:
+            db, vb = int(piv_d.loc[d, "display"]), int(piv_d.loc[d, "video"])
+            vc = int(piv_c.loc[d, "video"]) if "video" in piv_c.columns else 0
+            r = vb / db if db else float("nan")
+            exact += (db == vb)
+            near += (db and abs(vb - db) / db < 0.01)
+            print(f"  {str(d)[:10]:<12}{db:>15,}{vb:>15,}{r:>10.3f}{vc:>16,}"
+                  f"{(vb / vc if vc else float('nan')):>9.2f}")
+        n = len(piv_d.index)
+        print(f"\n  days where display bids == video bids exactly: {exact}/{n}")
+        print(f"  days where they agree within 1%:               {near}/{n}")
+        if near >= n * 0.9:
+            print("  -> VERDICT: the same bid total is being reported under both yield\n"
+                  "     groups. GAM's per-yield-group bid split is not trustworthy for\n"
+                  "     this partner, and the video figure should not be used.")
+        else:
+            print("  -> VERDICT: the daily figures diverge, so the two are independently\n"
+                  "     measured and the window-level match is coincidence. The video\n"
+                  "     bids > callouts anomaly then needs a different explanation\n"
+                  "     (multi-seat bidding is the leading candidate).")
+    else:
+        print("  (need both yield groups in the window to run this test)")
+
+    # 5. Daily series, so a partial-day or gap at either end is visible rather
     #    than silently skewing the window total.
     daily = (
         video.groupby("date", as_index=False)[METRIC_COLS]
