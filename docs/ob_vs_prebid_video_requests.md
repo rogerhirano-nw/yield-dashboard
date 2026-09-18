@@ -73,6 +73,65 @@ corroborated ten independent ways; GAM ran ~52.0M video auctions in the window,
 full stop. Magnite cannot have received 265.8M **Open Bidding** requests out of
 ~52.0M auctions unless each auction sent it roughly five.
 
+## On-page forensics: the video ad call is not made in the browser
+
+Headless Chromium against live pages, 2026-09-18 (`scripts/` probe, article +
+homepage, 70–200s dwell each):
+
+| Surface | `#nw-video-player` | `<video>` playing | GAM **video** ad requests | GPT slots |
+|---|---|---|---|---|
+| Homepage | yes | 2 | **0** | 5 display |
+| Article (texas-republicans-…) | yes | 2 | **0** | 15 display |
+| Article (trumps-russia-…) | no | 0 | **0** | 7 display |
+
+Two facts, both load-bearing:
+
+1. **No video ad unit is registered in GPT on any surface** — every GPT slot is
+   display (`inarticle1-10`, `oop1-3`, `sticky`, `interstitial`, `homepage1-3`).
+2. **The player plays video and never issues a client-side VAST/VMAP request.**
+   Zero across every page, including ones where the player was actively playing.
+
+So the video ad call happens **server-side, in the player vendor's layer** (the
+page loads `cs.minutemedia-prebid.com` and `prebid.videostep.com`), not from the
+browser. GAM still sees the resulting video requests — the `video` yield group
+logs 52.0M callouts — so the chain is player → vendor server → GAM → OB callout
+to Magnite.
+
+**Why this matters for the 5.11x.** The sequential-request behaviour (one slot,
+a fresh request at the end of each video) is real, but it cannot by itself
+explain the gap: each re-request is its own auction and GAM counts each as a
+callout, so it inflates both sides equally. What the forensics add is that there
+is a **server-side hop between the player and GAM that neither side's report
+shows**, and it is the one place a request could be multiplied without appearing
+in GAM's callout count. That is now the most likely place to look — and it is a
+question for the player vendor as much as for Magnite.
+
+**What browser forensics cannot settle here**, stated plainly: because the ad
+call never crosses the browser, no amount of on-page instrumentation will count
+these requests. Resolving the fan-out needs the vendor's own request logs, or
+Magnite's definition of an OB "ad request". Do not expect a DOM-level repro.
+
+## Third-party corroboration of the request mix (AssertiveYield)
+
+AY's `prebid_analytics` for the identical window, `mediaType` x bidder:
+
+| rubicon (client-side Prebid) | requests |
+|---|---|
+| banner | 1,365,007 |
+| video | 230,055 |
+| **video share** | **14.4%** |
+
+GAM's own split is **16.9%** video (52.0M of 307.6M callouts). Two independent
+systems put video at roughly a seventh of request volume. Magnite's video-only
+claim of 265.8M is **86% of GAM's entire OB callout volume across both formats**
+(307.6M) — for that to be an opportunity count, video would have to dominate the
+mix, and neither GAM nor AY says it does.
+
+**Caveat, load-bearing:** AY's prebid absolute counts run ~0.5% of GAM's callout
+volume, so that dataset is sampled or narrowly scoped. **Only the ratios within
+it are usable** — do not quote AY's raw request numbers against GAM's or
+Magnite's. The sampling rate has not been calibrated.
+
 ## What it means for the comparison
 
 Rebuilt on the request counts each side actually receives — GAM's callouts for
