@@ -22,6 +22,7 @@ import re
 import sys
 import time
 import urllib.request
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1129,10 +1130,91 @@ def refresh_dv_ivt() -> int:
     return len(df)
 
 
+def _warn_if_report_stale(conn, table: str, df: pd.DataFrame) -> None:
+    """Warn when a freshly pulled report is no newer than what's already stored.
+
+    A TTD schedule that stops (campaign ended) or gets renamed (needle stops
+    matching) leaves the newest *matching* notification in the inbox, so the
+    pull keeps succeeding and re-writing the same frozen report — "1222 rows
+    written" every day for 12 days in the 2026-09 Chumba incident, with nothing
+    in the sweep log to distinguish it from a healthy run.  Only the separate
+    daily health check noticed, two days later.  This makes the freeze visible
+    in the sweep that causes it.
+    """
+    if "date" not in df.columns:
+        return
+    new_max = max((d for d in df["date"].dropna().tolist()), default=None)
+    if new_max is None:
+        return
+    try:
+        stored_max = conn.execute(text(f'SELECT MAX(date) FROM "{table}"')).scalar()
+    except Exception as exc:  # noqa: BLE001 — an advisory check must never fail the write
+        logger.debug("Could not read MAX(date) from %s: %s", table, exc)
+        return
+    if stored_max is not None and hasattr(stored_max, "date"):
+        stored_max = stored_max.date()
+    if stored_max is not None and new_max <= stored_max:
+        logger.warning(
+            "%s: pulled report is NOT newer than the cache (report max %s <= "
+            "stored max %s) — the schedule may have stopped or been renamed; "
+            "re-writing the same rows",
+            table, new_max, stored_max,
+        )
+    else:
+        logger.info("%s: report advances the cache to %s (was %s)",
+                    table, new_max, stored_max)
+
+
+def _sql_type_for(series) -> str:
+    """Minimal pandas dtype -> SQL type for an added column."""
+    kind = getattr(series.dtype, "kind", "O")
+    if kind == "i":
+        return "bigint"
+    if kind == "f":
+        return "double precision"
+    if kind == "b":
+        return "boolean"
+    return "text"
+
+
+def _widen_table_to(conn, table: str, df: pd.DataFrame) -> None:
+    """ALTER the table to cover every column in *df*, preserving its rows.
+
+    The alternative — DROP and recreate on any column-set change — silently
+    discards history whenever an upstream report is replaced, which is exactly
+    what a replaced report does (the 2026-09 Chumba schedule's export only
+    reaches back to its own start date).  Widening to the union keeps both
+    eras in one table: a column only the retired report had simply reads NULL
+    on the new rows, and a new column reads NULL on the old ones.
+
+    It also keeps the table's RLS grants intact, since nothing is recreated —
+    the daily DROP+recreate is what re-opened RLS on `ttd_luckyland` and drove
+    the 2026-07-27 health-check loop.
+
+    Columns are only ever ADDED; nothing is dropped or retyped.
+    """
+    existing = {c["name"] for c in sa_inspect(conn).get_columns(table)}
+    added = []
+    for col in df.columns:
+        if col in existing:
+            continue
+        conn.execute(text(
+            f'ALTER TABLE "{table}" ADD COLUMN "{col}" {_sql_type_for(df[col])}'
+        ))
+        added.append(col)
+    dropped = sorted(existing - set(df.columns))
+    if added or dropped:
+        logger.info(
+            "%s: schema changed — added %d column(s) %s; %d column(s) absent "
+            "from this report keep their history and read NULL on new rows %s",
+            table, len(added), added, len(dropped), dropped,
+        )
+
+
 def _refresh_ttd_campaign(
     subject_needle: str,
     table: str,
-    primary_conv_col: str | None = None,
+    primary_conv_col: str | Sequence[str] | None = None,
 ) -> int:
     """Poll newsweek@agentmail.to for a TTD report whose subject contains
     *subject_needle*, download the XLSX/CSV, and upsert into *table*.
@@ -1173,12 +1255,15 @@ def _refresh_ttd_campaign(
     with _engine().begin() as conn:
         created = table not in sa_inspect(conn).get_table_names()
         if not created:
-            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
-            if existing_cols != set(df.columns):
-                logger.info("Schema change for %s — dropping and recreating", table)
-                conn.execute(text(f'DROP TABLE "{table}"'))
-                created = True
-            elif "date" in df.columns:
+            _warn_if_report_stale(conn, table, df)
+            # A replaced report brings a different column set.  WIDEN the table
+            # to the union instead of dropping it, so the campaign keeps its
+            # history across the changeover (Roger's call, 2026-09-17 — the
+            # replacement Chumba report only reaches back to 09-06, and a drop
+            # would have taken every earlier row with it).  Columns only the old
+            # report had stay NULL on new rows and vice versa.
+            _widen_table_to(conn, table, df)
+            if "date" in df.columns:
                 dates = [
                     d.isoformat() if d is not None else None
                     for d in df["date"].dropna().unique().tolist()
@@ -1210,10 +1295,25 @@ def _refresh_ttd_campaign(
 
 def refresh_ttd_chumba() -> int:
     """Poll for VGW Chumba Casino TTD report and upsert into ttd_chumba."""
-    # Chumba KPI = pixel 01 (registrations) only, not pixel_01 + pixel_03.
+    # Chumba KPI = ONE pixel under ONE attribution model, never a sum.
+    #
+    # In the replacement report (2026-09-06 →) the Registered pixel reads 0 on
+    # every row, so the KPI is **First Purchase, IdentityAllianceWithHousehold**
+    # (Roger, 2026-09-17) — the household-matched model, 95 conversions over
+    # 09-06..09-16 vs 5 for the device-only `IdentityAlliance` column.  Picking
+    # the other model, or summing the two, changes CPA by ~19x.
+    #
+    # Two candidates so the pull spans the changeover: the replacement report's
+    # pixel first, the retired schedule's `01 - …` (registrations) second.
+    # NOTE those two are different events, so a CPA series spanning 09-05/09-06
+    # changes definition at that seam — see the changeover note in CLAUDE.md.
     return _refresh_ttd_campaign(
         CHUMBA_SUBJECT_NEEDLE, "ttd_chumba",
-        primary_conv_col="01 - Total Click + View Conversions",
+        primary_conv_col=(
+            "usergenChumba First Purchase TDID & UID2 - udkazz3 - "
+            "IdentityAllianceWithHousehold - Total Click + View Conversions",
+            "01 - Total Click + View Conversions",
+        ),
     )
 
 
