@@ -131,6 +131,37 @@ def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
     return rows
 
 
+# Vertical token (index 2 of the Newsweek naming convention) -> the article
+# category slug to shoot against. `cat`/`sitecat` on a newsweek.com page is
+# "nwus-" + the primary category slug, hyphens as underscores.
+_VERTICAL_SLUGS = {
+    "health": ["health"],
+    "finance": ["personal_finance", "business"],
+    "auto": ["autos"],
+    "automotive": ["autos"],
+    "tech": ["technology"],
+    "technology": ["technology"],
+    "retail": ["business"],
+    "travel": ["travel"],
+    "sports": ["sports"],
+    "entertainment": ["culture", "entertainment"],
+    "politics": ["politics"],
+    "education": ["education"],
+}
+
+
+def _vertical(order_name: str | None) -> tuple[str | None, list[str]]:
+    """(vertical, candidate category slugs) from the order name's token 2.
+    Non-convention names give (None, [])."""
+    parts = (order_name or "").split("_")
+    if len(parts) < 3 or parts[0] != "Newsweek":
+        return None, []
+    v = parts[2].strip()
+    if not v or v.upper() in {"NA", "N/A"}:
+        return None, []
+    return v, _VERTICAL_SLUGS.get(v.lower().replace("-", ""), [])
+
+
 def build_markdown(payload: dict, today: date) -> str:
     """The Screenshots Document body, derived from what the pull found."""
     o = payload["order"]
@@ -152,6 +183,7 @@ def build_markdown(payload: dict, today: date) -> str:
         for u in li["targeted_ad_units"]
     ) or "—"
     ros = any(u["include_descendants"] for u in li["targeted_ad_units"])
+    vertical, cat_slugs = _vertical(o.get("name"))
 
     blockers = []
     if n_creatives == 0:
@@ -216,6 +248,47 @@ def build_markdown(payload: dict, today: date) -> str:
             "the exclusion is narrowed."
         )
 
+    if vertical:
+        topic = (
+            f"the order's vertical is **{vertical}**, so pick a "
+            f"{vertical.lower()} story"
+        )
+        slug_hint = (
+            " Those pages carry `cat` = "
+            + " or ".join(f"`nwus-{s}`" for s in cat_slugs) + "."
+        ) if cat_slugs else ""
+    else:
+        topic = (
+            "the order name carries no vertical token, so take the category "
+            "from the client's own business"
+        )
+        slug_hint = ""
+
+    page_choice = (
+        f"### Picking the page\n\n"
+        f"The article has to clear two tests, both of them before the shot is "
+        f"taken.\n\n"
+        f"**1. In the client's industry.** {topic[0].upper()}{topic[1:]}, not "
+        f"whatever article happens to be open. An ad shot beside unrelated "
+        f"content reads as careless, and the client notices.{slug_hint} Verify "
+        f"on the page: the `cat` / `sitecat` GPT key-value is `nwus-` plus the "
+        f"primary category slug, hyphens as underscores.\n\n"
+        f"**2. Brand safe.** Industry-relevant is not enough \u2014 a malpractice "
+        f"suit, an outbreak, a lawsuit or a death story is on-topic and still "
+        f"the wrong page to hand a client. Verify on the page: `adexclusion` "
+        f"must be empty, and the brand-safety key-values (`ABS` / `CBS` / "
+        f"`BSC`, Proximic `vnd_prx_segments`) must come back clean. If a page "
+        f"carries an exclusion or a negative segment, pick another one \u2014 do "
+        f"not shoot it and crop around the headline."
+    )
+    if ros:
+        page_choice += (
+            "\n\nThis line is run-of-site with no contextual targeting, so the "
+            "page is a presentation choice for this document, not something "
+            "the trafficking guarantees. Say so if anyone reads the shot as "
+            "proof of contextual placement."
+        )
+
     goal = (
         f"{li['goal_units']:,} impressions, "
         f"{(li['goal_type'] or '').lower()}, {li['cost_type']}"
@@ -260,6 +333,8 @@ Each shot carries the URL, the date and time, and the size. Article content \
 slots on newsweek.com are lazily defined, so the page has to be scrolled to \
 the slot before the ad exists in GPT — a screenshot taken at page load will \
 show an empty well.
+
+{page_choice}
 
 ## Before capture
 

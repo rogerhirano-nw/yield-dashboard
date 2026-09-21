@@ -1166,6 +1166,12 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   per-size capture checklist, live blockers), all derived from the pull
   rather than a fixed template. Capture runs off the
   `preview_mobkoi_dom.yml` path. Campaign-agnostic — order id in, doc out.
+  **The page a shot is taken on has to clear two tests**: in the client's
+  industry (vertical = token 2 of the order name → a `cat`/`sitecat` slug)
+  AND brand safe (`adexclusion` empty, `ABS`/`CBS`/`BSC` + Proximic
+  `vnd_prx_segments` clean) — on-topic-but-grim (malpractice, outbreak,
+  death) is the classic trap. A run-of-site line says outright that the
+  page is a presentation choice, not contextual targeting that was bought.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz

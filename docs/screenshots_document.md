@@ -44,7 +44,30 @@ template:
 - **Before capture** — only the blockers that actually apply, as checkboxes.
 - **Screenshots** — the placeholder the images land in.
 
-Two things it always says, because both have bitten us:
+## Picking the page
+
+Two tests, both before the shot is taken. The generator emits this per campaign.
+
+**In the client's industry.** The vertical is token 2 of the order name
+(`Newsweek_Direct_`**`Health`**`_...`), mapped to a category slug in
+`_VERTICAL_SLUGS`. Shooting a hospital's ad beside a celebrity divorce story
+reads as careless and the client notices. Verify on the page: `cat` / `sitecat`
+is `nwus-` + the primary category slug, hyphens as underscores.
+
+**Brand safe.** On-topic is not enough — a malpractice suit, an outbreak or a
+death story is squarely in a hospital's vertical and squarely the wrong page to
+hand them. Verify on the page: `adexclusion` empty, and the brand-safety
+key-values (`ABS` / `CBS` / `BSC`, Proximic `vnd_prx_segments`) clean. A page
+carrying an exclusion or a negative segment gets skipped, not cropped around.
+
+For a run-of-site line the page choice is a presentation decision for the
+document, not something the trafficking guarantees — the generated body says so
+rather than letting the shot imply contextual targeting that was never bought.
+
+Add a vertical to `_VERTICAL_SLUGS` when a new one turns up; an unmapped or
+`NA` vertical still gets the two tests, just without the slug hint.
+
+Two things the body always says, because both have bitten us:
 
 - GAM end times are network-tz instants — a line ending 13 Oct 23:59 ET reads
   as 14 Oct in UTC.
