@@ -62,11 +62,27 @@ Two tests, both before the shot is taken. The generator emits this per campaign.
 reads as careless and the client notices. Verify on the page: `cat` / `sitecat`
 is `nwus-` + the primary category slug, hyphens as underscores.
 
+**Do not trust the section listing.** Newsweek cross-posts editorially, so an
+article sitting under /health may carry a different `cat` entirely — one checked
+on 21 Sep 2026 read `nwus-family_parenting`. Only the page's own key-value
+counts.
+
 **Brand safe.** On-topic is not enough — a malpractice suit, an outbreak or a
 death story is squarely in a hospital's vertical and squarely the wrong page to
-hand them. Verify on the page: `adexclusion` empty, and the brand-safety
-key-values (`ABS` / `CBS` / `BSC`, Proximic `vnd_prx_segments`) clean. A page
-carrying an exclusion or a negative segment gets skipped, not cropped around.
+hand them. Newsweek already classifies this, so read it off the page instead of
+judging by the headline:
+
+| Key-value | Passes | Fails |
+| --- | --- | --- |
+| `brandsafe` | `y` | `n` |
+| `adexclusion` | empty | `generic_brand_safety` |
+
+`ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque segment-id
+lists, not a pass/fail — `brandsafe` is the flag. (Verified live 21 Sep 2026
+against four /health articles; an earlier draft of this runbook named the wrong
+keys.)
+
+A failing page gets skipped, not cropped around.
 
 For a run-of-site line the page choice is a presentation decision for the
 document, not something the trafficking guarantees — the generated body says so
@@ -86,6 +102,21 @@ Two things the body always says, because both have bitten us:
 It also flags, when true, that an advertiser name containing `[nw]` is excluded
 from the dashboard's Direct table — that campaign won't show up there while it
 runs.
+
+## Worked example (21 Sep 2026)
+
+Four /health listing articles, checked live for the American Hospital Dubai
+flight:
+
+| Article | `cat` | `brandsafe` | Verdict |
+| --- | --- | --- | --- |
+| AI medical advice / parents | `nwus-family_parenting` | `y` | Fails — wrong vertical |
+| Chronic stress and the heart | `nwus-health` | `n` | Fails — flagged unsafe |
+| One type of sleep, 83 diseases | `nwus-health` | `n` | Fails — flagged unsafe |
+| Which diets could lower Alzheimer's risk | `nwus-health` | `y` | **Passes** |
+
+Two of the four are in the right vertical and still unusable. That is the whole
+reason for the second test.
 
 ## Capturing the images
 
