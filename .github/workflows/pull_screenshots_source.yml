@@ -1,0 +1,73 @@
+name: Pull Screenshots Document source (one-off)
+
+on:
+  push:
+    branches: [claude/kfshrc-screenshots-doc]
+    paths:
+      - 'scripts/pull_screenshots_source.py'
+      - '.github/workflows/pull_screenshots_source.yml'
+  workflow_dispatch:
+    inputs:
+      order:
+        description: "GAM order id"
+        required: true
+      line_item:
+        description: "GAM line item id to highlight (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager googleads google-auth pandas
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          python scripts/pull_screenshots_source.py \
+            --order "${{ inputs.order || '4198147401' }}" \
+            --line-item "${{ inputs.line_item || '7432006947' }}" \
+            --out screenshots_source.json 2>&1 | tee /tmp/output.txt
+
+      - name: Upload JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-source
+          path: screenshots_source.json
+          if-no-files-found: warn
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Screenshots Document — GAM source pull'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            cat /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
