@@ -125,6 +125,17 @@ flight:
 Two of the four are in the right vertical and still unusable. That is the whole
 reason for the second test.
 
+## What a finished capture looks like
+
+The American Hospital Dubai run (21 Sep 2026) produced six shots in one
+dispatch: each creative in context and close up on desktop, plus the 300x250
+pair on mobile. The 970x250 mobile combination was skipped by design and
+reported as skipped.
+
+A homepage shot was dropped rather than shipped as a placeholder — the line is
+run of site but nothing confirms it serves there, and a client deck should not
+carry an empty slide.
+
 ## Capturing the images
 
 Use the `preview_mobkoi_dom.yml` path: SOAP `getPreviewUrl` for the trafficked
@@ -151,6 +162,6 @@ slide that comes out before the deck goes to the client.
 | Campaign | Order | Doc | Deck | State |
 | --- | --- | --- | --- | --- |
 | KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Not started; no creatives |
-| American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | Delivering; 1 of 7 shot |
+| American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | **Complete** — 6 shots, ready to share |
 
 Both shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion.
