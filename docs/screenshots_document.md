@@ -46,9 +46,12 @@ template:
   reason if not (flight hasn't opened, no creatives attached).
 - **Campaign** — advertiser, order, line item, flight, goal, sizes, targeting,
   PO/IO.
-- **What gets captured** — one row per size: context + close crop on desktop,
-  plus the mobile pair for any size ≤ 400px wide (a 970x250 never needs a
-  phone shot). A run-of-site line gets an extra homepage/section row.
+- **What gets captured** — one row per size, in context, on desktop plus
+  mobile for any size ≤ 400px wide (a 970x250 never needs a phone shot). A
+  run-of-site line gets an extra homepage/section row. **In-context only**: a
+  close crop shows the creative but not where it ran, which is the one thing
+  the document exists to prove. The capture tool still saves a crop per shot
+  as backing material; it just does not go in the deck.
 - **Before capture** — only the blockers that actually apply, as checkboxes.
 - **Screenshots** — the placeholder the images land in.
 
@@ -127,10 +130,10 @@ reason for the second test.
 
 ## What a finished capture looks like
 
-The American Hospital Dubai run (21 Sep 2026) produced six shots in one
-dispatch: each creative in context and close up on desktop, plus the 300x250
-pair on mobile. The 970x250 mobile combination was skipped by design and
-reported as skipped.
+The American Hospital Dubai run (21 Sep 2026) produced six files in one
+dispatch — a context shot and a crop for each of three viable combinations.
+Three went in the deck: 300x250 desktop, 300x250 mobile, 970x250 desktop. The
+970x250 mobile combination was skipped by design and reported as skipped.
 
 A homepage shot was dropped rather than shipped as a placeholder — the line is
 run of site but nothing confirms it serves there, and a client deck should not
@@ -162,6 +165,6 @@ slide that comes out before the deck goes to the client.
 | Campaign | Order | Doc | Deck | State |
 | --- | --- | --- | --- | --- |
 | KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Not started; no creatives |
-| American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | **Complete** — 6 shots, ready to share |
+| American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | **Complete** — 3 in-context shots, ready to share |
 
 Both shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion.
