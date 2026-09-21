@@ -75,7 +75,14 @@ judging by the headline:
 | Key-value | Passes | Fails |
 | --- | --- | --- |
 | `brandsafe` | `y` | `n` |
-| `adexclusion` | empty | `generic_brand_safety` |
+| `adexclusion` | no `*brand_safety*` value | contains `generic_brand_safety` |
+
+**Only a brand-safety exclusion disqualifies a page.** `adexclusion` also
+carries unrelated serving controls, and a GAM on-site preview adds
+`nopassfq` (no passback / no frequency capping) that the same article does not
+have when loaded normally. An earlier version of the gate failed any non-empty
+`adexclusion` and so refused a page that passes — check for the
+`brand_safety` value, not for emptiness.
 
 `ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque segment-id
 lists, not a pass/fail — `brandsafe` is the flag. (Verified live 21 Sep 2026

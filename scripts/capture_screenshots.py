@@ -130,8 +130,18 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
         )
     if bs != "y":
         problems.append(f"not brand safe: brandsafe={bs}")
-    if ax:
-        problems.append(f"ad exclusion set: {ax}")
+    # Only a BRAND-SAFETY exclusion disqualifies a page. `adexclusion` also
+    # carries unrelated serving controls — a GAM on-site preview adds
+    # `nopassfq` (no passback / no frequency capping), which says nothing
+    # about the content and is absent from the same article loaded normally.
+    # Treating any exclusion as a failure blocked a page that passes.
+    unsafe = [v for v in ax if "brand_safety" in str(v).lower()]
+    if unsafe:
+        problems.append(f"brand-safety exclusion set: {unsafe}")
+    other = [v for v in ax if v not in unsafe]
+
+    if other:
+        detail += f"  (ignoring non-brand-safety exclusions: {other})"
 
     if problems and not no_gate:
         return False, detail + "\n     " + "\n     ".join("! " + p for p in problems)
