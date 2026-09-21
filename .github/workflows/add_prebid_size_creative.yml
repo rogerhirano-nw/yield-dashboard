@@ -1,0 +1,64 @@
+name: Add sized Prebid creative to the Prebid orders
+
+on:
+  workflow_dispatch:
+    inputs:
+      size:
+        description: 'Creative size (e.g. 970x250)'
+        required: false
+        default: '970x250'
+      orders:
+        description: 'Comma-separated GAM order ids'
+        required: false
+        default: '3670858241,3671186123'
+      copies:
+        description: 'How many identical creatives (one per concurrent slot of this size on a page)'
+        required: false
+        default: '1'
+      name:
+        description: 'Creative name (blank = Newsweek_Prebid_Display_<size>_UC)'
+        required: false
+        default: ''
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Add creative
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_ORDERS: ${{ inputs.orders }}
+          IN_SIZE: ${{ inputs.size }}
+          IN_COPIES: ${{ inputs.copies }}
+          IN_NAME: ${{ inputs.name }}
+          IN_APPLY: ${{ inputs.apply }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          ARGS="--orders ${IN_ORDERS:-3670858241,3671186123}"
+          ARGS="$ARGS --size ${IN_SIZE:-970x250} --copies ${IN_COPIES:-1}"
+          if [ -n "$IN_NAME" ]; then ARGS="$ARGS --name $IN_NAME"; fi
+          # Only an explicit dispatch can write; a push is always a dry run.
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then
+            ARGS="$ARGS --apply"
+          fi
+          echo "args: $ARGS"
+          python scripts/add_prebid_size_creative.py $ARGS
