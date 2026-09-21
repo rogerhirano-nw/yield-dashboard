@@ -1159,6 +1159,13 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   Companion scripts under `scripts/`: `betting_snapshot_source.py` (read-only
   diagnostic) and `betting_test_lis_batch.py` (the dry-run-by-default batch
   that creates the test LIs + creatives + LICAs and reduces the control goal).
+- `docs/screenshots_document.md` — proof-of-placement Screenshots
+  Documents for any Direct campaign. Dispatch
+  `pull_screenshots_source.yml` with a GAM order id; it returns the raw
+  facts as JSON **and** the doc body as markdown (lead, campaign table,
+  per-size capture checklist, live blockers), all derived from the pull
+  rather than a fixed template. Capture runs off the
+  `preview_mobkoi_dom.yml` path. Campaign-agnostic — order id in, doc out.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz

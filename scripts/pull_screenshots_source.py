@@ -1,22 +1,33 @@
 #!/usr/bin/env python3
 """Read-only pull of everything needed to build a Screenshots Document.
 
-Given an order id (and optionally a single line item id to highlight), dumps:
+Works for ANY GAM order — nothing here is campaign-specific. Given an order id
+(and optionally a line item id to highlight), dumps:
   - order: name, advertiser, trafficker, flight dates, status
   - each line item: name, status, type, flight, sizes, goal, targeted ad units
   - each creative on those LIs: name, type, size, destination URL, preview URL,
     and the image asset URL when GAM hosts the asset
 
-Writes JSON to --out (default /tmp/screenshots_source.json) and prints a
-human-readable summary. No writes to GAM.
+Writes JSON to --out and prints a human-readable summary. With --markdown it
+also writes the Screenshots Document body — lead, campaign table, per-size
+capture checklist, and whatever is actually blocking capture — derived from
+what the pull found, ready to paste into the doc. No writes to GAM.
+
+Order/line item come from --order/--line-item or, for the Actions workflow,
+SCREENSHOTS_ORDER_ID / SCREENSHOTS_LINE_ITEM_ID.
 
 Usage:
-  python scripts/pull_screenshots_source.py --order 4198147401 [--line-item 7432006947]
+  python scripts/pull_screenshots_source.py --order 4198147401 \
+      [--line-item 7432006947] [--markdown doc.md]
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 # --- load .env into os.environ when running locally (no-op in Actions) ---
@@ -81,12 +92,201 @@ def _page(svc, method, where, version=V, limit=200):
     return out
 
 
+def _plural(n: int, one: str, many: str | None = None) -> str:
+    return f"{n:,} {one}" if n == 1 else f"{n:,} {many or one + 's'}"
+
+
+def _pretty_date(s: str | None) -> str:
+    """'2026-09-22 00:00' -> '22 Sep 2026'."""
+    if not s:
+        return "—"
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if not m:
+        return s
+    y, mo, d = (int(g) for g in m.groups())
+    months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    return f"{d} {months[mo - 1]} {y}"
+
+
+def _iso(s: str | None) -> str | None:
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", s or "")
+    return m.group(1) if m else None
+
+
+def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
+    """(size, device, shot) rows — every size in context and close up on
+    desktop; sizes narrow enough to run on a phone get the mobile pair too."""
+    rows: list[tuple[str, str, str]] = []
+    for sz in dict.fromkeys(sizes):  # de-dupe, keep order
+        try:
+            width = int(sz.split("x")[0])
+        except (ValueError, IndexError):
+            width = 0
+        rows.append((sz, "Desktop", "Full page, ad in context"))
+        rows.append((sz, "Desktop", "Close crop, creative legible"))
+        if 0 < width <= 400:
+            rows.append((sz, "Mobile", "Full page, ad in context"))
+            rows.append((sz, "Mobile", "Close crop, creative legible"))
+    return rows
+
+
+def build_markdown(payload: dict, today: date) -> str:
+    """The Screenshots Document body, derived from what the pull found."""
+    o = payload["order"]
+    lis = payload["line_items"]
+    creatives = payload["creatives_by_line_item"]
+    # The highlighted line, else the first one.
+    li = next((x for x in lis if x.get("is_highlight")), lis[0] if lis else None)
+    if li is None:
+        return f"# Screenshots — {o['name']}\n\nOrder {o['id']} has no line items.\n"
+
+    n_creatives = sum(len(v) for v in creatives.values())
+    start_iso, end_iso = _iso(li["start"]), _iso(li["end"])
+    not_started = bool(start_iso and start_iso > today.isoformat())
+    ended = bool(end_iso and end_iso < today.isoformat())
+    sizes = li["sizes"]
+    units = ", ".join(
+        f"`{u['ad_unit']}` ({u['ad_unit_id']})"
+        + (" descendants included" if u["include_descendants"] else "")
+        for u in li["targeted_ad_units"]
+    ) or "—"
+    ros = any(u["include_descendants"] for u in li["targeted_ad_units"])
+
+    blockers = []
+    if n_creatives == 0:
+        blockers.append(
+            "- [ ] **Attach creatives.** The line has zero creative "
+            "associations, which is why GAM shows it "
+            f"{li['status']} rather than Ready. "
+            f"{'Both sizes are' if len(sizes) == 2 else 'All sizes are'} "
+            f"needed: {', '.join(sizes)}."
+        )
+    if not_started:
+        blockers.append(
+            f"- [ ] **Wait for the flight to open.** Nothing serves before "
+            f"{_pretty_date(li['start'])}. First delivery data lands the "
+            f"morning after."
+        )
+
+    if blockers:
+        lead = (
+            f"No screenshots can be taken yet: "
+            + " and ".join(
+                filter(None, [
+                    f"the flight starts {_pretty_date(li['start'])}" if not_started else "",
+                    f"line item {li['id']} is {li['status']} with zero creatives attached"
+                    if n_creatives == 0 else "",
+                ])
+            )
+            + ". Everything below is verified against GAM and is ready to fill "
+              "the moment the line delivers."
+        )
+        shots_body = (
+            "Empty until the line delivers. The shots above drop in here, each "
+            "captioned with URL, date, time and size."
+        )
+    else:
+        lead = (
+            f"Line item {li['id']} is {li['status']} and "
+            f"{'ran' if ended else 'is running'} "
+            f"{_pretty_date(li['start'])} → {_pretty_date(li['end'])}. "
+            f"{_plural(n_creatives, 'creative')} attached."
+        )
+        shots_body = "Captured shots below, each captioned with URL, date, time and size."
+
+    rows = _shot_rows(sizes)
+    shot_tbl = "\n".join(
+        f"| {i} | {sz} | Article page, `inarticle` slot | {dev} | {shot} |"
+        for i, (sz, dev, shot) in enumerate(rows, 1)
+    )
+    if ros:
+        shot_tbl += (
+            f"\n| {len(rows) + 1} | Either | Homepage or section page | Desktop "
+            "| Only if the line serves there |"
+        )
+
+    nw_note = ""
+    if "[nw]" in (o.get("advertiser") or ""):
+        nw_note = (
+            f"\n\nOne thing worth knowing separately: the advertiser is named "
+            f"`{o['advertiser']}`, and the yield dashboard's Direct table excludes "
+            "any line item whose advertiser contains `[nw]`. This campaign will "
+            "not appear there while it runs unless the advertiser is renamed or "
+            "the exclusion is narrowed."
+        )
+
+    goal = (
+        f"{li['goal_units']:,} impressions, "
+        f"{(li['goal_type'] or '').lower()}, {li['cost_type']}"
+        if li["goal_units"] else "—"
+    )
+
+    return f"""# Screenshots — {o['name']}
+
+{lead}
+
+## Campaign
+
+{_plural(len(lis), 'line item')}\
+{', run of site' if ros else ''}, {_plural(len(sizes), 'size')}. \
+Pulled from GAM on {_pretty_date(today.isoformat())}.
+
+| Field | Value |
+| --- | --- |
+| Advertiser | {o['advertiser']} ({o['advertiser_id']}) |
+| Order | {o['id']} — status {o['status']} |
+| Line item | {li['id']} — status **{li['status']}**, type {li['line_item_type']} |
+| Flight | {_pretty_date(li['start'])} → {_pretty_date(li['end'])} ET |
+| Goal | {goal} |
+| Sizes | {', '.join(sizes) or '—'} |
+| Targeting | {units}{' — run of site' if ros else ''} |
+| PO / IO | {o['po_number'] or '—'} |
+
+GAM end times are network-tz instants: the line ends at 23:59 ET on its last \
+day, which reads as the next day in UTC.
+
+## What gets captured
+
+{_plural(len(rows) + (1 if ros else 0), 'shot')}: each size in context and close up, \
+desktop{' and mobile' if any(d == 'Mobile' for _, d, _ in rows) else ''}.\
+{' Run-of-site targeting means the line can serve anywhere under the targeted unit, so an article page is the shot to lead with.' if ros else ''}
+
+| # | Size | Where | Device | Shot |
+| --- | --- | --- | --- | --- |
+{shot_tbl}
+
+Each shot carries the URL, the date and time, and the size. Article content \
+slots on newsweek.com are lazily defined, so the page has to be scrolled to \
+the slot before the ad exists in GPT — a screenshot taken at page load will \
+show an empty well.
+
+## Before capture
+
+{chr(10).join(blockers) if blockers else 'Nothing blocking — the line is live with creatives attached.'}{nw_note}
+
+## Screenshots
+
+{shots_body}
+
+Capture runs off the `preview_mobkoi_dom.yml` workflow — SOAP `getPreviewUrl` \
+for the trafficked creative, then headless Chromium on a live newsweek.com \
+article page, scrolling the lazy slot into view before the shot. Images come \
+back as workflow artifacts.
+"""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--order", required=True)
-    ap.add_argument("--line-item", default=None)
+    ap.add_argument("--order", default=os.environ.get("SCREENSHOTS_ORDER_ID"))
+    ap.add_argument("--line-item",
+                    default=os.environ.get("SCREENSHOTS_LINE_ITEM_ID") or None)
     ap.add_argument("--out", default="/tmp/screenshots_source.json")
+    ap.add_argument("--markdown", default=None,
+                    help="also write the Screenshots Document body here")
     args = ap.parse_args()
+    if not args.order:
+        ap.error("--order is required (or set SCREENSHOTS_ORDER_ID)")
 
     gc = GAMClient()
     client = gc._get_soap_client()
@@ -225,6 +425,8 @@ def main() -> int:
         "creatives_by_line_item": creatives_by_li,
     }
     Path(args.out).write_text(json.dumps(payload, indent=2, default=str))
+    if args.markdown:
+        Path(args.markdown).write_text(build_markdown(payload, date.today()))
 
     # ---------------- summary ----------------
     print(f"ORDER {order['id']}  {order['name']}")
@@ -248,6 +450,8 @@ def main() -> int:
             print(f"        asset  : {cr.get('asset_url')}")
             print(f"        preview: {cr.get('preview_url')}")
     print(f"\nJSON → {args.out}")
+    if args.markdown:
+        print(f"Doc markdown → {args.markdown}")
     return 0
 
 

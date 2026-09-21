@@ -1,20 +1,15 @@
-name: Pull Screenshots Document source (one-off)
+name: Pull Screenshots Document source (any order)
 
 on:
-  push:
-    branches: [claude/kfshrc-screenshots-doc]
-    paths:
-      - 'scripts/pull_screenshots_source.py'
-      - '.github/workflows/pull_screenshots_source.yml'
   workflow_dispatch:
     inputs:
       order:
-        description: "GAM order id"
+        description: 'GAM order id to build a Screenshots Document for'
         required: true
       line_item:
-        description: "GAM line item id to highlight (optional)"
+        description: 'Line item id to highlight (optional; blank = all lines on the order)'
         required: false
-        default: ""
+        default: ''
 
 permissions:
   contents: read
@@ -31,25 +26,28 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager googleads google-auth pandas
+        run: pip install google-ads-admanager google-auth pandas googleads
 
       - name: Run pull
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          SCREENSHOTS_ORDER_ID: ${{ inputs.order }}
+          SCREENSHOTS_LINE_ITEM_ID: ${{ inputs.line_item }}
         run: |
           set -o pipefail
           python scripts/pull_screenshots_source.py \
-            --order "${{ inputs.order || '4198147401' }}" \
-            --line-item "${{ inputs.line_item || '7432006947' }}" \
-            --out screenshots_source.json 2>&1 | tee /tmp/output.txt
+            --out screenshots_source.json \
+            --markdown screenshots_doc.md 2>&1 | tee /tmp/output.txt
 
-      - name: Upload JSON
+      - name: Upload source JSON + doc markdown
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-source
-          path: screenshots_source.json
+          path: |
+            screenshots_source.json
+            screenshots_doc.md
           if-no-files-found: warn
 
       - name: Post output as PR comment
@@ -67,7 +65,7 @@ jobs:
             echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ''
             echo '```'
-            cat /tmp/output.txt
+            tail -c 60000 /tmp/output.txt
             echo '```'
           } > /tmp/comment.md
           gh pr comment "$PR" --body-file /tmp/comment.md
