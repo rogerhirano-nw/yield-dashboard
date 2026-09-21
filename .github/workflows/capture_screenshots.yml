@@ -1,0 +1,75 @@
+name: Capture proof-of-placement screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_item:
+        description: 'GAM line item id — every creative on it gets shot'
+        required: true
+      article_url:
+        description: 'newsweek.com article to shoot on (must pass the vertical + brandsafe tests)'
+        required: true
+      no_gate:
+        description: 'Shoot even if the page fails those tests (deliberate off-vertical shot)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install google-ads-admanager google-auth pandas googleads playwright
+          playwright install --with-deps chromium
+
+      - name: Capture
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          CAPTURE_LINE_ITEM: ${{ inputs.line_item }}
+          CAPTURE_ARTICLE_URL: ${{ inputs.article_url }}
+          CAPTURE_OUT_DIR: /tmp/shots
+          CAPTURE_NO_GATE: ${{ inputs.no_gate && '1' || '0' }}
+        run: |
+          set -o pipefail
+          python scripts/capture_screenshots.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload shots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: /tmp/shots/
+          if-no-files-found: warn
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Proof-of-placement capture'
+            echo ''
+            echo "Workflow run (shots in artifacts): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            tail -c 58000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
