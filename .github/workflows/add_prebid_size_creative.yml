@@ -1,17 +1,6 @@
 name: Add sized Prebid creative to the Prebid orders
 
 on:
-  # A workflow_dispatch can only be aimed at a workflow that already lives on
-  # the default branch, so until this merges the dry run has to come from a
-  # push. TEMPORARY — strip this trigger before merging; a push can never
-  # write to GAM (apply is forced false below), but it is still a stray run on
-  # every commit to the branch.
-  push:
-    branches: [claude/eager-lamport-eza057]
-    paths:
-      - '.github/workflows/add_prebid_size_creative.yml'
-      - 'scripts/add_prebid_size_creative.py'
-      - 'docs/snippets/prebid_universal_creative.html'
   workflow_dispatch:
     inputs:
       size:
