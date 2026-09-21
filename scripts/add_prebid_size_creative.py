@@ -103,6 +103,12 @@ def _parse_size(s: str) -> tuple[int, int]:
         raise SystemExit(f"--size must look like 970x250, got {s!r}")
 
 
+def _norm(s: str) -> str:
+    """Whitespace-insensitive form, for comparing a tag GAM echoes back
+    against the file — GAM reflows the snippet it stores."""
+    return " ".join((s or "").split())
+
+
 def _creative_names(base: str, copies: int) -> list[str]:
     """One copy keeps the bare name; several get a _1.._N suffix, matching how
     the existing eleven siblings are numbered."""
@@ -127,6 +133,9 @@ def main() -> int:
                     help="file holding the third-party tag")
     ap.add_argument("--batch", type=int, default=100,
                     help="LICAs per createLineItemCreativeAssociations call")
+    ap.add_argument("--allow-snippet-mismatch", action="store_true",
+                    help="associate a reused creative whose tag differs from "
+                         "the snippet file (default is to refuse)")
     args = ap.parse_args()
 
     order_ids = [int(o) for o in args.orders.split(",") if o.strip()]
@@ -221,6 +230,7 @@ def main() -> int:
 
     # ---------------- creatives to create / reuse ----------------
     existing = {}
+    mismatched: list[str] = []
     for nm in names:
         found = _page(cr_svc, "getCreativesByStatement", "name = :n",
                       limit=5, n=nm)
@@ -242,6 +252,19 @@ def main() -> int:
                     f"{_size_str(_g(c, 'size'))}, not {size_key} — refusing to "
                     f"associate it. Pass a different --name."
                 )
+            # A name match is not a tag match. Reusing a creative whose
+            # snippet has drifted from the file would push a stale tag onto
+            # every line item, silently.
+            live = _norm(_g(c, "snippet", "htmlSnippet") or "")
+            if live == _norm(snippet):
+                print("    snippet matches the file")
+            else:
+                mismatched.append(nm)
+                print(f"    !! SNIPPET DIFFERS from {snippet_path.name} "
+                      f"(GAM {len(live):,} chars vs file {len(_norm(snippet)):,})")
+                for label, text in (("GAM ", live), ("file", _norm(snippet))):
+                    head = text[:160] + ("…" if len(text) > 160 else "")
+                    print(f"       {label}: {head}")
 
     # ---------------- associations already in place ----------------
     target_ids = {row["id"] for row in targets}
@@ -261,9 +284,24 @@ def main() -> int:
               + (f", {done:,} already associated" if done else ""))
     print(f"  total new LICAs: {total_links:,}")
 
+    blocked = bool(mismatched) and not args.allow_snippet_mismatch
+    if blocked:
+        print(f"\nBLOCKER: {len(mismatched)} reused creative(s) carry a tag "
+              f"that is not {snippet_path.name}: {', '.join(mismatched)}.")
+        print("Associating one would push a stale tag onto every line item. "
+              "Reconcile the creative in GAM, point --snippet at the tag that "
+              "is actually live, or pass --allow-snippet-mismatch if the "
+              "difference is known and intended.")
+
     if not args.apply:
-        print("\nDRY RUN — nothing was written. Re-run with --apply.")
+        # A dry run reports; it does not fail. The blocker above is the
+        # finding, not an error in the run that found it.
+        print("\nDRY RUN — nothing was written."
+              + ("" if blocked else " Re-run with --apply."))
         return 0
+    if blocked:
+        print("\nRefusing to write. Nothing was changed.")
+        return 1
     if total_links == 0 and all(nm in existing for nm in names):
         print("\nNothing to do — creatives exist and every line item is linked.")
         return 0
