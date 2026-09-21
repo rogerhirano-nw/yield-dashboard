@@ -1164,14 +1164,27 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `pull_screenshots_source.yml` with a GAM order id; it returns the raw
   facts as JSON **and** the doc body as markdown (lead, campaign table,
   per-size capture checklist, live blockers), all derived from the pull
-  rather than a fixed template. Capture runs off the
-  `preview_mobkoi_dom.yml` path. Campaign-agnostic — order id in, doc out.
-  **The page a shot is taken on has to clear two tests**: in the client's
-  industry (vertical = token 2 of the order name → a `cat`/`sitecat` slug)
-  AND brand safe (`adexclusion` empty, `ABS`/`CBS`/`BSC` + Proximic
-  `vnd_prx_segments` clean) — on-topic-but-grim (malpractice, outbreak,
-  death) is the classic trap. A run-of-site line says outright that the
-  page is a presentation choice, not contextual targeting that was bought.
+  rather than a fixed template. Campaign-agnostic — an order id OR a line
+  item id in (a line item resolves its own order), doc out. Capture is
+  `capture_screenshots.yml` → `scripts/capture_screenshots.py`: desktop +
+  mobile, per creative, and it **only shoots a creative on a viewport its
+  width fits** — a 970x250 on a 390px mobile slot serves a Newsweek house
+  ad instead of the client's creative (seen for real 2026-09-21). It hides
+  the Ketch consent overlay rather than clicking it (hiding is not
+  consenting). `preview_mobkoi_dom.yml` stays a Mobkoi DOM-forensics tool
+  and is mobile-only — don't use it for deliverables.
+  **The page a shot is taken on has to clear two tests**, both enforced in
+  code before anything is shot: in the client's industry (vertical = token
+  2 of the order name → a `cat`/`sitecat` slug) AND brand safe. The
+  brand-safety flag is **`brandsafe`** (`y` passes, `n` fails) with
+  **`adexclusion`** empty on a pass and `generic_brand_safety` on a fail —
+  verified live 2026-09-21; `ABS`/`CBS`/`BSC` and Proximic
+  `vnd_prx_segments` are opaque segment-id lists, NOT a pass/fail.
+  On-topic-but-grim (malpractice, outbreak, death) is the classic trap,
+  and **the section listing lies** — an article under /health read
+  `cat=nwus-family_parenting`, so only the page's own KV counts. A
+  run-of-site line says outright that the page is a presentation choice,
+  not contextual targeting that was bought.
 
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
