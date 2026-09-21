@@ -4,6 +4,21 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-21 — `.DS_Store` untracked: `git pull --rebase` unblocked (#378)
+
+`.DS_Store` was committed to the repo despite `.gitignore` line 12 listing it —
+**`.gitignore` only applies to untracked paths**, so the ignore rule had been
+inert since the file entered the index. macOS rewrites `.DS_Store` on any Finder
+touch of the repo folder, so it sat as a permanent unstaged modification and
+`git pull --rebase` died with *"cannot pull with rebase: You have unstaged
+changes"* — on **every** push, not occasionally, because this repo is worked from
+two laptops and the pull always runs first.
+
+`git rm --cached` drops it from the index only; the file stays on disk, Finder
+keeps its folder state, and line 12 finally does its job.
+`git ls-files -i -c --exclude-standard` found no other tracked file matching an
+ignore pattern, so `.DS_Store` was the only one.
+
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 
 The daily health check had been red since 2026-09-15 on one row — `ttd_chumba
