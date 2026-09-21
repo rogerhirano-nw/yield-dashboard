@@ -252,6 +252,19 @@ def main() -> int:
     print(f"  type={type(ref).__name__}  size={_size_str(_g(ref, 'size'))}")
     print(f"  advertiserId={advertiser_id}  isSafeFrameCompatible={safeframe}  "
           f"sslManualOverride={ssl_override}")
+    # Is the tag we are about to install the same one these orders already
+    # run at 1x1? If so the new creative is the same demand at an explicit
+    # size; if not, the file is a different build and that is worth knowing
+    # before it goes onto 669 line items.
+    ref_snip = _norm(_g(ref, "snippet", "htmlSnippet") or "")
+    if ref_snip == _norm(snippet):
+        print(f"  snippet: IDENTICAL to {snippet_path.name} — the file is the "
+              f"tag these orders already serve")
+    else:
+        print(f"  snippet: differs from {snippet_path.name} "
+              f"({len(ref_snip):,} chars vs {len(_norm(snippet)):,}) — "
+              f"the file is a different build than the 1x1 siblings")
+        print(f"     ref : {ref_snip[:160]}{'…' if len(ref_snip) > 160 else ''}")
 
     # ---------------- creatives to create / reuse ----------------
     existing = {}
