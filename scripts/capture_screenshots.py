@@ -262,9 +262,17 @@ def main() -> int:
                     page.wait_for_timeout(2500)
                     page.evaluate(HIDE_OVERLAYS_JS)
 
+                    # The creative's OWN iframe first. A bare
+                    # `iframe[id^=google_ads_iframe]` matches every slot on the
+                    # page, and a selector LIST returns whichever comes first in
+                    # document order — not the one we asked for — so the sized
+                    # match has to be its own query, tried first.
                     frame = page.query_selector(
-                        f'iframe[id^="google_ads_iframe"]'
-                        f'[width="{cw}"], iframe[id^="google_ads_iframe"]')
+                        f'iframe[id^="google_ads_iframe"][width="{cw}"]')
+                    exact = frame is not None
+                    if frame is None:
+                        frame = page.query_selector(
+                            'iframe[id^="google_ads_iframe"]')
                     if frame:
                         frame.scroll_into_view_if_needed()
                         page.wait_for_timeout(1200)
@@ -275,21 +283,34 @@ def main() -> int:
                     page.screenshot(path=str(ctx_path), full_page=False)
                     shots.append(ctx_path.name)
 
+                    # Element screenshot, not page+clip: a clip rect is in page
+                    # coordinates while bounding_box() is viewport-relative, so
+                    # on a scrolled page the two disagree and the crop lands
+                    # somewhere else entirely. Shooting the slot wrapper gives
+                    # the padding a bare iframe would not.
                     if frame:
-                        box = frame.bounding_box()
-                        if box:
-                            pad = 40
+                        target = frame
+                        wrapper = page.query_selector(
+                            '[id^="dfp-ad-inarticle"], [id^="dfp-ad-"]')
+                        if wrapper:
+                            wbox, fbox = wrapper.bounding_box(), frame.bounding_box()
+                            # only prefer the wrapper when it actually contains
+                            # this iframe, rather than some other slot's
+                            if wbox and fbox and abs(wbox["y"] - fbox["y"]) < 400:
+                                target = wrapper
+                        try:
                             crop_path = out / f"{tag}_crop.png"
-                            page.screenshot(path=str(crop_path), clip={
-                                "x": max(0, box["x"] - pad),
-                                "y": max(0, box["y"] - pad),
-                                "width": min(vw, box["width"] + pad * 2),
-                                "height": box["height"] + pad * 2,
-                            })
+                            target.screenshot(path=str(crop_path))
                             shots.append(crop_path.name)
+                        except Exception as e:
+                            print(f"     crop failed: {e}")
 
+                    if frame and not exact:
+                        print(f"     WARNING: no {cw}-wide ad iframe on the "
+                              f"page; shot the first slot found, which may be "
+                              f"a different placement \u2014 check this one by eye")
                     print(f"  shot {tag}: overlays hidden={hidden}, "
-                          f"ad iframe={'yes' if frame else 'NOT FOUND'}")
+                          f"ad iframe={'exact' if exact else ('fallback' if frame else 'NOT FOUND')}")
                 except Exception as e:
                     print(f"  !! {cid}/{vname}: {e}")
                 finally:
