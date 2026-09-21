@@ -1,14 +1,6 @@
 name: Inspect Prebid LICAs (read-only)
 
 on:
-  # TEMPORARY — a workflow_dispatch cannot reach a workflow that is not yet on
-  # the default branch, and this diagnostic is needed before the PR merges.
-  # Strip this trigger before merging. The script writes nothing to GAM.
-  push:
-    branches: [claude/eager-lamport-eza057]
-    paths:
-      - '.github/workflows/inspect_prebid_licas.yml'
-      - 'scripts/inspect_prebid_licas.py'
   workflow_dispatch:
     inputs:
       orders:
