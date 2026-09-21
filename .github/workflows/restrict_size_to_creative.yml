@@ -1,0 +1,72 @@
+name: Restrict a size to one creative (Prebid orders)
+
+on:
+  # TEMPORARY — workflow_dispatch cannot reach a workflow that is not yet on
+  # the default branch, and the dry run is what decides whether this is worth
+  # merging. Strip before merge. A push can never write: --apply is gated on
+  # the event being a workflow_dispatch.
+  push:
+    branches: [claude/eager-lamport-eza057]
+    paths:
+      - '.github/workflows/restrict_size_to_creative.yml'
+      - 'scripts/restrict_size_to_creative.py'
+  workflow_dispatch:
+    inputs:
+      size:
+        description: 'Size to restrict (e.g. 970x250)'
+        required: false
+        default: '970x250'
+      orders:
+        description: 'Comma-separated GAM order ids'
+        required: false
+        default: '3670858241,3671186123'
+      keep:
+        description: 'Creative name or id left eligible for the size'
+        required: false
+        default: 'Newsweek_Prebid_Display_970x250_UC'
+      mode:
+        description: 'remove (restrict) or add (roll back)'
+        required: false
+        default: 'remove'
+        type: choice
+        options: [remove, add]
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+      - name: Restrict size
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_SIZE: ${{ inputs.size }}
+          IN_ORDERS: ${{ inputs.orders }}
+          IN_KEEP: ${{ inputs.keep }}
+          IN_MODE: ${{ inputs.mode }}
+          IN_APPLY: ${{ inputs.apply }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          ARGS="--orders ${IN_ORDERS:-3670858241,3671186123}"
+          ARGS="$ARGS --size ${IN_SIZE:-970x250}"
+          ARGS="$ARGS --keep ${IN_KEEP:-Newsweek_Prebid_Display_970x250_UC}"
+          ARGS="$ARGS --mode ${IN_MODE:-remove}"
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then
+            ARGS="$ARGS --apply"
+          fi
+          echo "args: $ARGS"
+          python scripts/restrict_size_to_creative.py $ARGS
