@@ -117,6 +117,31 @@ def _creative_names(base: str, copies: int) -> list[str]:
     return [f"{base}_{i}" for i in range(1, copies + 1)]
 
 
+def _report_current_use(licas, li_svc, o_svc, cap: int = 200) -> None:
+    """Say where a creative is already associated. A creative that is live on
+    other orders is not ours to repurpose — the name collision is then a
+    naming problem, not a reason to overwrite someone else's tag."""
+    li_ids = sorted({int(_g(la, "lineItemId")) for la in licas
+                     if _g(la, "lineItemId") is not None})
+    if not li_ids:
+        print("       currently associated with NO line items")
+        return
+    print(f"       currently associated with {len(li_ids):,} line item(s)")
+    sample = li_ids[:cap]
+    lis = _page(li_svc, "getLineItemsByStatement",
+                f"id IN ({', '.join(str(i) for i in sample)})")
+    order_ids = sorted({int(_g(li, "orderId")) for li in lis
+                        if _g(li, "orderId") is not None})
+    if not order_ids:
+        return
+    orders = _page(o_svc, "getOrdersByStatement",
+                   f"id IN ({', '.join(str(i) for i in order_ids)})")
+    names = {int(_g(o, "id")): _g(o, "name") for o in orders}
+    label = "orders" if len(li_ids) <= cap else f"orders (first {cap} LIs)"
+    for oid in order_ids:
+        print(f"       {label}: {oid}  {names.get(oid, '?')}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true",
@@ -231,11 +256,15 @@ def main() -> int:
     # ---------------- creatives to create / reuse ----------------
     existing = {}
     mismatched: list[str] = []
+    licas_by_name: dict[str, list] = {}
     for nm in names:
         found = _page(cr_svc, "getCreativesByStatement", "name = :n",
                       limit=5, n=nm)
         if found:
             existing[nm] = found[0]
+            licas_by_name[nm] = _page(
+                lica_svc, "getLineItemCreativeAssociationsByStatement",
+                "creativeId = :c", c=int(_g(found[0], "id")))
 
     print(f"\nCreative{'s' if len(names) > 1 else ''} ({size_key}, snippet "
           f"{snippet_path.name}, {len(snippet):,} bytes):")
@@ -265,14 +294,14 @@ def main() -> int:
                 for label, text in (("GAM ", live), ("file", _norm(snippet))):
                     head = text[:160] + ("…" if len(text) > 160 else "")
                     print(f"       {label}: {head}")
+                _report_current_use(licas_by_name.get(nm, []), li_svc, o_svc)
 
     # ---------------- associations already in place ----------------
     target_ids = {row["id"] for row in targets}
     already: dict[str, set[int]] = {}
-    for nm, c in existing.items():
-        licas = _page(lica_svc, "getLineItemCreativeAssociationsByStatement",
-                      "creativeId = :c", c=int(_g(c, "id")))
-        already[nm] = {int(_g(la, "lineItemId")) for la in licas
+    for nm in existing:
+        already[nm] = {int(_g(la, "lineItemId"))
+                       for la in licas_by_name.get(nm, [])
                        if _g(la, "lineItemId") is not None} & target_ids
 
     to_link = {nm: sorted(target_ids - already.get(nm, set())) for nm in names}
