@@ -22,6 +22,13 @@ Settings the new creative can't invent — advertiser, SafeFrame compatibility,
 SSL override — are copied from a reference creative already serving on these
 orders, so the new tag sits in the same configuration as its eleven siblings.
 
+The `_UC` suffix on the default name is deliberate. A parallel pair of
+`Newsweek_OpenAds_Prebid_Display_*` orders (3902543168 / 3907314162) runs TTD's
+OpenAds wrapper, and its 970x250 creative is named `Newsweek_Prebid_Display_970x250`
+despite carrying an adsrvr.org tag — so the unsuffixed name collides with a
+creative live on 668 other line items. Hence the snippet check below: a name
+match is not a tag match.
+
 Usage:
     python3 scripts/add_prebid_size_creative.py            # dry run
     python3 scripts/add_prebid_size_creative.py --apply    # create in GAM
@@ -150,7 +157,8 @@ def main() -> int:
                     help="comma-separated GAM order ids")
     ap.add_argument("--size", default=DEFAULT_SIZE, help="creative size, e.g. 970x250")
     ap.add_argument("--name", default=None,
-                    help="creative name (default Newsweek_Prebid_Display_<size>)")
+                    help="creative name (default "
+                         "Newsweek_Prebid_Display_<size>_UC)")
     ap.add_argument("--copies", type=int, default=1,
                     help="how many identical creatives to create and associate "
                          "(one per concurrent slot of this size on a page)")
@@ -166,7 +174,7 @@ def main() -> int:
     order_ids = [int(o) for o in args.orders.split(",") if o.strip()]
     width, height = _parse_size(args.size)
     size_key = f"{width}x{height}"
-    base_name = args.name or f"Newsweek_Prebid_Display_{size_key}"
+    base_name = args.name or f"Newsweek_Prebid_Display_{size_key}_UC"
     if args.copies < 1:
         raise SystemExit("--copies must be at least 1")
     names = _creative_names(base_name, args.copies)

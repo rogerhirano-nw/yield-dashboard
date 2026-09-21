@@ -27,7 +27,7 @@ on:
         required: false
         default: '1'
       name:
-        description: 'Creative name (blank = Newsweek_Prebid_Display_<size>)'
+        description: 'Creative name (blank = Newsweek_Prebid_Display_<size>_UC)'
         required: false
         default: ''
       apply:
