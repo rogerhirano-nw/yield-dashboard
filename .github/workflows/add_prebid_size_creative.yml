@@ -1,0 +1,53 @@
+name: Add sized Prebid creative to the Prebid orders
+
+on:
+  workflow_dispatch:
+    inputs:
+      size:
+        description: 'Creative size (e.g. 970x250)'
+        required: false
+        default: '970x250'
+      orders:
+        description: 'Comma-separated GAM order ids'
+        required: false
+        default: '3670858241,3671186123'
+      copies:
+        description: 'How many identical creatives (one per concurrent slot of this size on a page)'
+        required: false
+        default: '1'
+      name:
+        description: 'Creative name (blank = Newsweek_Prebid_Display_<size>)'
+        required: false
+        default: ''
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Add creative
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: |
+          set -o pipefail
+          ARGS="--orders ${{ inputs.orders }} --size ${{ inputs.size }} --copies ${{ inputs.copies }}"
+          if [ -n "${{ inputs.name }}" ]; then ARGS="$ARGS --name ${{ inputs.name }}"; fi
+          if [ "${{ inputs.apply }}" = "true" ]; then ARGS="$ARGS --apply"; fi
+          python scripts/add_prebid_size_creative.py $ARGS
