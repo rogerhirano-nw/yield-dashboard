@@ -23,6 +23,12 @@ Manual CSV mode (fallback if Confiant API is down):
 Other modes:
   --inspect          Open the GAM Protections page in a visible browser, wait.
   --print-existing   Dump the current Advertiser URLs for the target Protection.
+
+STOPPED 2026-09-21: the daily automated push to GAM is switched off. The
+launchd agent is unloaded on the Mac, and the gate below refuses any run that
+would write to GAM unless CONFIANT_BLOCKLIST_RESUME=1 is set. Read-only modes
+(--inspect, --print-existing, --dry-run) still work. See the "Stopped" section
+of docs/confiant_blocklist.md to resume.
 """
 
 from __future__ import annotations
@@ -38,6 +44,36 @@ from pathlib import Path
 
 import confiant_client
 from gam_blocklist_ui import GAMBlocklistBrowser, default_profile_dir
+
+
+# ── stop gate ─────────────────────────────────────────────────────────────────
+#
+# The daily automated push to GAM was STOPPED on 2026-09-21 (Roger's call).
+# The real stop is on the Mac — the launchd agent is unloaded, so nothing
+# fires at 04:00 any more. This constant is the second belt: the plist carries
+# RunAtLoad=true, so a `launchctl load`, a re-install from the template, or a
+# stray manual run would otherwise push to GAM again without anyone deciding
+# to. With the gate on, any run that would WRITE to GAM (the Protection URL
+# push and the ARC Phase 2 blocks) stops before pulling from Confiant and
+# exits 0 without emailing — a stray fire is a no-op, not a failure.
+#
+# Read-only modes are deliberately left working so the job can still be
+# inspected and dry-run while stopped: --inspect, --print-existing, --dry-run.
+#
+# To resume: set CONFIANT_BLOCKLIST_RESUME=1 in the environment (and reload the
+# launchd agent). See docs/confiant_blocklist.md → "Stopped".
+
+def _push_stopped() -> bool:
+    return os.environ.get("CONFIANT_BLOCKLIST_RESUME", "").strip() != "1"
+
+
+_STOPPED_MSG = (
+    "confiant_blocklist: the daily GAM push is STOPPED (2026-09-21) and this "
+    "run would have written to GAM, so nothing was pulled or pushed.\n"
+    "  Read-only modes still work: --dry-run, --print-existing, --inspect.\n"
+    "  To resume, set CONFIANT_BLOCKLIST_RESUME=1 and reload the launchd "
+    "agent — see docs/confiant_blocklist.md → \"Stopped\"."
+)
 
 
 # ── env / state setup ─────────────────────────────────────────────────────────
@@ -972,6 +1008,12 @@ def main() -> int:
         print("--protection-id is required (or pass --inspect / --print-existing).",
               file=sys.stderr)
         return 2
+
+    # Stopped 2026-09-21 — refuse anything that would write to GAM. Exit 0 so a
+    # stray launchd fire is a quiet no-op rather than a red run + alert email.
+    if _push_stopped() and not args.dry_run:
+        print(_STOPPED_MSG, file=sys.stderr)
+        return 0
 
     categories = tuple(c.strip() for c in args.categories.split(",") if c.strip())
     if args.csv:

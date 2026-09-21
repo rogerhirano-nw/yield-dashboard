@@ -4,6 +4,40 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-21 — Confiant: stop the daily automated blocking push to GAM
+
+The daily `confiant_blocklist.py` cron (launchd 04:00 ET) no longer runs.
+Stopped on request — no incident behind it.
+
+The real stop is on the Mac: `launchctl unload
+~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist`. That alone isn't
+enough, though — the plist carries **`RunAtLoad=true`** (added so a Mac booted
+after a missed 04:00 still catches up), so any later `launchctl load`, plist
+edit, or re-install from the repo template would have fired a real GAM push
+immediately, without anyone deciding to. So the repo carries a second belt:
+
+- **`confiant_blocklist.py` gate** — a run that would write to GAM (the
+  Protection URL push *and* Phase 2 ARC blocks) stops before pulling from
+  Confiant, prints why, and **exits 0 without emailing**, so a stray fire is a
+  quiet no-op rather than a red run + alert. Read-only modes are deliberately
+  still live: `--dry-run`, `--print-existing`, `--inspect`. The escape hatch is
+  `CONFIANT_BLOCKLIST_RESUME=1`.
+- **`.launchd/com.newsweek.confiant-blocklist.plist`** — `Disabled=true` +
+  a STOPPED header, so a re-install from the template doesn't schedule.
+  (`launchctl load -w` clears that flag — it's a guard against an accidental
+  load, not a lock, which is why the script gate is the one that holds.)
+
+Scope: only the daily automated *blocking* stopped. The weekly RevOps digest,
+the HRAP seeder, the SSP forwarder and the Confiant API pull are untouched, and
+**Confiant's own Active Blocking keeps working upstream at the RTB layer**.
+Domains already pushed stay in Protection 28044902 — stopping the job removes
+nothing. What lapses is newly-flagged domains being appended from here on.
+
+On resume, the backlog is whatever Confiant's rolling window still holds
+(`--api-days`, default 7), not everything missed while it was off.
+
+Runbook: `docs/confiant_blocklist.md` → "Stopped".
+
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 
 The daily health check had been red since 2026-09-15 on one row — `ttd_chumba
