@@ -1,0 +1,51 @@
+name: Inspect Prebid LICAs (read-only)
+
+on:
+  # TEMPORARY — a workflow_dispatch cannot reach a workflow that is not yet on
+  # the default branch, and this diagnostic is needed before the PR merges.
+  # Strip this trigger before merging. The script writes nothing to GAM.
+  push:
+    branches: [claude/eager-lamport-eza057]
+    paths:
+      - '.github/workflows/inspect_prebid_licas.yml'
+      - 'scripts/inspect_prebid_licas.py'
+  workflow_dispatch:
+    inputs:
+      orders:
+        description: 'Comma-separated GAM order ids'
+        required: false
+        default: '3670858241,3671186123'
+      line_items:
+        description: 'Specific line item ids (overrides order sampling)'
+        required: false
+        default: ''
+      size:
+        description: 'Size to tally eligibility for'
+        required: false
+        default: '970x250'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+      - name: Inspect
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_ORDERS: ${{ inputs.orders }}
+          IN_LINE_ITEMS: ${{ inputs.line_items }}
+          IN_SIZE: ${{ inputs.size }}
+        run: |
+          set -o pipefail
+          ARGS="--orders ${IN_ORDERS:-3670858241,3671186123} --size ${IN_SIZE:-970x250}"
+          if [ -n "$IN_LINE_ITEMS" ]; then ARGS="$ARGS --line-items $IN_LINE_ITEMS"; fi
+          python scripts/inspect_prebid_licas.py $ARGS
