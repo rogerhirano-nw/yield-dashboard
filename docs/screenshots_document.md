@@ -26,8 +26,13 @@ GAM creds are Actions-only, so this has to run in CI; the script also runs
 locally against a `.env` that carries `GAM_SERVICE_ACCOUNT_JSON` +
 `GAM_NETWORK_ID` if you ever have them.
 
-**2. Build the doc** from `screenshots_doc.md`, then capture and drop in the
-images.
+**2. Build the doc** from `screenshots_doc.md` — the working page: verified
+facts, blockers, and the page-selection rules.
+
+**3. Build the deck** — the shots go in a slide deck, not in the doc. One slide
+per shot, each with a caption line for URL, date and size, plus a cover and a
+campaign-summary slide. The deck is what ships to the client; the doc stays
+internal and links to it.
 
 ## What the generated body contains
 
@@ -88,8 +93,20 @@ into view before the shot. Screenshots come back as workflow artifacts.
 A line with no creatives has nothing to preview — that is why step 1 reports
 the creative count before you get as far as capture.
 
+## Deck conventions
+
+Built to the Newsweek "Paper" look the dashboard already uses, since there is no
+design system on the account: warm paper `#FEFCF6`, ink `#1F1E19`, brand red
+`#E91D0C` as chrome only (the eyebrow rule), Libre Baskerville over Public Sans.
+
+Screenshots sit `object-fit:contain` on a light panel — never `cover`, which
+would crop the proof, and the proof is the whole point.
+
+Slide order: cover → campaign summary → one slide per shot → an internal status
+slide that comes out before the deck goes to the client.
+
 ## Instances
 
-| Campaign | Order | Doc |
-| --- | --- | --- |
-| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Screenshots doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) |
+| Campaign | Order | Doc | Deck |
+| --- | --- | --- | --- |
+| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) |
