@@ -4,10 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       order:
-        description: 'GAM order id to build a Screenshots Document for'
-        required: true
+        description: 'GAM order id (optional if you give a line item)'
+        required: false
+        default: ''
       line_item:
-        description: 'Line item id to highlight (optional; blank = all lines on the order)'
+        description: 'GAM line item id — its order is resolved automatically'
         required: false
         default: ''
 

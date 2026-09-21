@@ -6,13 +6,16 @@ the doc body.
 
 ## The two steps
 
-**1. Pull the source.** Dispatch `pull_screenshots_source.yml` with the order
-id (and optionally a line item id to highlight when the order has several
-lines):
+**1. Pull the source.** Dispatch `pull_screenshots_source.yml` with either an
+order id or a line item id — a line item resolves its own order, which is
+handy because a GAM deep link carries the line item:
 
 ```bash
-gh workflow run pull_screenshots_source.yml -f order=4198147401 -f line_item=7432006947
+gh workflow run pull_screenshots_source.yml -f line_item=7432006947
 ```
+
+Give `-f order=<id>` instead to cover every line on an order, or both to
+highlight one line within it.
 
 It runs `scripts/pull_screenshots_source.py`, which reads — never writes —
 the order, its line items (status, type, flight, creative sizes, goal,

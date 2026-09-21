@@ -360,11 +360,24 @@ def main() -> int:
     ap.add_argument("--markdown", default=None,
                     help="also write the Screenshots Document body here")
     args = ap.parse_args()
-    if not args.order:
-        ap.error("--order is required (or set SCREENSHOTS_ORDER_ID)")
+    if not args.order and not args.line_item:
+        ap.error("pass --order or --line-item "
+                 "(or set SCREENSHOTS_ORDER_ID / SCREENSHOTS_LINE_ITEM_ID)")
 
     gc = GAMClient()
     client = gc._get_soap_client()
+
+    # A line item id alone is the common case — it is what a GAM deep link
+    # carries. Resolve its order rather than making the caller look it up.
+    if not args.order:
+        li_svc = client.GetService("LineItemService", version=V)
+        found = _page(li_svc, "getLineItemsByStatement",
+                      f"id = {int(args.line_item)}")
+        if not found:
+            print(f"!! line item {args.line_item} not found", file=sys.stderr)
+            return 1
+        args.order = str(_g(found[0], "orderId"))
+        print(f"line item {args.line_item} -> order {args.order}")
 
     # ---------------- order ----------------
     o_svc = client.GetService("OrderService", version=V)
