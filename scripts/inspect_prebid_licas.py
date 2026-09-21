@@ -92,6 +92,9 @@ def main() -> int:
                     help="line items to dump per order")
     ap.add_argument("--size", default="970x250",
                     help="size to tally eligibility for")
+    ap.add_argument("--census", action="store_true",
+                    help="tally the size override across EVERY line item on "
+                         "the orders, not just the sampled ones")
     args = ap.parse_args()
 
     gc = GAMClient()
@@ -99,18 +102,6 @@ def main() -> int:
     li_svc = client.GetService("LineItemService", version=V)
     cr_svc = client.GetService("CreativeService", version=V)
     lica_svc = client.GetService("LineItemCreativeAssociationService", version=V)
-
-    # What does the WSDL say the association even carries? Settling this from
-    # the schema beats guessing which field holds the size override.
-    print("=" * 74)
-    print("LineItemCreativeAssociation type, per the v202605 WSDL")
-    print("=" * 74)
-    try:
-        t = client.zeep_client.get_type(f"ns0:LineItemCreativeAssociation")
-        for el in t.elements:
-            print(f"  {el[0]:38s} {el[1].type.name}")
-    except Exception as exc:
-        print(f"  (could not introspect: {exc})")
 
     if args.line_items:
         li_ids = [int(x) for x in args.line_items.split(",") if x.strip()]
@@ -175,6 +166,72 @@ def main() -> int:
         for cid, why in eligible:
             nm = _g(creatives.get(cid), "name") if creatives.get(cid) else "?"
             print(f"       {cid}  {nm}  ({why})")
+
+    if args.census:
+        print()
+        print("=" * 74)
+        print(f"CENSUS — every non-archived line item, override containing "
+              f"{args.size}")
+        print("=" * 74)
+        import collections
+        carries = collections.Counter()      # creative -> LICAs listing --size
+        would_empty = collections.defaultdict(list)  # creative -> [line item]
+        native = collections.Counter()       # creative -> LICAs at exact size
+        total_lis = 0
+        cre_names: dict[int, str] = {}
+        for oid in (int(o) for o in args.orders.split(",") if o.strip()):
+            lis = _page(li_svc, "getLineItemsByStatement",
+                        "orderId = :o AND isArchived = false", o=oid)
+            total_lis += len(lis)
+            ids = [int(_g(li, "id")) for li in lis]
+            # One paged LICA query per order beats 669 per-line-item queries.
+            licas = []
+            for chunk in [ids[i:i + 300] for i in range(0, len(ids), 300)]:
+                licas.extend(_page(
+                    lica_svc, "getLineItemCreativeAssociationsByStatement",
+                    f"lineItemId IN ({', '.join(str(i) for i in chunk)})"))
+            cids = sorted({int(_g(la, "creativeId")) for la in licas
+                           if _g(la, "creativeId") is not None})
+            for chunk in [cids[i:i + 200] for i in range(0, len(cids), 200)]:
+                for c in _page(cr_svc, "getCreativesByStatement",
+                               f"id IN ({', '.join(str(i) for i in chunk)})"):
+                    cre_names[int(_g(c, "id"))] = (
+                        f"{_g(c, 'name')} [{_size_str(_g(c, 'size'))}]")
+            for la in licas:
+                cid = int(_g(la, "creativeId"))
+                ov = _g(la, "sizes")
+                ov_sizes = ([_size_str(s_) for s_ in ov]
+                            if isinstance(ov, (list, tuple)) else [])
+                if args.size in ov_sizes:
+                    carries[cid] += 1
+                    if len(ov_sizes) == 1:
+                        would_empty[cid].append(int(_g(la, "lineItemId")))
+                elif not ov_sizes and cre_names.get(cid, "").endswith(
+                        f"[{args.size}]"):
+                    native[cid] += 1
+        print(f"  line items scanned: {total_lis:,}")
+        print(f"\n  associations whose override LISTS {args.size} "
+              f"(these are what a removal would edit):")
+        for cid, n in carries.most_common():
+            print(f"    {cid}  {cre_names.get(cid, '?')}: {n:,}")
+        print(f"    TOTAL: {sum(carries.values()):,}")
+        if native:
+            print(f"\n  associations serving {args.size} natively "
+                  f"(no override — untouched by a removal):")
+            for cid, n in native.most_common():
+                print(f"    {cid}  {cre_names.get(cid, '?')}: {n:,}")
+        if would_empty:
+            print(f"\n  !! {sum(len(v) for v in would_empty.values()):,} "
+                  f"association(s) list {args.size} and NOTHING ELSE — removing "
+                  f"it would empty the override and drop them back to the "
+                  f"creative's native size. These need deactivating, not "
+                  f"editing:")
+            for cid, lids in would_empty.items():
+                print(f"    {cid}  {cre_names.get(cid, '?')}: {len(lids):,} "
+                      f"(e.g. line item {lids[0]})")
+        else:
+            print(f"\n  no association lists {args.size} alone — a removal "
+                  f"never empties an override.")
 
     print("\nRead-only — nothing was written.")
     return 0

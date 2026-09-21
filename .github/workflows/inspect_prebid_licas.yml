@@ -46,6 +46,6 @@ jobs:
           IN_SIZE: ${{ inputs.size }}
         run: |
           set -o pipefail
-          ARGS="--orders ${IN_ORDERS:-3670858241,3671186123} --size ${IN_SIZE:-970x250}"
+          ARGS="--orders ${IN_ORDERS:-3670858241,3671186123} --size ${IN_SIZE:-970x250} --census"
           if [ -n "$IN_LINE_ITEMS" ]; then ARGS="$ARGS --line-items $IN_LINE_ITEMS"; fi
           python scripts/inspect_prebid_licas.py $ARGS
