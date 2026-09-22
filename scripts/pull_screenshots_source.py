@@ -280,9 +280,12 @@ def build_markdown(payload: dict, today: date) -> str:
         f"suit, an outbreak, a lawsuit or a death story is on-topic and still "
         f"the wrong page to hand a client. Newsweek classifies this itself, so "
         f"read it off the page rather than judging by the headline: the `brandsafe` "
-        f"GPT key-value must be `y` and `adexclusion` must be empty. A failing "
-        f"page reads `brandsafe: n` with `adexclusion: generic_brand_safety` \u2014 "
-        f"pick another page, do not shoot it and crop around the headline. "
+        f"GPT key-value must be `y` and `adexclusion` must carry no "
+        f"`brand_safety` label. A failing page reads `brandsafe: n` with "
+        f"`adexclusion: generic_brand_safety` \u2014 pick another page, do not "
+        f"shoot it and crop around the headline. Other `adexclusion` labels "
+        f"(`nopassfq` was sitewide on 22 Sep 2026) are inventory hygiene, not "
+        f"a verdict on the content, and do not disqualify the page. "
         f"(`ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque "
         f"segment-id lists, not a pass/fail \u2014 `brandsafe` is the flag.)"
     )
@@ -349,10 +352,12 @@ show an empty well.
 
 {shots_body}
 
-Capture runs off the `preview_mobkoi_dom.yml` workflow — SOAP `getPreviewUrl` \
-for the trafficked creative, then headless Chromium on a live newsweek.com \
-article page, scrolling the lazy slot into view before the shot. Images come \
-back as workflow artifacts.
+Capture runs off the `capture_screenshots.yml` workflow — SOAP `getPreviewUrl` \
+for each trafficked creative, then headless Chromium on a live newsweek.com \
+article page at desktop and mobile, scrolling the lazy slot into view before \
+the shot. It gates the page on both tests above before shooting anything, and \
+skips any creative too wide for the viewport. Images come back as workflow \
+artifacts.
 """
 
 

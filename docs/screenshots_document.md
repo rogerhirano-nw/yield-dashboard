@@ -75,12 +75,22 @@ judging by the headline:
 | Key-value | Passes | Fails |
 | --- | --- | --- |
 | `brandsafe` | `y` | `n` |
-| `adexclusion` | empty | `generic_brand_safety` |
+| `adexclusion` | no `*brand_safety*` label | `generic_brand_safety` |
 
 `ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque segment-id
 lists, not a pass/fail — `brandsafe` is the flag. (Verified live 21 Sep 2026
 against four /health articles; an earlier draft of this runbook named the wrong
 keys.)
+
+**`adexclusion` is a label list, not a verdict — only a brand-safety label
+fails the page.** The runbook first read "adexclusion must be empty", which
+was right on the day it was written and wrong the next: on 22 Sep 2026 the
+site carried **`nopassfq`** on health articles that were `brandsafe=y`,
+including the very article pinned below, and the gate refused all of them. The
+two signals travel together on a genuine failure — the one article that failed
+that day read `brandsafe=n` *and* `generic_brand_safety`. So the test is
+`brandsafe=y` plus no label containing `brand_safety`; any other label is
+printed for the record and does not block.
 
 A failing page gets skipped, not cropped around.
 
@@ -120,9 +130,25 @@ reason for the second test.
 
 ## Capturing the images
 
-Use the `preview_mobkoi_dom.yml` path: SOAP `getPreviewUrl` for the trafficked
-creative, then headless Chromium on a live article page, scrolling the slot
-into view before the shot. Screenshots come back as workflow artifacts.
+Dispatch `capture_screenshots.yml` with the line item and the article URL:
+
+```bash
+gh workflow run capture_screenshots.yml \
+  -f line_item=7432006947 \
+  -f article_url=https://www.newsweek.com/...
+```
+
+It runs `scripts/capture_screenshots.py` — SOAP `getPreviewUrl` per creative,
+then headless Chromium on the live article at desktop (1600px) and mobile
+(390px), scrolling the lazy slot into view before the shot. It enforces both
+page tests above before shooting anything (`-f no_gate=true` is the deliberate
+override), skips any creative too wide for the viewport, and hides the Ketch
+consent overlay rather than clicking it. Screenshots come back as workflow
+artifacts, two per creative per viewport (`_context` and `_crop`).
+
+`preview_mobkoi_dom.yml` is NOT the tool for this — it is mobile-only DOM
+forensics, so a 970x250 falls through to a Newsweek house ad and the "proof"
+shows the wrong advertiser.
 
 A line with no creatives has nothing to preview — that is why step 1 reports
 the creative count before you get as far as capture.

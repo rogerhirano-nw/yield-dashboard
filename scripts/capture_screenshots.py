@@ -13,8 +13,10 @@ Three things it does that a generic screenshot does not:
 
 1. **Gates the page.** The article must pass both tests from
    `docs/screenshots_document.md` before anything is shot — `cat`/`sitecat`
-   matching the campaign's vertical, and `brandsafe` = `y` with `adexclusion`
-   empty. A failing page aborts with the reason; `--no-gate` overrides for a
+   matching the campaign's vertical, `brandsafe` = `y`, and no brand-safety
+   label in `adexclusion`. Any other `adexclusion` label is reported and does
+   not block — it is inventory hygiene, not a verdict on the content. A
+   failing page aborts with the reason; `--no-gate` overrides for a
    deliberate off-vertical shot.
 2. **Skips impossible combinations.** A 970x250 cannot fill a 390px mobile
    slot; GAM falls through to house inventory and you get a screenshot of a
@@ -121,6 +123,14 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
     ax = kvs.get("adexclusion") or []
     detail = f"cat={cat} brandsafe={bs} adexclusion={ax}"
 
+    # `adexclusion` is a general label list, not a brand-safety verdict: only a
+    # brand-safety label fails the page. Proven live 2026-09-22 — three health
+    # articles reading brandsafe=y all carried `nopassfq`, while the one real
+    # brand-safety failure carried brandsafe=n AND generic_brand_safety
+    # together. Failing on any label at all blocked every usable page that day.
+    unsafe_ax = [x for x in ax if "brand_safety" in str(x).lower()]
+    other_ax = [x for x in ax if x not in unsafe_ax]
+
     problems = []
     if slugs and cat not in [f"nwus-{s}" for s in slugs]:
         problems.append(
@@ -130,8 +140,11 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
         )
     if bs != "y":
         problems.append(f"not brand safe: brandsafe={bs}")
-    if ax:
-        problems.append(f"ad exclusion set: {ax}")
+    if unsafe_ax:
+        problems.append(f"brand-safety ad exclusion set: {unsafe_ax}")
+    if other_ax:
+        detail += (f"  [non-brand-safety exclusion(s) {other_ax}: reported, "
+                   f"not blocking]")
 
     if problems and not no_gate:
         return False, detail + "\n     " + "\n     ".join("! " + p for p in problems)
