@@ -121,7 +121,8 @@ def _print_df(df: pd.DataFrame, note: str = "") -> None:
 
 
 def _report(gc: GAMClient, label: str, dimensions, metrics, start, end,
-            filters=None, top: str | None = None, n: int = 15) -> pd.DataFrame | None:
+            filters=None, top: str | None = None, n: int = 15,
+            pick: tuple[str, str] | None = None) -> pd.DataFrame | None:
     print(f"\n--- report: {label}")
     print(f"    dims={dimensions} metrics={metrics}")
     df = None
@@ -140,6 +141,9 @@ def _report(gc: GAMClient, label: str, dimensions, metrics, start, end,
             return None
     if df is None:
         return None
+    if pick and not df.empty and pick[0] in df.columns:
+        df = df[df[pick[0]].astype(str) == pick[1]]
+        print(f"    (rows where {pick[0]} == {pick[1]!r})")
     if top and not df.empty and top in df.columns:
         df = df.sort_values(top, ascending=False).head(n)
         print(f"    (top {n} by {top})")
@@ -186,6 +190,29 @@ def _fetch_vast(url: str) -> None:
     m = re.search(r"<VASTAdTagURI[^>]*>(.*?)</VASTAdTagURI>", body, re.I | re.S)
     if m:
         print(f"      wraps: {_short(m.group(1).strip(), 300)}")
+    # A VPAID / SIMID creative runs its own click handling and commonly
+    # never fires the serving wrapper's <ClickTracking> — the documented
+    # way a real click goes uncounted by the ad server.
+    api = re.findall(r'apiFramework\s*=\s*"([^"]+)"', body, re.I)
+    print(f"      apiFramework values: {sorted(set(api)) or 'none'}")
+    print(f"      <InteractiveCreativeFile>: "
+          f"{len(re.findall('<InteractiveCreativeFile', body, re.I))}")
+    print(f"      <AdParameters>: {len(re.findall('<AdParameters', body, re.I))}")
+    mf = re.findall(r"<MediaFile\b([^>]*)>", body, re.I)
+    print(f"      MediaFiles: {len(mf)}")
+    for a in mf[:6]:
+        t = re.search(r'type\s*=\s*"([^"]+)"', a, re.I)
+        d = re.search(r'delivery\s*=\s*"([^"]+)"', a, re.I)
+        w = re.search(r'width\s*=\s*"([^"]+)"', a, re.I)
+        print(f"        type={t.group(1) if t else '?'} "
+              f"delivery={d.group(1) if d else '?'} w={w.group(1) if w else '?'}")
+    ext = re.findall(r'<Extension[^>]*type\s*=\s*"([^"]+)"', body, re.I)
+    if ext:
+        print(f"      Extension types: {sorted(set(ext))[:8]}")
+    for ev in ("mute", "pause", "resume", "start", "complete", "progress"):
+        n = len(re.findall(r'event\s*=\s*"' + ev + r'"', body, re.I))
+        if n:
+            print(f"      tracking event {ev}: {n}")
 
 
 def _host(u: str) -> str:
@@ -376,11 +403,12 @@ def main() -> int:
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
             start, end, video_only, top="ad_server_impressions", n=15)
     _report(gc, "every line item running Innovid video redirects",
-            ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
+            ["CREATIVE_VIDEO_REDIRECT_THIRD_PARTY", "LINE_ITEM_ID",
+             "LINE_ITEM_NAME"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
-            start, end,
-            [("CREATIVE_VIDEO_REDIRECT_THIRD_PARTY", "IN", ["Innovid"])],
-            top="ad_server_impressions", n=20)
+            start, end, video_only,
+            pick=("creative_video_redirect_third_party", "Innovid"),
+            top="ad_server_impressions", n=25)
     _report(gc, "ad units this line item runs on",
             ["AD_UNIT_NAME_TOP_LEVEL", "AD_UNIT_NAME"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
