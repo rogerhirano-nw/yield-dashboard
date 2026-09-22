@@ -460,10 +460,41 @@ is ever pulled for another reason, expect ~5x, not ~1x.
 
 ## What it means for the comparison
 
-**This conclusion is unchanged by the correction.** The chart compares two
-numbers in different units: OB's requests are flattened ~5.11x, PBS's are not.
-Putting both channels on the same footing — **opportunities**, not wire requests
-— means using GAM's callouts for OB and Magnite's own figure for Prebid Server:
+> ### ⚠️ Second correction (2026-09-22, later): the per-opportunity comparison below is NOT safe to quote
+>
+> This section used to conclude that, corrected for flattening, **Prebid Server
+> carries 2.46x more video volume than Open Bidding** and OB fills 4.8x better.
+> **Both claims are suspended.** They set 128,241,828 PBS requests against
+> 52,036,623 OB callouts as though both were opportunity counts. They are not:
+>
+> 1. **Every other integration in Magnite's own table also exceeds 52.0M** — A9
+>    74.8M, PBS (3p Hosted) 64.5M, Exchange API 59.9M. They cannot all be seeing
+>    more video opportunities than exist. 52.0M is therefore not the total video
+>    opportunity count; it is the count of opportunities on which **the OB yield
+>    group was called**.
+> 2. **The two are measured at different points in the ad-serving sequence, on
+>    different populations.** Prebid runs client-side on essentially every video
+>    render. An Open Bidding yield group is invoked only when an opportunity
+>    reaches the open auction — direct-sold and PG demand never gets there. So a
+>    Prebid request count is a superset of an OB callout count by construction.
+> 3. **Fill and revenue-per-1k inherit the problem.** PBS's denominator contains
+>    opportunities it could never have won, which deflates its fill; OB's does
+>    not, which flatters it. The 8.95%-vs-1.87% and $0.756-vs-$0.242 spreads are
+>    not measuring the same thing on both sides.
+>
+> **What settles it:** GAM's total video `AD_REQUESTS` for the window, against
+> the 52,036,623 yield-group callouts. If total video requests land near 128M,
+> the OB yield group is being called on only ~40% of video opportunities — which
+> would be a materially more interesting finding than the one this section
+> claimed, and a revenue question rather than a reporting one. **Not yet pulled.**
+>
+> **What survives and is safe to state:** OB and Prebid Server request columns
+> are not comparable one-for-one, because OB's are flattened ~5.11x and Prebid's
+> are not. That alone disposes of the chart's implied reading. It does not
+> license a replacement ranking.
+
+The figures as previously computed, retained only so the suspended claim is
+legible — **do not quote these**:
 
 | | Open Bidding | Prebid Server (RP) | |
 |---|---|---|---|
@@ -473,27 +504,19 @@ Putting both channels on the same footing — **opportunities**, not wire reques
 | Revenue | $39,333 | $31,026 | OB **1.27x** |
 | Revenue / 1k requests | **$0.756** | $0.242 | OB **3.1x** |
 
-Open Bidding is the *smaller* video **opportunity** channel and the *better* one
-on every outcome measure. The chart's implied reading — that OB is consuming
-outsized volume — does not survive putting both sides in the same units.
 
-**The assumption this rests on, stated openly.** Prebid Server request counts
-are taken as ~1 per opportunity, because PBS requests come from the page rather
-than from Ad Manager, so Google's flattening never touches them. The supporting
-evidence is PBS (RP Hosted)'s **98.2% auction rate** against OB's 37.5% — a
-split channel strands most of its requests before auction, an unsplit one does
-not. This has not been confirmed with Magnite, and it is the one number in the
-table worth asking them to verify: *does your Prebid Server request column count
-one request per auction?* If PBS requests were also multiplied, the 2.46x would
-shrink.
+**What to say to Magnite.** Their reporting is correct and so is ours. Their
+Open Bidding "ad requests" column counts flattened bid requests — ~5.11 per Ad
+Manager callout — while their Prebid Server column counts unflattened page-side
+requests, so the two columns in their own chart are not in the same units and
+the 2.07x gap is mostly that artifact. Nothing here is an error on their side.
+What does reconcile, and is what matters commercially, is the bottom of the
+funnel: ad responses −3.0% against GAM bids, paid impressions −2.2%.
 
-**What to say to Magnite.** Their reporting is correct and so is ours; the two
-columns in their own chart are not in the same units, because Ad Manager
-flattens OB video requests and does not flatten Prebid Server's. The comparison
-they drew — OB consuming outsized request volume — inverts once both are
-expressed per opportunity. Nothing here is an error on their side, and the
-reconciliation that matters commercially (impressions −2.2%, revenue) already
-agrees.
+**Stop there.** Do not offer a corrected ranking of the two channels — see the
+suspension above. Two things are worth asking them instead: *does the Prebid
+Server column count one request per auction?* and *is the Open Bidding figure
+post-flattening?*
 
 ## Two findings that outrank the question asked
 

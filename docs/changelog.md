@@ -28,13 +28,25 @@ was never multi-seat bidding; and dividing the other nine partners' ratios by
 effect is universal, not Magnite-specific — it is only *visible* on Magnite
 because a ~45% bidder is the only one whose bids/callout crosses 1.0.
 
-**The operative conclusion survives, on new reasoning.** OB and PBS request
-counts still aren't comparable one-for-one — not because either is wrong, but
-because OB's are flattened ~5.11x and PBS's (page-side, never touched by Ad
-Manager) are not. Per *opportunity*, Prebid Server still carries **2.46x more**
-video volume (128.2M vs 52.0M), OB still fills 8.95% vs 1.87%, and still returns
-$0.756/1k vs $0.242. Nothing goes to Magnite as an error; no approach was ever
-made on the incorrect basis.
+**What survives:** OB and PBS request counts aren't comparable one-for-one —
+not because either is wrong, but because OB's are flattened ~5.11x and PBS's
+(page-side, never touched by Ad Manager) are not. That alone disposes of the
+chart's implied reading. Nothing goes to Magnite as an error; no approach was
+ever made on the incorrect basis.
+
+**A replacement ranking was drafted and then suspended the same day.** The doc
+briefly claimed that per *opportunity* Prebid Server carries 2.46x more video
+volume and OB fills 4.8x better. That set 128.2M PBS requests against 52.0M OB
+callouts as if both were opportunity counts. They aren't: every other
+integration in Magnite's table also exceeds 52.0M (A9 74.8M, PBS 3p Hosted
+64.5M, Exchange API 59.9M), so 52.0M is not the total video opportunity count —
+it is the count of opportunities on which the **OB yield group was called**.
+Prebid runs client-side on essentially every render; an OB yield group is
+invoked only once an opportunity reaches the open auction. Different
+populations, different points in the sequence; fill and revenue-per-1k inherit
+the problem. **Suspended pending a GAM total-video-`AD_REQUESTS` pull.** If that
+lands near 128M, the OB yield group is called on only ~40% of video
+opportunities — a revenue question, and a more interesting one.
 
 Also corrected: the 2026-09-18 Support chat (Aneesh) is marked **superseded** —
 it ruled out retries and multi-slot, which is true, but flattening is neither,
