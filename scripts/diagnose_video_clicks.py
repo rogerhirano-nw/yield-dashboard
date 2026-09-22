@@ -98,8 +98,14 @@ def _values(obj) -> dict:
     return {k: getattr(obj, k) for k in dir(obj) if not k.startswith("_")}
 
 
+def _redact(s: str) -> str:
+    """The Actions logs are public — keep the network id out of them."""
+    nid = os.environ.get("GAM_NETWORK_ID", "")
+    return s.replace(nid, "<network-id>") if nid else s
+
+
 def _short(v, n=1500) -> str:
-    s = str(v)
+    s = _redact(str(v))
     s = re.sub(r"\s+", " ", s)
     return s if len(s) <= n else s[:n] + f" …(+{len(s) - n} chars)"
 
@@ -161,7 +167,7 @@ def _fetch_vast(url: str) -> None:
     print(f"      VAST fetch: HTTP {r.status_code}, {len(body)} bytes")
     for tag in ("VideoClicks", "ClickThrough", "ClickTracking", "VASTAdTagURI",
                 "Wrapper", "InLine", "Linear", "NonLinear"):
-        n = len(re.findall(rf"<{tag}\b", body, re.I))
+        n = len(re.findall("<" + tag + r"\b", body, re.I))
         print(f"      <{tag}>: {n}")
     m = re.search(r"<ClickThrough[^>]*>(.*?)</ClickThrough>", body, re.I | re.S)
     if m:
@@ -169,6 +175,37 @@ def _fetch_vast(url: str) -> None:
     m = re.search(r"<VASTAdTagURI[^>]*>(.*?)</VASTAdTagURI>", body, re.I | re.S)
     if m:
         print(f"      wraps: {_short(m.group(1).strip(), 300)}")
+
+
+def _host(u: str) -> str:
+    m = re.match(r"https?://([^/?#]+)", u.strip())
+    return m.group(1) if m else _short(u, 80)
+
+
+def _fetch_served_vast(url: str) -> None:
+    """Fetch what GAM itself serves for this creative (the preview ad
+    request), not the vendor tag. This is the hop that decides whether
+    GAM's click server is in the chain at all: if GAM's wrapper carries
+    no <ClickTracking> of its own, GAM has nothing to count no matter
+    what the player does."""
+    import requests
+    try:
+        r = requests.get(url, timeout=25,
+                         headers={"User-Agent": "Mozilla/5.0 (diagnostic)"})
+    except Exception as exc:  # noqa: BLE001
+        print(f"      GAM-served VAST fetch failed: {type(exc).__name__}: "
+              f"{_short(exc, 200)}")
+        return
+    body = r.text or ""
+    print(f"      GAM-served VAST: HTTP {r.status_code}, {len(body)} bytes")
+    for tag in ("Wrapper", "InLine", "VASTAdTagURI", "VideoClicks",
+                "ClickThrough", "ClickTracking"):
+        n = len(re.findall("<" + tag + r"\b", body, re.I))
+        print(f"        <{tag}>: {n}")
+    for tag in ("ClickTracking", "ClickThrough"):
+        pat = "<" + tag + r"[^>]*>(?:\s*<!\[CDATA\[)?(.*?)(?:\]\]>\s*)?</" + tag + ">"
+        for m in re.findall(pat, body, re.I | re.S)[:4]:
+            print(f"        {tag} host: {_host(m)}")
 
 
 def main() -> int:
@@ -264,6 +301,9 @@ def main() -> int:
             vast_url = vals.get("vastXmlUrl")
             if vast_url and args.fetch_vast:
                 _fetch_vast(str(vast_url))
+            preview = vals.get("vastPreviewUrl")
+            if preview and args.fetch_vast:
+                _fetch_served_vast(str(preview))
 
     li_filter = [("LINE_ITEM_ID", "IN", [int(i) for i in li_ids])]
 
@@ -308,6 +348,16 @@ def main() -> int:
             ["CREATIVE_VIDEO_REDIRECT_THIRD_PARTY"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
             start, end, video_only)
+    _report(gc, "every line item running Innovid video redirects",
+            ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end,
+            [("CREATIVE_VIDEO_REDIRECT_THIRD_PARTY", "IN", ["Innovid"])],
+            top="ad_server_impressions", n=20)
+    _report(gc, "ad units this line item runs on",
+            ["AD_UNIT_NAME_TOP_LEVEL", "AD_UNIT_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS"],
+            start, end, li_filter)
     _report(gc, "video line items that DO record clicks",
             ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
