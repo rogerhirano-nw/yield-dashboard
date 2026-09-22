@@ -115,8 +115,14 @@ def _iso(s: str | None) -> str | None:
 
 
 def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
-    """(size, device, shot) rows — every size in context and close up on
-    desktop; sizes narrow enough to run on a phone get the mobile pair too."""
+    """(size, device, shot) rows — one in-context shot per size on desktop;
+    sizes narrow enough to run on a phone get a mobile one too.
+
+    In-context only. The close crop was dropped from the deliverable (Roger,
+    22 Sep 2026): the proof is the ad sitting in the page, and a crop of the
+    creative is a picture of the asset the client already has. The capture
+    script still writes a `_crop` file per shot — useful for checking the
+    creative rendered legibly — it just does not earn a slide."""
     rows: list[tuple[str, str, str]] = []
     for sz in dict.fromkeys(sizes):  # de-dupe, keep order
         try:
@@ -124,10 +130,8 @@ def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
         except (ValueError, IndexError):
             width = 0
         rows.append((sz, "Desktop", "Full page, ad in context"))
-        rows.append((sz, "Desktop", "Close crop, creative legible"))
         if 0 < width <= 400:
             rows.append((sz, "Mobile", "Full page, ad in context"))
-            rows.append((sz, "Mobile", "Close crop, creative legible"))
     return rows
 
 
@@ -329,8 +333,8 @@ day, which reads as the next day in UTC.
 
 ## What gets captured
 
-{_plural(len(rows) + (1 if ros else 0), 'shot')}: each size in context and close up, \
-desktop{' and mobile' if any(d == 'Mobile' for _, d, _ in rows) else ''}.\
+{_plural(len(rows) + (1 if ros else 0), 'shot')}: each size in context on \
+desktop{', and on mobile where the size fits a phone slot' if any(d == 'Mobile' for _, d, _ in rows) else ''}.\
 {' Run-of-site targeting means the line can serve anywhere under the targeted unit, so an article page is the shot to lead with.' if ros else ''}
 
 | # | Size | Where | Device | Shot |
