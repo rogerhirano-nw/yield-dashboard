@@ -114,7 +114,7 @@ def _print_df(df: pd.DataFrame, note: str = "") -> None:
 
 
 def _report(gc: GAMClient, label: str, dimensions, metrics, start, end,
-            filters=None) -> pd.DataFrame | None:
+            filters=None, top: str | None = None, n: int = 15) -> pd.DataFrame | None:
     print(f"\n--- report: {label}")
     print(f"    dims={dimensions} metrics={metrics}")
     try:
@@ -123,6 +123,9 @@ def _report(gc: GAMClient, label: str, dimensions, metrics, start, end,
     except Exception as exc:  # noqa: BLE001 — each cut is independent
         print(f"    FAILED: {type(exc).__name__}: {_short(exc, 400)}")
         return None
+    if top and not df.empty and top in df.columns:
+        df = df.sort_values(top, ascending=False).head(n)
+        print(f"    (top {n} by {top})")
     _print_df(df)
     return df
 
@@ -284,6 +287,31 @@ def main() -> int:
                 ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
                 ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
                 start, end, [("ORDER_ID", "IN", [oid])])
+
+    # A PG line serves through the ad server but is bought programmatically,
+    # so a 0 in AD_SERVER_CLICKS alone doesn't prove GAM logged no click —
+    # check each click metric family separately (they are mutually
+    # incompatible in one report, hence one cut each).
+    for m in ("CLICKS", "AD_EXCHANGE_CLICKS", "AD_SERVER_CLICKS",
+              "AD_SERVER_UNFILTERED_CLICKS", "VIDEO_VIEWERSHIP_CLICK_TO_PLAYS"):
+        _report(gc, f"{m} on the line item(s)", ["LINE_ITEM_ID"], [m],
+                start, end, li_filter)
+
+    # The control group: among video-player inventory, do the THIRD-PARTY
+    # VAST redirects record clicks, or only the formats GAM serves itself?
+    video_only = [("LINE_ITEM_ENVIRONMENT_TYPE_NAME", "IN", ["Video player"])]
+    _report(gc, "video-player inventory by creative type",
+            ["CREATIVE_TYPE_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end, video_only)
+    _report(gc, "video-player inventory by third-party VAST vendor",
+            ["CREATIVE_VIDEO_REDIRECT_THIRD_PARTY"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end, video_only)
+    _report(gc, "video line items that DO record clicks",
+            ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end, video_only, top="ad_server_clicks", n=15)
 
     # The decisive comparison: does ANY video inventory in this network
     # record GAM clicks, or is a 0 here the norm for video?
