@@ -4,14 +4,22 @@ Magnite Open Bidding video ad-request volume, to cross-check the SSP's own
 
 Context (2026-09-18): Magnite's video report for 2026-08-18 → 2026-09-16 shows
 Open Bidding at 265,819,907 "Ad Requests" — 2.07x Prebid Server (RP Hosted).
-GAM is the side that *sends* those requests, so its callout count settles what
-Magnite actually received.
+RESULT (run 35376751276): GAM records 52,036,623 video callouts — Magnite
+reports 5.11x that. BOTH ARE CORRECT. Ad Manager applies *bid flattening* to
+video: one callout is split into several OpenRTB bid requests (by format, video
+duration, and pod position) before it reaches the exchange. YIELD_GROUP_CALLOUTS
+counts the callout, PRE-split; Magnite counts the requests, POST-split. So a
+callout is an OPPORTUNITY count, not a requests-received count, and the two
+columns are simply in different units.
 
-RESULT (run 35376751276): GAM sent 52,036,623 video callouts — Magnite reports
-5.11x that. But Magnite's ad responses match GAM's bids to -3.0% and its paid
-impressions match GAM's impressions to -2.2%, so the two systems agree on the
-whole funnel EXCEPT the request and auction columns. See
-docs/ob_vs_prebid_video_requests.md.
+Confirmed by Google Partner Solutions 2026-09-22 and publicly documented:
+https://support.google.com/authorizedbuyers/answer/9198190
+
+An earlier version of this script and doc concluded the gap was Magnite's
+reporting error. That was WRONG and is withdrawn. The tell we already had:
+Magnite reported 115,402,553 ad responses, which is 2.22x the 52,036,623
+requests the old reading said they received — a bidder cannot respond more
+often than it is asked. See docs/ob_vs_prebid_video_requests.md.
 
 GAM-side notes (see CLAUDE.md "GAM facts"):
 - HEADER_BIDDER_INTEGRATION_TYPE_NAME is incompatible with every YIELD_GROUP_*
@@ -19,7 +27,12 @@ GAM-side notes (see CLAUDE.md "GAM facts"):
   Newsweek are 100% Open Bidding (every ad source is OPEN_BIDDING), so a
   callout count filtered to `video` is OB-only by construction.
 - YIELD_GROUP_CALLOUTS is the GAM UI's "Ad requests" column for a yield partner.
-- Funnel: CALLOUTS -> BIDS -> AUCTIONS_WON -> IMPRESSIONS.
+  Despite the label it is an OPPORTUNITY count, not requests-received (see above).
+- Funnel: CALLOUTS -> (requests split ~5x on video) -> BIDS -> AUCTIONS_WON
+  -> IMPRESSIONS. Only CALLOUTS is measured per callout; everything after it is
+  measured per individual bid, which is why BIDS can exceed CALLOUTS on video.
+- AUCTIONS_WON is counted per winning BID at ad-selection time, before render,
+  so AUCTIONS_WON/IMPRESSIONS is not a render rate.
 """
 
 import os
@@ -131,13 +144,14 @@ def main() -> None:
         print(f"  {lbl:<26}{m:>14,}{g:>14,}{m / g:>8.2f}x{(m - g) / g:>+10.1%}")
 
     print(
-        "\n  Read: GAM is the side that SENDS the request, so its callout count is "
-        "authoritative for\n  what Magnite received. A ratio near 1.00x on responses "
-        "and impressions with a much\n  larger ratio on requests means the two systems "
-        "agree on the funnel but not on its\n  denominator — the request column is "
-        "counting something finer than an opportunity\n  (per impression object / per "
-        "demand path), so it cannot be compared with a Prebid\n  Server request count "
-        "one-for-one."
+        "\n  Read: CALLOUTS is an OPPORTUNITY count, measured BEFORE Ad Manager "
+        "splits a video\n  callout into several OpenRTB bid requests (bid flattening: "
+        "format, duration, pods).\n  The exchange counts the split requests, so a ratio "
+        "of ~5x on the request row is\n  EXPECTED on video and is not an error on "
+        "either side. Responses and impressions\n  near 1.00x is the real "
+        "reconciliation — those are counted in the same units.\n  Do NOT compare this "
+        "callout count against an exchange's request column, and do NOT\n  compare a "
+        "flattened OB request count against an unflattened Prebid Server one."
     )
 
     # 3. Cross-partner bids-per-callout, computed here rather than transcribed.
@@ -179,9 +193,11 @@ def main() -> None:
     over = [r[0] for r in rows if (r[2] or 0) > 1]
     print(f"\n  partners whose VIDEO bids exceed their video callouts: "
           f"{over if over else 'none'}")
-    print("  (>1.0 is only coherent with multi-seat bidding; a partner whose video\n"
-          "   bid count also equals its display bid count is more likely one total\n"
-          "   attributed to both yield groups — see docs/ob_vs_prebid_video_requests.md)")
+    print("  (>1.0 is EXPECTED on video: bids are counted after the ~5x flattening\n"
+          "   split, callouts before it, so any partner bidding above ~1/split shows\n"
+          "   a ratio over 1. Divide by the split factor for the true bid rate —\n"
+          "   Magnite 2.29/5.11 = 45%, the same as its display rate. The others bid\n"
+          "   2-5%, which is why the split stays invisible on their rows.)")
 
     # 4. The decisive test for the bids anomaly: are Magnite's DAILY display
     #    bids and DAILY video bids the same number? At window level they match
@@ -219,8 +235,8 @@ def main() -> None:
         else:
             print("  -> VERDICT: the daily figures diverge, so the two are independently\n"
                   "     measured and the window-level match is coincidence. The video\n"
-                  "     bids > callouts anomaly then needs a different explanation\n"
-                  "     (multi-seat bidding is the leading candidate).")
+                  "     bids > callouts ratio is then explained by bid flattening:\n"
+                  "     bids are counted post-split, callouts pre-split.")
     else:
         print("  (need both yield groups in the window to run this test)")
 

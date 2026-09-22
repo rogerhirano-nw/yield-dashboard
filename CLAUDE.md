@@ -1256,30 +1256,52 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
 - `YIELD_GROUP_CALLOUTS` is what the GAM UI calls "Ad requests" for a yield
   partner. Bid funnel goes: `YIELD_GROUP_CALLOUTS` → `YIELD_GROUP_BIDS` →
   `YIELD_GROUP_AUCTIONS_WON` → `YIELD_GROUP_IMPRESSIONS`.
-- **The `YIELD_GROUP_*` funnel is BID-denominated after the callout step**, and
-  **`YIELD_GROUP_CALLOUTS` has no hidden multiplier** — both confirmed by Ad
-  Manager Support in chat, 2026-09-18 (specialist Aneesh), during the Magnite
-  reconciliation:
-  - **`YIELD_GROUP_CALLOUTS` counts every callout Ad Manager sends to a yield
-    partner. Ad Manager does NOT send additional requests for retries or
-    multi-slot requests.** So the callout count *is* the number of requests the
-    partner received — usable as the authoritative denominator when an SSP's
-    self-reported "ad requests" disagrees.
-  - **`YIELD_GROUP_AUCTIONS_WON` is calculated against ALL BIDS RECEIVED**, not
-    per auction. So `AUCTIONS_WON / IMPRESSIONS` is **not** a render rate and
-    means nothing — on Magnite video it read 36,487,791 won vs 4,762,385
-    impressions and looked alarming; it is winning *bids* to impressions.
-    Don't raise it as a defect again.
-  - Consequently **`YIELD_GROUP_BIDS` can exceed `YIELD_GROUP_CALLOUTS`** where an
-    exchange multi-seat-bids (a bid per seat/deal). Magnite video runs 2.29
-    bids/callout; the other nine OB partners run 0.00–0.26, and Magnite's own
-    display is 0.465. A ratio >1 is therefore a property of the partner, not a
-    reporting fault.
+- **`YIELD_GROUP_CALLOUTS` counts CALLOUTS, not the bid requests they are split
+  into — on video that is a ~5x difference.** Ad Manager applies **bid
+  flattening**: one video callout is split into several separate OpenRTB bid
+  requests before they reach the exchange, by **ad format**, **video duration**
+  (a request allowing both skippable and non-skippable becomes two) and **video
+  pods** (one request per pod position). All the split requests share one
+  `BidRequest.ext.google_query_id`. Confirmed by Google Partner Solutions
+  (2026-09-22, Ishika, escalated case) and publicly documented at
+  [Flattened bid requests](https://support.google.com/authorizedbuyers/answer/9198190).
+  The consequences, all load-bearing:
+  - **`YIELD_GROUP_CALLOUTS` is measured PRE-split; everything after it is
+    measured POST-split, per individual bid.** So the funnel changes units at the
+    first step: callouts → *(requests split ~5x)* → `YIELD_GROUP_BIDS` →
+    `YIELD_GROUP_BIDS_IN_AUCTION` → `YIELD_GROUP_AUCTIONS_WON` → impressions.
+  - **Never compare `YIELD_GROUP_CALLOUTS` to an SSP's own "ad request" count on
+    video.** It is not the number of requests the partner received — it is the
+    number of *opportunities*. An SSP reporting ~5x the callouts is counting the
+    split requests and is **correct**. (This is the exact error this repo made in
+    2026-09; see `docs/ob_vs_prebid_video_requests.md`.) Callouts remain the right
+    denominator for **opportunities**, which is what a channel-vs-channel volume
+    comparison actually wants.
+  - **`YIELD_GROUP_BIDS` > `YIELD_GROUP_CALLOUTS` is normal on video** and is NOT
+    evidence of multi-seat bidding. It just means the partner's bid rate exceeds
+    1/split. Magnite video reads 2.29 bids/callout = a **44.7%** bid rate against
+    the real (split) request count — the same ~45% it bids on display, where no
+    split applies. The other nine OB partners bid 2–5%, so 5x their callouts still
+    leaves them under 1.0, which is why the effect only *looks* Magnite-specific.
+    To get a partner's true bid rate on video, divide by the split factor.
+  - **`YIELD_GROUP_AUCTIONS_WON` is counted per winning BID**, recorded at
+    ad-selection time before render. `AUCTIONS_WON / IMPRESSIONS` is **not** a
+    render rate and means nothing — on Magnite video it read 36,487,791 won vs
+    4,762,385 impressions and looked alarming. Don't raise it as a defect again.
+  - **Comparable across systems**: impressions and revenue (ours agree within
+    2.2%; OB billing is on Ad Manager totals). **Comparable with care**: bids vs
+    ad responses (within 3.0%). **Not comparable**: callouts vs any exchange-side
+    request count, and auctions-won vs impressions.
   - **Split vs unsplit matters when talking to Support.** At buyer level Magnite
-    reads 307,600,758 callouts vs 237,651,418 bids (0.77, bids below callouts) and
-    Support's own aggregate agreed. The >1 ratio only appears once
-    `YIELD_GROUP_NAME` is a dimension, and the split sums back to the buyer total
-    exactly — so always state which cut you ran, or you will talk past each other.
+    reads 307,600,758 callouts vs 237,651,418 bids (0.77) and Support's own
+    aggregate agreed. The >1 ratio only appears once `YIELD_GROUP_NAME` is a
+    dimension, and the split sums back to the buyer total exactly — so always
+    state which cut you ran, or you will talk past each other.
+  - **Flattening by format and duration can be opted out of** via the buyer's RTB
+    settings (a Google technical account manager change); **video-pod flattening
+    cannot**. Google's help page also states deal-type flattening does *not* apply
+    to Open Bidders, which is narrower than the escalation's summary — prefer the
+    help page on that detail.
 - `HEADER_BIDDER_INTEGRATION_TYPE_NAME` is **incompatible with every
   `YIELD_GROUP_*` metric** in the v1 REST reporting API — adding it returns
   `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. To distinguish OB from

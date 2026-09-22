@@ -4,7 +4,53 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
-## 2026-09-18 — OB vs Prebid Server video ad requests: Magnite's request column is 5.11x what GAM sent
+## 2026-09-22 — CORRECTION: the Magnite video request gap is bid flattening, not a reporting error
+
+**Reverses the headline of the 2026-09-18 entry below.** Google's Partner
+Solutions Team (escalated case, Ishika) established that **both reports are
+correct**: Ad Manager applies **bid flattening** to video — one callout is split
+into several OpenRTB bid requests (by ad format, video duration, and pod
+position) before reaching the exchange. `YIELD_GROUP_CALLOUTS` is measured
+**pre-split**; the exchange counts **post-split**. So 52,036,623 is an
+*opportunity* count, not a requests-received count, and Magnite's 265,819,907 is
+the real wire-level request count at a 5.11x split. Publicly documented:
+[Flattened bid requests](https://support.google.com/authorizedbuyers/answer/9198190).
+
+**Our own data already refuted us and we did not check it.** Magnite reported
+115,402,553 ad responses against the 52,036,623 requests the old reading said
+they received — **2.22 responses per request**, which is impossible. Four more
+checks all confirm the split: Magnite's bid rate is 44.7% on video vs 46.5% on
+display once the split is removed (it was 229% under the old model); the split
+factor falls out of GAM data alone at 4.92 (bids/callout ÷ display bid rate),
+within 3.8% of the 5.11 Magnite implies; bids per *ad response* are 1.031, so it
+was never multi-seat bidding; and dividing the other nine partners' ratios by
+5.11 gives 2.3–5.1% bid rates, matching what Google said independently. The
+effect is universal, not Magnite-specific — it is only *visible* on Magnite
+because a ~45% bidder is the only one whose bids/callout crosses 1.0.
+
+**The operative conclusion survives, on new reasoning.** OB and PBS request
+counts still aren't comparable one-for-one — not because either is wrong, but
+because OB's are flattened ~5.11x and PBS's (page-side, never touched by Ad
+Manager) are not. Per *opportunity*, Prebid Server still carries **2.46x more**
+video volume (128.2M vs 52.0M), OB still fills 8.95% vs 1.87%, and still returns
+$0.756/1k vs $0.242. Nothing goes to Magnite as an error; no approach was ever
+made on the incorrect basis.
+
+Also corrected: the 2026-09-18 Support chat (Aneesh) is marked **superseded** —
+it ruled out retries and multi-slot, which is true, but flattening is neither,
+so the answer never covered it. `CLAUDE.md`'s **GAM facts** bullet is rewritten
+(it previously told future sessions that callouts are the authoritative
+requests-received denominator — the exact error). `scripts/pull_magnite_ob_video_requests.py`
+re-frames its reconciliation and drops the multi-seat verdict. One open item:
+the 2.46x assumes Magnite's Prebid Server column is ~1 request per opportunity,
+supported by its 98.2% auction rate against OB's 37.5% but not confirmed with
+them.
+
+## 2026-09-18 — OB vs Prebid Server video ad requests ⚠️ SUPERSEDED by 2026-09-22
+
+> **The headline of this entry is wrong.** The 5.11x is Ad Manager's own bid
+> flattening, not a Magnite reporting error. Kept as the record of what was
+> believed at the time; read the 2026-09-22 correction above first.
 
 Magnite raised Open Bidding video ad-request volume "in comparison to PB server"
 — their chart shows OB at **265.8M** against **128.2M** for Prebid Server (RP
