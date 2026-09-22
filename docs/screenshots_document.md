@@ -169,7 +169,19 @@ slide that comes out before the deck goes to the client.
 
 | Campaign | Order | Doc | Deck | State |
 | --- | --- | --- | --- | --- |
-| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Not started; no creatives |
+| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Live 22 Sep; **shot in full** (5 slides) |
 | American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | Delivering; 1 of 7 shot |
 
-Both shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion.
+Verified health pages to shoot against — re-check on the day, since `adexclusion`
+changes under a URL (both read `cat=nwus-health`, `brandsafe=y`):
+
+- [Scientists Find Potential Way To Preserve Muscle During GLP-1 Weight Loss](https://www.newsweek.com/scientists-find-potential-way-to-preserve-muscle-during-glp-1-weight-loss-12468110) — the KFSHRC shots, 22 Sep 2026
+- [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — the American Hospital Dubai shot, 21 Sep 2026
+
+**A 7-shot plan is not always 7 shots.** KFSHRC has two sizes and came to five
+slides: the 970x250 gets no mobile shot (it cannot fill a 390px slot — the
+capture script skips it rather than shooting a house ad), the 300x250 crop
+renders pixel-identical on both viewports so it is shown once, and the
+homepage/section row is only worth a slide if the client asks. Cut the slides
+the capture didn't produce instead of leaving "awaiting capture" placeholders in
+a deck that is otherwise done.
