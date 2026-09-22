@@ -36,6 +36,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -123,11 +124,21 @@ def _report(gc: GAMClient, label: str, dimensions, metrics, start, end,
             filters=None, top: str | None = None, n: int = 15) -> pd.DataFrame | None:
     print(f"\n--- report: {label}")
     print(f"    dims={dimensions} metrics={metrics}")
-    try:
-        df = gc._run_report(dimensions=dimensions, metrics=metrics,
-                            start_date=start, end_date=end, filters=filters)
-    except Exception as exc:  # noqa: BLE001 — each cut is independent
-        print(f"    FAILED: {type(exc).__name__}: {_short(exc, 400)}")
+    df = None
+    for attempt in (1, 2):
+        try:
+            df = gc._run_report(dimensions=dimensions, metrics=metrics,
+                                start_date=start, end_date=end, filters=filters)
+            break
+        except Exception as exc:  # noqa: BLE001 — each cut is independent
+            transient = "500" in str(exc) or "try again later" in str(exc).lower()
+            if attempt == 1 and transient:
+                print("    transient GAM report error — retrying once")
+                time.sleep(20)
+                continue
+            print(f"    FAILED: {type(exc).__name__}: {_short(exc, 400)}")
+            return None
+    if df is None:
         return None
     if top and not df.empty and top in df.columns:
         df = df.sort_values(top, ascending=False).head(n)
@@ -337,6 +348,13 @@ def main() -> int:
         _report(gc, f"{m} on the line item(s)", ["LINE_ITEM_ID"], [m],
                 start, end, li_filter)
 
+    for m in ("VIDEO_INTERACTION_MUTES", "VIDEO_INTERACTION_UNMUTES",
+              "VIDEO_INTERACTION_PAUSES", "VIDEO_INTERACTION_RESUMES",
+              "VIDEO_INTERACTION_FULL_SCREENS", "VIDEO_INTERACTION_VIDEO_SKIPS",
+              "VIDEO_VIEWERSHIP_ENGAGED_VIEWS", "VIDEO_VIEWERSHIP_AUTO_PLAYS"):
+        _report(gc, f"{m} on the line item(s)", ["LINE_ITEM_ID"], [m],
+                start, end, li_filter)
+
     # The control group: among video-player inventory, do the THIRD-PARTY
     # VAST redirects record clicks, or only the formats GAM serves itself?
     video_only = [("LINE_ITEM_ENVIRONMENT_TYPE_NAME", "IN", ["Video player"])]
@@ -348,6 +366,15 @@ def main() -> int:
             ["CREATIVE_VIDEO_REDIRECT_THIRD_PARTY"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
             start, end, video_only)
+    _report(gc, "video line items by redirect vendor",
+            ["CREATIVE_VIDEO_REDIRECT_THIRD_PARTY", "LINE_ITEM_ID",
+             "LINE_ITEM_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end, video_only, top="ad_server_impressions", n=30)
+    _report(gc, "video ad units by clicks",
+            ["AD_UNIT_NAME_TOP_LEVEL", "AD_UNIT_NAME"],
+            ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
+            start, end, video_only, top="ad_server_impressions", n=15)
     _report(gc, "every line item running Innovid video redirects",
             ["LINE_ITEM_ID", "LINE_ITEM_NAME"],
             ["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_CTR"],
