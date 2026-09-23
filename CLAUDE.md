@@ -1265,6 +1265,12 @@ retype a non-DRAFT line. Rules learned on SO01190:
   (traffics a declared tag onto a real order's LIs) adds it automatically when
   the order/LI name says Interstitial or the LI targets the `interstitial` ad
   unit, and labels an already-existing creative it reuses.
+- **Every interstitial campaign carries the Comscore pixel** (Roger,
+  2026-09-23) — `scripts/orders/pixels/comscore_interstitial.txt`, kept
+  verbatim (c2=6972086; its `%e…!` / `%%…%%` macros are GAM's). It goes on
+  the creative as a **third-party impression tracker**
+  (`thirdPartyImpressionTrackingUrls`), never spliced into the agency tag;
+  `attach_tag_to_order.py` adds it with the Interstitial label.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative

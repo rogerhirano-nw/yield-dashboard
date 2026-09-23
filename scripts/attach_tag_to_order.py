@@ -7,7 +7,9 @@ Takes a tag file (e.g. the Matchbox Flashtalking tag proven on the
     size, SafeFrame as given (OFF for on-page breakout tags), with its ad
     technology DECLARED (Flashtalking = ATP 209 — CLAUDE.md);
   - applies creative labels — always `interstitial` when the targets are
-    interstitial lines (the production rule, CLAUDE.md);
+    interstitial lines — and, for interstitials, the Comscore impression
+    pixel (scripts/orders/pixels/comscore_interstitial.txt) as a third-party
+    impression tracker (both production rules, CLAUDE.md);
   - associates it with every target line item: the ids passed with
     --line-items, or else every non-archived line item on the order whose
     creative placeholders include that size.
@@ -44,6 +46,7 @@ if _envp.exists():
 from googleads import ad_manager, oauth2  # noqa: E402
 
 V = "v202605"
+COMSCORE_INTERSTITIAL = Path(__file__).resolve().parent / "orders" / "pixels" / "comscore_interstitial.txt"
 
 
 def _client():
@@ -82,6 +85,9 @@ def main() -> int:
     ap.add_argument("--labels", default="",
                     help="comma-separated creative label names to apply "
                          "(interstitial is added automatically for interstitial lines)")
+    ap.add_argument("--trackers", default="",
+                    help="comma-separated extra impression-tracking URLs "
+                         "(the Comscore interstitial pixel is added automatically)")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -183,6 +189,23 @@ def main() -> int:
         label_ids.append(found[0].id)
         print(f"  label: {found[0].name} ({found[0].id}, types {list(found[0].types or [])})")
 
+    # Rule (Roger, 2026-09-23): every interstitial campaign carries the
+    # Comscore pixel, as a third-party impression tracker on the creative
+    # (never spliced into the agency tag). Kept verbatim in a file.
+    trackers = [x.strip() for x in args.trackers.split(",") if x.strip()]
+    if is_interstitial:
+        trackers.append(COMSCORE_INTERSTITIAL.read_text().strip())
+    trackers = list(dict.fromkeys(trackers))
+    for t in trackers:
+        print(f"  impression tracker: {t[:90]}…")
+    if existing:
+        have_t = list(existing[0]["thirdPartyImpressionTrackingUrls"] or []) \
+            if "thirdPartyImpressionTrackingUrls" in dir(existing[0]) else None
+        if have_t is None:
+            print("!! this creative type has no thirdPartyImpressionTrackingUrls field")
+            return 1
+        print(f"  existing creative trackers: {len(have_t)}")
+
     if not args.apply:
         print("\nDRY RUN — nothing written. Re-run with --apply to write to GAM.")
         return 0
@@ -198,6 +221,13 @@ def main() -> int:
                 {"labelId": i, "isNegated": False} for i in missing_labels]
             cr = cr_svc.updateCreatives([cr])[0]
             print(f"labelled creative {cr.id}: + {missing_labels}")
+        have_t = list(cr.thirdPartyImpressionTrackingUrls or [])
+        missing_t = [t for t in trackers if t not in have_t]
+        if missing_t:
+            cr.thirdPartyImpressionTrackingUrls = have_t + missing_t
+            cr = cr_svc.updateCreatives([cr])[0]
+            print(f"added {len(missing_t)} impression tracker(s) to creative {cr.id}; "
+                  f"now {len(cr.thirdPartyImpressionTrackingUrls or [])}")
     else:
         cr = cr_svc.createCreatives([{
             "xsi_type": "ThirdPartyCreative",
@@ -208,6 +238,7 @@ def main() -> int:
             "isSafeFrameCompatible": args.safeframe,
             "thirdPartyDataDeclaration": decl,
             "appliedLabels": [{"labelId": i, "isNegated": False} for i in label_ids],
+            "thirdPartyImpressionTrackingUrls": trackers,
         }])[0]
         print(f"created creative {cr.id}")
     for li in targets:
