@@ -7,6 +7,8 @@
   "po_number": "SO01190",
   "notes": "IO #SO01190. Client PO: O-D3FII2G-R0. Client campaign: 01272 Marcom_Apple TV+_NA_ATV+ Awareness_NA_Evergreen_Way of the Warrior Kid_Q127. Agency: OMD USA LLC (Justin Otterberg). Total $141,429.00 / 8,839,313 impr @ $16 CPM.",
   "salesperson_name": "Ivy Lee",
+  "line_item_type": "STANDARD",
+  "priority": 8,
   "line_items": [
     {
       "io_line": "P3K5DZZ_Avail_Custom Interstitial",

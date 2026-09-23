@@ -263,11 +263,17 @@ def main() -> int:
     for li in spec["line_items"]:
         tmpl, matched = _pick_template(templates, li["template_match"])
         body = {k: tmpl[k] for k in CLONE_FIELDS if tmpl[k] is not None}
-        lit = str(tmpl.lineItemType)
+        # The IO drives the line type and goal: a CPM buy with a quantity is a
+        # STANDARD line with a LIFETIME impression goal. "TEMPLATE" mirrors the
+        # template's type instead (e.g. a SOV takeover sold as Sponsorship) —
+        # only when the spec asks for it, since that drops the IO quantity.
+        want = str(spec.get("line_item_type", "STANDARD")).upper()
+        lit = str(tmpl.lineItemType) if want == "TEMPLATE" else want
         body.update({
             "name": li["name"],
             "lineItemType": lit,
-            "priority": tmpl.priority,
+            "priority": (tmpl.priority if want == "TEMPLATE"
+                         else int(spec.get("priority", 8))),
             "startDateTime": _dt(li["start"], end=False),
             "endDateTime": _dt(li["end"], end=True),
             "costType": "CPM",
@@ -276,9 +282,8 @@ def main() -> int:
                       f"{li['impressions']:,} impr @ ${li['cpm']:.2f} CPM = ${li['amount']:,.2f}"),
         })
         if lit == "SPONSORSHIP":
-            # Mirror the template's share-of-voice goal (the prior flights ran
-            # the interstitial as a 100% daily takeover); the IO quantity rides
-            # in the notes. GAM rejects a LIFETIME goal on SPONSORSHIP.
+            # GAM rejects a LIFETIME goal on SPONSORSHIP; mirror the template's
+            # share-of-voice goal and keep the IO quantity in the notes.
             g = tmpl.primaryGoal
             body["primaryGoal"] = {"goalType": g.goalType, "unitType": g.unitType, "units": g.units}
         else:
@@ -300,6 +305,32 @@ def main() -> int:
         for line in _describe_targeting(tg):
             print(f"  {line}")
 
+    # Existing lines whose type/priority/goal no longer match the spec are
+    # corrected in place — only while DRAFT, so a live line is never retyped.
+    to_fix = []
+    if existing:
+        have = {x.name: x for x in _page(li_svc, "getLineItemsByStatement",
+                                         "orderId = :o", o=existing[0].id)}
+        for body in new_lis:
+            cur = have.get(body["name"])
+            if cur is None:
+                continue
+            g, want_g = cur.primaryGoal, body["primaryGoal"]
+            diff = (str(cur.lineItemType) != body["lineItemType"]
+                    or cur.priority != body["priority"]
+                    or str(g.goalType) != want_g["goalType"]
+                    or str(g.unitType) != want_g["unitType"]
+                    or g.units != want_g["units"])
+            if not diff:
+                continue
+            print(f"\nUPDATE {cur.id} ({cur.status}): {cur.lineItemType} p{cur.priority} "
+                  f"{g.goalType}/{g.unitType}/{g.units} → {body['lineItemType']} "
+                  f"p{body['priority']} {want_g['goalType']}/{want_g['unitType']}/{want_g['units']}")
+            if str(cur.status) != "DRAFT":
+                print(f"  !! {cur.id} is {cur.status}, not DRAFT — left as is; change it in the GAM UI")
+                continue
+            to_fix.append((cur, body))
+
     if not args.apply:
         print("\nDRY RUN — nothing written. Re-run with --apply to create in GAM.")
         return 0
@@ -311,6 +342,15 @@ def main() -> int:
     else:
         order = o_svc.createOrders([order_body])[0]
         print(f"\ncreated order {order.id}: {order.name}")
+
+    for cur, body in to_fix:
+        cur.lineItemType = body["lineItemType"]
+        cur.priority = body["priority"]
+        cur.primaryGoal = body["primaryGoal"]
+        cur.notes = body["notes"]
+        done = li_svc.updateLineItems([cur])[0]
+        print(f"updated line item {done.id} ({done.status}): {done.lineItemType} "
+              f"p{done.priority} {done.primaryGoal.goalType}/{done.primaryGoal.units}")
 
     have = {x.name: x for x in _page(li_svc, "getLineItemsByStatement",
                                      "orderId = :o", o=order.id)}
