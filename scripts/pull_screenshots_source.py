@@ -115,8 +115,13 @@ def _iso(s: str | None) -> str | None:
 
 
 def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
-    """(size, device, shot) rows — every size in context and close up on
-    desktop; sizes narrow enough to run on a phone get the mobile pair too."""
+    """(size, device, shot) rows — every size in context on desktop, and on
+    mobile too when it is narrow enough to run on a phone.
+
+    In-context only. A close crop shows the creative but not where it ran,
+    which is the one thing a proof-of-placement document exists to show, so
+    the crops were dropped from the deliverable (Roger, 2026-09-21). The
+    capture tool still saves a crop per shot as backing material."""
     rows: list[tuple[str, str, str]] = []
     for sz in dict.fromkeys(sizes):  # de-dupe, keep order
         try:
@@ -124,10 +129,8 @@ def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
         except (ValueError, IndexError):
             width = 0
         rows.append((sz, "Desktop", "Full page, ad in context"))
-        rows.append((sz, "Desktop", "Close crop, creative legible"))
         if 0 < width <= 400:
             rows.append((sz, "Mobile", "Full page, ad in context"))
-            rows.append((sz, "Mobile", "Close crop, creative legible"))
     return rows
 
 
