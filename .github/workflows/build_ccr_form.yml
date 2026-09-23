@@ -31,15 +31,6 @@ on:
         description: 'Override KPIs (default: CTR/VCR + Viewability)'
         required: false
         default: ''
-  push:
-    branches: [claude/gallant-ride-obk8il]
-    paths:
-      - 'scripts/build_ccr_form.py'
-      - 'templates/comscore_ccr_template.xlsx'
-      - '.github/workflows/build_ccr_form.yml'
-
-env:
-  PUSH_ORDERS: "4187974224 4199964192"
 
 permissions:
   contents: read
@@ -61,7 +52,7 @@ jobs:
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
-          CCR_ORDER_IDS: ${{ inputs.orders || env.PUSH_ORDERS }}
+          CCR_ORDER_IDS: ${{ inputs.orders }}
           CCR_ADVERTISER: ${{ inputs.advertiser }}
           CCR_BRAND: ${{ inputs.brand }}
           CCR_PRODUCT: ${{ inputs.product }}
