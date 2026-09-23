@@ -1186,6 +1186,39 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   run-of-site line says outright that the page is a presentation choice,
   not contextual targeting that was bought.
 
+## Creating a Direct order from a signed IO
+`scripts/setup_io_order.py` + one spec per IO under `scripts/orders/<IO#>.json`
+(first used for **SO01190**, OMD / Apple TV+ "Way of the Warrior Kid", 2026-09-23
+→ order **4204198540**, LIs 7437342360 Pre-Avail / 7440393028 Avail). Transcribe
+the PDF into the spec — the script checks `qty × CPM == amount` per line before
+touching GAM — then run `.github/workflows/setup_io_order.yml` (repo GAM secrets;
+no session has local creds). **A push to the branch is always a dry run**; to
+write, flip `APPLY_ON_PUSH` to `"true"` in its own commit, read the run, then flip
+it back in the next commit. The script is lookup-first (never duplicates an order
+or LI) and corrects a still-DRAFT LI's type/priority/goal in place; it refuses to
+retype a non-DRAFT line. Rules learned on SO01190:
+- **The IO drives line type and goal.** A CPM buy with a quantity is **STANDARD,
+  priority 8** (Roger, 2026-09-23), with a **LIFETIME impression goal = the IO
+  qty**. Targeting, placeholders and roadblocking are cloned from a *template* LI
+  of a prior flight of the same product — but **not** its line type. The first
+  SO01190 apply copied the Cape Fear template's **SPONSORSHIP p4, 100% daily**
+  setup, which drops the IO quantity entirely (GAM rejects a LIFETIME goal on
+  Sponsorship); Roger caught it and it was corrected. Mirroring a template's type
+  is now opt-in only (`"line_item_type": "TEMPLATE"`) — ask before using it.
+- **Apple TV+ / OMD** runs under advertiser **`[nw] Omnicom` (5744377675)**, no
+  agency company, salesperson "Newsweek - Sales - Ivy Lee" (255224230). Template:
+  Cape Fear SO01090 paid line **7330684240** — ad unit 23295929518 + descendants,
+  3 custom KVs, **2x1 PIXEL** placeholder (the custom interstitial), BROWSER,
+  ONLY_ONE roadblocking. Prefer the paid template line over its $0 "AV" sibling.
+- **Names mirror the advertiser's own precedent**:
+  `Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_'<Title>'-FY27-Q1_Display-<Pre-Avail|Avail>_US_Interstitial_<SO#>_Team-USA_ILee`
+  (order name uses plain `Display` in that slot). Format sits at token 11 here, not
+  10 — `derive_format` still finds "Interstitial" by keyword.
+- **PO field = the SO number** (as on SO01090); the client's PO goes in the order
+  notes along with the IO campaign string and totals.
+- New LIs land **DRAFT, no creatives**; the service account can't approve, so
+  creatives + order approval happen in the GAM UI.
+
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
   (America/New_York), not UTC.** GAM ends a line at 23:59 ET on the flight's
