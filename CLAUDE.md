@@ -1252,7 +1252,10 @@ retype a non-DRAFT line. Rules learned on SO01190:
   "Ad technology providers"; API: `thirdPartyDataDeclaration` =
   `{declarationType: DECLARED, thirdPartyCompanyIds: [...]}`). The ids are
   Google's global ATP list, not network Companies, so `CompanyService` can't
-  resolve them — **Flashtalking is 209**. `scripts/setup_demo_creative.py`
+  resolve them — look ids up in Google's dictionary
+  (`https://storage.googleapis.com/adx-rtb-dictionaries/providers.csv`):
+  **209 = "Innovid"** (Flashtalking's parent; its entry covers
+  `servedby.flashtalking.com` / `cdn.flashtalking.com`), **62 = comScore**. `scripts/setup_demo_creative.py`
   copies the template creative's declaration and refuses to create an
   undeclared tag (Roger, 2026-09-23 — the first Matchbox demo creative shipped
   without one). Gated demos: `scripts/setup_demo_creative.py` clones a demo LI
@@ -1260,6 +1263,19 @@ retype a non-DRAFT line. Rules learned on SO01190:
   value is always the tag sheet's `Placement_ID`** (Roger, 2026-09-23; the
   script refuses any other value);
   `scripts/inspect_line_item.py` dumps any LI's full setup + creative tags.
+- **Interstitial creatives on production orders always carry the
+  `interstitial` creative label** (Roger, 2026-09-23). `scripts/attach_tag_to_order.py`
+  (traffics a declared tag onto a real order's LIs) adds it automatically when
+  the order/LI name says Interstitial or the LI targets the `interstitial` ad
+  unit, and labels an already-existing creative it reuses.
+- **Every interstitial campaign carries the Comscore pixel** (Roger,
+  2026-09-23) — `scripts/orders/pixels/comscore_interstitial.txt`, kept
+  verbatim (c2=6972086; its `%e…!` / `%%…%%` macros are GAM's). It goes on
+  the creative as a **third-party impression tracker**
+  (`thirdPartyImpressionTrackingUrls`), never spliced into the agency tag;
+  `attach_tag_to_order.py` adds it with the Interstitial label. **Adding the
+  pixel means declaring Comscore (ATP 62)** alongside the tag's vendor —
+  every vendor that fires on the creative is declared.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
