@@ -1260,6 +1260,11 @@ retype a non-DRAFT line. Rules learned on SO01190:
   value is always the tag sheet's `Placement_ID`** (Roger, 2026-09-23; the
   script refuses any other value);
   `scripts/inspect_line_item.py` dumps any LI's full setup + creative tags.
+- **Interstitial creatives on production orders always carry the
+  `interstitial` creative label** (Roger, 2026-09-23). `scripts/attach_tag_to_order.py`
+  (traffics a declared tag onto a real order's LIs) adds it automatically when
+  the order/LI name says Interstitial or the LI targets the `interstitial` ad
+  unit, and labels an already-existing creative it reuses.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative

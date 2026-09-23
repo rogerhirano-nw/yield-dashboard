@@ -6,6 +6,8 @@ Takes a tag file (e.g. the Matchbox Flashtalking tag proven on the
   - creates ONE ThirdPartyCreative under the order's advertiser, at the given
     size, SafeFrame as given (OFF for on-page breakout tags), with its ad
     technology DECLARED (Flashtalking = ATP 209 — CLAUDE.md);
+  - applies creative labels — always `interstitial` when the targets are
+    interstitial lines (the production rule, CLAUDE.md);
   - associates it with every target line item: the ids passed with
     --line-items, or else every non-archived line item on the order whose
     creative placeholders include that size.
@@ -77,6 +79,9 @@ def main() -> int:
     ap.add_argument("--atp", default="209", help="comma-separated ad technology provider ids")
     ap.add_argument("--safeframe", action="store_true", help="mark SafeFrame compatible")
     ap.add_argument("--line-items", default="", help="comma-separated LI ids (default: all matching the size)")
+    ap.add_argument("--labels", default="",
+                    help="comma-separated creative label names to apply "
+                         "(interstitial is added automatically for interstitial lines)")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -155,6 +160,29 @@ def main() -> int:
     print(f"  name: {args.name}")
     print(f"  attach to: {[li.id for li in targets]}")
 
+    # Rule (Roger, 2026-09-23): on production orders every interstitial
+    # creative carries the "interstitial" label. A target is interstitial when
+    # its name or the order name says so, or it targets the interstitial unit.
+    label_names = [x.strip() for x in args.labels.split(",") if x.strip()]
+    is_interstitial = "interstitial" in order.name.lower() or any(
+        "interstitial" in li.name.lower()
+        or any(au_names.get(a.adUnitId, "").lower() == "interstitial"
+               for a in ((li.targeting.inventoryTargeting.targetedAdUnits or [])
+                         if li.targeting.inventoryTargeting else []))
+        for li in targets)
+    if is_interstitial and "interstitial" not in [n.lower() for n in label_names]:
+        label_names.append("interstitial")
+    lab_svc = client.GetService("LabelService", version=V)
+    label_ids = []
+    for n in label_names:
+        found = [x for x in _q(lab_svc, "getLabelsByStatement", "name = :n", n=n) if x.isActive]
+        if len(found) != 1:
+            print(f"!! expected one active label named {n!r}, found "
+                  f"{[(x.id, x.name, x.types) for x in found]}")
+            return 1
+        label_ids.append(found[0].id)
+        print(f"  label: {found[0].name} ({found[0].id}, types {list(found[0].types or [])})")
+
     if not args.apply:
         print("\nDRY RUN — nothing written. Re-run with --apply to write to GAM.")
         return 0
@@ -163,6 +191,13 @@ def main() -> int:
     if existing:
         cr = existing[0]
         print(f"reusing creative {cr.id}")
+        have = {a.labelId for a in (cr.appliedLabels or []) if not a.isNegated}
+        missing_labels = [i for i in label_ids if i not in have]
+        if missing_labels:
+            cr.appliedLabels = list(cr.appliedLabels or []) + [
+                {"labelId": i, "isNegated": False} for i in missing_labels]
+            cr = cr_svc.updateCreatives([cr])[0]
+            print(f"labelled creative {cr.id}: + {missing_labels}")
     else:
         cr = cr_svc.createCreatives([{
             "xsi_type": "ThirdPartyCreative",
@@ -172,6 +207,7 @@ def main() -> int:
             "snippet": tag,
             "isSafeFrameCompatible": args.safeframe,
             "thirdPartyDataDeclaration": decl,
+            "appliedLabels": [{"labelId": i, "isNegated": False} for i in label_ids],
         }])[0]
         print(f"created creative {cr.id}")
     for li in targets:
