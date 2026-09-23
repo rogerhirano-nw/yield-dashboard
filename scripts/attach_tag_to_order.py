@@ -46,6 +46,7 @@ if _envp.exists():
 from googleads import ad_manager, oauth2  # noqa: E402
 
 V = "v202605"
+COMSCORE_ATP = 62   # "comScore" in Google's ATP dictionary (covers sb.scorecardresearch.com)
 COMSCORE_INTERSTITIAL = Path(__file__).resolve().parent / "orders" / "pixels" / "comscore_interstitial.txt"
 
 
@@ -195,6 +196,11 @@ def main() -> int:
     trackers = [x.strip() for x in args.trackers.split(",") if x.strip()]
     if is_interstitial:
         trackers.append(COMSCORE_INTERSTITIAL.read_text().strip())
+    # A tracker is a vendor on the creative, so it must be declared too
+    # (Roger, 2026-09-23): the Comscore pixel brings ATP 62 with it.
+    if any("scorecardresearch.com" in t for t in trackers) and COMSCORE_ATP not in atp:
+        atp.append(COMSCORE_ATP)
+    print(f"  ad technology to declare: {atp}")
     trackers = list(dict.fromkeys(trackers))
     for t in trackers:
         print(f"  impression tracker: {t[:90]}…")
@@ -221,6 +227,15 @@ def main() -> int:
                 {"labelId": i, "isNegated": False} for i in missing_labels]
             cr = cr_svc.updateCreatives([cr])[0]
             print(f"labelled creative {cr.id}: + {missing_labels}")
+        cur = cr["thirdPartyDataDeclaration"] if "thirdPartyDataDeclaration" in dir(cr) else None
+        have_atp = list(cur.thirdPartyCompanyIds or []) if cur is not None else []
+        missing_atp = [i for i in atp if i not in have_atp]
+        if missing_atp or cur is None or str(cur.declarationType) != "DECLARED":
+            cr.thirdPartyDataDeclaration = {"declarationType": "DECLARED",
+                                            "thirdPartyCompanyIds": have_atp + missing_atp}
+            cr = cr_svc.updateCreatives([cr])[0]
+            print(f"declared ad technology on creative {cr.id}: "
+                  f"{list(cr.thirdPartyDataDeclaration.thirdPartyCompanyIds or [])}")
         have_t = list(cr.thirdPartyImpressionTrackingUrls or [])
         missing_t = [t for t in trackers if t not in have_t]
         if missing_t:
