@@ -1173,7 +1173,8 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   the Ketch consent overlay rather than clicking it (hiding is not
   consenting). **In-context shots only — no close-up crops** (Roger,
   2026-09-23): the script doesn't take them and the client deck is cover →
-  summary → one slide per in-context shot, **one deck per advertiser**.
+  summary → one slide per in-context shot, **one deck per advertiser**,
+  **always delivered as a `.pptx`** (`scripts/build_screenshots_deck.py`).
   `adexclusion=nopassfq` is DoubleVerify flagging the headless *runner* as
   IVT, not the page — on a page already reading the right `cat` and
   `brandsafe=y`, re-run with `no_gate` (never for `generic_brand_safety`).
