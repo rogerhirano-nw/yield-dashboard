@@ -13,7 +13,7 @@ on:
       - '.github/workflows/attach_tag_to_order.yml'
 
 env:
-  APPLY_ON_PUSH: "false"
+  APPLY_ON_PUSH: "true"
   ORDER: "4187974224"
   TAG: scripts/orders/tags/matchbox_ft11167131_js_https.html
   NAME: 07423706_wwa_us_dis_atv_atvacq_pdis_amzdspnwk_staf_intl_cpm_aos_mobtab_adevt_gnt_broa_prlp_lfnnl_usen_heroart_static_11ar_ban_mboxtm_nwmvirls_prlm_wt_na_na_matchboxnewsweekpre
