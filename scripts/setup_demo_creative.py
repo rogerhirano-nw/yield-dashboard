@@ -103,6 +103,26 @@ def main() -> int:
     print(f"template creative {t_cr.id}: {t_cr._xsd_type.name} {t_cr.size.width}x{t_cr.size.height} "
           f"advertiser {t_cr.advertiserId} safeframe={t_cr.isSafeFrameCompatible}")
 
+    decl = t_cr["thirdPartyDataDeclaration"] if "thirdPartyDataDeclaration" in dir(t_cr) else None
+    comp_svc = client.GetService("CompanyService", version=V)
+
+    def _decl_str(d):
+        if d is None:
+            return "none"
+        ids = list(d.thirdPartyCompanyIds or [])
+        names = []
+        for i in ids:
+            c = _q(comp_svc, "getCompaniesByStatement", "id = :i", i=i)
+            names.append(f"{i} {c[0].name if c else '?'}")
+        return f"{d.declarationType} {names}"
+    print(f"  ad technology declaration: {_decl_str(decl)}")
+    if decl is None or str(decl.declarationType) != "DECLARED" or not decl.thirdPartyCompanyIds:
+        print("!! template creative declares no ad technology — refusing to create an "
+              "undeclared third-party creative")
+        return 1
+    decl_body = {"declarationType": "DECLARED",
+                 "thirdPartyCompanyIds": list(decl.thirdPartyCompanyIds)}
+
     keys = _q(ct_svc, "getCustomTargetingKeysByStatement", "name = :n", n=DEMO_KEY)
     if len(keys) != 1:
         print(f"!! expected one '{DEMO_KEY}' key, found {len(keys)}")
@@ -166,6 +186,16 @@ def main() -> int:
 
     if existing_cr:
         cr = existing_cr[0]
+        cur = cr["thirdPartyDataDeclaration"] if "thirdPartyDataDeclaration" in dir(cr) else None
+        have = sorted(cur.thirdPartyCompanyIds or []) if cur is not None else []
+        if (cur is None or str(cur.declarationType) != "DECLARED"
+                or have != sorted(decl_body["thirdPartyCompanyIds"])):
+            cr.thirdPartyDataDeclaration = decl_body
+            cr = cr_svc.updateCreatives([cr])[0]
+            print(f"updated creative {cr.id}: ad technology declaration → "
+                  f"{_decl_str(cr.thirdPartyDataDeclaration)}")
+        else:
+            print(f"creative {cr.id} already declares {_decl_str(cur)}")
     else:
         cr = cr_svc.createCreatives([{
             "xsi_type": "ThirdPartyCreative",
@@ -175,6 +205,7 @@ def main() -> int:
                      "isAspectRatio": False},
             "snippet": tag,
             "isSafeFrameCompatible": t_cr.isSafeFrameCompatible,
+            "thirdPartyDataDeclaration": decl_body,
         }])[0]
         print(f"created creative {cr.id}")
     try:
