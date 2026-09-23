@@ -1256,7 +1256,9 @@ retype a non-DRAFT line. Rules learned on SO01190:
   copies the template creative's declaration and refuses to create an
   undeclared tag (Roger, 2026-09-23 — the first Matchbox demo creative shipped
   without one). Gated demos: `scripts/setup_demo_creative.py` clones a demo LI
-  on Newsweek_Test-2 and attaches a tag behind `?nwdemocr=<value>`;
+  on Newsweek_Test-2 and attaches a tag behind `?nwdemocr=<value>` — **the
+  value is always the tag sheet's `Placement_ID`** (Roger, 2026-09-23; the
+  script refuses any other value);
   `scripts/inspect_line_item.py` dumps any LI's full setup + creative tags.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.

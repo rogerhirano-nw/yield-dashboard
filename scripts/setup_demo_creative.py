@@ -21,7 +21,7 @@ until the order is re-approved in the GAM UI (the service account can't).
 Usage:
     python3 scripts/setup_demo_creative.py --template-li 7431888847 \\
         --tag scripts/orders/tags/matchbox_ft11167131_js_https.html \\
-        --name <placement name> --demo-value 07423706          # dry run
+        --name <placement name> --demo-value 11167131  # = Placement_ID          # dry run
     ... --apply                                                 # create in GAM
 """
 from __future__ import annotations
@@ -82,6 +82,16 @@ def main() -> int:
     args = ap.parse_args()
 
     tag = Path(args.tag).read_text()
+    # Rule (Roger, 2026-09-23): the nwdemocr value is ALWAYS the tag sheet's
+    # Placement_ID. Flashtalking tags carry it as ft_keyword / the placement
+    # id, so refuse a value the tag doesn't contain as its placement.
+    import re
+    ids = set(re.findall(r'ft_keyword\s*=\s*"(\d+)"', tag)) | set(
+        re.findall(r"data-placement-id='(\d+)'", tag))
+    if ids and args.demo_value not in ids:
+        print(f"!! --demo-value {args.demo_value} is not this tag's Placement_ID "
+              f"{sorted(ids)} — the nwdemocr value must be the Placement_ID")
+        return 1
     client = _client()
     li_svc = client.GetService("LineItemService", version=V)
     cr_svc = client.GetService("CreativeService", version=V)
@@ -155,19 +165,34 @@ def main() -> int:
         print(f"created {DEMO_KEY} value {val[0].id}")
     val_id = val[0].id
 
+    want_ct = {
+        "xsi_type": "CustomCriteriaSet", "logicalOperator": "OR",
+        "children": [{
+            "xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
+            "children": [{"xsi_type": "CustomCriteria", "keyId": key.id,
+                          "valueIds": [val_id], "operator": "IS"}],
+        }],
+    }
     if existing_li:
         li = existing_li[0]
+        crit = [c for s_ in (li.targeting.customTargeting.children or [])
+                for c in (s_.children or [])] if li.targeting.customTargeting else []
+        cur_vals = sorted(v for c in crit if c.keyId == key.id for v in (c.valueIds or []))
+        if cur_vals != [val_id]:
+            li.targeting.customTargeting = want_ct
+            li.notes = (f"Demo of {Path(args.tag).name}; cloned from LI {tmpl.id}. "
+                        f"Gated: ?{DEMO_KEY}={args.demo_value}")
+            li.skipInventoryCheck = True
+            li.allowOverbook = True
+            li = li_svc.updateLineItems([li])[0]
+            print(f"retargeted line item {li.id}: {DEMO_KEY} value ids {cur_vals} → [{val_id}] "
+                  f"({li.status})")
+        else:
+            print(f"line item {li.id} already gated on {DEMO_KEY}={args.demo_value}")
     else:
         body = {k: tmpl[k] for k in CLONE_FIELDS if tmpl[k] is not None}
         tg = tmpl.targeting
-        tg.customTargeting = {
-            "xsi_type": "CustomCriteriaSet", "logicalOperator": "OR",
-            "children": [{
-                "xsi_type": "CustomCriteriaSet", "logicalOperator": "AND",
-                "children": [{"xsi_type": "CustomCriteria", "keyId": key.id,
-                              "valueIds": [val_id], "operator": "IS"}],
-            }],
-        }
+        tg.customTargeting = want_ct
         body.update({
             "orderId": tmpl.orderId,
             "name": args.name,
