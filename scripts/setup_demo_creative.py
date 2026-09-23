@@ -154,6 +154,10 @@ def main() -> int:
             "startDateTimeType": "IMMEDIATELY",
             "unlimitedEndDateTime": True,
             "targeting": tg,
+            # A demo value forecasts ~no inventory, so GAM rejects the line
+            # with NOT_ENOUGH_INVENTORY unless both are set at create.
+            "skipInventoryCheck": True,
+            "allowOverbook": True,
             "notes": f"Demo of {Path(args.tag).name}; cloned from LI {tmpl.id}. "
                      f"Gated: ?{DEMO_KEY}={args.demo_value}",
         })
