@@ -56,6 +56,8 @@ PERIOD_ROWS = range(10, 15)  # Study Details rows 10-14 hold custom periods
 PARTNER_ROW = 9       # Media Details: first Digital/CTV partner row
 ALLOWED_HIDDEN = {"Data Validation"}
 
+_PERIOD_CODE = re.compile(r"(Q[1-4]\d{0,4}|FY\d{2,4}(-?Q[1-4])?|H[12]\d{0,4})", re.I)
+
 _CATEGORY_ALIASES = {"tech": "Technology", "auto": "Automotive"}
 
 # GAM DEVICE_CATEGORY_NAME -> Media Details column bucket.
@@ -101,12 +103,18 @@ def parse_order_name(name: str) -> dict:
     category = _CATEGORY_ALIASES.get(vertical.lower(), _pretty(vertical))
     if vertical.upper() in {"NA", "N/A"}:
         category = ""
-    advertiser = _pretty(parts[7])
+    advertiser, product = _pretty(parts[7]), _pretty(parts[8])
+    # PG/PD names often pack advertiser + title into token 7 and put a
+    # quarter/FY code at 8 (…_AppleTv-Slow-Horses-S6_Q426_…): the title is
+    # the product and the first dash-word of token 7 is the advertiser.
+    if _PERIOD_CODE.fullmatch(parts[8].strip()):
+        product = advertiser
+        advertiser = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", parts[7].split("-")[0]).strip()
     return {
         "category": category,
         "advertiser": advertiser,
         "brand": advertiser,
-        "product": _pretty(parts[8]),
+        "product": product,
     }
 
 

@@ -39,9 +39,10 @@ def test_parse_order_name_direct_and_pg():
     assert ccr.parse_order_name(JEEP) == {
         "category": "Automotive", "advertiser": "Jeep", "brand": "Jeep",
         "product": "Jeep Unconventional Pre roll"}
-    p = ccr.parse_order_name(SLOW)
-    assert p["category"] == "Entertainment"
-    assert p["advertiser"] == "AppleTv Slow Horses S6"
+    # PG name: token 8 is a quarter code, so the title in token 7 is the product.
+    assert ccr.parse_order_name(SLOW) == {
+        "category": "Entertainment", "advertiser": "Apple Tv", "brand": "Apple Tv",
+        "product": "AppleTv Slow Horses S6"}
     assert ccr.parse_order_name("Some one-off order")["advertiser"] == ""
     assert ccr.parse_order_name(JEEP.replace("Automotive", "Tech"))["category"] == "Technology"
 
