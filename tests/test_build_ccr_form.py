@@ -41,8 +41,13 @@ def test_parse_order_name_direct_and_pg():
         "product": "Jeep Unconventional Pre roll"}
     # PG name: token 8 is a quarter code, so the title in token 7 is the product.
     assert ccr.parse_order_name(SLOW) == {
-        "category": "Entertainment", "advertiser": "Apple Tv", "brand": "Apple Tv",
+        "category": "Entertainment", "advertiser": "Apple TV", "brand": "Apple TV",
         "product": "AppleTv Slow Horses S6"}
+    # Quarter code at the end of token 7, geo at token 8 (order 4187974224).
+    matchbox = ("Newsweek_PG_Entertainment_ADX_Amazon_Omnicom_OMD_AppleTv-Matchbox-Q127_"
+                "US_Interstitial_$16_Team-USA_ILee")
+    p = ccr.parse_order_name(matchbox)
+    assert (p["advertiser"], p["product"]) == ("Apple TV", "AppleTv Matchbox")
     assert ccr.parse_order_name("Some one-off order")["advertiser"] == ""
     assert ccr.parse_order_name(JEEP.replace("Automotive", "Tech"))["category"] == "Technology"
 

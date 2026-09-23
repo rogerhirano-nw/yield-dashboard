@@ -58,6 +58,10 @@ ALLOWED_HIDDEN = {"Data Validation"}
 
 _PERIOD_CODE = re.compile(r"(Q[1-4]\d{0,4}|FY\d{2,4}(-?Q[1-4])?|H[12]\d{0,4})", re.I)
 
+_GEO_TOKENS = {"US", "USA", "NA", "INTL", "UK", "CA", "GLOBAL", "WW", "ROW"}
+# How advertisers are written on the forms Kael has sent Comscore.
+_ADVERTISER_ALIASES = {"apple tv": "Apple TV", "appletv": "Apple TV"}
+
 _CATEGORY_ALIASES = {"tech": "Technology", "auto": "Automotive"}
 
 # GAM DEVICE_CATEGORY_NAME -> Media Details column bucket.
@@ -104,12 +108,18 @@ def parse_order_name(name: str) -> dict:
     if vertical.upper() in {"NA", "N/A"}:
         category = ""
     advertiser, product = _pretty(parts[7]), _pretty(parts[8])
-    # PG/PD names often pack advertiser + title into token 7 and put a
-    # quarter/FY code at 8 (…_AppleTv-Slow-Horses-S6_Q426_…): the title is
-    # the product and the first dash-word of token 7 is the advertiser.
-    if _PERIOD_CODE.fullmatch(parts[8].strip()):
-        product = advertiser
-        advertiser = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", parts[7].split("-")[0]).strip()
+    # PG/PD names often pack advertiser + title into token 7, with token 8 a
+    # quarter code or the geo: …_AppleTv-Slow-Horses-S6_Q426_US_… or
+    # …_AppleTv-Matchbox-Q127_US_…. Then the title (token 7 minus any trailing
+    # period code) is the product and its first dash-word the advertiser.
+    t8 = parts[8].strip()
+    if _PERIOD_CODE.fullmatch(t8) or t8.upper() in _GEO_TOKENS:
+        words = parts[7].split("-")
+        if len(words) > 1 and _PERIOD_CODE.fullmatch(words[-1]):
+            words = words[:-1]
+        product = _pretty("-".join(words))
+        advertiser = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", words[0]).strip()
+    advertiser = _ADVERTISER_ALIASES.get(advertiser.lower(), advertiser)
     return {
         "category": category,
         "advertiser": advertiser,
