@@ -119,7 +119,7 @@ def _validate(spec: dict) -> None:
         if li["start"] > li["end"]:
             raise SystemExit(f"!! {li['io_line']}: start {li['start']} after end {li['end']}")
         tok = li["name"].split("_")
-        if len(tok) < 11 or tok[1] != "Direct":
+        if len(tok) < 11 or tok[1] != "Direct" or "SO" + spec["io_number"][2:] not in li["name"]:
             raise SystemExit(f"!! {li['name']!r} doesn't follow the Direct naming convention")
         total_amt += li["amount"]
         total_imp += li["impressions"]
@@ -133,8 +133,10 @@ def _pick_template(templates, match: str):
         if match.lower() == "avail":
             return "avail" in n and "pre-avail" not in n
         return match.lower() in n
-    hits = [t for t in templates if ok(t.name)]
-    return (hits or templates)[0], bool(hits)
+    # Prefer a paid line over a $0 added-value ("AV") sibling.
+    paid = lambda t: -(t.costPerUnit.microAmount if t.costPerUnit else 0)
+    hits = sorted((t for t in templates if ok(t.name)), key=paid)
+    return (hits or sorted(templates, key=paid))[0], bool(hits)
 
 
 def _describe_targeting(t) -> list[str]:

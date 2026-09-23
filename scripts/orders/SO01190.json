@@ -3,30 +3,30 @@
   "io_number": "SO01190",
   "advertiser_name": "[nw] Omnicom",
   "template_line_item_like": "%SO01090%",
-  "order_name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_Way-of-the-Warrior-Kid-FY27-Q1_US_Interstitial_SO01190_Team-USA_ILee",
-  "po_number": "O-D3FII2G-R0",
-  "notes": "IO #SO01190. Client campaign: 01272 Marcom_Apple TV+_NA_ATV+ Awareness_NA_Evergreen_Way of the Warrior Kid_Q127. Agency: OMD USA LLC (Justin Otterberg). Total $141,429.00 / 8,839,313 impr @ $16 CPM.",
+  "order_name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_'Way-of-the-Warrior-Kid'-FY27-Q1_Display_US_Interstitial_SO01190_Team-USA_ILee",
+  "po_number": "SO01190",
+  "notes": "IO #SO01190. Client PO: O-D3FII2G-R0. Client campaign: 01272 Marcom_Apple TV+_NA_ATV+ Awareness_NA_Evergreen_Way of the Warrior Kid_Q127. Agency: OMD USA LLC (Justin Otterberg). Total $141,429.00 / 8,839,313 impr @ $16 CPM.",
   "salesperson_name": "Ivy Lee",
   "line_items": [
     {
       "io_line": "P3K5DZZ_Avail_Custom Interstitial",
       "template_match": "Avail",
-      "name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_Way-of-the-Warrior-Kid-FY27-Q1-Avail_US_Interstitial_SO01190_1_Team-USA_ILee",
+      "name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_'Way-of-the-Warrior-Kid'-FY27-Q1_Display-Avail_US_Interstitial_SO01190_Team-USA_ILee",
       "start": "2026-11-25",
       "end": "2026-11-29",
       "impressions": 4017875,
-      "cpm": 16.00,
-      "amount": 64286.00
+      "cpm": 16.0,
+      "amount": 64286.0
     },
     {
       "io_line": "P3K5DZ1_Pre-Avail_Custom Interstitial",
       "template_match": "Pre-Avail",
-      "name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_Way-of-the-Warrior-Kid-FY27-Q1-Pre-Avail_US_Interstitial_SO01190_2_Team-USA_ILee",
+      "name": "Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_'Way-of-the-Warrior-Kid'-FY27-Q1_Display-Pre-Avail_US_Interstitial_SO01190_Team-USA_ILee",
       "start": "2026-11-19",
       "end": "2026-11-24",
       "impressions": 4821438,
-      "cpm": 16.00,
-      "amount": 77143.00
+      "cpm": 16.0,
+      "amount": 77143.0
     }
   ]
 }
