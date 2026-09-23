@@ -86,6 +86,15 @@ def _find_keys(names: set[str]) -> dict[str, object]:
     return found
 
 
+def _key_id(k) -> int:
+    """The REST list leaves custom_targeting_key_id at 0; the id lives in the
+    resource name (networks/<n>/customTargetingKeys/<id>)."""
+    kid = int(k.custom_targeting_key_id or 0) or int(str(k.name).rsplit("/", 1)[-1])
+    if not kid:
+        raise SystemExit(f"no id for custom targeting key {k.name!r}")
+    return kid
+
+
 def _rate(num, den) -> float:
     den = float(den or 0)
     return float(num or 0) / den * 100.0 if den else float("nan")
@@ -110,7 +119,7 @@ def main() -> int:
     for name in ("hb_bidder", "hb_source"):
         k = keys.get(name)
         print(f"key {name}: " + ("NOT FOUND" if k is None else
-              f"id {k.custom_targeting_key_id}, reportable_type "
+              f"id {_key_id(k)}, reportable_type "
               f"{k.reportable_type.name}"))
     bidder_key = keys.get("hb_bidder")
     source_key = keys.get("hb_source")
@@ -125,8 +134,7 @@ def main() -> int:
             dimensions=["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE",
                         "AD_UNIT_NAME"],
             metrics=METRICS, start_date=start, end_date=end, filters=[adv],
-            custom_dimension_key_ids=[bidder_key.custom_targeting_key_id,
-                                      source_key.custom_targeting_key_id],
+            custom_dimension_key_ids=[_key_id(bidder_key), _key_id(source_key)],
         ).rename(columns={"custom_dimension_0_value": "bidder",
                           "custom_dimension_1_value": "source"})
     else:
@@ -136,7 +144,7 @@ def main() -> int:
                         "AD_UNIT_NAME"],
             metrics=METRICS, start_date=start, end_date=end,
             filters=[adv, ("KEY_VALUES_NAME", "CONTAINS", ["hb_source="])],
-            custom_dimension_key_ids=[bidder_key.custom_targeting_key_id],
+            custom_dimension_key_ids=[_key_id(bidder_key)],
         ).rename(columns={"custom_dimension_0_value": "bidder"})
         df = df[df["key_values_name"].astype(str).str.startswith("hb_source=")]
         df["source"] = df["key_values_name"].str.split("=", n=1).str[1]
