@@ -149,7 +149,9 @@ def _describe_targeting(t) -> list[str]:
         ex = [a.adUnitId for a in (inv.excludedAdUnits or [])]
         out.append(f"inventory: adUnits={au} placements={pl} excluded={ex}")
     geo = t.geoTargeting
-    if geo is not None:
+    if isinstance(geo, dict):      # our IO override, not yet packed by zeep
+        out.append(f"geo: incl={[g['id'] for g in geo['targetedLocations']]} (IO override)")
+    elif geo is not None:
         out.append("geo: incl=" + str([(g.id, g.displayName) for g in (geo.targetedLocations or [])])
                    + " excl=" + str([(g.id, g.displayName) for g in (geo.excludedLocations or [])]))
     tech = t.technologyTargeting
@@ -226,11 +228,15 @@ def main() -> int:
     # ---------- salesperson ----------
     salesperson_id = t_order.salespersonId
     sp = _page(us_svc, "getUsersByStatement", "name = :n", n=spec["salesperson_name"])
+    if salesperson_id:
+        cur = _page(us_svc, "getUsersByStatement", "id = :i", i=salesperson_id)
+        if cur:
+            print(f"\ntemplate salesperson: {cur[0].name} (id {salesperson_id})")
     if len(sp) == 1:
         salesperson_id = sp[0].id
         print(f"\nsalesperson: {sp[0].name} (id {sp[0].id})")
     else:
-        print(f"\n⚠ salesperson {spec['salesperson_name']!r} → {len(sp)} users; "
+        print(f"⚠ salesperson {spec['salesperson_name']!r} → {len(sp)} users; "
               f"keeping template's salespersonId {salesperson_id}")
 
     # ---------- order ----------
@@ -258,18 +264,24 @@ def main() -> int:
         lit = str(tmpl.lineItemType)
         body.update({
             "name": li["name"],
-            "lineItemType": lit if lit in ("STANDARD", "SPONSORSHIP") else "STANDARD",
-            "priority": tmpl.priority if lit == "STANDARD" else 8,
+            "lineItemType": lit,
+            "priority": tmpl.priority,
             "startDateTime": _dt(li["start"], end=False),
             "endDateTime": _dt(li["end"], end=True),
             "costType": "CPM",
             "costPerUnit": {"currencyCode": "USD", "microAmount": int(round(li["cpm"] * 1e6))},
-            "primaryGoal": {"goalType": "LIFETIME", "unitType": "IMPRESSIONS",
-                            "units": li["impressions"]},
-            "notes": f"IO {spec['io_number']} line {li['io_line']}",
+            "notes": (f"IO {spec['io_number']} line {li['io_line']}: "
+                      f"{li['impressions']:,} impr @ ${li['cpm']:.2f} CPM = ${li['amount']:,.2f}"),
         })
-        if body["lineItemType"] != lit:
-            print(f"⚠ template type {lit} → STANDARD (IO is a CPM impression goal)")
+        if lit == "SPONSORSHIP":
+            # Mirror the template's share-of-voice goal (the prior flights ran
+            # the interstitial as a 100% daily takeover); the IO quantity rides
+            # in the notes. GAM rejects a LIFETIME goal on SPONSORSHIP.
+            g = tmpl.primaryGoal
+            body["primaryGoal"] = {"goalType": g.goalType, "unitType": g.unitType, "units": g.units}
+        else:
+            body["primaryGoal"] = {"goalType": "LIFETIME", "unitType": "IMPRESSIONS",
+                                   "units": li["impressions"]}
         tg = tmpl.targeting
         tg.geoTargeting = {"targetedLocations": [{"id": US_GEO_ID}]}   # IO: US
         body["targeting"] = tg
@@ -279,8 +291,9 @@ def main() -> int:
         print(f"  name:     {li['name']}")
         print(f"  template: {tmpl.id} {tmpl.name}" + ("" if matched else "  ⚠ no name match, using first"))
         print(f"  flight:   {li['start']} 00:00 → {li['end']} 23:59 ET")
-        print(f"  goal:     {li['impressions']:,} impr LIFETIME · ${li['cpm']:.2f} CPM "
-              f"· ${li['amount']:,.2f}")
+        g = body["primaryGoal"]
+        print(f"  goal:     {g['goalType']}/{g['unitType']}/{g['units']} · ${li['cpm']:.2f} CPM "
+              f"· IO qty {li['impressions']:,} = ${li['amount']:,.2f}")
         print(f"  type:     {body['lineItemType']} p{body['priority']}")
         for line in _describe_targeting(tg):
             print(f"  {line}")
