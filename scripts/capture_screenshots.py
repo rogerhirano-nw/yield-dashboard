@@ -6,8 +6,8 @@ For every creative on the line item, and every viewport the creative can
 actually fill, this mints a GAM on-site preview URL
 (`LineItemCreativeAssociationService.getPreviewUrl` — which forces GAM to serve
 THAT creative on THAT page, bypassing targeting), loads it in Playwright,
-scrolls the lazy content slot into view, and takes two shots: the ad in
-context, and a close crop.
+scrolls the lazy content slot into view, and shoots the ad in context. No
+close crop: the deliverable is the in-context shot only (Roger, 2026-09-23).
 
 Three things it does that a generic screenshot does not:
 
@@ -26,7 +26,7 @@ Three things it does that a generic screenshot does not:
    banner, so no consent is given on anyone's behalf.
 
 Shots land in --out-dir, named
-`<lineitem>_<creative>_<size>_<viewport>_<context|crop>.png`.
+`<lineitem>_<creative>_<size>_<viewport>_context.png`.
 
 Usage:
   python scripts/capture_screenshots.py --line-item 7431083515 \
@@ -282,28 +282,6 @@ def main() -> int:
                     ctx_path = out / f"{tag}_context.png"
                     page.screenshot(path=str(ctx_path), full_page=False)
                     shots.append(ctx_path.name)
-
-                    # Element screenshot, not page+clip: a clip rect is in page
-                    # coordinates while bounding_box() is viewport-relative, so
-                    # on a scrolled page the two disagree and the crop lands
-                    # somewhere else entirely. Shooting the slot wrapper gives
-                    # the padding a bare iframe would not.
-                    if frame:
-                        target = frame
-                        wrapper = page.query_selector(
-                            '[id^="dfp-ad-inarticle"], [id^="dfp-ad-"]')
-                        if wrapper:
-                            wbox, fbox = wrapper.bounding_box(), frame.bounding_box()
-                            # only prefer the wrapper when it actually contains
-                            # this iframe, rather than some other slot's
-                            if wbox and fbox and abs(wbox["y"] - fbox["y"]) < 400:
-                                target = wrapper
-                        try:
-                            crop_path = out / f"{tag}_crop.png"
-                            target.screenshot(path=str(crop_path))
-                            shots.append(crop_path.name)
-                        except Exception as e:
-                            print(f"     crop failed: {e}")
 
                     if frame and not exact:
                         print(f"     WARNING: no {cw}-wide ad iframe on the "

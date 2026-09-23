@@ -46,9 +46,9 @@ template:
   reason if not (flight hasn't opened, no creatives attached).
 - **Campaign** — advertiser, order, line item, flight, goal, sizes, targeting,
   PO/IO.
-- **What gets captured** — one row per size: context + close crop on desktop,
-  plus the mobile pair for any size ≤ 400px wide (a 970x250 never needs a
-  phone shot). A run-of-site line gets an extra homepage/section row.
+- **What gets captured** — one row per size: the ad **in context** on desktop,
+  plus a mobile shot for any size ≤ 400px wide (a 970x250 never needs a phone
+  shot). A run-of-site line gets an extra homepage/section row.
 - **Before capture** — only the blockers that actually apply, as checkboxes.
 - **Screenshots** — the placeholder the images land in.
 
@@ -120,9 +120,26 @@ reason for the second test.
 
 ## Capturing the images
 
-Use the `preview_mobkoi_dom.yml` path: SOAP `getPreviewUrl` for the trafficked
-creative, then headless Chromium on a live article page, scrolling the slot
-into view before the shot. Screenshots come back as workflow artifacts.
+**In-context shots only — no close-ups.** The client wants the ad on the page,
+not a crop of the creative (they already have the creative). Roger, 23 Sep 2026:
+"we don't need the close up." `capture_screenshots.py` no longer takes one, the
+generated shot list no longer lists one, and a deck carries one slide per
+in-context shot. Don't add them back.
+
+Dispatch `capture_screenshots.yml` with the line item and a page that passes
+both tests: SOAP `getPreviewUrl` for each trafficked creative, then headless
+Chromium on the live article, scrolling the slot into view before the shot.
+Screenshots come back as workflow artifacts. (`preview_mobkoi_dom.yml` is the
+Mobkoi forensics tool, not this.)
+
+**`adexclusion=nopassfq` is the runner, not the page.** The site's ad code sets
+`NoPassFQ` when DoubleVerify's pre-bid check (`getDvtagTargeting().IDS[0] ===
+"1"`) flags the *visitor* as invalid traffic — and a headless browser on a
+GitHub datacenter IP is exactly that. It says nothing about the article, so on
+a page that already reads `cat` = the right vertical and `brandsafe=y`, re-run
+with `no_gate` set. A `generic_brand_safety` exclusion is the real failure and
+is never overridden. (Seen on every capture 23 Sep 2026; the same article read
+empty on 21 Sep.)
 
 A line with no creatives has nothing to preview — that is why step 1 reports
 the creative count before you get as far as capture.
@@ -136,8 +153,10 @@ design system on the account: warm paper `#FEFCF6`, ink `#1F1E19`, brand red
 Screenshots sit `object-fit:contain` on a light panel — never `cover`, which
 would crop the proof, and the proof is the whole point.
 
-Slide order: cover → campaign summary → one slide per shot → an internal status
-slide that comes out before the deck goes to the client.
+Slide order: cover → campaign summary → one slide per in-context shot. Each
+client gets its own deck, even when two flights share a summit — never put two
+advertisers' shots in one file. Anything internal (gate overrides, blockers)
+stays out of the client deck.
 
 ## Instances
 
@@ -145,5 +164,7 @@ slide that comes out before the deck goes to the client.
 | --- | --- | --- | --- | --- |
 | KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Not started; no creatives |
 | American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | Delivering; 1 of 7 shot |
+| Elevance Health — AI Health Summit 2026 | 4202666637 | — | [Deck](https://claude.ai/artifact/1dfmx5VQdvvDjXLQWfu8y9) | Shot 23 Sep 2026; 3 in-context shots |
+| Becton Dickinson — AI Health Summit 2026 | 4202665578 | — | [Deck](https://claude.ai/artifact/4qGUx746WNgZv3WxfzL2dn) | Shot 23 Sep 2026; 3 in-context shots |
 
-Both shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion.
+All four shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion (Elevance + BD captured 23 Sep with the `nopassfq` override above).

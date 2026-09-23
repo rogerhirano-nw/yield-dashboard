@@ -1171,7 +1171,13 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   width fits** — a 970x250 on a 390px mobile slot serves a Newsweek house
   ad instead of the client's creative (seen for real 2026-09-21). It hides
   the Ketch consent overlay rather than clicking it (hiding is not
-  consenting). `preview_mobkoi_dom.yml` stays a Mobkoi DOM-forensics tool
+  consenting). **In-context shots only — no close-up crops** (Roger,
+  2026-09-23): the script doesn't take them and the client deck is cover →
+  summary → one slide per in-context shot, **one deck per advertiser**.
+  `adexclusion=nopassfq` is DoubleVerify flagging the headless *runner* as
+  IVT, not the page — on a page already reading the right `cat` and
+  `brandsafe=y`, re-run with `no_gate` (never for `generic_brand_safety`).
+  `preview_mobkoi_dom.yml` stays a Mobkoi DOM-forensics tool
   and is mobile-only — don't use it for deliverables.
   **The page a shot is taken on has to clear two tests**, both enforced in
   code before anything is shot: in the client's industry (vertical = token
