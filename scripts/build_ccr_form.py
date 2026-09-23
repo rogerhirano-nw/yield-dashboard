@@ -13,14 +13,9 @@ What it fills (read-only against GAM; nothing is written there):
                  advertiser/brand/product/category (from the Newsweek naming
                  convention, overridable), KPIs, an "End of campaign report"
                  custom period (split into ≤92-day chunks, Comscore's max)
-  Media Details  flight start/end, the order id(s), ad server, and a Newsweek
-                 partner row with estimated Desktop / Mobile / CTV impressions
-
-Impression estimate per line item = its impression goal (lifetime units, or
-daily units × flight days). The device split uses the line's own delivered
-device mix when it has delivered, else the order's, else the network's last 28
-days. Sponsorship (percentage-goal) lines have no impression count and are left
-out of the estimate with a warning.
+  Media Details  flight start/end, the order id(s) and ad server. The
+                 Digital/CTV partner impression breakdown is left blank on
+                 purpose (Roger, 2026-09-23).
 
 Line items Comscore doesn't measure are excluded (Kael, 2026-08-28): Apple News
 and newsletter lines. Canceled and archived lines are excluded too.
@@ -53,7 +48,6 @@ V = "v202605"
 NAME_MAX = 150       # Comscore UI/API limit on the campaign name
 PERIOD_MAX_DAYS = 92  # Comscore limit on one custom reporting period
 PERIOD_ROWS = range(10, 15)  # Study Details rows 10-14 hold custom periods
-PARTNER_ROW = 9       # Media Details: first Digital/CTV partner row
 ALLOWED_HIDDEN = {"Data Validation"}
 
 _PERIOD_CODE = re.compile(r"(Q[1-4]\d{0,4}|FY\d{2,4}(-?Q[1-4])?|H[12]\d{0,4})", re.I)
@@ -63,16 +57,6 @@ _GEO_TOKENS = {"US", "USA", "NA", "INTL", "UK", "CA", "GLOBAL", "WW", "ROW"}
 _ADVERTISER_ALIASES = {"apple tv": "Apple TV", "appletv": "Apple TV"}
 
 _CATEGORY_ALIASES = {"tech": "Technology", "auto": "Automotive"}
-
-# GAM DEVICE_CATEGORY_NAME -> Media Details column bucket.
-_DEVICE_BUCKET = {
-    "desktop": "desktop",
-    "smartphone": "mobile",
-    "tablet": "mobile",
-    "feature phone": "mobile",
-    "connected tv": "ctv",
-    "set top box": "ctv",
-}
 
 # Formats Comscore does not measure for us (Kael Rabelo, 2026-08-28:
 # "an applenews format we're not tracking Comscore" / "a newsletter also a
@@ -140,49 +124,6 @@ def exclusion_reason(li: dict) -> str | None:
     return None
 
 
-def impression_estimate(li: dict) -> int | None:
-    """Impressions the line is booked for, or None when the goal isn't an
-    impression count (sponsorship %, clicks, none)."""
-    units = li.get("goal_units")
-    if not units or units <= 0:
-        return None
-    if (li.get("unit_type") or "IMPRESSIONS").upper() != "IMPRESSIONS":
-        return None
-    goal_type = (li.get("goal_type") or "").upper()
-    if goal_type == "LIFETIME":
-        return int(units)
-    if goal_type == "DAILY":
-        if (li.get("line_item_type") or "").upper() == "SPONSORSHIP":
-            return None  # daily % of traffic, not an impression count
-        s, e = li.get("start"), li.get("end")
-        if s and e:
-            return int(units) * ((e - s).days + 1)
-    return None
-
-
-def normalize_mix(rows: dict[str, float]) -> dict[str, float] | None:
-    """{GAM device category: impressions} -> {bucket: share}; None if empty."""
-    buckets = {"desktop": 0.0, "mobile": 0.0, "ctv": 0.0}
-    for dev, n in rows.items():
-        b = _DEVICE_BUCKET.get((dev or "").strip().lower())
-        if b and n:
-            buckets[b] += float(n)
-    total = sum(buckets.values())
-    if total <= 0:
-        return None
-    return {k: v / total for k, v in buckets.items()}
-
-
-def split_impressions(total: int, mix: dict[str, float]) -> dict[str, int]:
-    """Split total across buckets by mix, rounding so the parts sum to total."""
-    raw = {k: total * mix.get(k, 0.0) for k in ("desktop", "mobile", "ctv")}
-    out = {k: int(v) for k, v in raw.items()}
-    short = total - sum(out.values())
-    for k in sorted(raw, key=lambda k: raw[k] - out[k], reverse=True)[:short]:
-        out[k] += 1
-    return out
-
-
 def reporting_periods(start: date, end: date) -> list[tuple[str, date, date]]:
     """'End of campaign report' covering the flight, chunked to ≤92 days."""
     chunks = []
@@ -212,22 +153,14 @@ class Facts:
     product: str
     category: str
     kpis: str
-    impressions: dict[str, int]
     included: list[dict] = field(default_factory=list)
     excluded: list[tuple[dict, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
 def build_facts(orders: list[dict], line_items: list[dict],
-                li_mix: dict[str, dict[str, float]],
-                order_mix: dict[str, dict[str, float]],
-                network_mix: dict[str, float] | None,
                 overrides: dict | None = None) -> Facts:
-    """Everything the form needs, from pulled GAM data.
-
-    `li_mix` / `order_mix` are normalized device mixes keyed by line item id /
-    order id (see normalize_mix); `network_mix` is the last-resort fallback.
-    """
+    """Everything the form needs, from pulled GAM data."""
     overrides = {k: v for k, v in (overrides or {}).items() if v}
     warnings: list[str] = []
     included, excluded = [], []
@@ -242,23 +175,9 @@ def build_facts(orders: list[dict], line_items: list[dict],
     start = min(starts) if starts else min(o["start"] for o in orders)
     end = max(ends) if ends else max(o["end"] for o in orders)
 
-    totals = {"desktop": 0, "mobile": 0, "ctv": 0}
     for li in included:
         if (li.get("status") or "").upper() == "DRAFT":
             warnings.append(f"LI {li['id']} is still DRAFT — included, confirm it will run")
-        est = impression_estimate(li)
-        if est is None:
-            warnings.append(
-                f"LI {li['id']} has no impression goal "
-                f"({li.get('line_item_type')}, {li.get('goal_type')} "
-                f"{li.get('goal_units')} {li.get('unit_type')}) — left out of the estimate")
-            continue
-        mix = li_mix.get(li["id"]) or order_mix.get(li["order_id"]) or network_mix
-        if mix is None:
-            warnings.append(f"LI {li['id']}: no device mix available — counted as desktop")
-            mix = {"desktop": 1.0}
-        for k, v in split_impressions(est, mix).items():
-            totals[k] += v
 
     first = orders[0]
     parsed = parse_order_name(first["name"])
@@ -280,7 +199,6 @@ def build_facts(orders: list[dict], line_items: list[dict],
         product=overrides.get("product") or parsed["product"],
         category=overrides.get("category") or parsed["category"],
         kpis=overrides.get("kpis") or ("VCR, Viewability" if is_video else "CTR, Viewability"),
-        impressions=totals,
         included=included, excluded=excluded, warnings=warnings,
     )
 
@@ -326,15 +244,9 @@ def fill_template(facts: Facts, out: Path, template: Path = TEMPLATE) -> Path:
     ids = [int(i) for i in facts.order_ids]
     md["B6"] = ids[0] if len(ids) == 1 else ", ".join(str(i) for i in ids)
     md["B7"] = "GAM"
-    r = PARTNER_ROW
-    md[f"A{r}"] = "Newsweek (newsweek.com)"
-    md[f"B{r}"] = facts.impressions["desktop"]
-    md[f"C{r}"] = facts.impressions["mobile"]
-    md[f"D{r}"] = 0
-    md[f"E{r}"] = facts.impressions["ctv"]
-    for c in "BCDE":
-        md[f"{c}{r}"].number_format = "#,##0"
-
+    for row in md.iter_rows(min_row=9, max_row=18, max_col=6):  # partner rows stay blank
+        for cell in row:
+            cell.value = None
     out.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out)
     return out
@@ -422,33 +334,7 @@ def pull(order_ids: list[str]):
                 "goal_units": _g(goal, "units") if goal is not None else None,
             })
 
-    # Device mixes: per LI and per order over delivery to date, network fallback.
-    yesterday = date.today() - timedelta(days=1)
-    li_mix: dict[str, dict] = {}
-    order_mix: dict[str, dict] = {}
-    starts = [o["start"] for o in orders if o["start"]]
-    if starts and min(starts) <= yesterday:
-        df = gc._run_report(
-            ["ORDER_ID", "LINE_ITEM_ID", "DEVICE_CATEGORY_NAME"],
-            ["AD_SERVER_IMPRESSIONS"], min(starts), yesterday,
-            filters=[("ORDER_ID", "IN", [int(i) for i in order_ids])],
-        )
-        if not df.empty:
-            df["order_id"] = df["order_id"].astype(str)
-            df["line_item_id"] = df["line_item_id"].astype(str)
-            for key, grp in df.groupby("line_item_id"):
-                m = normalize_mix(grp.groupby("device_category_name")["ad_server_impressions"].sum().to_dict())
-                if m:
-                    li_mix[key] = m
-            for key, grp in df.groupby("order_id"):
-                m = normalize_mix(grp.groupby("device_category_name")["ad_server_impressions"].sum().to_dict())
-                if m:
-                    order_mix[key] = m
-    net = gc._run_report(["DEVICE_CATEGORY_NAME"], ["AD_SERVER_IMPRESSIONS"],
-                         yesterday - timedelta(days=27), yesterday)
-    network_mix = normalize_mix(dict(zip(net["device_category_name"],
-                                         net["ad_server_impressions"])))
-    return orders, line_items, li_mix, order_mix, network_mix
+    return orders, line_items
 
 
 def main() -> int:
@@ -468,15 +354,14 @@ def main() -> int:
     if bad:
         ap.error(f"order ids must be numeric: {bad}")
 
-    orders, lis, li_mix, order_mix, network_mix = pull(order_ids)
-    facts = build_facts(orders, lis, li_mix, order_mix, network_mix, overrides={
+    orders, lis = pull(order_ids)
+    facts = build_facts(orders, lis, overrides={
         "advertiser": args.advertiser, "brand": args.brand, "product": args.product,
         "category": args.category, "kpis": args.kpis, "campaign_name": args.campaign_name,
     })
     out = args.out or Path(default_filename(facts))
     fill_template(facts, out)
 
-    imp = facts.impressions
     print(f"CCR form written: {out}")
     print(f"  campaign name : {facts.campaign_name}")
     print(f"  flight        : {flight_text(facts.start, facts.end)}")
@@ -484,8 +369,6 @@ def main() -> int:
     print(f"  advertiser    : {facts.advertiser} | brand {facts.brand} | "
           f"product {facts.product} | category {facts.category}")
     print(f"  KPIs          : {facts.kpis}")
-    print(f"  impressions   : desktop {imp['desktop']:,} | mobile {imp['mobile']:,} | "
-          f"CTV {imp['ctv']:,} | total {sum(imp.values()):,}")
     print(f"  line items    : {len(facts.included)} included")
     for li in facts.included:
         print(f"    + {li['id']}  {li['status']:<11} {li['name']}")

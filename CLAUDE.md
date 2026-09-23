@@ -1190,18 +1190,18 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
 Comscore (Kristie Chesebro) needs a **CCR setup form** for every Direct
 campaign carrying Comscore tags, and chases any campaign ID whose tag activity
 starts before its form arrives (4 times Aug–Sep 2026). Dispatch
-`build_ccr_form.yml` with the order id(s); it runs `scripts/build_ccr_form.py`
+`build_ccr_form.yml` with the order id(s) — commas make one combined form,
+spaces make one form per order; it runs `scripts/build_ccr_form.py`
 (read-only against GAM) to fill `templates/comscore_ccr_template.xlsx` and
 uploads the form as the `ccr-form` artifact — review, then attach. Filled:
 campaign name (order name, ≤150 chars), flight, "End of campaign report"
 period(s) (≤92 days each), advertiser/brand/product/category from name tokens
 7/7/8/2 (overridable — the tokens are shorthand like `AppleTv-Slow-Horses-S6`),
-KPIs (CTR or VCR + Viewability), and a Newsweek partner row of estimated
-Desktop/Mobile/CTV impressions = each line's impression goal split by its own
-delivered device mix → the order's → the network's last 28 days. **Apple News
+KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
+Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
+**Apple News
 and newsletter lines are excluded** (not Comscore-tagged, Kael 2026-08-28), as
-are canceled/archived ones; sponsorship (% goal) lines are warned and left out
-of the estimate. **The template must carry no hidden sheets except "Data
+are canceled/archived ones. **The template must carry no hidden sheets except "Data
 Validation"** — the original had a hidden "Q4 2024 - $128k" Verizon media plan
 (another client's pricing) that went to Comscore with every form; it was
 removed, the script refuses to write if one reappears, and a test pins it.

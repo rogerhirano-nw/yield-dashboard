@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       orders:
-        description: 'GAM order id(s), comma-separated'
+        description: 'GAM order id(s): commas = one combined form, spaces = one form each'
         required: true
       advertiser:
         description: 'Override advertiser (default: from the order name)'
@@ -39,7 +39,7 @@ on:
       - '.github/workflows/build_ccr_form.yml'
 
 env:
-  PUSH_ORDERS: "4187974224"
+  PUSH_ORDERS: "4187974224 4199964192"
 
 permissions:
   contents: read
@@ -71,7 +71,10 @@ jobs:
           mkdir -p out
           set -o pipefail
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cd out && python ../scripts/build_ccr_form.py | tee -a "$GITHUB_STEP_SUMMARY"
+          cd out
+          for ids in $CCR_ORDER_IDS; do
+            CCR_ORDER_IDS="$ids" python ../scripts/build_ccr_form.py | tee -a "$GITHUB_STEP_SUMMARY"
+          done
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload form
