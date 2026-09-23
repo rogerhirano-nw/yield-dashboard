@@ -1197,6 +1197,61 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   run-of-site line says outright that the page is a presentation choice,
   not contextual targeting that was bought.
 
+## Comscore CCR setup forms
+Comscore (Kristie Chesebro) needs a **CCR setup form** for every Direct
+campaign carrying Comscore tags, and chases any campaign ID whose tag activity
+starts before its form arrives (4 times Aug–Sep 2026). Dispatch
+`build_ccr_form.yml` with the order id(s) — commas make one combined form,
+spaces make one form per order; it runs `scripts/build_ccr_form.py`
+(read-only against GAM) to fill `templates/comscore_ccr_template.xlsx` and
+uploads the form as the `ccr-form` artifact — review, then attach. Filled:
+campaign name (order name, ≤150 chars), flight, "End of campaign report"
+period(s) (≤92 days each), advertiser/brand/product/category from name tokens
+7/7/8/2 (overridable — the tokens are shorthand like `AppleTv-Slow-Horses-S6`),
+KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
+Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
+**Apple News
+and newsletter lines are excluded** (not Comscore-tagged, Kael 2026-08-28), as
+are canceled/archived ones. **The template must carry no hidden sheets except "Data
+Validation"** — the original had a hidden "Q4 2024 - $128k" Verizon media plan
+(another client's pricing) that went to Comscore with every form; it was
+removed, the script refuses to write if one reappears, and a test pins it.
+Keep Pillow installed wherever the script runs, or openpyxl silently drops the
+Comscore logos.
+
+## Creating a Direct order from a signed IO
+`scripts/setup_io_order.py` + one spec per IO under `scripts/orders/<IO#>.json`
+(first used for **SO01190**, OMD / Apple TV+ "Way of the Warrior Kid", 2026-09-23
+→ order **4204198540**, LIs 7437342360 Pre-Avail / 7440393028 Avail). Transcribe
+the PDF into the spec — the script checks `qty × CPM == amount` per line before
+touching GAM — then run `.github/workflows/setup_io_order.yml` (repo GAM secrets;
+no session has local creds). **A push to the branch is always a dry run**; to
+write, flip `APPLY_ON_PUSH` to `"true"` in its own commit, read the run, then flip
+it back in the next commit. The script is lookup-first (never duplicates an order
+or LI) and corrects a still-DRAFT LI's type/priority/goal in place; it refuses to
+retype a non-DRAFT line. Rules learned on SO01190:
+- **The IO drives line type and goal.** A CPM buy with a quantity is **STANDARD,
+  priority 8** (Roger, 2026-09-23), with a **LIFETIME impression goal = the IO
+  qty**. Targeting, placeholders and roadblocking are cloned from a *template* LI
+  of a prior flight of the same product — but **not** its line type. The first
+  SO01190 apply copied the Cape Fear template's **SPONSORSHIP p4, 100% daily**
+  setup, which drops the IO quantity entirely (GAM rejects a LIFETIME goal on
+  Sponsorship); Roger caught it and it was corrected. Mirroring a template's type
+  is now opt-in only (`"line_item_type": "TEMPLATE"`) — ask before using it.
+- **Apple TV+ / OMD** runs under advertiser **`[nw] Omnicom` (5744377675)**, no
+  agency company, salesperson "Newsweek - Sales - Ivy Lee" (255224230). Template:
+  Cape Fear SO01090 paid line **7330684240** — ad unit 23295929518 + descendants,
+  3 custom KVs, **2x1 PIXEL** placeholder (the custom interstitial), BROWSER,
+  ONLY_ONE roadblocking. Prefer the paid template line over its $0 "AV" sibling.
+- **Names mirror the advertiser's own precedent**:
+  `Newsweek_Direct_Tech_NA_NA_Omnicom_OMD_AppleTv_'<Title>'-FY27-Q1_Display-<Pre-Avail|Avail>_US_Interstitial_<SO#>_Team-USA_ILee`
+  (order name uses plain `Display` in that slot). Format sits at token 11 here, not
+  10 — `derive_format` still finds "Interstitial" by keyword.
+- **PO field = the SO number** (as on SO01090); the client's PO goes in the order
+  notes along with the IO campaign string and totals.
+- New LIs land **DRAFT, no creatives**; the service account can't approve, so
+  creatives + order approval happen in the GAM UI.
+
 ## GAM facts (network 22541732127)
 - **Line-item `start_time`/`end_time` are instants in the network tz
   (America/New_York), not UTC.** GAM ends a line at 23:59 ET on the flight's
@@ -1226,6 +1281,34 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   so LIs targeting them need both `skipInventoryCheck` AND `allowOverbook`
   at create. Native-style macros are `[%Var%]` — bare `[Var]` is not
   substituted.
+- **Third-party creatives must declare their ad technology** (GAM UI:
+  "Ad technology providers"; API: `thirdPartyDataDeclaration` =
+  `{declarationType: DECLARED, thirdPartyCompanyIds: [...]}`). The ids are
+  Google's global ATP list, not network Companies, so `CompanyService` can't
+  resolve them — look ids up in Google's dictionary
+  (`https://storage.googleapis.com/adx-rtb-dictionaries/providers.csv`):
+  **209 = "Innovid"** (Flashtalking's parent; its entry covers
+  `servedby.flashtalking.com` / `cdn.flashtalking.com`), **62 = comScore**. `scripts/setup_demo_creative.py`
+  copies the template creative's declaration and refuses to create an
+  undeclared tag (Roger, 2026-09-23 — the first Matchbox demo creative shipped
+  without one). Gated demos: `scripts/setup_demo_creative.py` clones a demo LI
+  on Newsweek_Test-2 and attaches a tag behind `?nwdemocr=<value>` — **the
+  value is always the tag sheet's `Placement_ID`** (Roger, 2026-09-23; the
+  script refuses any other value);
+  `scripts/inspect_line_item.py` dumps any LI's full setup + creative tags.
+- **Interstitial creatives on production orders always carry the
+  `interstitial` creative label** (Roger, 2026-09-23). `scripts/attach_tag_to_order.py`
+  (traffics a declared tag onto a real order's LIs) adds it automatically when
+  the order/LI name says Interstitial or the LI targets the `interstitial` ad
+  unit, and labels an already-existing creative it reuses.
+- **Every interstitial campaign carries the Comscore pixel** (Roger,
+  2026-09-23) — `scripts/orders/pixels/comscore_interstitial.txt`, kept
+  verbatim (c2=6972086; its `%e…!` / `%%…%%` macros are GAM's). It goes on
+  the creative as a **third-party impression tracker**
+  (`thirdPartyImpressionTrackingUrls`), never spliced into the agency tag;
+  `attach_tag_to_order.py` adds it with the Interstitial label. **Adding the
+  pixel means declaring Comscore (ATP 62)** alongside the tag's vendor —
+  every vendor that fires on the creative is declared.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative

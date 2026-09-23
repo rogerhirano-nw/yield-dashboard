@@ -14,6 +14,12 @@ on the given orders. Nothing about the line items changes — the target size is
 already in their placeholders, which the script verifies per line item and
 refuses to associate where it is missing (GAM would reject the LICA anyway).
 
+Archived line items are excluded: GAM answers
+UPDATE_ARCHIVED_LINE_ITEM_NOT_ALLOWED for them, so including them would make
+every run report a permanent failure for something nobody intends to fix. The
+970x250 apply run hit exactly one — 6877545358 Newsweek_4.50_Prebid_Display,
+a leftover $4.50 bucket sitting in the $4.51-to-$50.00 order.
+
 Lookup-first and idempotent: an existing creative of the same name is reused
 rather than duplicated, and line items already associated with it are skipped,
 so a re-run after a partial failure only fills the gaps.
@@ -204,7 +210,10 @@ def main() -> int:
                  or [None])[0]
         if order is None:
             raise SystemExit(f"order {oid} not found")
-        lis = _page(li_svc, "getLineItemsByStatement", "orderId = :o", o=oid)
+        lis = _page(li_svc, "getLineItemsByStatement",
+                    "orderId = :o AND isArchived = false", o=oid)
+        archived = _page(li_svc, "getLineItemsByStatement",
+                         "orderId = :o AND isArchived = true", o=oid)
         sized = []
         for li in lis:
             sizes = {
@@ -222,6 +231,13 @@ def main() -> int:
         print(f"\nOrder {oid}  {_g(order, 'name')}")
         print(f"  line items          : {len(lis):,}")
         print(f"  with {size_key} placeholder: {len(sized):,}")
+        if archived:
+            print(f"  archived (skipped)  : {len(archived):,}")
+            for li in archived[:5]:
+                print(f"     {_g(li, 'id')}  {_g(li, 'name')}  "
+                      f"({_g(li, 'status')})")
+            if len(archived) > 5:
+                print(f"     … and {len(archived) - 5:,} more")
 
     if no_placeholder:
         print(f"\n  !! {len(no_placeholder):,} line item(s) have no {size_key} "
