@@ -28,7 +28,7 @@ on:
       - '.github/workflows/setup_io_order.yml'
 
 env:
-  APPLY_ON_PUSH: "true"
+  APPLY_ON_PUSH: "false"
   PUSH_SPEC: scripts/orders/SO01190.json
 
 permissions:
