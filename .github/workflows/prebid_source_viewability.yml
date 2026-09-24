@@ -18,7 +18,7 @@ on:
       breakdowns:
         description: 'Extra cuts: custom keys (lower-case) or report dimensions'
         required: false
-        default: 'hb_size,hb_format,hb_size_smilewanted,hb_format_smilewanted,hb_adomain,DEVICE_CATEGORY_NAME'
+        default: 'hb_size,hb_format,DEVICE_CATEGORY_NAME'
   # A new workflow can't be dispatched until it's on main, so the first run
   # rides a push that touches it.
   push:

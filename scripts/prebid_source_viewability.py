@@ -59,7 +59,7 @@ OUT_DIR = Path(os.environ.get("OUT_DIR") or "/tmp/prebid-source-viewability")
 # 1x1); upper-case names are standard report dimensions.
 BREAKDOWNS = [b.strip() for b in (
     os.environ.get("BREAKDOWNS")
-    or "hb_size,hb_format,hb_size_smilewanted,hb_format_smilewanted,hb_adomain,DEVICE_CATEGORY_NAME"
+    or "hb_size,hb_format,DEVICE_CATEGORY_NAME"
 ).split(",") if b.strip()]
 
 METRICS = [
@@ -139,8 +139,27 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
                              filters=adv if isinstance(adv, list) else [adv],
                              custom_dimension_key_ids=ids)
     except Exception as exc:  # noqa: BLE001 — one cut failing shouldn't sink the rest
-        print(f"\n-- by {name}: report failed: {str(exc)[:200]} --")
-        return
+        if not (name.islower() and dims[1] == "KEY_VALUES_NAME"):
+            print(f"\n-- by {name}: report failed: {str(exc)[:600]} --")
+            return
+        # GAM won't put a custom dimension and KEY_VALUES_NAME in one report,
+        # so filter on the bidder instead and pull the key-value twice: this
+        # bidder, then everyone else.
+        print(f"(by {name}: cross rejected — {str(exc)[-300:]} — retrying as bidder-filtered pulls)")
+        parts = []
+        for op, label in (("IN", BIDDER), ("NOT_IN", "(peers)")):
+            try:
+                part = gam._run_report(
+                    dimensions=["KEY_VALUES_NAME"], metrics=METRICS,
+                    start_date=start, end_date=end,
+                    filters=adv + [("CUSTOM_DIMENSION_0_VALUE", op, [BIDDER])],
+                    custom_dimension_key_ids=[bidder_key_id])
+            except Exception as exc2:  # noqa: BLE001
+                print(f"\n-- by {name}: report failed: {str(exc2)[:600]} --")
+                return
+            part.insert(0, "bidder", label)
+            parts.append(part)
+        df = pd.concat(parts, ignore_index=True)
     df = df.rename(columns=_RENAME)
     df.columns = ["bidder", "value"] + list(df.columns[2:])
     df["bidder"] = df["bidder"].astype(str).str.strip().str.lower()
