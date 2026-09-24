@@ -263,6 +263,64 @@ def _resolve_named_units(soap, names: list[str]) -> list[int]:
     return ids
 
 
+# Prebid wrapper line items all sit under this advertiser (same constant as
+# scripts/prebid_viewability_audit.py); hb_bidder arrives as "hb_bidder=<x>".
+PREBID_ADVERTISER_ID = int(os.environ.get("PREBID_ADVERTISER_ID") or "5724335726")
+
+
+def _bidder_footprint(client: GAMClient, bidder: str, days: int, min_share: float):
+    """Where a wrapper bidder actually serves: its trailing-N-day impressions by
+    ad unit and by rendered size. Returns (unit ids, sizes) — units carrying at
+    least `min_share` of its impressions, sizes likewise — so the forecast is
+    scoped to the inventory that buyer can actually reach."""
+    end = date.today() - timedelta(days=1)
+    start = end - timedelta(days=days - 1)
+    filters = [("ADVERTISER_ID", "IN", [PREBID_ADVERTISER_ID]),
+               ("KEY_VALUES_NAME", "CONTAINS", [f"hb_bidder={bidder}"])]
+
+    def pull(dims):
+        df = client._run_report(dimensions=["KEY_VALUES_NAME"] + dims,
+                                metrics=["AD_SERVER_IMPRESSIONS"],
+                                start_date=start, end_date=end, filters=filters)
+        # CONTAINS also matches e.g. "hb_bidder=mobkoiX"; keep the exact value.
+        df = df[df["key_values_name"].astype(str).str.lower() == f"hb_bidder={bidder}"]
+        return df.rename(columns={"ad_server_impressions": "impressions"})
+
+    print(f"\n## `{bidder}` footprint, {start} .. {end} (Prebid advertiser {PREBID_ADVERTISER_ID})")
+    by_unit = pull(["AD_UNIT_ID", "AD_UNIT_NAME"]).groupby(
+        ["ad_unit_id", "ad_unit_name"], as_index=False)["impressions"].sum()
+    tot = by_unit["impressions"].sum()
+    if not tot:
+        raise SystemExit(f"no hb_bidder={bidder} impressions in the window")
+    by_unit["share"] = by_unit["impressions"] / tot
+    by_unit = by_unit.sort_values("impressions", ascending=False)
+    print(f"\n{int(tot):,} impressions. By ad unit:\n")
+    print(by_unit.to_string(index=False, formatters={"share": "{:.1%}".format}))
+    keep = by_unit[by_unit["share"] >= min_share]
+    unit_ids = [int(str(i).split("/")[-1]) for i in keep["ad_unit_id"]]
+    print(f"\nusing {len(unit_ids)} unit(s) with >= {min_share:.0%} share: "
+          f"{list(keep['ad_unit_name'])}")
+
+    sizes = None
+    try:
+        by_size = pull(["RENDERED_CREATIVE_SIZE"]).groupby(
+            "rendered_creative_size", as_index=False)["impressions"].sum()
+        by_size["share"] = by_size["impressions"] / by_size["impressions"].sum()
+        by_size = by_size.sort_values("impressions", ascending=False)
+        print("\nBy rendered size:\n")
+        print(by_size.to_string(index=False, formatters={"share": "{:.1%}".format}))
+        parsed = []
+        for z in by_size[by_size["share"] >= min_share]["rendered_creative_size"]:
+            m = re.fullmatch(r"\s*(\d+)\s*x\s*(\d+)\s*", str(z))
+            if m and (int(m[1]), int(m[2])) != (1, 1):
+                parsed.append((int(m[1]), int(m[2])))
+        sizes = parsed or None
+    except Exception as ex:  # noqa: BLE001
+        print(f"  (size split unavailable: {str(ex)[:120]})")
+    print(f"sizes for the forecast: {sizes or 'default'}")
+    return unit_ids, sizes
+
+
 def _smartphone_id(soap) -> int | None:
     from googleads import ad_manager
     pql = soap.GetService("PublisherQueryLanguageService", version=V)
@@ -350,6 +408,11 @@ def main() -> int:
     ap.add_argument("--sizes", help="comma-separated WxH display sizes (default 300x250,320x50,"
                     "970x250,728x90)")
     ap.add_argument("--display-only", action="store_true", help="skip the video forecasts")
+    ap.add_argument("--bidder", help="scope Display to where this Prebid bidder actually "
+                    "serves (e.g. mobkoi): its trailing ad units + rendered sizes; implies "
+                    "--display-only unless sizes/units say otherwise")
+    ap.add_argument("--bidder-days", type=int, default=90)
+    ap.add_argument("--bidder-min-share", type=float, default=0.05)
     ap.add_argument("--csv-dir")
     ap.add_argument("--xlsx")
     args = ap.parse_args()
@@ -423,6 +486,14 @@ def main() -> int:
     if args.sizes:
         sizes = [tuple(int(v) for v in z.strip().lower().split("x"))
                  for z in args.sizes.split(",") if z.strip()]
+    if args.bidder:
+        bid_units, bid_sizes = _bidder_footprint(client, args.bidder.lower(),
+                                                 args.bidder_days, args.bidder_min_share)
+        if not args.ad_units:
+            display_ids = bid_units
+        sizes = sizes or bid_sizes
+        args.display_only = True
+        args.ad_units = args.ad_units or f"{args.bidder} footprint {bid_units}"
     print(f"Display scope: {args.ad_units or DISPLAY_UNIT} @ "
           f"{', '.join(f'{w}x{h}' for w, h in (sizes or DISPLAY_SIZES))}"
           f"{'  (display only)' if args.display_only else ''}")
