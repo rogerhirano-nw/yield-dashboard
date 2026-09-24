@@ -89,8 +89,6 @@ def _find_keys(names: set[str]) -> dict[str, object]:
     for k in client.list_custom_targeting_keys(
             parent=f"networks/{os.environ['GAM_NETWORK_ID']}"):
         tag = (k.ad_tag_name or "").strip().lower()
-        if tag.startswith("hb_"):
-            print(f"  seen key {tag}: {k.reportable_type.name}")
         if tag in names:
             found[tag] = k
     return found
@@ -121,52 +119,30 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
         if k is None:
             print(f"\n-- by {name}: no such key, skipped --")
             return
-        if k.reportable_type == _CUSTOM_DIM:
-            dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
-            ids = [bidder_key_id, _key_id(k)]
-        else:
-            # Not a custom dimension: read it as a key-value row instead —
-            # safe because each impression carries one value of this key.
-            dims = ["CUSTOM_DIMENSION_0_VALUE", "KEY_VALUES_NAME"]
-            ids = [bidder_key_id]
-            adv = [adv, ("KEY_VALUES_NAME", "CONTAINS", [f"{name}="])]
+        if k.reportable_type != _CUSTOM_DIM:
+            # GAM refuses a custom dimension alongside KEY_VALUES_NAME — as a
+            # dimension or even as a filter (CONSTRAINTS_INCOMPATIBILITY, tried
+            # both 2026-09-24) — so a plain reportable key can't be split by
+            # bidder. Admin → Custom targeting → set it to "Custom dimension".
+            print(f"\n-- by {name}: reportable as {k.reportable_type.name}, not a custom "
+                  f"dimension — can't be crossed with hb_bidder, skipped --")
+            return
+        dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
+        ids = [bidder_key_id, _key_id(k)]
     else:
         dims = ["CUSTOM_DIMENSION_0_VALUE", name]
         ids = [bidder_key_id]
     try:
         df = gam._run_report(dimensions=dims, metrics=METRICS, start_date=start,
-                             end_date=end,
-                             filters=adv if isinstance(adv, list) else [adv],
+                             end_date=end, filters=[adv],
                              custom_dimension_key_ids=ids)
     except Exception as exc:  # noqa: BLE001 — one cut failing shouldn't sink the rest
-        if not (name.islower() and dims[1] == "KEY_VALUES_NAME"):
-            print(f"\n-- by {name}: report failed: {str(exc)[:600]} --")
-            return
-        # GAM won't put a custom dimension and KEY_VALUES_NAME in one report,
-        # so filter on the bidder instead and pull the key-value twice: this
-        # bidder, then everyone else.
-        print(f"(by {name}: cross rejected — {str(exc)[-300:]} — retrying as bidder-filtered pulls)")
-        parts = []
-        for op, label in (("IN", BIDDER), ("NOT_IN", "(peers)")):
-            try:
-                part = gam._run_report(
-                    dimensions=["KEY_VALUES_NAME"], metrics=METRICS,
-                    start_date=start, end_date=end,
-                    filters=adv + [("CUSTOM_DIMENSION_0_VALUE", op, [BIDDER])],
-                    custom_dimension_key_ids=[bidder_key_id])
-            except Exception as exc2:  # noqa: BLE001
-                print(f"\n-- by {name}: report failed: {str(exc2)[:600]} --")
-                return
-            part.insert(0, "bidder", label)
-            parts.append(part)
-        df = pd.concat(parts, ignore_index=True)
+        print(f"\n-- by {name}: report failed: {str(exc)[:300]} --")
+        return
     df = df.rename(columns=_RENAME)
     df.columns = ["bidder", "value"] + list(df.columns[2:])
     df["bidder"] = df["bidder"].astype(str).str.strip().str.lower()
     df["value"] = df["value"].astype(str)
-    if name.islower() and df["value"].str.startswith(f"{name}=").any():
-        df = df[df["value"].str.startswith(f"{name}=")]
-        df["value"] = df["value"].str.split("=", n=1).str[1]
     df.to_csv(OUT_DIR / f"by_{name.lower()}.csv", index=False)
     cols = ["impressions", "eligible", "measurable", "viewable", "revenue"]
     mine = df[df["bidder"] == BIDDER].groupby("value")[cols].sum()
