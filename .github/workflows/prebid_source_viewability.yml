@@ -1,0 +1,70 @@
+name: Prebid bidder viewability — PBS vs PBJS (GAM)
+
+# One bidder's Active View by ad unit, split by hb_source (s2s = Prebid
+# Server, client = Prebid.js), each graded against peers on the same unit and
+# source. See scripts/prebid_source_viewability.py + docs/prebid_viewability.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Lookback window in days (ending yesterday)'
+        required: false
+        default: '30'
+      bidder:
+        description: 'hb_bidder value to detail'
+        required: false
+        default: 'smilewanted'
+  # A new workflow can't be dispatched until it's on main, so the first run
+  # rides a push that touches it.
+  push:
+    paths:
+      - scripts/prebid_source_viewability.py
+      - .github/workflows/prebid_source_viewability.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install google-ads-admanager google-auth pandas
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DAYS: ${{ inputs.days }}
+          BIDDER: ${{ inputs.bidder }}
+          OUT_DIR: /tmp/prebid-source-viewability
+        run: |
+          set -o pipefail
+          python scripts/prebid_source_viewability.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebid-source-viewability
+          path: /tmp/prebid-source-viewability/
+          if-no-files-found: ignore
+
+      - name: Write output to job summary
+        if: always()
+        run: |
+          {
+            echo '### Prebid bidder viewability — PBS vs PBJS'
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

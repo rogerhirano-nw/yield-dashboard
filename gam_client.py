@@ -216,6 +216,7 @@ class GAMClient:
         start_date: date,
         end_date: date,
         filters: list | None = None,
+        custom_dimension_key_ids: list[int] | None = None,
     ) -> pd.DataFrame:
         """
         Create, run, and fetch a GAM Historical report.
@@ -227,6 +228,12 @@ class GAMClient:
         (or ready-made ReportDefinition.Filter objects); the API AND-s them.
         Filtering server-side is what keeps a high-cardinality dimension like
         KEY_VALUES_NAME from returning every key-value pair the site sends.
+
+        `custom_dimension_key_ids` binds CUSTOM_DIMENSION_<n>_VALUE to the n-th
+        custom-targeting key id (the key must be reportable as a custom
+        dimension in GAM), which is how two keys — e.g. hb_bidder and
+        hb_source — can be crossed in one report; KEY_VALUES_NAME can't, since
+        it splits each impression into one row per key.
 
         Returns a DataFrame with snake_cased column names in the same order as
         the requested dimensions followed by the requested metrics.
@@ -248,6 +255,7 @@ class GAMClient:
                 ),
                 report_type=admanager_v1.ReportDefinition.ReportType.HISTORICAL,
                 currency_code="USD",
+                custom_dimension_key_ids=list(custom_dimension_key_ids or []),
             )
         )
 
