@@ -146,10 +146,12 @@ override), skips any creative too wide for the viewport, and hides the Ketch
 consent overlay rather than clicking it. Screenshots come back as workflow
 artifacts, two per creative per viewport (`_context` and `_crop`).
 
-Every mobile context shot also comes back as a `_framed` copy, wrapped in an
-iPhone bezel by `scripts/frame_mobile_shot.py` — that is the one that goes in
-the deck (see the conventions below). Run it by hand on any shot:
-`python scripts/frame_mobile_shot.py shot.png`.
+Every context shot also comes back as a `_framed` copy in a device frame —
+an iPhone on mobile, a MacBook Pro on desktop — drawn by
+`scripts/frame_device_shot.py`, and that is the one that goes in the deck (see
+the conventions below). Run it by hand on any shot:
+`python scripts/frame_device_shot.py shot.png` (it picks the device from the
+shot's orientation; `--device phone|laptop` overrides).
 
 `preview_mobkoi_dom.yml` is NOT the tool for this — it is mobile-only DOM
 forensics, so a 970x250 falls through to a Newsweek house ad and the "proof"
@@ -173,12 +175,19 @@ client already has, and it doubles the deck for nothing. The capture script
 still writes a `_crop` file per shot, which is worth a look to confirm the
 creative rendered legibly — it just doesn't become a slide.
 
-**Mobile shots go in an iPhone frame** (Roger, 24 Sep 2026) — a bare 390px-wide
-screenshot reads as a cropped desktop page, and the frame says "phone" before
-anyone reads the caption. The frame is bezel, corner rounding and side buttons
-only: **no notch, island or status bar is painted over the capture**, and the
-unframed original is kept beside it, because the screenshot is the evidence and
-a deck that retouches it is worth less than one that doesn't.
+**Shots go in a device frame** (Roger, 24 Sep 2026) — mobile in an iPhone,
+desktop in a MacBook Pro. A bare screenshot reads as a cropped page; the frame
+says which device it is before anyone reads the caption. Desktop captures are
+1600x1000, which is 16:10, so they fill a MacBook lid exactly.
+
+**The frame never covers the capture.** Bezel, corner rounding, side buttons
+and the base edge sit outside the screenshot; no notch, island, status bar or
+menu bar is painted over it, and the unframed original is kept beside the
+framed copy. The screenshot is the evidence, and a deck that retouches it is
+worth less than one that doesn't. That rule is why the laptop gets a camera dot
+in its top bezel rather than the notch a real MacBook Pro has: a real notch
+hangs down into the display, so drawing one would either cover captured pixels
+or read as a grey tab stuck to the bezel.
 
 Slide order: cover → campaign summary → one slide per shot → an internal status
 slide that comes out before the deck goes to the client.
