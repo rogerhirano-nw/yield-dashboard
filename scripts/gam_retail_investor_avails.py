@@ -103,7 +103,11 @@ NOISE = re.compile(
     r"real estate invest|property invest|investigat|b2b|business decision|"
     r"it decision|commercial|job title|occupation|employee|industry|"
     r"company|firmographic|crypto mining|sports trading card|trading card|"
-    r"trade ?show|tradesm|forex broker job", re.I)
+    r"trade ?show|tradesm|forex broker job|"
+    # Negated / suppression segments ("Not Active Investors", "Unlikely to Be
+    # Active Investors") match the positive patterns — the first run auto-
+    # picked one. Also non-US and political/TV-only taxonomies.
+    r"\bnot\b|\bnon[- ]|unlikely|\b(CA|IN|UK|AU|DE|FR)\s*:|global|political|voters|for tv|optimizedfortv", re.I)
 # Category slugs (the part after `nwus-`) that count as finance context.
 FINANCE_CATS = re.compile(
     r"personal_finance|business|market|econom|money|financ|invest|stock|"
