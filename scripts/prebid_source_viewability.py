@@ -53,6 +53,14 @@ ADVERTISER_IDS = [int(x) for x in (
 ).split(",") if x.strip()]
 BIDDER = (os.environ.get("BIDDER") or "smilewanted").strip().lower()
 OUT_DIR = Path(os.environ.get("OUT_DIR") or "/tmp/prebid-source-viewability")
+# Extra one-at-a-time cuts of the bidder vs its peers. Lower-case names are
+# custom-targeting keys (hb_size / hb_format carry the winning bid's real
+# size and media type — GAM's own creative size is the universal creative's
+# 1x1); upper-case names are standard report dimensions.
+BREAKDOWNS = [b.strip() for b in (
+    os.environ.get("BREAKDOWNS")
+    or "hb_size,hb_format,DEVICE_CATEGORY_NAME"
+).split(",") if b.strip()]
 
 METRICS = [
     "AD_SERVER_IMPRESSIONS",
@@ -104,6 +112,105 @@ def _pct(x: float) -> str:
     return "   —  " if pd.isna(x) else f"{x:5.1f}%"
 
 
+def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
+    """The bidder vs every other bidder, cut by one dimension or key."""
+    if name.islower():
+        k = keys.get(name)
+        if k is None:
+            print(f"\n-- by {name}: no such key, skipped --")
+            return
+        if k.reportable_type != _CUSTOM_DIM:
+            return _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end)
+        dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
+        ids = [bidder_key_id, _key_id(k)]
+    else:
+        dims = ["CUSTOM_DIMENSION_0_VALUE", name]
+        ids = [bidder_key_id]
+    try:
+        df = gam._run_report(dimensions=dims, metrics=METRICS, start_date=start,
+                             end_date=end, filters=[adv],
+                             custom_dimension_key_ids=ids)
+    except Exception as exc:  # noqa: BLE001 — one cut failing shouldn't sink the rest
+        print(f"\n-- by {name}: report failed: {str(exc)[:300]} --")
+        return
+    _print_breakdown(df, name)
+
+
+def _print_breakdown(df: pd.DataFrame, name: str) -> None:
+    df = df.rename(columns=_RENAME)
+    df.columns = ["bidder", "value"] + list(df.columns[2:])
+    df["bidder"] = df["bidder"].astype(str).str.strip().str.lower()
+    df["value"] = df["value"].astype(str)
+    df.to_csv(OUT_DIR / f"by_{name.lower()}.csv", index=False)
+    cols = ["impressions", "eligible", "measurable", "viewable", "revenue"]
+    mine = df[df["bidder"] == BIDDER].groupby("value")[cols].sum()
+    peers = df[df["bidder"] != BIDDER].groupby("value")[cols].sum()
+    tot = mine["impressions"].sum()
+    print(f"\n-- {BIDDER} by {name} (peers = all other bidders, same value) --")
+    print(f"{'value':<28}{'imps':>12}{'share':>7}{'meas%':>8}{'vw%':>8}"
+          f"{'peers%':>8}{'peer imps':>12}")
+    for v, r in mine.sort_values("impressions", ascending=False).head(15).iterrows():
+        p = peers.loc[v] if v in peers.index else None
+        print(f"{v[:27]:<28}{int(r.impressions):>12,}"
+              f"{(r.impressions / tot * 100 if tot else 0):>6.1f}%"
+              f"{_pct(_rate(r.measurable, r.eligible)):>8}"
+              f"{_pct(_rate(r.viewable, r.impressions)):>8}"
+              f"{_pct(_rate(p.viewable, p.impressions) if p is not None else float('nan')):>8}"
+              f"{(int(p.impressions) if p is not None else 0):>12,}")
+
+
+def _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end) -> None:
+    """A key that is reportable but not a custom dimension (hb_size, hb_format).
+
+    The classic report refuses it next to the hb_bidder custom dimension
+    (CONSTRAINTS_INCOMPATIBILITY, as a dimension or a filter). Interactive
+    Reporting added two ways round that; try each and report which worked:
+      1. the key as an enhanced key-value dimension (EKV_DIMENSION_0_VALUE);
+      2. KEY_VALUES_NAME with expanded compatibility switched on.
+    """
+    attempts = [
+        ("enhanced key-value", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "EKV_DIMENSION_0_VALUE"],
+            filters=[adv], custom_dimension_key_ids=[bidder_key_id],
+            ekv_dimension_key_ids=[_key_id(k)])),
+        ("enhanced key-value + expanded compatibility", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "EKV_DIMENSION_0_VALUE"],
+            filters=[adv], custom_dimension_key_ids=[bidder_key_id],
+            ekv_dimension_key_ids=[_key_id(k)], expanded_compatibility=True)),
+        ("both keys as enhanced key-values", dict(
+            dimensions=["EKV_DIMENSION_0_VALUE", "EKV_DIMENSION_1_VALUE"],
+            filters=[adv], ekv_dimension_key_ids=[bidder_key_id, _key_id(k)])),
+        ("key-values + expanded compatibility", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "KEY_VALUES_NAME"],
+            filters=[adv, ("KEY_VALUES_NAME", "CONTAINS", [f"{name}="])],
+            custom_dimension_key_ids=[bidder_key_id], expanded_compatibility=True)),
+    ]
+    for label, kw in attempts:
+        try:
+            df = gam._run_report(metrics=METRICS, start_date=start, end_date=end, **kw)
+        except Exception as exc:  # noqa: BLE001 — try the next route
+            reason = "CONSTRAINTS_INCOMPATIBILITY" if "INCOMPATIB" in str(exc) else str(exc)[:200]
+            print(f"(by {name}: {label} rejected — {reason})")
+            continue
+        print(f"(by {name}: {label} accepted, {len(df):,} rows)")
+        if "key_values_name" in df.columns:
+            df = df[df["key_values_name"].astype(str).str.startswith(f"{name}=")].copy()
+            df["key_values_name"] = df["key_values_name"].str.split("=", n=1).str[1]
+        _print_breakdown(df, name)
+        return
+    # Probe: does GAM accept this key as an enhanced key-value at all? A
+    # rejection here means EKV isn't enabled for the key, not a combination.
+    try:
+        gam._run_report(dimensions=["EKV_DIMENSION_0_VALUE"], metrics=METRICS,
+                        start_date=start, end_date=end, filters=[adv],
+                        ekv_dimension_key_ids=[_key_id(k)])
+        print(f"(probe: {name} alone as an enhanced key-value is accepted)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"(probe: {name} alone as an enhanced key-value rejected — {str(exc)[-250:]})")
+    print(f"\n-- by {name}: every route rejected; set it to 'Custom dimension' in "
+          f"GAM Admin → Custom targeting --")
+
+
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     end = date.today() - timedelta(days=1)
@@ -115,7 +222,7 @@ def main() -> int:
     print(f"{start} → {end}   advertisers {ADVERTISER_IDS}")
     print("=" * 78)
 
-    keys = _find_keys({"hb_bidder", "hb_source"})
+    keys = _find_keys({"hb_bidder", "hb_source"} | {b for b in BREAKDOWNS if b.islower()})
     for name in ("hb_bidder", "hb_source"):
         k = keys.get(name)
         print(f"key {name}: " + ("NOT FOUND" if k is None else
@@ -215,6 +322,9 @@ def main() -> int:
     if not other.empty:
         print(f"\nnote: {int(other['impressions'].sum()):,} {BIDDER} impressions carried "
               f"another hb_source value: {sorted(other['source'].unique())}")
+    for b in BREAKDOWNS:
+        _breakdown(gam, b, keys, _key_id(bidder_key), adv, start, end)
+
     print(f"\nCSVs: {OUT_DIR}")
     return 0
 
