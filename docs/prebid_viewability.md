@@ -409,7 +409,13 @@ real size and media type only reach reporting through Prebid's `hb_size` /
 `hb_bidder` and `hb_source` are custom dimensions. GAM rejects a custom
 dimension with `KEY_VALUES_NAME`, both as a dimension and as a filter
 (`REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`), so those keys can't be split
-by bidder. **Fix: set `hb_size` and `hb_format` to "Custom dimension" in GAM
+by bidder. Interactive Reporting's two newer routes fail the same way (run
+35943741967): `hb_size`/`hb_format` as enhanced key-value dimensions
+(`EKV_DIMENSION_n`, next to hb_bidder as a custom dimension or as a second
+EKV), and `expanded_compatibility` (the UI's "Access more dimension and
+metric combinations"). Even `hb_size` **alone** as an enhanced key-value is
+rejected, so the keys simply aren't configured for either kind of reporting.
+**Fix: set `hb_size` and `hb_format` to "Custom dimension" in GAM
 Admin → Custom targeting.** Data only builds from that date. After that the
 default breakdowns in `prebid_source_viewability.py` pick them up unchanged.
 

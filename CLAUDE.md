@@ -1308,6 +1308,14 @@ retype a non-DRAFT line. Rules learned on SO01190:
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.
   Copy it when you need to run a one-off pull from a cloud session that
   doesn't have GAM creds locally.
+- **Crossing two Prebid keys needs both to be custom dimensions.**
+  `KEY_VALUES_NAME` puts each key on its own row, and GAM rejects it next to
+  a `CUSTOM_DIMENSION_n` (as a dimension or a filter). Interactive
+  Reporting's `EKV_DIMENSION_n` / `expanded_compatibility` don't help unless
+  the key is set up for them: `hb_size`/`hb_format` are rejected even alone.
+  `hb_bidder` (14515746) and `hb_source` (14515986) are custom dimensions.
+  The REST key list returns `custom_targeting_key_id=0`; the id is in
+  `name`. See `scripts/prebid_source_viewability.py`.
 - **Avails / inventory-opportunity pulls** (`scripts/gam_intl_avails.py`,
   `.github/workflows/gam_intl_avails.yml`). An avail has to count inventory
   we did *not* fill, so the pull needs `UNFILLED_IMPRESSIONS` — and GAM
