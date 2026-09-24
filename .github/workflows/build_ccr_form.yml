@@ -1,0 +1,76 @@
+name: Build Comscore CCR setup form
+
+# Fills templates/comscore_ccr_template.xlsx for one or more GAM orders using
+# the repo's GAM secrets (read-only against GAM). Download the form from the
+# run's "ccr-form" artifact, review it, and attach it to the Comscore email.
+# See scripts/build_ccr_form.py for what is filled and how.
+
+on:
+  workflow_dispatch:
+    inputs:
+      orders:
+        description: 'GAM order id(s): commas = one combined form, spaces = one form each'
+        required: true
+      advertiser:
+        description: 'Override advertiser (default: from the order name)'
+        required: false
+        default: ''
+      brand:
+        description: 'Override brand'
+        required: false
+        default: ''
+      product:
+        description: 'Override product'
+        required: false
+        default: ''
+      category:
+        description: 'Override category'
+        required: false
+        default: ''
+      kpis:
+        description: 'Override KPIs (default: CTR/VCR + Viewability)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads openpyxl pillow
+
+      - name: Build form
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          CCR_ORDER_IDS: ${{ inputs.orders }}
+          CCR_ADVERTISER: ${{ inputs.advertiser }}
+          CCR_BRAND: ${{ inputs.brand }}
+          CCR_PRODUCT: ${{ inputs.product }}
+          CCR_CATEGORY: ${{ inputs.category }}
+          CCR_KPIS: ${{ inputs.kpis }}
+        run: |
+          mkdir -p out
+          set -o pipefail
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cd out
+          for ids in $CCR_ORDER_IDS; do
+            CCR_ORDER_IDS="$ids" python ../scripts/build_ccr_form.py | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload form
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccr-form
+          path: out/*.xlsx
+          if-no-files-found: error

@@ -1,0 +1,39 @@
+name: Inspect GAM line item
+
+# Read-only dump of one line item's full setup (targeting with key-value names,
+# placeholders, creatives and their tags). A push runs it for PUSH_LI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_item:
+        description: 'GAM line item id'
+        required: true
+  push:
+    branches: [claude/happy-einstein-sqg1tw]
+    paths:
+      - 'scripts/inspect_line_item.py'
+      - '.github/workflows/inspect_line_item.yml'
+
+env:
+  PUSH_LI: "7431888847"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install googleads
+      - name: Inspect
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_LI: ${{ inputs.line_item }}
+        run: python scripts/inspect_line_item.py "${IN_LI:-$PUSH_LI}"

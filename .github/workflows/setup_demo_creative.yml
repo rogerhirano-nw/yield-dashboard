@@ -1,0 +1,53 @@
+name: Setup nwdemocr-gated demo creative
+
+# Clones a demo line item and attaches an agency tag, gated behind
+# ?nwdemocr=<value> so nothing serves to a reader without the param.
+# A push is a dry run unless APPLY_ON_PUSH is flipped in a reviewed commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [claude/happy-einstein-sqg1tw]
+    paths:
+      - 'scripts/setup_demo_creative.py'
+      - 'scripts/orders/tags/*'
+      - '.github/workflows/setup_demo_creative.yml'
+
+env:
+  APPLY_ON_PUSH: "false"
+  TEMPLATE_LI: "7431888847"
+  TAG: scripts/orders/tags/matchbox_ft11167131_js_https.html
+  NAME: 07423706_wwa_us_dis_atv_atvacq_pdis_amzdspnwk_staf_intl_cpm_aos_mobtab_adevt_gnt_broa_prlp_lfnnl_usen_heroart_static_11ar_ban_mboxtm_nwmvirls_prlm_wt_na_na_matchboxnewsweekpre
+  DEMO_VALUE: "11167131"   # always the tag sheet's Placement_ID
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install googleads
+      - name: Setup demo
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          EVENT: ${{ github.event_name }}
+          IN_APPLY: ${{ inputs.apply }}
+        run: |
+          ARGS=""
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="--apply"; fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="--apply"; fi
+          python scripts/setup_demo_creative.py --template-li "$TEMPLATE_LI" --tag "$TAG" \
+            --name "$NAME" --demo-value "$DEMO_VALUE" $ARGS

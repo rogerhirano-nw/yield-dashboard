@@ -379,6 +379,29 @@ rare exceptions from a datacenter IP where smilewanted bids ~1% of the time.
 **This now warrants the SSP conversation** — with the per-unit table above,
 which is far stronger than anything the on-page work produced.
 
+### SmileWanted is Prebid.js-only — there is no PBS side (2026-09-23)
+
+`scripts/prebid_source_viewability.py` (workflow
+`prebid_source_viewability.yml`) crosses `hb_bidder` × `hb_source` × ad unit
+via GAM custom dimensions (keys 14515746 / 14515986 — `KEY_VALUES_NAME` can't
+cross two keys). Aug 24 – Sep 22, advertisers 5724335726 + 5713671547:
+
+* **All 10,094,339 SmileWanted impressions are `hb_source=client` (PBJS); zero
+  are s2s.** It exactly matches RevOps' 30-day GAM export, so nothing is
+  missing. The February thread titled "Low viewability for PreBid Server" was
+  mis-framed: SmileWanted is a client-side adapter here.
+* PBJS 42.9% vs 79.9% for other PBJS bidders re-weighted to its unit mix.
+  Site-wide, PBJS reads 75.8% and PBS 79.4%, so the path isn't the problem.
+
+| Ad unit | SW PBJS imps | SW PBJS | PBJS peers | PBS peers |
+|---|---:|---:|---:|---:|
+| sticky | 3,537,826 | 53.7% | 94.2% | 90.0% |
+| inarticle2 | 1,914,598 | 34.2% | 68.2% | 66.5% |
+| inarticle1 | 1,621,073 | 52.0% | 74.6% | 71.2% |
+| inarticle3 | 1,026,549 | 30.1% | 73.6% | 72.0% |
+| inarticle4 | 694,305 | 32.2% | 73.3% | 68.8% |
+| inarticle5–10 | 1,295,467 | 24–32% | 72–74% | 71–73% |
+
 ### Ogury: confirmed sticky-only, exactly as the DOM forensics said
 
 | Ad unit | Imps | ogury | peers |

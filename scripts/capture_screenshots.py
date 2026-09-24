@@ -6,15 +6,17 @@ For every creative on the line item, and every viewport the creative can
 actually fill, this mints a GAM on-site preview URL
 (`LineItemCreativeAssociationService.getPreviewUrl` — which forces GAM to serve
 THAT creative on THAT page, bypassing targeting), loads it in Playwright,
-scrolls the lazy content slot into view, and shoots the ad in context. No
-close crop: the deliverable is the in-context shot only (Roger, 2026-09-23).
+scrolls the lazy content slot into view, and takes two shots: the ad in
+context, and a close crop.
 
 Three things it does that a generic screenshot does not:
 
 1. **Gates the page.** The article must pass both tests from
    `docs/screenshots_document.md` before anything is shot — `cat`/`sitecat`
-   matching the campaign's vertical, and `brandsafe` = `y` with `adexclusion`
-   empty. A failing page aborts with the reason; `--no-gate` overrides for a
+   matching the campaign's vertical, `brandsafe` = `y`, and no brand-safety
+   label in `adexclusion`. Any other `adexclusion` label is reported and does
+   not block — it is inventory hygiene, not a verdict on the content. A
+   failing page aborts with the reason; `--no-gate` overrides for a
    deliberate off-vertical shot.
 2. **Skips impossible combinations.** A 970x250 cannot fill a 390px mobile
    slot; GAM falls through to house inventory and you get a screenshot of a
@@ -24,9 +26,13 @@ Three things it does that a generic screenshot does not:
    Privacy Choices" panel covers the lower half of every shot. This sets
    `display:none` on it — it does not accept, decline or otherwise answer the
    banner, so no consent is given on anyone's behalf.
+4. **Frames the shots.** Each context shot also gets a `_framed` copy in a
+   device frame — an iPhone on mobile, a MacBook Pro on desktop
+   (`frame_device_shot.py`) — and that is the one the deck uses. The raw
+   capture is kept untouched beside it, and the frame covers none of it.
 
 Shots land in --out-dir, named
-`<lineitem>_<creative>_<size>_<viewport>_context.png`.
+`<lineitem>_<creative>_<size>_<viewport>_<context|crop>.png`.
 
 Usage:
   python scripts/capture_screenshots.py --line-item 7431083515 \
@@ -44,6 +50,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 _env = REPO_ROOT / ".env"
 if _env.exists():
@@ -108,7 +115,6 @@ PAGE_KVS_JS = """
 
 def _vertical_slugs(order_name: str) -> list[str]:
     """Reuse the pull script's vertical map so the two stay in step."""
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
     from pull_screenshots_source import _vertical  # noqa: E402
     _v, slugs = _vertical(order_name)
     return slugs
@@ -121,6 +127,14 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
     ax = kvs.get("adexclusion") or []
     detail = f"cat={cat} brandsafe={bs} adexclusion={ax}"
 
+    # `adexclusion` is a general label list, not a brand-safety verdict: only a
+    # brand-safety label fails the page. Proven live 2026-09-22 — three health
+    # articles reading brandsafe=y all carried `nopassfq`, while the one real
+    # brand-safety failure carried brandsafe=n AND generic_brand_safety
+    # together. Failing on any label at all blocked every usable page that day.
+    unsafe_ax = [x for x in ax if "brand_safety" in str(x).lower()]
+    other_ax = [x for x in ax if x not in unsafe_ax]
+
     problems = []
     if slugs and cat not in [f"nwus-{s}" for s in slugs]:
         problems.append(
@@ -130,8 +144,11 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
         )
     if bs != "y":
         problems.append(f"not brand safe: brandsafe={bs}")
-    if ax:
-        problems.append(f"ad exclusion set: {ax}")
+    if unsafe_ax:
+        problems.append(f"brand-safety ad exclusion set: {unsafe_ax}")
+    if other_ax:
+        detail += (f"  [non-brand-safety exclusion(s) {other_ax}: reported, "
+                   f"not blocking]")
 
     if problems and not no_gate:
         return False, detail + "\n     " + "\n     ".join("! " + p for p in problems)
@@ -282,6 +299,43 @@ def main() -> int:
                     ctx_path = out / f"{tag}_context.png"
                     page.screenshot(path=str(ctx_path), full_page=False)
                     shots.append(ctx_path.name)
+
+                    # Element screenshot, not page+clip: a clip rect is in page
+                    # coordinates while bounding_box() is viewport-relative, so
+                    # on a scrolled page the two disagree and the crop lands
+                    # somewhere else entirely. Shooting the slot wrapper gives
+                    # the padding a bare iframe would not.
+                    if frame:
+                        target = frame
+                        wrapper = page.query_selector(
+                            '[id^="dfp-ad-inarticle"], [id^="dfp-ad-"]')
+                        if wrapper:
+                            wbox, fbox = wrapper.bounding_box(), frame.bounding_box()
+                            # only prefer the wrapper when it actually contains
+                            # this iframe, rather than some other slot's
+                            if wbox and fbox and abs(wbox["y"] - fbox["y"]) < 400:
+                                target = wrapper
+                        try:
+                            crop_path = out / f"{tag}_crop.png"
+                            target.screenshot(path=str(crop_path))
+                            shots.append(crop_path.name)
+                        except Exception as e:
+                            print(f"     crop failed: {e}")
+
+                    # A bare screenshot reads as a cropped page. The framed
+                    # copy — phone on mobile, MacBook on desktop — sits
+                    # alongside the raw one, never replacing it, since the raw
+                    # capture is the evidence. The framed one goes in the deck.
+                    try:
+                        from frame_device_shot import frame as _device_frame
+                        from PIL import Image as _Image
+                        framed_path = out / f"{tag}_context_framed.png"
+                        _device_frame(_Image.open(ctx_path),
+                                      "phone" if is_mobile else "laptop"
+                                      ).save(framed_path)
+                        shots.append(framed_path.name)
+                    except Exception as e:
+                        print(f"     device frame skipped: {e}")
 
                     if frame and not exact:
                         print(f"     WARNING: no {cw}-wide ad iframe on the "

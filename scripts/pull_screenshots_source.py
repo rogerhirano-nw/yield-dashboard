@@ -115,9 +115,14 @@ def _iso(s: str | None) -> str | None:
 
 
 def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
-    """(size, device, shot) rows — every size in context on desktop; sizes
-    narrow enough to run on a phone get a mobile shot too. In context only:
-    close crops are not part of the deliverable (Roger, 2026-09-23)."""
+    """(size, device, shot) rows — one in-context shot per size on desktop;
+    sizes narrow enough to run on a phone get a mobile one too.
+
+    In-context only. The close crop was dropped from the deliverable (Roger,
+    22 Sep 2026): the proof is the ad sitting in the page, and a crop of the
+    creative is a picture of the asset the client already has. The capture
+    script still writes a `_crop` file per shot — useful for checking the
+    creative rendered legibly — it just does not earn a slide."""
     rows: list[tuple[str, str, str]] = []
     for sz in dict.fromkeys(sizes):  # de-dupe, keep order
         try:
@@ -128,6 +133,29 @@ def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
         if 0 < width <= 400:
             rows.append((sz, "Mobile", "Full page, ad in context"))
     return rows
+
+
+def _seller(order_name: str | None) -> str:
+    """The AE who sold it: the last token of the Newsweek naming convention
+    (`..._Team-INTL_AShah`), resolved through settings.json's `ae_names` so the
+    deck shows "Amit Shah" rather than "AShah". Case variants live in that map
+    (AShah / Ashah), so the lookup tries the token as-is first."""
+    parts = (order_name or "").split("_")
+    if len(parts) < 2 or parts[0] != "Newsweek":
+        return "—"
+    token = parts[-1].strip()
+    if not token:
+        return "—"
+    try:
+        import json
+        names = json.loads(
+            (REPO_ROOT / "settings.json").read_text()).get("ae_names") or {}
+    except Exception:
+        names = {}
+    return (names.get(token)
+            or names.get(token.title())
+            or names.get(token.capitalize())
+            or token)
 
 
 # Vertical token (index 2 of the Newsweek naming convention) -> the article
@@ -279,9 +307,12 @@ def build_markdown(payload: dict, today: date) -> str:
         f"suit, an outbreak, a lawsuit or a death story is on-topic and still "
         f"the wrong page to hand a client. Newsweek classifies this itself, so "
         f"read it off the page rather than judging by the headline: the `brandsafe` "
-        f"GPT key-value must be `y` and `adexclusion` must be empty. A failing "
-        f"page reads `brandsafe: n` with `adexclusion: generic_brand_safety` \u2014 "
-        f"pick another page, do not shoot it and crop around the headline. "
+        f"GPT key-value must be `y` and `adexclusion` must carry no "
+        f"`brand_safety` label. A failing page reads `brandsafe: n` with "
+        f"`adexclusion: generic_brand_safety` \u2014 pick another page, do not "
+        f"shoot it and crop around the headline. Other `adexclusion` labels "
+        f"(`nopassfq` was sitewide on 22 Sep 2026) are inventory hygiene, not "
+        f"a verdict on the content, and do not disqualify the page. "
         f"(`ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque "
         f"segment-id lists, not a pass/fail \u2014 `brandsafe` is the flag.)"
     )
@@ -319,14 +350,15 @@ Pulled from GAM on {_pretty_date(today.isoformat())}.
 | Sizes | {', '.join(sizes) or '—'} |
 | Targeting | {units}{' — run of site' if ros else ''} |
 | PO / IO | {o['po_number'] or '—'} |
+| Seller | {_seller(o.get('name'))} |
 
 GAM end times are network-tz instants: the line ends at 23:59 ET on its last \
 day, which reads as the next day in UTC.
 
 ## What gets captured
 
-{_plural(len(rows) + (1 if ros else 0), 'shot')}: each size in context on the page, \
-desktop{' and mobile' if any(d == 'Mobile' for _, d, _ in rows) else ''}.\
+{_plural(len(rows) + (1 if ros else 0), 'shot')}: each size in context on \
+desktop{', and on mobile where the size fits a phone slot' if any(d == 'Mobile' for _, d, _ in rows) else ''}.\
 {' Run-of-site targeting means the line can serve anywhere under the targeted unit, so an article page is the shot to lead with.' if ros else ''}
 
 | # | Size | Where | Device | Shot |
@@ -348,10 +380,12 @@ show an empty well.
 
 {shots_body}
 
-Capture runs off the `capture_screenshots.yml` workflow — SOAP \
-`getPreviewUrl` for the trafficked creative, then headless Chromium on a live \
-newsweek.com article page, scrolling the lazy slot into view before the shot. \
-Images come back as workflow artifacts.
+Capture runs off the `capture_screenshots.yml` workflow — SOAP `getPreviewUrl` \
+for each trafficked creative, then headless Chromium on a live newsweek.com \
+article page at desktop and mobile, scrolling the lazy slot into view before \
+the shot. It gates the page on both tests above before shooting anything, and \
+skips any creative too wide for the viewport. Images come back as workflow \
+artifacts.
 """
 
 
