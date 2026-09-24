@@ -1,0 +1,65 @@
+{
+ "advertiser": "Becton Dickinson",
+ "campaign": "AI Health Summit 2026 · Display",
+ "captured": "23 Sep 2026, 11:35 AM ET",
+ "page_url": "newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451",
+ "summary_note": "The campaign runs across newsweek.com; these captures were taken on a Health article.",
+ "seller": "Amit Shah",
+ "facts": [
+  [
+   "Advertiser",
+   "Becton Dickinson (BD)"
+  ],
+  [
+   "Campaign",
+   "AI Health Summit 2026"
+  ],
+  [
+   "Flight",
+   "23 Sep – 7 Oct 2026"
+  ],
+  [
+   "Delivery goal",
+   "300,000 impressions"
+  ],
+  [
+   "Sizes",
+   "970x250 · 300x250"
+  ],
+  [
+   "Devices captured",
+   "Desktop · mobile (300x250)"
+  ],
+  [
+   "Capture page",
+   "Which Diets Could Lower Alzheimer's Risk? (Newsweek Health)"
+  ],
+  [
+   "IO",
+   "SO01162"
+  ]
+ ],
+ "shots": [
+  {
+   "size": "970x250",
+   "device": "Desktop",
+   "title": "Billboard in the article body",
+   "file": "shots/7440288404_138612841246_970x250_desktop_context_framed.png",
+   "alt": "BD 970x250 billboard in a Newsweek Health article on desktop"
+  },
+  {
+   "size": "300x250",
+   "device": "Desktop",
+   "title": "Medium rectangle in the article body",
+   "file": "shots/7440288404_138612127355_300x250_desktop_context_framed.png",
+   "alt": "BD 300x250 in a Newsweek Health article on desktop"
+  },
+  {
+   "size": "300x250",
+   "device": "Mobile",
+   "title": "Medium rectangle on mobile",
+   "file": "shots/7440288404_138612127355_300x250_mobile_context_framed.png",
+   "alt": "BD 300x250 in a Newsweek Health article on a phone"
+  }
+ ]
+}
