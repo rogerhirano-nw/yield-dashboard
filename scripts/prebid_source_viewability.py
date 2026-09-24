@@ -120,13 +120,7 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
             print(f"\n-- by {name}: no such key, skipped --")
             return
         if k.reportable_type != _CUSTOM_DIM:
-            # GAM refuses a custom dimension alongside KEY_VALUES_NAME — as a
-            # dimension or even as a filter (CONSTRAINTS_INCOMPATIBILITY, tried
-            # both 2026-09-24) — so a plain reportable key can't be split by
-            # bidder. Admin → Custom targeting → set it to "Custom dimension".
-            print(f"\n-- by {name}: reportable as {k.reportable_type.name}, not a custom "
-                  f"dimension — can't be crossed with hb_bidder, skipped --")
-            return
+            return _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end)
         dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
         ids = [bidder_key_id, _key_id(k)]
     else:
@@ -139,6 +133,10 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
     except Exception as exc:  # noqa: BLE001 — one cut failing shouldn't sink the rest
         print(f"\n-- by {name}: report failed: {str(exc)[:300]} --")
         return
+    _print_breakdown(df, name)
+
+
+def _print_breakdown(df: pd.DataFrame, name: str) -> None:
     df = df.rename(columns=_RENAME)
     df.columns = ["bidder", "value"] + list(df.columns[2:])
     df["bidder"] = df["bidder"].astype(str).str.strip().str.lower()
@@ -159,6 +157,46 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
               f"{_pct(_rate(r.viewable, r.impressions)):>8}"
               f"{_pct(_rate(p.viewable, p.impressions) if p is not None else float('nan')):>8}"
               f"{(int(p.impressions) if p is not None else 0):>12,}")
+
+
+def _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end) -> None:
+    """A key that is reportable but not a custom dimension (hb_size, hb_format).
+
+    The classic report refuses it next to the hb_bidder custom dimension
+    (CONSTRAINTS_INCOMPATIBILITY, as a dimension or a filter). Interactive
+    Reporting added two ways round that; try each and report which worked:
+      1. the key as an enhanced key-value dimension (EKV_DIMENSION_0_VALUE);
+      2. KEY_VALUES_NAME with expanded compatibility switched on.
+    """
+    attempts = [
+        ("enhanced key-value", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "EKV_DIMENSION_0_VALUE"],
+            filters=[adv], custom_dimension_key_ids=[bidder_key_id],
+            ekv_dimension_key_ids=[_key_id(k)])),
+        ("enhanced key-value + expanded compatibility", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "EKV_DIMENSION_0_VALUE"],
+            filters=[adv], custom_dimension_key_ids=[bidder_key_id],
+            ekv_dimension_key_ids=[_key_id(k)], expanded_compatibility=True)),
+        ("key-values + expanded compatibility", dict(
+            dimensions=["CUSTOM_DIMENSION_0_VALUE", "KEY_VALUES_NAME"],
+            filters=[adv, ("KEY_VALUES_NAME", "CONTAINS", [f"{name}="])],
+            custom_dimension_key_ids=[bidder_key_id], expanded_compatibility=True)),
+    ]
+    for label, kw in attempts:
+        try:
+            df = gam._run_report(metrics=METRICS, start_date=start, end_date=end, **kw)
+        except Exception as exc:  # noqa: BLE001 — try the next route
+            reason = "CONSTRAINTS_INCOMPATIBILITY" if "INCOMPATIB" in str(exc) else str(exc)[:200]
+            print(f"(by {name}: {label} rejected — {reason})")
+            continue
+        print(f"(by {name}: {label} accepted, {len(df):,} rows)")
+        if "key_values_name" in df.columns:
+            df = df[df["key_values_name"].astype(str).str.startswith(f"{name}=")].copy()
+            df["key_values_name"] = df["key_values_name"].str.split("=", n=1).str[1]
+        _print_breakdown(df, name)
+        return
+    print(f"\n-- by {name}: every route rejected; set it to 'Custom dimension' in "
+          f"GAM Admin → Custom targeting --")
 
 
 def main() -> int:

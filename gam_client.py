@@ -217,6 +217,8 @@ class GAMClient:
         end_date: date,
         filters: list | None = None,
         custom_dimension_key_ids: list[int] | None = None,
+        ekv_dimension_key_ids: list[int] | None = None,
+        expanded_compatibility: bool = False,
     ) -> pd.DataFrame:
         """
         Create, run, and fetch a GAM Historical report.
@@ -234,6 +236,11 @@ class GAMClient:
         dimension in GAM), which is how two keys — e.g. hb_bidder and
         hb_source — can be crossed in one report; KEY_VALUES_NAME can't, since
         it splits each impression into one row per key.
+
+        `ekv_dimension_key_ids` does the same for EKV_DIMENSION_<n>_VALUE
+        (Interactive Reporting's "enhanced key-values"), and
+        `expanded_compatibility` is the Interactive Reports UI's "Access more
+        dimension and metric combinations" switch.
 
         Returns a DataFrame with snake_cased column names in the same order as
         the requested dimensions followed by the requested metrics.
@@ -256,6 +263,8 @@ class GAMClient:
                 report_type=admanager_v1.ReportDefinition.ReportType.HISTORICAL,
                 currency_code="USD",
                 custom_dimension_key_ids=list(custom_dimension_key_ids or []),
+                ekv_dimension_key_ids=list(ekv_dimension_key_ids or []),
+                expanded_compatibility=expanded_compatibility,
             )
         )
 
