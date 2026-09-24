@@ -4,6 +4,19 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
+
+Comscore kept finding Direct campaigns with live tag activity and no CCR setup
+form (4057788230, 4159204943, 4171515326, 4183464375). `build_ccr_form.yml` →
+`scripts/build_ccr_form.py` now fills `templates/comscore_ccr_template.xlsx`
+from a GAM order id: name, flight, reporting period, advertiser/brand/product/
+category, KPIs, campaign ID. The Media Details impression breakdown is left
+blank (Roger). Apple News and newsletter lines are excluded. The template
+Kael had been sending carried a hidden "Q4 2024 - $128k" sheet (a Verizon media
+plan with another client's pricing); it is gone from the repo template and the
+script refuses to write if a hidden sheet reappears. Verified live on
+4183464375, 4187974224 and 4199964192.
+
 ## 2026-09-22 — CORRECTION: the Magnite video request gap is bid flattening, not a reporting error
 
 **Reverses the headline of the 2026-09-18 entry below.** Google's Partner
