@@ -26,6 +26,10 @@ Three things it does that a generic screenshot does not:
    Privacy Choices" panel covers the lower half of every shot. This sets
    `display:none` on it — it does not accept, decline or otherwise answer the
    banner, so no consent is given on anyone's behalf.
+4. **Frames the mobile shots.** Each mobile context shot also gets a
+   `_framed` copy in an iPhone bezel (`frame_mobile_shot.py`), which is the
+   one the deck uses. The raw capture is kept untouched beside it, and the
+   frame covers none of it.
 
 Shots land in --out-dir, named
 `<lineitem>_<creative>_<size>_<viewport>_<context|crop>.png`.
@@ -46,6 +50,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 _env = REPO_ROOT / ".env"
 if _env.exists():
@@ -110,7 +115,6 @@ PAGE_KVS_JS = """
 
 def _vertical_slugs(order_name: str) -> list[str]:
     """Reuse the pull script's vertical map so the two stay in step."""
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
     from pull_screenshots_source import _vertical  # noqa: E402
     _v, slugs = _vertical(order_name)
     return slugs
@@ -317,6 +321,20 @@ def main() -> int:
                             shots.append(crop_path.name)
                         except Exception as e:
                             print(f"     crop failed: {e}")
+
+                    # A bare phone-width screenshot reads as a cropped
+                    # desktop page. The framed copy sits alongside the raw
+                    # one — never replacing it, since the raw capture is the
+                    # evidence — and is what goes in the deck.
+                    if is_mobile:
+                        try:
+                            from frame_mobile_shot import frame as _device_frame
+                            from PIL import Image as _Image
+                            framed_path = out / f"{tag}_context_framed.png"
+                            _device_frame(_Image.open(ctx_path)).save(framed_path)
+                            shots.append(framed_path.name)
+                        except Exception as e:
+                            print(f"     device frame skipped: {e}")
 
                     if frame and not exact:
                         print(f"     WARNING: no {cw}-wide ad iframe on the "

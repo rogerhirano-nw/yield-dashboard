@@ -146,6 +146,11 @@ override), skips any creative too wide for the viewport, and hides the Ketch
 consent overlay rather than clicking it. Screenshots come back as workflow
 artifacts, two per creative per viewport (`_context` and `_crop`).
 
+Every mobile context shot also comes back as a `_framed` copy, wrapped in an
+iPhone bezel by `scripts/frame_mobile_shot.py` — that is the one that goes in
+the deck (see the conventions below). Run it by hand on any shot:
+`python scripts/frame_mobile_shot.py shot.png`.
+
 `preview_mobkoi_dom.yml` is NOT the tool for this — it is mobile-only DOM
 forensics, so a 970x250 falls through to a Newsweek house ad and the "proof"
 shows the wrong advertiser.
@@ -167,6 +172,13 @@ the ad sitting in the page; a crop of the creative is a picture of an asset the
 client already has, and it doubles the deck for nothing. The capture script
 still writes a `_crop` file per shot, which is worth a look to confirm the
 creative rendered legibly — it just doesn't become a slide.
+
+**Mobile shots go in an iPhone frame** (Roger, 24 Sep 2026) — a bare 390px-wide
+screenshot reads as a cropped desktop page, and the frame says "phone" before
+anyone reads the caption. The frame is bezel, corner rounding and side buttons
+only: **no notch, island or status bar is painted over the capture**, and the
+unframed original is kept beside it, because the screenshot is the evidence and
+a deck that retouches it is worth less than one that doesn't.
 
 Slide order: cover → campaign summary → one slide per shot → an internal status
 slide that comes out before the deck goes to the client.
