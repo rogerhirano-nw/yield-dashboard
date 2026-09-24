@@ -15,6 +15,10 @@ on:
         description: 'hb_bidder value to detail'
         required: false
         default: 'smilewanted'
+      breakdowns:
+        description: 'Extra cuts: custom keys (lower-case) or report dimensions'
+        required: false
+        default: 'hb_size,hb_format,DEVICE_CATEGORY_NAME,BROWSER_NAME,COUNTRY_NAME'
   # A new workflow can't be dispatched until it's on main, so the first run
   # rides a push that touches it.
   push:
@@ -45,6 +49,7 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           DAYS: ${{ inputs.days }}
           BIDDER: ${{ inputs.bidder }}
+          BREAKDOWNS: ${{ inputs.breakdowns }}
           OUT_DIR: /tmp/prebid-source-viewability
         run: |
           set -o pipefail
