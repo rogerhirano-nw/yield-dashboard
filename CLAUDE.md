@@ -1148,9 +1148,25 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   **never mirror it** — a mirror there would manufacture viewability for an
   ad that was never shown. It is a delivery defect to raise with Ogury, and
   a reason to drop them from that slot meanwhile; their in-article renders
-  are healthy and need nothing. **SmileWanted** is requested on every
-  auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
-  forensics for it needs an EU/residential egress.
+  are healthy and need nothing. **SmileWanted now bids freely from a US
+  datacenter IP** — 42 bids / 32 wins on 317 requests (13%) on 2026-09-17,
+  against 0/67 then 1/70 on 2026-09-04, so the "needs an EU/residential
+  egress" constraint that shaped this investigation is gone; re-measure the
+  bid rate before assuming a bidder is uncatchable. **Its renders are
+  ordinary and the oversize theory is falsified**: 32 captures are 300×250
+  (970×250 desktop for OMS) in-frame, visible, not SafeFrame, with a 100%
+  in-view ceiling and 28/32 viewable — so no breakout, no hidden iframe, no
+  creative taller than its slot. The harness always scrolls slots into view,
+  so it still cannot measure a RATE; what it rules out is a render defect.
+  Audit verdicts
+  (2026-09-05, re-confirmed 2026-09-17 on ~60% more volume): **smilewanted
+  and oms are RENDER defects, not placement mix** — ~35pp and ~22pp below
+  peers on *every* unit, so the early "it's probably mix" read in the doc's
+  forensics section is superseded; **onetag is video-only** (49.0% on
+  `vid.newsweek` vs 86.0% peers, while its display measures *above* peers —
+  **read it per-unit, a pooled all-format average washes the problem out**);
+  **ogury is sticky-only**. Together they cost ~2.9pp of the whole Prebid
+  book. Measurable is ~100% throughout, so none of it is instrumentation.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -1313,6 +1329,26 @@ retype a non-DRAFT line. Rules learned on SO01190:
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
   itself from the LI in the UI (size "Out of page"). The site's `?nwdemocr=`
   URL param sets a same-named GPT key-value for demo-gating test campaigns.
+- **`KEY_VALUES_NAME` (how `hb_bidder` reaches reporting) is incompatible with
+  `DEVICE_CATEGORY_NAME`, `COUNTRY_NAME` and `BROWSER_NAME`** — as a *dimension*
+  and as a *filter*, with a rich metric set and with just impressions +
+  viewable. So **no per-bidder device / geo / browser cut of wrapper demand
+  exists**; ad unit is the only companion dimension GAM accepts
+  (`KEY_VALUES_NAME + AD_UNIT_NAME`), which is why the Prebid audit's cell grain
+  is unit-only. `OPERATING_SYSTEM_NAME` is not a v1 dimension at all. Dimension
+  and metric names are proto enum members, so an unknown one is a KeyError in
+  the client, not an API error — probe before pulling.
+- **`AD_SERVER_CLICKS` is 0 for ALL Prebid wrapper demand**, healthy bidders
+  included: the universal creative renders the buyer's markup inside the GPT
+  iframe and the click leaves through the buyer's own tracker, so GAM's click
+  server never sees it. A 0% CTR on wrapper demand is the integration, not a
+  finding — and the Mobkoi "clicks exceed viewable impressions" tell cannot be
+  used on it. **`ACTIVE_VIEW_AVERAGE_VIEWABLE_TIME` is the substitute** and is
+  compatible with the unit grain: it separates a creative that renders late or
+  paints slowly (dwell BELOW its peers in the same slot) from one failing
+  binary — fully seen or never seen (dwell EQUAL to peers while far fewer
+  impressions ever become viewable). That distinction is what settled
+  smilewanted/oms vs ogury; see `docs/prebid_viewability.md`.
 - One-off Actions-driven GAM pulls: `.github/workflows/pull_index_ob_requests.yml`
   is a template — it uses `secrets.GAM_SERVICE_ACCOUNT_JSON` /
   `secrets.GAM_NETWORK_ID` and posts the script's stdout as a PR comment.

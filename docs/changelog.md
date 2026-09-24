@@ -80,6 +80,86 @@ grants instead of being reborn RLS-off (the `ttd_luckyland` loop of 2026-07-27).
 Proven on a SQLite sim seeded with the retired schema: 2 old + 499 new = 501
 rows across 20 union columns, August values intact.
 
+## 2026-09-17 (on-page) — The size hypothesis is dead, and SmileWanted bids fine now
+
+- **Ran the browser sweep** (22 articles × mobile/desktop, 276 renders) with two
+  new measurements: creative height vs peers *in the same slot*, and the in-view
+  ceiling `viewport_h / creative_h` — below a creative's AV threshold means
+  unviewable by construction.
+- **Falsified the leading hypothesis.** Every SmileWanted render is a 300×250 in
+  a 390×250 slot (OMS 970×250 on desktop), in-frame, visible, not SafeFrame,
+  ceiling **100%**, nothing capped, 28 of 32 viewable. No breakout, no hidden
+  iframe, no oversized creative. The "creative taller than its slot" theory was a
+  good fit for the depth gradient and GAM's 1x1 blindness, and it is not what is
+  happening.
+- **SmileWanted's bid rate from a datacenter IP is 13%, not ~1%** — 42 bids /
+  32 wins on 317 requests, against 0/67 and 1/70 two weeks ago. The
+  "needs an EU/residential egress" constraint is gone. Re-measure before
+  declaring a bidder uncatchable.
+- **What the sweep did not see: sticky.** Zero `dfp-ad-sticky` renders in 44
+  loads (wrapper present, no iframes), so the two largest loss cells in the book
+  — ogury 1.19M and smilewanted 1.06M viewable impressions on that one unit —
+  are untouched, and Ogury's blank-render diagnosis is neither confirmed nor
+  refuted today. Sticky-targeted run is the follow-up. `kargo` was never
+  requested on these slots at all.
+- **Where it leaves the diagnosis:** 32 clean renders rule out a render defect
+  worth 35pp, so the remaining explanation is about *which impressions get
+  counted* — booked for slots a real reader often never reaches, which the
+  harness always reaches by design. That fits the depth gradient and the binary
+  dwell, and it is what to put to the SSP.
+
+## 2026-09-17 (later) — Why smilewanted and oms specifically, and is it the creative
+
+- **They share a signature no other bidder has.** Their gap vs peers *widens*
+  down the page (slope −1.82 and −1.45 pp per in-article position, against peers
+  at +0.29); the next-worst bidder's excess is −0.55. Everyone else's viewability
+  improves slightly with depth, which is lazy rendering working. **Correction:**
+  oms first read as "uniform, a different shape" from its absolute rates — against
+  the peer curve it is the same shape, shallower. Grade against peers, not absolutes.
+- **The dwell test rules out the slow-creative family.** New in the forensics
+  script: `ACTIVE_VIEW_AVERAGE_VIEWABLE_TIME`. smilewanted and oms match their
+  peers' seconds-in-view to within a second on every unit, so when their ad is
+  seen it is seen as long as anyone's — a **binary** failure (fully seen or never
+  seen), not a late or heavy creative. Ogury is the control: half the peer dwell
+  on sticky and 7.1s vs 12.7s in-article, i.e. its known blank/late render showing
+  up in an independent measure.
+- **The unanswerable creative property is rendered size** — Active View needs 50%
+  of the *creative's* pixels in view, and GAM logs every wrapper impression as
+  `1x1` (the universal creative placeholder), so a creative taller than its slot
+  would produce exactly this depth pattern and be invisible in reporting. First
+  question for both SSPs; needs on-page measurement.
+- **Two GAM limits recorded so nobody re-runs them:** `AD_SERVER_CLICKS` is 0 for
+  *all* wrapper demand (the click leaves through the buyer's tracker), so the
+  Mobkoi clicks-vs-viewable tell is unavailable; and `KEY_VALUES_NAME` is
+  incompatible with device / country / browser as dimension *and* as filter, at
+  rich and lean metric sets — so no per-bidder mix cut of those exists.
+
+## 2026-09-17 — Prebid viewability: audit results landed, refreshed on live data
+
+- **The production audit's verdicts are now on `main`** (#363, merged today —
+  it had sat open since 09-05, so the doc still told readers SmileWanted was a
+  placement-mix problem). It is not: mix −0.6pp, **render −35.1pp**, ~35pp
+  below peers on *every* ad unit. The stale paragraph in the forensics section
+  is marked superseded rather than deleted — "a handful of clean on-page
+  renders" is exactly the reasoning the audit exists to overrule.
+- **Re-ran the audit for 21 days to 09-16.** Every verdict holds and the two
+  big cases grew: **smilewanted 4.77M → 7.72M** impressions at 43.7%,
+  **ogury 2.92M → 4.75M** at 56.7%, **oms 39k → 138k** at 59.2% (now large
+  enough for a per-unit cut, which shows the SmileWanted defect, not mix).
+  Flat daily series throughout — structural, no regression date, no upstream
+  fix landed.
+- **OneTag: read it per-unit, never pooled.** GAM accepted only
+  `KEY_VALUES_NAME + AD_UNIT_NAME` this run, so formats pool — and pooled,
+  OneTag reads 75.6% with render **+0.1**, i.e. healthy. It isn't: video is
+  **49.0% vs 86.0%** on `vid.newsweek` while its display measures *above*
+  peers, and the display volume washes the video out of any all-format
+  average.
+- **Sized for the SSP conversation:** the four cases give up **~3.97M viewable
+  impressions** against 135.2M Prebid impressions in the window — **~2.9pp on
+  the whole Prebid book**, SmileWanted alone ~2.0pp. Every one of them is a
+  good payer, so the answer is fix-the-render, not block-the-bidder.
+
+
 ## 2026-09-08 — Insights native: CTA, card edge, and the live-style pointer
 
 - **The unit blended into the page.** The live article page wraps ads in its own
