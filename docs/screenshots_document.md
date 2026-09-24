@@ -192,6 +192,16 @@ or read as a grey tab stuck to the bezel.
 Slide order: cover → campaign summary → one slide per shot → an internal status
 slide that comes out before the deck goes to the client.
 
+**The last slide always names the seller** (Roger, 24 Sep 2026) — the AE who
+sold it, so whoever opens the deck knows whose campaign it is. The seller is
+the last token of the order name (`..._Team-INTL_`**`AShah`**), resolved
+through settings.json's `ae_names` so it reads "Amit Shah" and not "AShah";
+that map carries the case variants, which is why the lookup tries the token
+as-is first. `pull_screenshots_source.py` puts it in the Campaign table, so it
+is in the source every deck is built from. Note the last slide is the internal
+status one: when that comes out for the client, the seller line goes onto
+whatever slide ends the deck.
+
 ## Instances
 
 | Campaign | Order | Doc | Deck | State |

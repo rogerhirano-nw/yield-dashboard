@@ -135,6 +135,29 @@ def _shot_rows(sizes: list[str]) -> list[tuple[str, str, str]]:
     return rows
 
 
+def _seller(order_name: str | None) -> str:
+    """The AE who sold it: the last token of the Newsweek naming convention
+    (`..._Team-INTL_AShah`), resolved through settings.json's `ae_names` so the
+    deck shows "Amit Shah" rather than "AShah". Case variants live in that map
+    (AShah / Ashah), so the lookup tries the token as-is first."""
+    parts = (order_name or "").split("_")
+    if len(parts) < 2 or parts[0] != "Newsweek":
+        return "—"
+    token = parts[-1].strip()
+    if not token:
+        return "—"
+    try:
+        import json
+        names = json.loads(
+            (REPO_ROOT / "settings.json").read_text()).get("ae_names") or {}
+    except Exception:
+        names = {}
+    return (names.get(token)
+            or names.get(token.title())
+            or names.get(token.capitalize())
+            or token)
+
+
 # Vertical token (index 2 of the Newsweek naming convention) -> the article
 # category slug to shoot against. `cat`/`sitecat` on a newsweek.com page is
 # "nwus-" + the primary category slug, hyphens as underscores.
@@ -327,6 +350,7 @@ Pulled from GAM on {_pretty_date(today.isoformat())}.
 | Sizes | {', '.join(sizes) or '—'} |
 | Targeting | {units}{' — run of site' if ros else ''} |
 | PO / IO | {o['po_number'] or '—'} |
+| Seller | {_seller(o.get('name'))} |
 
 GAM end times are network-tz instants: the line ends at 23:59 ET on its last \
 day, which reads as the next day in UTC.
