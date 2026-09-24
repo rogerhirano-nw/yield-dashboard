@@ -177,6 +177,9 @@ def _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end) -> None:
             dimensions=["CUSTOM_DIMENSION_0_VALUE", "EKV_DIMENSION_0_VALUE"],
             filters=[adv], custom_dimension_key_ids=[bidder_key_id],
             ekv_dimension_key_ids=[_key_id(k)], expanded_compatibility=True)),
+        ("both keys as enhanced key-values", dict(
+            dimensions=["EKV_DIMENSION_0_VALUE", "EKV_DIMENSION_1_VALUE"],
+            filters=[adv], ekv_dimension_key_ids=[bidder_key_id, _key_id(k)])),
         ("key-values + expanded compatibility", dict(
             dimensions=["CUSTOM_DIMENSION_0_VALUE", "KEY_VALUES_NAME"],
             filters=[adv, ("KEY_VALUES_NAME", "CONTAINS", [f"{name}="])],
@@ -195,6 +198,15 @@ def _breakdown_plain_key(gam, name, k, bidder_key_id, adv, start, end) -> None:
             df["key_values_name"] = df["key_values_name"].str.split("=", n=1).str[1]
         _print_breakdown(df, name)
         return
+    # Probe: does GAM accept this key as an enhanced key-value at all? A
+    # rejection here means EKV isn't enabled for the key, not a combination.
+    try:
+        gam._run_report(dimensions=["EKV_DIMENSION_0_VALUE"], metrics=METRICS,
+                        start_date=start, end_date=end, filters=[adv],
+                        ekv_dimension_key_ids=[_key_id(k)])
+        print(f"(probe: {name} alone as an enhanced key-value is accepted)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"(probe: {name} alone as an enhanced key-value rejected — {str(exc)[-250:]})")
     print(f"\n-- by {name}: every route rejected; set it to 'Custom dimension' in "
           f"GAM Admin → Custom targeting --")
 
