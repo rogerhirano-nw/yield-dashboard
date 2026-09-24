@@ -15,6 +15,7 @@ and the capture artifacts (`capture_screenshots.yml`):
       "page_url": "newsweek.com/could-diet-reduce-alzheimers-risk-...",
       "summary_note": "The campaign runs across newsweek.com; ...",
       "facts": [["Advertiser", "Elevance Health"], ["Flight", "..."], ...],
+      "seller": "Amit Shah",   # optional closing slide, from ae_names
       "shots": [
         {"size": "970x250", "device": "Desktop", "title": "Billboard in the article body",
          "file": "shots/7440274079_138612841039_970x250_desktop_context.png",
@@ -23,7 +24,9 @@ and the capture artifacts (`capture_screenshots.yml`):
     }
 
 `file` paths resolve relative to the spec. Screenshots are scaled to fit their
-panel, never cropped: the proof is the whole point.
+panel, never cropped: the proof is the whole point. Point `file` at the
+`_framed` copy from `scripts/frame_device_shot.py` so each shot sits in its
+device (iPhone / MacBook Pro).
 
 Usage:
   python scripts/build_screenshots_deck.py spec.json "Elevance Health - Proof of Placement.pptx"
@@ -160,6 +163,18 @@ def build(spec: dict, base: Path, out: Path) -> None:
         _footer(s, f"{spec['page_url']} · {spec['captured']} · {sh['size']} · "
                    f"{i}/{len(shots)}")
 
+    # Closing slide: who sold it, so whoever opens the deck knows whose
+    # campaign it is (Roger, 2026-09-24).
+    if spec.get("seller"):
+        s = prs.slides.add_slide(blank)
+        _background(s, INK)
+        _eyebrow(s, "Your Newsweek contact", on_ink=True)
+        _text(s, spec["seller"], M, 2.9, W - 2 * M, 1.1, font=SERIF, size=54,
+              bold=True, color=PAPER)
+        _text(s, spec.get("seller_title", "Account Executive, Newsweek"),
+              M, 4.05, W - 2 * M, 0.6, size=24, color=ON_INK_SUB)
+        _footer(s, f"{spec['advertiser']} · {spec['campaign']}", on_ink=True)
+
     prs.save(str(out))
 
 
@@ -170,7 +185,8 @@ def main() -> int:
     args = ap.parse_args()
     spec = json.loads(args.spec.read_text())
     build(spec, args.spec.parent, args.out)
-    print(f"wrote {args.out}  ({2 + len(spec['shots'])} slides)")
+    n = 2 + len(spec["shots"]) + (1 if spec.get("seller") else 0)
+    print(f"wrote {args.out}  ({n} slides)")
     return 0
 
 
