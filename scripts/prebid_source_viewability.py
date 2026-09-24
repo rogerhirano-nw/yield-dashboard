@@ -59,7 +59,7 @@ OUT_DIR = Path(os.environ.get("OUT_DIR") or "/tmp/prebid-source-viewability")
 # 1x1); upper-case names are standard report dimensions.
 BREAKDOWNS = [b.strip() for b in (
     os.environ.get("BREAKDOWNS")
-    or "hb_size,hb_format,DEVICE_CATEGORY_NAME,BROWSER_NAME,COUNTRY_NAME"
+    or "hb_size,hb_format,hb_size_smilewanted,hb_format_smilewanted,hb_adomain,DEVICE_CATEGORY_NAME"
 ).split(",") if b.strip()]
 
 METRICS = [
@@ -89,6 +89,8 @@ def _find_keys(names: set[str]) -> dict[str, object]:
     for k in client.list_custom_targeting_keys(
             parent=f"networks/{os.environ['GAM_NETWORK_ID']}"):
         tag = (k.ad_tag_name or "").strip().lower()
+        if tag.startswith("hb_"):
+            print(f"  seen key {tag}: {k.reportable_type.name}")
         if tag in names:
             found[tag] = k
     return found
@@ -116,17 +118,25 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
     """The bidder vs every other bidder, cut by one dimension or key."""
     if name.islower():
         k = keys.get(name)
-        if k is None or k.reportable_type != _CUSTOM_DIM:
-            print(f"\n-- by {name}: key missing or not a custom dimension, skipped --")
+        if k is None:
+            print(f"\n-- by {name}: no such key, skipped --")
             return
-        dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
-        ids = [bidder_key_id, _key_id(k)]
+        if k.reportable_type == _CUSTOM_DIM:
+            dims = ["CUSTOM_DIMENSION_0_VALUE", "CUSTOM_DIMENSION_1_VALUE"]
+            ids = [bidder_key_id, _key_id(k)]
+        else:
+            # Not a custom dimension: read it as a key-value row instead —
+            # safe because each impression carries one value of this key.
+            dims = ["CUSTOM_DIMENSION_0_VALUE", "KEY_VALUES_NAME"]
+            ids = [bidder_key_id]
+            adv = [adv, ("KEY_VALUES_NAME", "CONTAINS", [f"{name}="])]
     else:
         dims = ["CUSTOM_DIMENSION_0_VALUE", name]
         ids = [bidder_key_id]
     try:
         df = gam._run_report(dimensions=dims, metrics=METRICS, start_date=start,
-                             end_date=end, filters=[adv],
+                             end_date=end,
+                             filters=adv if isinstance(adv, list) else [adv],
                              custom_dimension_key_ids=ids)
     except Exception as exc:  # noqa: BLE001 — one cut failing shouldn't sink the rest
         print(f"\n-- by {name}: report failed: {str(exc)[:200]} --")
@@ -135,6 +145,9 @@ def _breakdown(gam, name, keys, bidder_key_id, adv, start, end) -> None:
     df.columns = ["bidder", "value"] + list(df.columns[2:])
     df["bidder"] = df["bidder"].astype(str).str.strip().str.lower()
     df["value"] = df["value"].astype(str)
+    if name.islower() and df["value"].str.startswith(f"{name}=").any():
+        df = df[df["value"].str.startswith(f"{name}=")]
+        df["value"] = df["value"].str.split("=", n=1).str[1]
     df.to_csv(OUT_DIR / f"by_{name.lower()}.csv", index=False)
     cols = ["impressions", "eligible", "measurable", "viewable", "revenue"]
     mine = df[df["bidder"] == BIDDER].groupby("value")[cols].sum()
