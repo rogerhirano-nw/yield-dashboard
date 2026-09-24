@@ -4,7 +4,35 @@ How to build the screenshots deliverable for any Direct campaign. Nothing in
 this path is campaign-specific — you give it a GAM order id and it gives you
 the doc body.
 
-## The two steps
+## Order id in, PowerPoint out
+
+When someone sends an order id and asks for screenshots, this is the whole job.
+Deliver the `.pptx`; don't stop at raw PNGs or a browser deck.
+
+1. **Pull** — `pull_screenshots_source.yml` with `-f order=<id>` (step 1
+   below). Read off: advertiser, vertical (token 2 of the order name), line
+   item id(s), flight, goal, sizes, IO, and the seller (last token of the order
+   name, through `ae_names`).
+2. **Pick the page** — a live article in the vertical that reads `brandsafe=y`
+   (see *Picking the page*; the verified list is under *Instances*).
+3. **Capture** — `capture_screenshots.yml` with `-f line_item=<id>
+   -f article_url=<page>`, once per line item. Artifacts come back as
+   `_context`, `_crop` and `_framed` per creative per viewport.
+4. **Look at every `_context` shot yourself** before building anything: the
+   client's creative (not a house ad) in the slot, no consent banner over it.
+   The `_crop` is only for that legibility check. It never goes in the deck.
+5. **Build** — write a spec like
+   `docs/snippets/screenshots_deck_spec.example.json` (each shot points at its
+   `_framed` file; `captured` = the capture time in ET) and run
+   `python scripts/build_screenshots_deck.py spec.json "<Advertiser> - Proof of Placement.pptx"`.
+   One deck per advertiser. Two orders for two clients means two files.
+6. **Send** the `.pptx` and add a row to *Instances*.
+
+From a cloud session without `gh`, dispatch through the GitHub MCP tools and
+pull the artifacts with the REST API (`GET …/actions/runs/<id>/artifacts`, then
+`…/artifacts/<id>/zip` with `$GH_TOKEN`).
+
+## The steps
 
 **1. Pull the source.** Dispatch `pull_screenshots_source.yml` with either an
 order id or a line item id — a line item resolves its own order, which is

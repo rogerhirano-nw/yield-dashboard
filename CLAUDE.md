@@ -1176,7 +1176,9 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   in its `_framed` iPhone / MacBook Pro copy (`scripts/frame_device_shot.py`).
   The client deck is cover → summary → one slide per framed shot → a seller
   slide, **one deck per advertiser**, **always delivered as a `.pptx`**
-  (`scripts/build_screenshots_deck.py`).
+  (`scripts/build_screenshots_deck.py`). The end-to-end checklist (order id →
+  `.pptx`) is the runbook's first section, with an example spec in
+  `docs/snippets/screenshots_deck_spec.example.json`.
   `preview_mobkoi_dom.yml` stays a Mobkoi DOM-forensics tool
   and is mobile-only — don't use it for deliverables.
   **The page a shot is taken on has to clear two tests**, both enforced in
