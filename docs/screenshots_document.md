@@ -32,10 +32,14 @@ locally against a `.env` that carries `GAM_SERVICE_ACCOUNT_JSON` +
 **2. Build the doc** from `screenshots_doc.md` — the working page: verified
 facts, blockers, and the page-selection rules.
 
-**3. Build the deck** — the shots go in a slide deck, not in the doc. One slide
-per shot, each with a caption line for URL, date and size, plus a cover and a
-campaign-summary slide. The deck is what ships to the client; the doc stays
-internal and links to it.
+**3. Build the deck — always a PowerPoint file.** The client deliverable is a
+`.pptx`, every time (Roger, 23 Sep 2026: "the output must be always in
+powerpoint"). `scripts/build_screenshots_deck.py spec.json "<Advertiser> -
+Proof of Placement.pptx"` builds it (needs `python-pptx`): cover → campaign
+summary → one slide per in-context shot (point each at its `_framed` copy),
+each captioned with URL, capture time and size → a closing slide naming the
+seller. The spec format is in the script's docstring. The deck is what ships to
+the client; the doc stays internal and links to it.
 
 ## What the generated body contains
 
@@ -162,6 +166,12 @@ the creative count before you get as far as capture.
 
 ## Deck conventions
 
+**Format: `.pptx`, always** — built by `scripts/build_screenshots_deck.py`, one
+file per advertiser, named `<Advertiser> - Proof of Placement.pptx`. A browser
+deck (the claude.ai Slides artifact) is fine as a preview, but it is not the
+deliverable. The `.pptx` uses Cambria over Calibri, which ship with Office, so
+it renders as built on the client's machine.
+
 Built to the Newsweek "Paper" look the dashboard already uses, since there is no
 design system on the account: warm paper `#FEFCF6`, ink `#1F1E19`, brand red
 `#E91D0C` as chrome only (the eyebrow rule), Libre Baskerville over Public Sans.
@@ -189,8 +199,10 @@ in its top bezel rather than the notch a real MacBook Pro has: a real notch
 hangs down into the display, so drawing one would either cover captured pixels
 or read as a grey tab stuck to the bezel.
 
-Slide order: cover → campaign summary → one slide per shot → an internal status
-slide that comes out before the deck goes to the client.
+Slide order: cover → campaign summary → one slide per shot → a closing slide
+naming the seller. Any internal status slide comes out before the deck goes to
+the client. **One deck per advertiser**, even when two flights share a summit —
+never put two advertisers' shots in one file.
 
 **The last slide always names the seller** (Roger, 24 Sep 2026) — the AE who
 sold it, so whoever opens the deck knows whose campaign it is. The seller is
@@ -198,9 +210,8 @@ the last token of the order name (`..._Team-INTL_`**`AShah`**), resolved
 through settings.json's `ae_names` so it reads "Amit Shah" and not "AShah";
 that map carries the case variants, which is why the lookup tries the token
 as-is first. `pull_screenshots_source.py` puts it in the Campaign table, so it
-is in the source every deck is built from. Note the last slide is the internal
-status one: when that comes out for the client, the seller line goes onto
-whatever slide ends the deck.
+is in the source every deck is built from. In the `.pptx` it is its own closing slide
+(`seller` in the spec), so it survives the internal status slide coming out.
 
 ## Instances
 
@@ -208,12 +219,14 @@ whatever slide ends the deck.
 | --- | --- | --- | --- | --- |
 | KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Live 22 Sep; **shot in full** (3 slides) |
 | American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | Delivering; 1 of 7 shot |
+| Elevance Health — AI Health Summit 2026 | 4202666637 | — | [Deck](https://claude.ai/artifact/1dfmx5VQdvvDjXLQWfu8y9) · `.pptx` | Shot 23 Sep 2026; 3 framed in-context shots + seller slide |
+| Becton Dickinson — AI Health Summit 2026 | 4202665578 | — | [Deck](https://claude.ai/artifact/4qGUx746WNgZv3WxfzL2dn) · `.pptx` | Shot 23 Sep 2026; 3 framed in-context shots + seller slide |
 
 Verified health pages to shoot against — re-check on the day, since `adexclusion`
 changes under a URL (both read `cat=nwus-health`, `brandsafe=y`):
 
 - [Scientists Find Potential Way To Preserve Muscle During GLP-1 Weight Loss](https://www.newsweek.com/scientists-find-potential-way-to-preserve-muscle-during-glp-1-weight-loss-12468110) — the KFSHRC shots, 22 Sep 2026
-- [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — the American Hospital Dubai shot, 21 Sep 2026
+- [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — the American Hospital Dubai shot, 21 Sep 2026; Elevance Health and Becton Dickinson, 23 Sep 2026
 
 **Count the slides from what the capture can actually produce.** KFSHRC has two
 sizes and came to three slides: 970x250 desktop, 300x250 desktop, 300x250
