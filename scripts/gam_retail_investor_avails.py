@@ -247,6 +247,22 @@ def _resolve_units(soap) -> dict[str, int]:
     return units
 
 
+def _resolve_named_units(soap, names: list[str]) -> list[int]:
+    """Ad units by name anywhere in the tree (e.g. the in-article leaves a
+    buyer runs on), for `--ad-units`. Refuses a name that doesn't resolve to
+    exactly one ACTIVE unit, so a typo can't silently widen the forecast."""
+    inv = soap.GetService("InventoryService", version=V)
+    ids = []
+    for n in names:
+        hits = _q_all(inv, "getAdUnitsByStatement", "name = :n AND status = 'ACTIVE'", n=n)
+        if len(hits) != 1:
+            raise SystemExit(f"ad unit '{n}': expected 1 active match, found "
+                             f"{[(int(h.id), h.name) for h in hits]}")
+        ids.append(int(hits[0].id))
+        print(f"  ad unit '{n}' -> {hits[0].id}")
+    return ids
+
+
 def _smartphone_id(soap) -> int | None:
     from googleads import ad_manager
     pql = soap.GetService("PublisherQueryLanguageService", version=V)
@@ -272,9 +288,9 @@ def _custom_tree(ctx_crit: list[dict] | None, seg_ids: list[int] | None):
                           "children": kids}]}
 
 
-def _line_item(y, m, unit_id, video, device_id, custom):
+def _line_item(y, m, unit_ids, video, device_id, custom, sizes=None):
     last = calendar.monthrange(y, m)[1]
-    sizes = [VIDEO_SIZE] if video else DISPLAY_SIZES
+    sizes = [VIDEO_SIZE] if video else (sizes or DISPLAY_SIZES)
     li = {
         "name": "retail investor avails probe",
         "startDateTime": {"date": {"year": y, "month": m, "day": 1},
@@ -287,8 +303,8 @@ def _line_item(y, m, unit_id, video, device_id, custom):
         "creativePlaceholders": [{"size": {"width": w, "height": h, "isAspectRatio": False}}
                                  for w, h in sizes],
         "targeting": {
-            "inventoryTargeting": {"targetedAdUnits": [{"adUnitId": str(unit_id),
-                                                        "includeDescendants": True}]},
+            "inventoryTargeting": {"targetedAdUnits": [
+                {"adUnitId": str(u), "includeDescendants": True} for u in unit_ids]},
             "geoTargeting": {"targetedLocations": [{"id": str(US_GEO_ID)}]},
         },
     }
@@ -329,6 +345,11 @@ def main() -> int:
     ap.add_argument("--month", help="YYYY-MM to forecast (default: next month)")
     ap.add_argument("--pick", type=int, default=10, help="auto-picked 3P segments (default 10)")
     ap.add_argument("--segment-ids", help="comma-separated segment ids (overrides the auto-pick)")
+    ap.add_argument("--ad-units", help="comma-separated ad unit names to scope Display to "
+                    "(e.g. a buyer's two in-article units); default: the whole `newsweek` unit")
+    ap.add_argument("--sizes", help="comma-separated WxH display sizes (default 300x250,320x50,"
+                    "970x250,728x90)")
+    ap.add_argument("--display-only", action="store_true", help="skip the video forecasts")
     ap.add_argument("--csv-dir")
     ap.add_argument("--xlsx")
     args = ap.parse_args()
@@ -394,6 +415,17 @@ def main() -> int:
 
     # ---- 3. forecast
     units = _resolve_units(soap)
+    display_ids = [units[DISPLAY_UNIT]]
+    if args.ad_units:
+        display_ids = _resolve_named_units(
+            soap, [u.strip() for u in args.ad_units.split(",") if u.strip()])
+    sizes = None
+    if args.sizes:
+        sizes = [tuple(int(v) for v in z.strip().lower().split("x"))
+                 for z in args.sizes.split(",") if z.strip()]
+    print(f"Display scope: {args.ad_units or DISPLAY_UNIT} @ "
+          f"{', '.join(f'{w}x{h}' for w, h in (sizes or DISPLAY_SIZES))}"
+          f"{'  (display only)' if args.display_only else ''}")
     phone = _smartphone_id(soap)
     print(f"\nsmartphone device category id: {phone}")
     seg_ids = [int(i) for i in picked["id"]] if not picked.empty else []
@@ -414,11 +446,15 @@ def main() -> int:
     jobs = []
     for name, cc, sids in cuts:
         custom = _custom_tree(cc, sids)
-        for fmt, unit, video in (("Display", DISPLAY_UNIT, False), ("Video", VIDEO_UNIT, True)):
+        formats = [("Display", display_ids, False)]
+        if not args.display_only:
+            formats.append(("Video", [units[VIDEO_UNIT]], True))
+        for fmt, uids, video in formats:
             for dev, did in (("All devices", None), ("Smartphone", phone)):
                 if dev == "Smartphone" and not did:
                     continue
-                jobs.append((name, fmt, dev, _line_item(y, m, units[unit], video, did, custom)))
+                jobs.append((name, fmt, dev,
+                             _line_item(y, m, uids, video, did, custom, sizes)))
 
     print(f"\nrunning {len(jobs)} forecast calls …")
     rows, errors = [], []

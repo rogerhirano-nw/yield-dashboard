@@ -18,6 +18,17 @@ on:
       segment_ids:
         description: "Comma-separated 3P segment ids (overrides the auto-pick)"
         required: false
+      ad_units:
+        description: "Comma-separated ad unit names to scope Display to (default: whole site)"
+        required: false
+      sizes:
+        description: "Comma-separated WxH display sizes (default: 300x250,320x50,970x250,728x90)"
+        required: false
+      display_only:
+        description: "Skip video"
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [claude/laughing-brahmagupta-0gtb87]
     paths:
@@ -47,11 +58,17 @@ jobs:
           MONTH: ${{ inputs.month }}
           PICK: ${{ inputs.pick }}
           SEGMENT_IDS: ${{ inputs.segment_ids }}
+          AD_UNITS: ${{ inputs.ad_units }}
+          SIZES: ${{ inputs.sizes }}
+          DISPLAY_ONLY: ${{ inputs.display_only }}
         run: |
           set -o pipefail
           ARGS="--pick ${PICK:-10}"
           if [ -n "$MONTH" ]; then ARGS="$ARGS --month $MONTH"; fi
           if [ -n "$SEGMENT_IDS" ]; then ARGS="$ARGS --segment-ids $SEGMENT_IDS"; fi
+          if [ -n "$AD_UNITS" ]; then ARGS="$ARGS --ad-units $AD_UNITS"; fi
+          if [ -n "$SIZES" ]; then ARGS="$ARGS --sizes $SIZES"; fi
+          if [ "$DISPLAY_ONLY" = "true" ]; then ARGS="$ARGS --display-only"; fi
           python scripts/gam_retail_investor_avails.py $ARGS \
             --csv-dir out --xlsx out/Newsweek_Retail_Investor_Avails.xlsx
 
