@@ -46,9 +46,9 @@ template:
   reason if not (flight hasn't opened, no creatives attached).
 - **Campaign** — advertiser, order, line item, flight, goal, sizes, targeting,
   PO/IO.
-- **What gets captured** — one row per size: context + close crop on desktop,
-  plus the mobile pair for any size ≤ 400px wide (a 970x250 never needs a
-  phone shot). A run-of-site line gets an extra homepage/section row.
+- **What gets captured** — one in-context row per size on desktop, plus a
+  mobile row for any size ≤ 400px wide (a 970x250 never needs a phone shot).
+  A run-of-site line gets an extra homepage/section row.
 - **Before capture** — only the blockers that actually apply, as checkboxes.
 - **Screenshots** — the placeholder the images land in.
 
@@ -75,12 +75,22 @@ judging by the headline:
 | Key-value | Passes | Fails |
 | --- | --- | --- |
 | `brandsafe` | `y` | `n` |
-| `adexclusion` | empty | `generic_brand_safety` |
+| `adexclusion` | no `*brand_safety*` label | `generic_brand_safety` |
 
 `ABS` / `CBS` / `BSC` and Proximic `vnd_prx_segments` are opaque segment-id
 lists, not a pass/fail — `brandsafe` is the flag. (Verified live 21 Sep 2026
 against four /health articles; an earlier draft of this runbook named the wrong
 keys.)
+
+**`adexclusion` is a label list, not a verdict — only a brand-safety label
+fails the page.** The runbook first read "adexclusion must be empty", which
+was right on the day it was written and wrong the next: on 22 Sep 2026 the
+site carried **`nopassfq`** on health articles that were `brandsafe=y`,
+including the very article pinned below, and the gate refused all of them. The
+two signals travel together on a genuine failure — the one article that failed
+that day read `brandsafe=n` *and* `generic_brand_safety`. So the test is
+`brandsafe=y` plus no label containing `brand_safety`; any other label is
+printed for the record and does not block.
 
 A failing page gets skipped, not cropped around.
 
@@ -120,9 +130,32 @@ reason for the second test.
 
 ## Capturing the images
 
-Use the `preview_mobkoi_dom.yml` path: SOAP `getPreviewUrl` for the trafficked
-creative, then headless Chromium on a live article page, scrolling the slot
-into view before the shot. Screenshots come back as workflow artifacts.
+Dispatch `capture_screenshots.yml` with the line item and the article URL:
+
+```bash
+gh workflow run capture_screenshots.yml \
+  -f line_item=7432006947 \
+  -f article_url=https://www.newsweek.com/...
+```
+
+It runs `scripts/capture_screenshots.py` — SOAP `getPreviewUrl` per creative,
+then headless Chromium on the live article at desktop (1600px) and mobile
+(390px), scrolling the lazy slot into view before the shot. It enforces both
+page tests above before shooting anything (`-f no_gate=true` is the deliberate
+override), skips any creative too wide for the viewport, and hides the Ketch
+consent overlay rather than clicking it. Screenshots come back as workflow
+artifacts, two per creative per viewport (`_context` and `_crop`).
+
+Every context shot also comes back as a `_framed` copy in a device frame —
+an iPhone on mobile, a MacBook Pro on desktop — drawn by
+`scripts/frame_device_shot.py`, and that is the one that goes in the deck (see
+the conventions below). Run it by hand on any shot:
+`python scripts/frame_device_shot.py shot.png` (it picks the device from the
+shot's orientation; `--device phone|laptop` overrides).
+
+`preview_mobkoi_dom.yml` is NOT the tool for this — it is mobile-only DOM
+forensics, so a 970x250 falls through to a Newsweek house ad and the "proof"
+shows the wrong advertiser.
 
 A line with no creatives has nothing to preview — that is why step 1 reports
 the creative count before you get as far as capture.
@@ -136,14 +169,56 @@ design system on the account: warm paper `#FEFCF6`, ink `#1F1E19`, brand red
 Screenshots sit `object-fit:contain` on a light panel — never `cover`, which
 would crop the proof, and the proof is the whole point.
 
+**In-context shots only — no close crops** (Roger, 22 Sep 2026). The proof is
+the ad sitting in the page; a crop of the creative is a picture of an asset the
+client already has, and it doubles the deck for nothing. The capture script
+still writes a `_crop` file per shot, which is worth a look to confirm the
+creative rendered legibly — it just doesn't become a slide.
+
+**Shots go in a device frame** (Roger, 24 Sep 2026) — mobile in an iPhone,
+desktop in a MacBook Pro. A bare screenshot reads as a cropped page; the frame
+says which device it is before anyone reads the caption. Desktop captures are
+1600x1000, which is 16:10, so they fill a MacBook lid exactly.
+
+**The frame never covers the capture.** Bezel, corner rounding, side buttons
+and the base edge sit outside the screenshot; no notch, island, status bar or
+menu bar is painted over it, and the unframed original is kept beside the
+framed copy. The screenshot is the evidence, and a deck that retouches it is
+worth less than one that doesn't. That rule is why the laptop gets a camera dot
+in its top bezel rather than the notch a real MacBook Pro has: a real notch
+hangs down into the display, so drawing one would either cover captured pixels
+or read as a grey tab stuck to the bezel.
+
 Slide order: cover → campaign summary → one slide per shot → an internal status
 slide that comes out before the deck goes to the client.
+
+**The last slide always names the seller** (Roger, 24 Sep 2026) — the AE who
+sold it, so whoever opens the deck knows whose campaign it is. The seller is
+the last token of the order name (`..._Team-INTL_`**`AShah`**), resolved
+through settings.json's `ae_names` so it reads "Amit Shah" and not "AShah";
+that map carries the case variants, which is why the lookup tries the token
+as-is first. `pull_screenshots_source.py` puts it in the Campaign table, so it
+is in the source every deck is built from. Note the last slide is the internal
+status one: when that comes out for the client, the seller line goes onto
+whatever slide ends the deck.
 
 ## Instances
 
 | Campaign | Order | Doc | Deck | State |
 | --- | --- | --- | --- | --- |
-| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Not started; no creatives |
+| KFSHRC — Interview, AI Health Summit 2026 | 4198147401 | [Working doc](https://claude.ai/code/artifact/c149214f-77dc-4062-8a82-0a87d1e08680) | [Deck](https://claude.ai/artifact/MU5BmCPSu3yJb7p2q6z769) | Live 22 Sep; **shot in full** (3 slides) |
 | American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Working doc](https://claude.ai/code/artifact/ba439cea-bbad-4124-bb35-9f5628ff1f95) | [Deck](https://claude.ai/artifact/Ays1VVMKbZFppdXo2UVbPb) | Delivering; 1 of 7 shot |
 
-Both shoot against [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — verified 21 Sep 2026 as `cat=nwus-health`, `brandsafe=y`, no ad exclusion.
+Verified health pages to shoot against — re-check on the day, since `adexclusion`
+changes under a URL (both read `cat=nwus-health`, `brandsafe=y`):
+
+- [Scientists Find Potential Way To Preserve Muscle During GLP-1 Weight Loss](https://www.newsweek.com/scientists-find-potential-way-to-preserve-muscle-during-glp-1-weight-loss-12468110) — the KFSHRC shots, 22 Sep 2026
+- [Which Diets Could Lower Alzheimer's Risk?](https://www.newsweek.com/could-diet-reduce-alzheimers-risk-what-experts-say-12449451) — the American Hospital Dubai shot, 21 Sep 2026
+
+**Count the slides from what the capture can actually produce.** KFSHRC has two
+sizes and came to three slides: 970x250 desktop, 300x250 desktop, 300x250
+mobile. The 970x250 gets no mobile shot at all (it cannot fill a 390px slot —
+the capture script skips it rather than shoot a house ad), close crops are not
+part of the deliverable (above), and the homepage/section row is only worth a
+slide if the client asks. Cut the slides the capture didn't produce instead of
+leaving "awaiting capture" placeholders in a deck that is otherwise done.
