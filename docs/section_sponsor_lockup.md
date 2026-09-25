@@ -110,4 +110,7 @@ commit it. Behind an egress proxy, set `NW_PROXY` and `NW_TRUST_SPKI` (the
 proxy CA's SPKI hash).
 
 Status 2026-09-25: passes at all three widths on the real QA hub with the Kia
-logo. The GAM line and creative haven't been created yet (steps 2–5 above).
+logo. **[TEST] line item 7439607552** is created on Newsweek_Test-2 (INACTIVE
+until approved, no creative yet): oop1 + `categories=ai-politics` (value
+453960343890) + `nwdemocr=section-sponsor` (value 453960345576). Next are steps
+3–5 above: the UI creative, `creative_id` push, and order approval.
