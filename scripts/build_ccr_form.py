@@ -50,7 +50,9 @@ PERIOD_MAX_DAYS = 92  # Comscore limit on one custom reporting period
 PERIOD_ROWS = range(10, 15)  # Study Details rows 10-14 hold custom periods
 ALLOWED_HIDDEN = {"Data Validation"}
 
-_PERIOD_CODE = re.compile(r"(Q[1-4]\d{0,4}|FY\d{2,4}(-?Q[1-4])?|H[12]\d{0,4})", re.I)
+# FY26-Flight3 counts too (order 4203010941): a flight number is a period.
+_PERIOD_CODE = re.compile(
+    r"(Q[1-4]\d{0,4}|FY\d{2,4}(-?(Q[1-4]|Flight\d+))?|H[12]\d{0,4})", re.I)
 
 _GEO_TOKENS = {"US", "USA", "NA", "INTL", "UK", "CA", "GLOBAL", "WW", "ROW"}
 # How advertisers are written on the forms Kael has sent Comscore.

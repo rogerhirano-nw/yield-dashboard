@@ -48,6 +48,12 @@ def test_parse_order_name_direct_and_pg():
                 "US_Interstitial_$16_Team-USA_ILee")
     p = ccr.parse_order_name(matchbox)
     assert (p["advertiser"], p["product"]) == ("Apple TV", "AppleTv Matchbox")
+    # Fiscal-year flight code at token 8 (order 4203010941).
+    sky = ("Newsweek_PG_Tech_ADX_DV360_Omnicom_OMD_AppleTv-Sky-Program_FY26-Flight3_"
+           "US_Interstitial_$16_Team-USA_ILee")
+    p = ccr.parse_order_name(sky)
+    assert (p["advertiser"], p["product"], p["category"]) == (
+        "Apple TV", "AppleTv Sky Program", "Technology")
     assert ccr.parse_order_name("Some one-off order")["advertiser"] == ""
     assert ccr.parse_order_name(JEEP.replace("Automotive", "Tech"))["category"] == "Technology"
 
