@@ -1223,6 +1223,19 @@ advertiser is corrected from the creative, correct that name too with the
 workflow's `campaign_name` input (4203010941 went out as
 `…_Omnicom_OMD_Apple-Sky-Program_FY26-Flight3_…`, not `AppleTv-…`).
 The run prints the subject (`email_subject`).
+**Every CCR form is delivered with its Comscore email** (Roger, 2026-09-25):
+To (Kristie Chesebro), the subject above, a short body (campaign name, campaign
+ID + ad server, flight, KPIs) and the attachment's filename — never the
+spreadsheet alone.
+**Browser version: the "Comscore CCR Builder" artifact**
+(https://claude.ai/artifact/FDYM3mFkGrJNpyLVifFiWE, 2026-09-25). Input is just
+the order name or ID; it reads `gam_campaigns` through the viewer's Supabase
+connector, fills the same template in the browser (JSZip cell edits, so logos
+and validations survive — ExcelJS crashes on this template's drawings), and
+shows the email elements with copy buttons. Same rules as the script. Two
+limits: a new order only appears after the next daily refresh (a by-hand entry
+covers that), and it can't read creatives, so the creative check stays a
+manual step there.
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News
