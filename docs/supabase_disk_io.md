@@ -19,7 +19,7 @@ Everything below is per **day**, steady state:
 |---|---|---|
 | Streamlit dashboard cold reload | every `_CACHE_TTL_SECONDS` (now **2h**, was 1h) | ~25 `SELECT *` table reads + 4 `GROUP BY` scans (`_load_dv_attention_agg` ×3, `_load_dv_ivt_agg`) + the `gam_lica × gam_creatives` join (`_load_li_max_duration`). Read-only; served from RAM while the working set fits. |
 | Daily sweep (`refresh.yml`, 05:00 ET) | 1×/day | Rewrites nearly every table: DELETE+append (`gam_campaigns`, `magnite_*`, `pubmatic_deals`) or TRUNCATE+append (`_safe_replace` tables). Each DELETE-style rewrite turns the whole table into dead tuples that autovacuum must re-read and rewrite — write IO ≈ 2-3× the data size, plus WAL. |
-| Intraday direct refresh (`refresh_direct.yml`) | 4×/day | `gam_campaigns` fully rewritten via DELETE+append each run — 5 total rewrites/day of that table and its 2 indexes. |
+| Intraday direct refresh (`refresh_direct.yml`) | hourly 07:00–20:00 ET (14×/day; was 4×/day when this doc was written) | `gam_campaigns` fully rewritten via DELETE+append each run — with the sweep, ~15 rewrites/day of that table and its 2 indexes, 3× the churn the 2026-08-03 numbers assumed. |
 | Health check | 2-3×/day | Cheap `MAX()` freshness probes + two `LIKE '%.0'` scans of the (now small) DV tables + the RLS catalog query. When a *remediable* check fails it re-runs the **whole sweep** (max 2×/day) — a failing-source incident doubles or triples the sweep's write IO for as long as it lasts (the 6/29→7/27 `ttd_luckyland` RLS loop did exactly this daily). |
 | Supabase platform | continuous | Daily backup reads the whole disk; logs/metrics services have their own floor. Fixed cost — only compute upgrade changes it. |
 
@@ -59,6 +59,10 @@ and per statement, Postgres's own IO accounting. How to read it:
    load. The intraday direct refreshes land 3h apart, so ≤2h staleness
    doesn't lose a data point; Settings-save and the debug "Clear cache +
    re-query" button still force an immediate reload.
+   *(Update 2026-08-17: the direct refresh is now hourly during business
+   hours, so the dashboard can trail the freshest intraday pull by up to
+   the full 2h TTL. The TTL choice stands — it just no longer surfaces
+   every intraday point.)*
 2. **Vacuum the churn tables** (`db_disk_io_report.yml` with `vacuum=1`)
    whenever the report shows dead-tuple pileup. Months of daily
    DELETE+append had never been followed by a manual vacuum.
