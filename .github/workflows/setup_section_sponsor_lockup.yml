@@ -36,9 +36,11 @@ on:
       - 'scripts/setup_section_sponsor_lockup.py'
       - 'docs/snippets/section_sponsor_lockup_creative.html'
       - '.github/workflows/setup_section_sponsor_lockup.yml'
+      - 'scripts/orders/assets/**'
 
 env:
   APPLY_ON_PUSH: "false"
+  PUSH_ARGS: "--create-creative"
 
 permissions:
   contents: read
@@ -73,6 +75,7 @@ jobs:
           if [ -n "$IN_CREATIVE" ]; then ARGS+=(--creative-id "$IN_CREATIVE"); fi
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
           if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS+=(--apply); fi
+          if [ "$EVENT" = "push" ] && [ -n "$PUSH_ARGS" ]; then ARGS+=($PUSH_ARGS); fi
           echo "args: ${ARGS[*]}"
           python scripts/setup_section_sponsor_lockup.py "${ARGS[@]}" 2>&1 | tee /tmp/out.txt
           { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

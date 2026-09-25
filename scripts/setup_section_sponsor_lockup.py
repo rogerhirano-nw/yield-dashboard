@@ -123,6 +123,15 @@ def main() -> int:
     ap.add_argument("--pixel", action="append", default=[],
                     help="agency impression pixel URL (repeatable)")
     ap.add_argument("--creative-id", type=int, help="UI-made Out-of-page creative to fill")
+    ap.add_argument("--create-creative", action="store_true",
+                    help="create the CustomCreative via the API (mirrors --ref-creative's "
+                         "out-of-page fields) instead of adding it in the UI")
+    ap.add_argument("--logo-file", default=str(ROOT / "scripts" / "orders" / "assets" /
+                                               "kia_logo_trace.png"),
+                    help="logo uploaded as asset PNG1 (with --create-creative)")
+    ap.add_argument("--click-url", default="https://www.kia.com/us/en")
+    ap.add_argument("--ref-creative", type=int, default=138562255517,
+                    help="known-serving UI-made oop creative whose size/isInterstitial to mirror")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -194,6 +203,26 @@ def main() -> int:
         if cur.strip() and SENTINEL not in cur:
             print(f"!! creative carries a different snippet (no {SENTINEL}) — refusing to overwrite")
             return 1
+    elif args.create_creative:
+        ref = _q(cr_svc, "getCreativesByStatement", "id = :i", i=args.ref_creative)
+        if not ref:
+            print(f"!! reference creative {args.ref_creative} not found")
+            return 1
+        ref = ref[0]
+        ref_int = getattr(ref, "isInterstitial", None)
+        print(f"reference creative {ref.id} [{type(ref).__name__}] {ref.name[:50]}: "
+              f"size {ref.size.width}x{ref.size.height} aspect={ref.size.isAspectRatio} "
+              f"isInterstitial={ref_int} safeframe={ref.isSafeFrameCompatible} "
+              f"assets={[a.macroName for a in (getattr(ref, 'customCreativeAssets', None) or [])]}")
+        cr_existing = _q(cr_svc, "getCreativesByStatement", "name = :n", n=name)
+        logo = Path(args.logo_file)
+        print(f"creative: {name!r} "
+              + (f"[exists: {cr_existing[0].id}]" if cr_existing else
+                 f"[will create: CustomCreative {ref.size.width}x{ref.size.height}, "
+                 f"isInterstitial={ref_int}, SafeFrame off, PNG1={logo.name} "
+                 f"({logo.stat().st_size} B), click {args.click_url}]"))
+        if cr_existing:
+            cr = cr_existing[0]
     else:
         print("creative: none given — add it from the line item in the GAM UI (size "
               "\"Out of page\", SafeFrame OFF, logo as asset PNG1), then re-run with --creative-id.")
@@ -253,6 +282,31 @@ def main() -> int:
         }])[0]
         print(f"created line item {li.id} ({li.status})")
 
+    if cr is None and args.create_creative:
+        order_svc = client.GetService("OrderService", version=V)
+        adv = _q(order_svc, "getOrdersByStatement", "id = :o", o=li.orderId)[0].advertiserId
+        body = {
+            "xsi_type": "CustomCreative",
+            "name": name,
+            "advertiserId": adv,
+            # Mirror the known-serving UI-made "Out of page" creative: a plain
+            # 1x1 (isInterstitial unset) did not serve an OOP slot.
+            "size": {"width": ref.size.width, "height": ref.size.height,
+                     "isAspectRatio": ref.size.isAspectRatio},
+            "destinationUrl": args.click_url,
+            "htmlSnippet": snippet,
+            "isSafeFrameCompatible": False,   # the iframe resize needs frameElement
+            "customCreativeAssets": [{
+                "macroName": "PNG1",
+                "asset": {"assetByteArray": logo.read_bytes(), "fileName": logo.name},
+            }],
+        }
+        if ref_int is not None:
+            body["isInterstitial"] = ref_int
+        cr = cr_svc.createCreatives([body])[0]
+        print(f"created creative {cr.id} (isInterstitial={getattr(cr, 'isInterstitial', None)}, "
+              f"safeframe={cr.isSafeFrameCompatible})")
+
     if cr is not None:
         changed = False
         if (getattr(cr, "htmlSnippet", None) or "") != snippet:
@@ -273,6 +327,12 @@ def main() -> int:
                 print("LICA already exists")
             else:
                 raise
+        try:
+            url = lica_svc.getPreviewUrl(li.id, cr.id,
+                                         f"https://www.newsweek.com/{args.section}")
+            print(f"PREVIEW: {url}")
+        except Exception as e:  # noqa: BLE001 — preview needs an approved order
+            print(f"(no preview URL yet: {str(e)[:120]})")
 
     gate = f"?{DEMO_KEY}={args.demo_value}" if args.demo_value else ""
     print(f"\nTEST: https://www.newsweek.com/{args.section}{gate}  "
