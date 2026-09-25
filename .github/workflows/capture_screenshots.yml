@@ -31,7 +31,7 @@ jobs:
 
       - name: Install deps
         run: |
-          pip install google-ads-admanager google-auth pandas googleads playwright
+          pip install google-ads-admanager google-auth pandas googleads playwright pillow
           playwright install --with-deps chromium
 
       - name: Capture
