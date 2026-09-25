@@ -1151,6 +1151,16 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
+- `docs/video_click_tracking.md` — why **Innovid-tagged video reads 0
+  clicks in GAM** (2026-09: zero across 4 advertisers / 184,686 impressions,
+  while DCM 1.26% / Rubicon 0.61% / amazon 0.63% / adsrvr 0.18% click on
+  the same `vid.newsweek` unit). GAM's served wrapper *does* carry a
+  `<ClickTracking>` to `pubads.g.doubleclick.net` and the player fires the
+  wrapper's other tracking events, and the creatives are plain MP4 linears
+  (`apiFramework` omid only) — so it is neither "GAM can't count third-party
+  VAST" nor VPAID swallowing the click. Don't grade an Innovid flight on GAM
+  CTR. Diagnostic: `scripts/diagnose_video_clicks.py` /
+  `.github/workflows/diagnose_video_clicks.yml`.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
