@@ -31,6 +31,10 @@ on:
         description: 'Override KPIs (default: CTR/VCR + Viewability)'
         required: false
         default: ''
+      campaign_name:
+        description: 'Override campaign name (form + email subject; default: the order name)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -58,6 +62,7 @@ jobs:
           CCR_PRODUCT: ${{ inputs.product }}
           CCR_CATEGORY: ${{ inputs.category }}
           CCR_KPIS: ${{ inputs.kpis }}
+          CCR_CAMPAIGN_NAME: ${{ inputs.campaign_name }}
         run: |
           mkdir -p out
           set -o pipefail

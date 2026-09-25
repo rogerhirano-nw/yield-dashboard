@@ -1218,7 +1218,11 @@ Apple / iPhone / iPhone 18 Pro via the workflow's override inputs.
 **Email subject** for sending the form (Roger, 2026-09-25):
 `ComScore//Newsweek - CCR Form New Campaign - <campaign name on the form>`, e.g.
 `ComScore//Newsweek - CCR Form New Campaign - Newsweek_PG_Tech_ADX_DV360_Omnicom_OMD_AppleTv-Sky-Program_FY26-Flight3_US_Interstitial_$16_Team-USA_ILee`.
-The run prints it (`email_subject`).
+The subject always carries the **same** campaign name as the form. When the
+advertiser is corrected from the creative, correct that name too with the
+workflow's `campaign_name` input (4203010941 went out as
+`…_Omnicom_OMD_Apple-Sky-Program_FY26-Flight3_…`, not `AppleTv-…`).
+The run prints the subject (`email_subject`).
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News
