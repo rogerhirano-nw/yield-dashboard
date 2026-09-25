@@ -11,7 +11,8 @@ comscore_ccr_template.xlsx` from GAM, ready to attach.
 What it fills (read-only against GAM; nothing is written there):
   Study Details  campaign name (order name, ≤150 chars), flight dates,
                  advertiser/brand/product/category (from the Newsweek naming
-                 convention, overridable), KPIs, an "End of campaign report"
+                 convention, overridable; category is always the order name's
+                 vertical, token 2 — Roger, 2026-09-25), KPIs, an "End of campaign report"
                  custom period (split into ≤92-day chunks, Comscore's max)
   Media Details  flight start/end, the order id(s) and ad server. The
                  Digital/CTV partner impression breakdown is left blank on

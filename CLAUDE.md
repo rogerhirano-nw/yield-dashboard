@@ -1207,6 +1207,8 @@ uploads the form as the `ccr-form` artifact — review, then attach. Filled:
 campaign name (order name, ≤150 chars), flight, "End of campaign report"
 period(s) (≤92 days each), advertiser/brand/product/category from name tokens
 7/7/8/2 (overridable — the tokens are shorthand like `AppleTv-Slow-Horses-S6`),
+**Category is always the order name's vertical (token 2)** (Roger, 2026-09-25) —
+don't derive it from the creative or from past forms for the same advertiser.
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News
