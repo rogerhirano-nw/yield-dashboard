@@ -284,6 +284,11 @@ def fill_template(facts: Facts, out: Path, template: Path = TEMPLATE) -> Path:
     return out
 
 
+def email_subject(facts: Facts) -> str:
+    """Subject for the email that sends the form to Comscore (Roger, 2026-09-25)."""
+    return f"ComScore//Newsweek - CCR Form New Campaign - {facts.campaign_name}"
+
+
 def default_filename(facts: Facts) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "_", facts.product or facts.advertiser).strip("_")
     return f"CCR_Setup_{slug or 'campaign'}_{'_'.join(facts.order_ids)}.xlsx"
@@ -444,6 +449,7 @@ def main() -> int:
     fill_template(facts, out)
 
     print(f"CCR form written: {out}")
+    print(f"  email subject : {email_subject(facts)}")
     print(f"  campaign name : {facts.campaign_name}")
     print(f"  flight        : {flight_text(facts.start, facts.end)}")
     print(f"  campaign id(s): {', '.join(facts.order_ids)}")

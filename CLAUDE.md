@@ -1215,6 +1215,10 @@ pages found in their tags (`landing_pages`, fetched one script level deep), so
 check them before sending. Order 4203010941 was named `AppleTv-Sky-Program`
 but its creative landed on apple.com/iphone-18-pro, so it went out as
 Apple / iPhone / iPhone 18 Pro via the workflow's override inputs.
+**Email subject** for sending the form (Roger, 2026-09-25):
+`ComScore//Newsweek - CCR Form New Campaign - <campaign name on the form>`, e.g.
+`ComScore//Newsweek - CCR Form New Campaign - Newsweek_PG_Tech_ADX_DV360_Omnicom_OMD_AppleTv-Sky-Program_FY26-Flight3_US_Interstitial_$16_Team-USA_ILee`.
+The run prints it (`email_subject`).
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News

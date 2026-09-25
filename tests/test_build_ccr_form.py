@@ -148,3 +148,11 @@ def test_landing_pages_skip_ad_tech_and_rank_by_frequency():
     assert ccr.landing_pages(text) == [
         "https://www.apple.com/iphone-18-pro", "https://www.jeep.com/wrangler"]
     assert ccr.landing_pages("") == []
+
+
+def test_email_subject_pattern():
+    f = ccr.Facts(order_ids=["4203010941"], campaign_name="Newsweek_PG_Tech_X_ILee",
+                  start=None, end=None, advertiser="", brand="", product="",
+                  category="", kpis="")
+    assert ccr.email_subject(f) == (
+        "ComScore//Newsweek - CCR Form New Campaign - Newsweek_PG_Tech_X_ILee")
