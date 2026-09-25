@@ -1326,6 +1326,10 @@ retype a non-DRAFT line. Rules learned on SO01190:
   every vendor that fires on the creative is declared.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
+  **The API equivalent is `isInterstitial: True`** on the CustomCreative (UI
+  "Out of page" creatives read back as 1x1 + `isInterstitial=True`, e.g.
+  138562255517). `setup_section_sponsor_lockup.py --create-creative` mirrors
+  that and made 138613798793 (2026-09-25).
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
   itself from the LI in the UI (size "Out of page"). The site's `?nwdemocr=`
   URL param sets a same-named GPT key-value for demo-gating test campaigns.

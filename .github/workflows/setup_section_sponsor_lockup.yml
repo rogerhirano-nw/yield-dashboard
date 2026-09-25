@@ -39,7 +39,7 @@ on:
       - 'scripts/orders/assets/**'
 
 env:
-  APPLY_ON_PUSH: "true"
+  APPLY_ON_PUSH: "false"
   PUSH_ARGS: "--create-creative"
 
 permissions:

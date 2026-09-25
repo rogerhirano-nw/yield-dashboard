@@ -110,7 +110,12 @@ commit it. Behind an egress proxy, set `NW_PROXY` and `NW_TRUST_SPKI` (the
 proxy CA's SPKI hash).
 
 Status 2026-09-25: passes at all three widths on the real QA hub with the Kia
-logo. **[TEST] line item 7439607552** is created on Newsweek_Test-2 (INACTIVE
-until approved, no creative yet): oop1 + `categories=ai-politics` (value
-453960343890) + `nwdemocr=section-sponsor` (value 453960345576). Next are steps
-3–5 above: the UI creative, `creative_id` push, and order approval.
+logo. On Newsweek_Test-2: **[TEST] LI 7439607552** (oop1 +
+`categories=ai-politics` value 453960343890 + `nwdemocr=section-sponsor` value
+453960345576) and **creative 138613798793**, LICA'd. The creative was made via
+the API with `--create-creative`. It mirrors the serving UI-made OOP creative
+138562255517, which reads back as **CustomCreative 1x1, `isInterstitial=True`**,
+SafeFrame off. `isInterstitial` is the field that makes an API-made 1x1 an "Out
+of page" creative. The logo asset is a traced PNG
+(`scripts/orders/assets/kia_logo_trace.png`); swap in Kia's original file in the
+UI before a real flight. Left: approve the order (the service account can't).
