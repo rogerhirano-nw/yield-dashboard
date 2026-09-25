@@ -135,3 +135,16 @@ def test_fill_template_writes_the_form(tmp_path):
     assert "Q4 2024 - $128k" not in wb.sheetnames
     # The Comscore logos survive the round-trip.
     assert len(wb["Study Details"]._images) == 2
+
+
+def test_landing_pages_skip_ad_tech_and_rank_by_frequency():
+    # Shape of order 4203010941's Innovid tag + script: named for Apple TV,
+    # but the click-through is the iPhone page (escaped slashes, cid query).
+    text = ('<SCRIPT SRC="https://rtr.innovid.com/js/r1.6aac?cb=1"></SCRIPT> '
+            '"https:\\/\\/www.apple.com\\/iphone-18-pro\\/?cid=wwa-us-dis-iphn" '
+            '"https://www.apple.com/iphone-18-pro/" http://backbonejs.org '
+            'https://secure-gl.imrworldwide.com/u/t/{survey-id}/video_tag.html '
+            'https://www.jeep.com/wrangler')
+    assert ccr.landing_pages(text) == [
+        "https://www.apple.com/iphone-18-pro", "https://www.jeep.com/wrangler"]
+    assert ccr.landing_pages("") == []

@@ -1209,6 +1209,12 @@ period(s) (≤92 days each), advertiser/brand/product/category from name tokens
 7/7/8/2 (overridable — the tokens are shorthand like `AppleTv-Slow-Horses-S6`),
 **Category is always the order name's vertical (token 2)** (Roger, 2026-09-25) —
 don't derive it from the creative or from past forms for the same advertiser.
+**Advertiser / brand / product follow the creative, not the order name** when
+they disagree: the run prints each included LI's creatives and the landing
+pages found in their tags (`landing_pages`, fetched one script level deep), so
+check them before sending. Order 4203010941 was named `AppleTv-Sky-Program`
+but its creative landed on apple.com/iphone-18-pro, so it went out as
+Apple / iPhone / iPhone 18 Pro via the workflow's override inputs.
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News

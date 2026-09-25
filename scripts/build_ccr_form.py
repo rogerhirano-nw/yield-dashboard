@@ -127,6 +127,35 @@ def exclusion_reason(li: dict) -> str | None:
     return None
 
 
+_URL_RE = re.compile(r"https?:(?:\\?/){2}[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\\?/[^\s\"'<>()]*)?")
+# Ad-serving / measurement hosts: a URL on one of these is plumbing, not the
+# page the ad sends people to.
+_ADTECH_HOSTS = re.compile(
+    r"(innovid|flashtalking|doubleclick|googlesyndication|googleadservices|"
+    r"google\.com|gstatic|googletagservices|adsrvr|celtra|sizmek|amazon-adsystem|"
+    r"amazonaws|cloudfront|doubleverify|adsafeprotected|moatads|scorecardresearch|"
+    r"comscore|serving-sys|imrworldwide|nielsen|jsdelivr|cloudflare|js\.org|"
+    r"w3\.org|schema\.org)", re.I)
+
+
+def landing_pages(text: str) -> list[str]:
+    """Advertiser landing pages mentioned in a creative's URL/tag/tag script,
+    most frequent first. Ad-tech and CDN hosts are dropped. Best effort: it
+    tells a reviewer what the ad is actually for (order 4203010941 was named
+    for Apple TV but its creative landed on apple.com/iphone-18-pro)."""
+    counts: dict[str, int] = {}
+    for raw in _URL_RE.findall(text or ""):
+        url = raw.replace("\\/", "/")
+        host = re.sub(r"^https?://", "", url).split("/")[0].lower()
+        if _ADTECH_HOSTS.search(host):
+            continue
+        url = url.split("?")[0].split("#")[0].rstrip("/.,;\\")
+        if "{" in url:  # a template, not a real page
+            continue
+        counts[url] = counts.get(url, 0) + 1
+    return sorted(counts, key=lambda u: (-counts[u], u))
+
+
 def reporting_periods(start: date, end: date) -> list[tuple[str, date, date]]:
     """'End of campaign report' covering the flight, chunked to ≤92 days."""
     chunks = []
@@ -337,7 +366,56 @@ def pull(order_ids: list[str]):
                 "goal_units": _g(goal, "units") if goal is not None else None,
             })
 
+    _attach_creatives(client, line_items)
     return orders, line_items
+
+
+def _fetch(url: str, timeout: int = 10) -> str:
+    """GET a third-party tag script. Any failure reads as empty: the landing
+    page is a review aid, never something the form depends on."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read(2_000_000).decode("utf-8", "replace")
+    except Exception:
+        return ""
+
+
+def _attach_creatives(client, line_items: list[dict]) -> None:
+    """Add each LI's creatives (name, size, landing pages) for the review
+    printout. Third-party tags are fetched one level deep (the tag script and
+    the scripts it loads), since that is where the click-through lives."""
+    if not line_items:
+        return
+    lica_svc = client.GetService("LineItemCreativeAssociationService", version=V)
+    cr_svc = client.GetService("CreativeService", version=V)
+    ids = ", ".join(li["id"] for li in line_items)
+    licas = _page(lica_svc, "getLineItemCreativeAssociationsByStatement",
+                  f"lineItemId IN ({ids})")
+    by_li: dict[str, list[int]] = {}
+    for la in licas:
+        by_li.setdefault(str(la.lineItemId), []).append(int(la.creativeId))
+    for li in line_items:
+        li["creatives"] = []
+        for cid in by_li.get(li["id"], []):
+            found = _page(cr_svc, "getCreativesByStatement", f"id = {cid}")
+            if not found:
+                continue
+            c = found[0]
+            tag = " ".join(str(_g(c, f) or "") for f in ("snippet", "htmlSnippet"))
+            text = f"{_g(c, 'destinationUrl') or ''} {tag}"
+            for src in re.findall(r"src=[\"']?(https?://[^\"'\s>]+)", tag, re.I)[:2]:
+                body = _fetch(src.replace("%%CACHEBUSTER%%", "1"))
+                text += " " + body
+                for inner in re.findall(r"\.src\s*=\s*[\"'](https?://[^\"']+)", body)[:2]:
+                    text += " " + _fetch(inner)
+            size = _g(c, "size")
+            li["creatives"].append({
+                "id": str(c.id), "name": c.name,
+                "size": f"{size.width}x{size.height}" if size is not None else "",
+                "landing": landing_pages(text)[:3],
+            })
 
 
 def main() -> int:
@@ -375,6 +453,10 @@ def main() -> int:
     print(f"  line items    : {len(facts.included)} included")
     for li in facts.included:
         print(f"    + {li['id']}  {li['status']:<11} {li['name']}")
+        for c in li.get("creatives", []):
+            print(f"        creative {c['id']} {c['size']}  {c['name'][:90]}")
+            print(f"          lands on: {', '.join(c['landing']) or '(not found)'}")
+    print("  check the landing pages match advertiser/brand/product above")
     for li, why in facts.excluded:
         print(f"    - {li['id']}  excluded: {why}  {li['name']}")
     for w in facts.warnings:
