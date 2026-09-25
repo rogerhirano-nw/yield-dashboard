@@ -1207,6 +1207,35 @@ uploads the form as the `ccr-form` artifact — review, then attach. Filled:
 campaign name (order name, ≤150 chars), flight, "End of campaign report"
 period(s) (≤92 days each), advertiser/brand/product/category from name tokens
 7/7/8/2 (overridable — the tokens are shorthand like `AppleTv-Slow-Horses-S6`),
+**Category is always the order name's vertical (token 2)** (Roger, 2026-09-25) —
+don't derive it from the creative or from past forms for the same advertiser.
+**Advertiser / brand / product follow the creative, not the order name** when
+they disagree: the run prints each included LI's creatives and the landing
+pages found in their tags (`landing_pages`, fetched one script level deep), so
+check them before sending. Order 4203010941 was named `AppleTv-Sky-Program`
+but its creative landed on apple.com/iphone-18-pro, so it went out as
+Apple / iPhone / iPhone 18 Pro via the workflow's override inputs.
+**Email subject** for sending the form (Roger, 2026-09-25):
+`ComScore//Newsweek - CCR Form New Campaign - <campaign name on the form>`, e.g.
+`ComScore//Newsweek - CCR Form New Campaign - Newsweek_PG_Tech_ADX_DV360_Omnicom_OMD_AppleTv-Sky-Program_FY26-Flight3_US_Interstitial_$16_Team-USA_ILee`.
+The subject always carries the **same** campaign name as the form. When the
+advertiser is corrected from the creative, correct that name too with the
+workflow's `campaign_name` input (4203010941 went out as
+`…_Omnicom_OMD_Apple-Sky-Program_FY26-Flight3_…`, not `AppleTv-…`).
+The run prints the subject (`email_subject`).
+**Every CCR form is delivered with its Comscore email** (Roger, 2026-09-25):
+To (Kristie Chesebro), the subject above, a short body (campaign name, campaign
+ID + ad server, flight, KPIs) and the attachment's filename — never the
+spreadsheet alone.
+**Browser version: the "Comscore CCR Builder" artifact**
+(https://claude.ai/artifact/FDYM3mFkGrJNpyLVifFiWE, 2026-09-25). Input is just
+the order name or ID; it reads `gam_campaigns` through the viewer's Supabase
+connector, fills the same template in the browser (JSZip cell edits, so logos
+and validations survive — ExcelJS crashes on this template's drawings), and
+shows the email elements with copy buttons. Same rules as the script. Two
+limits: a new order only appears after the next daily refresh (a by-hand entry
+covers that), and it can't read creatives, so the creative check stays a
+manual step there.
 KPIs (CTR or VCR + Viewability), campaign ID + ad server. **The Media Details
 Digital/CTV partner impression breakdown is left blank** (Roger, 2026-09-23).
 **Apple News

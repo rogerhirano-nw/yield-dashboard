@@ -48,6 +48,12 @@ def test_parse_order_name_direct_and_pg():
                 "US_Interstitial_$16_Team-USA_ILee")
     p = ccr.parse_order_name(matchbox)
     assert (p["advertiser"], p["product"]) == ("Apple TV", "AppleTv Matchbox")
+    # Fiscal-year flight code at token 8 (order 4203010941).
+    sky = ("Newsweek_PG_Tech_ADX_DV360_Omnicom_OMD_AppleTv-Sky-Program_FY26-Flight3_"
+           "US_Interstitial_$16_Team-USA_ILee")
+    p = ccr.parse_order_name(sky)
+    assert (p["advertiser"], p["product"], p["category"]) == (
+        "Apple TV", "AppleTv Sky Program", "Technology")
     assert ccr.parse_order_name("Some one-off order")["advertiser"] == ""
     assert ccr.parse_order_name(JEEP.replace("Automotive", "Tech"))["category"] == "Technology"
 
@@ -129,3 +135,24 @@ def test_fill_template_writes_the_form(tmp_path):
     assert "Q4 2024 - $128k" not in wb.sheetnames
     # The Comscore logos survive the round-trip.
     assert len(wb["Study Details"]._images) == 2
+
+
+def test_landing_pages_skip_ad_tech_and_rank_by_frequency():
+    # Shape of order 4203010941's Innovid tag + script: named for Apple TV,
+    # but the click-through is the iPhone page (escaped slashes, cid query).
+    text = ('<SCRIPT SRC="https://rtr.innovid.com/js/r1.6aac?cb=1"></SCRIPT> '
+            '"https:\\/\\/www.apple.com\\/iphone-18-pro\\/?cid=wwa-us-dis-iphn" '
+            '"https://www.apple.com/iphone-18-pro/" http://backbonejs.org '
+            'https://secure-gl.imrworldwide.com/u/t/{survey-id}/video_tag.html '
+            'https://www.jeep.com/wrangler')
+    assert ccr.landing_pages(text) == [
+        "https://www.apple.com/iphone-18-pro", "https://www.jeep.com/wrangler"]
+    assert ccr.landing_pages("") == []
+
+
+def test_email_subject_pattern():
+    f = ccr.Facts(order_ids=["4203010941"], campaign_name="Newsweek_PG_Tech_X_ILee",
+                  start=None, end=None, advertiser="", brand="", product="",
+                  category="", kpis="")
+    assert ccr.email_subject(f) == (
+        "ComScore//Newsweek - CCR Form New Campaign - Newsweek_PG_Tech_X_ILee")
