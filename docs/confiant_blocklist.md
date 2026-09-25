@@ -1,5 +1,67 @@
 # Confiant -> GAM blocklist
 
+> ## ⛔ STOPPED — 2026-09-21
+>
+> **The daily automated push to GAM is off.** Nothing writes to Protection
+> 28044902 or to the Ad Review Center on a schedule any more. The Confiant API
+> pull, the weekly RevOps digest, the HRAP seeder and the SSP forwarder are all
+> untouched — only the daily automated *blocking* stopped.
+>
+> Two independent stops, so neither one alone can bring it back by accident:
+>
+> 1. **The launchd agent is unloaded on the Mac** — this is the real stop, the
+>    one that keeps 04:00 from firing:
+>    ```bash
+>    launchctl unload ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+>    launchctl list | grep confiant   # expect only the -weekly agent
+>    ```
+>    The plist file stays on disk, dormant. The repo template
+>    (`.launchd/com.newsweek.confiant-blocklist.plist`) also carries
+>    `Disabled=true` so a re-install from it doesn't start scheduling again.
+> 2. **`confiant_blocklist.py` refuses to write.** Any run that would push to
+>    GAM stops before it pulls from Confiant, prints why, and exits 0 — so a
+>    stray `launchctl load` (the plist has `RunAtLoad=true`) or a manual
+>    invocation is a quiet no-op, not a surprise block. Read-only modes still
+>    work: `--dry-run`, `--print-existing`, `--inspect`.
+>
+> **Why both:** the plist fires on load, not just at 04:00, so the agent being
+> unloaded today isn't enough — reloading it for any reason would have pushed
+> immediately.
+>
+> ### What stops with it
+>
+> - Phase 1 — the daily destination-URL push to GAM Protection 28044902.
+> - Phase 2 — the ARC blocks on Cloaked-by-ID rows (same script, same stop).
+> - The daily post-run summary email (no run, no email).
+>
+> Confiant's own **Active Blocking** is upstream of all of this and is
+> unaffected — it keeps blocking at the RTB layer. What lapses is the
+> publisher-side GAM Protection list: domains Confiant flags from today on are
+> no longer appended to it. The domains already pushed **stay blocked** —
+> stopping the job doesn't remove anything from the Protection.
+>
+> ### To resume
+>
+> ```bash
+> # 1. Re-enable the write path in the script
+> #    (add to ~/code/yield-dashboard/.env, or the plist EnvironmentVariables)
+> CONFIANT_BLOCKLIST_RESUME=1
+>
+> # 2. In .launchd/com.newsweek.confiant-blocklist.plist, drop the STOPPED
+> #    comment + the Disabled key, then re-install and load:
+> cp ~/code/yield-dashboard/.launchd/com.newsweek.confiant-blocklist.plist \
+>    ~/Library/LaunchAgents/
+> launchctl load -w ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+> ```
+>
+> `load -w` clears the `Disabled` flag via the override database, so step 2's
+> edit is about keeping the file honest rather than about unblocking the load.
+> Sanity-check with a `--dry-run` before the first real fire; the backlog it
+> pushes on resume is whatever Confiant's rolling window holds (`--api-days`,
+> default 7), not everything missed while it was off.
+>
+> Everything below describes the job as it runs when enabled.
+
 Weekly job: pull Confiant's `issue_type_by_domain` report via their REST API,
 pick the Google-served Security-category creatives, append their landing-page
 domains to a named GAM Protection's "Advertiser URLs" field.

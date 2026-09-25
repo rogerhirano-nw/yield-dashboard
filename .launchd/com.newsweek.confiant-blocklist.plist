@@ -5,6 +5,27 @@
     <key>Label</key>
     <string>com.newsweek.confiant-blocklist</string>
 
+    <!-- ===================================================================
+         STOPPED 2026-09-21. The daily automated push to GAM is switched off.
+         On the Mac the agent is unloaded:
+
+             launchctl unload ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+
+         Disabled=true below keeps a plain `launchctl load` from starting it
+         again. Note `launchctl load -w` clears that flag (it writes to the
+         override database), which is exactly the resume step — so this is a
+         guard against an accidental load, not a lock. The script carries its
+         own gate too: confiant_blocklist.py refuses any run that would write
+         to GAM unless CONFIANT_BLOCKLIST_RESUME=1.
+
+         To resume: delete this comment + the Disabled key, add
+         CONFIANT_BLOCKLIST_RESUME=1 to EnvironmentVariables below, then
+         `launchctl load -w`. See docs/confiant_blocklist.md -> "Stopped".
+         The weekly RevOps digest is a separate agent and is NOT affected.
+         =================================================================== -->
+    <key>Disabled</key>
+    <true/>
+
     <!-- Daily at 04:00 local time. Confiant's reports refresh after midnight
          UTC; running at 4 AM ET (08:00 UTC) means we have a fresh 24-hour
          window of data + blocks land before the work-day traffic peak.

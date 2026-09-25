@@ -1043,9 +1043,20 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
-       pulls Confiant API, pushes per-creative Security-flagged Google
-       domains to GAM Protection 28044902 ("Everything") via Playwright.
-       Post-run summary email goes to `revops@newsweek.com` via agentmail.
+       pulled Confiant API, pushed per-creative Security-flagged Google
+       domains to GAM Protection 28044902 ("Everything") via Playwright, plus
+       Phase 2 ARC blocks. Post-run summary email went to `revops@newsweek.com`
+       via agentmail. **STOPPED 2026-09-21** — the launchd agent is unloaded on
+       the Mac (the real stop) and the script now refuses any run that would
+       write to GAM unless `CONFIANT_BLOCKLIST_RESUME=1`; read-only modes
+       (`--dry-run` / `--print-existing` / `--inspect`) still work, a stray
+       load is a no-op that exits 0 without emailing, and the repo plist
+       template carries `Disabled=true`. **Both stops are needed** — the plist
+       has `RunAtLoad=true`, so unloading alone still lets any future
+       `launchctl load` push immediately. Domains already in the Protection
+       stay blocked; Confiant's own upstream Active Blocking is unaffected.
+       Resume steps: `docs/confiant_blocklist.md` → "Stopped". Jobs 2-4 below
+       are untouched.
     2. **Weekly RevOps digest** (`confiant_blocklist_weekly_report.py`,
        launchd Mon 09:00 ET) — rolls up the past 7 days of pushes,
        branded layout (KPI tiles, per-day bar chart, issue-type cards),
