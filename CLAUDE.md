@@ -1151,6 +1151,82 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
+- `docs/ob_vs_prebid_video_requests.md` — why Magnite's Open Bidding video **ad
+  request** column reads 5.11x GAM's `YIELD_GROUP_CALLOUTS`, and why **both
+  numbers are correct**. Their chart showed OB at 265.8M vs 128.2M for Prebid
+  Server (RP Hosted) over 2026-08-18 → 2026-09-16; GAM records **52,036,623**
+  video callouts for the same buyer/window/yield-group. The gap is Ad Manager's
+  own **bid flattening** — one video callout is split into several OpenRTB bid
+  requests (ad format, skippable/non-skippable duration, pod position) before it
+  reaches the exchange, so callouts are counted **pre-split** and the exchange
+  counts **post-split**. `YIELD_GROUP_CALLOUTS` is therefore an **opportunity**
+  count, never a requests-received count. Established by Google Partner Solutions
+  (2026-09-22 escalation) and documented at
+  [Flattened bid requests](https://support.google.com/authorizedbuyers/answer/9198190);
+  the full metric semantics live in the **GAM facts** bullet above.
+  **This repo got it wrong first and the doc is largely the record of that** —
+  read it before re-running the analysis. Withdrawn there, in order: "Magnite's
+  column is 5.11x what Google sent, and the gap is theirs to explain"; "both
+  sides agree on ~2.2 bids per callout" (circular — Magnite's numerator over
+  GAM's denominator); "video ad pods explain it" (dead once Roger confirmed one
+  slot with a fresh request per video); "the video ad call is served server-side
+  by the player vendor" (inferred from zero client-side VAST in a session where
+  the video could never play — Playwright's bundled Chromium has no H.264/AAC/HLS
+  codecs, so `canPlayType` returns `''` and `paused:false` means only that
+  `play()` was called); "GAM double-attributes one bid total to both yield
+  groups" (tested and refuted — daily display and video bids agree exactly on
+  0/30 days, ratios 0.639–1.448); "AUCTIONS_WON vs impressions is a 13% render
+  rate" (the metric is bid-denominated); and **"multi-seat bidding explains the
+  2.29 bids/callout"** — GAM bids ÷ Magnite ad responses is **1.031**, so seats
+  are a 3% effect.
+  **Five checks settle it, all computable from data the doc already held.**
+  (1) The original model was impossible: Magnite reported 115,402,553 ad
+  responses against 52,036,623 requests — **2.22 responses per request**.
+  (2) Bid rate is **44.7%** on video vs **46.5%** on display once the split is
+  removed; it was 229% before. (3) The split factor falls out of GAM data alone
+  at **4.92** (bids/callout ÷ display bid rate), within 3.8% of Magnite's implied
+  5.11. (4) Bids per response 1.031. (5) The other nine partners' true bid rates
+  become **2.3–5.1%**, matching what Google said independently — which is why the
+  effect only *looks* Magnite-specific: a ~45% bidder is the only one whose
+  bids/callout crosses 1.0. What reconciles: ad responses 115.4M vs GAM bids
+  118.9M (−3.0%), paid impressions 4.66M vs 4.76M (−2.2%).
+  **A replacement ranking was drafted and SUSPENDED the same day — do not quote
+  it.** "Per opportunity, Prebid Server carries 2.46x more video volume; OB fills
+  8.95% vs 1.87%" set 128.2M PBS requests against 52.0M OB callouts as though
+  both were opportunity counts. They aren't: every other integration in Magnite's
+  table also exceeds 52.0M (A9 74.8M, PBS 3p Hosted 64.5M, Exchange API 59.9M),
+  so 52.0M is the count of opportunities on which the **OB yield group was
+  called**, not the total. Prebid runs client-side on essentially every render;
+  an OB yield group is invoked only once an opportunity reaches the open auction,
+  so a Prebid request count is a superset by construction, and fill /
+  revenue-per-1k inherit the problem. **Unresolved pending a GAM total video
+  `AD_REQUESTS` pull** — if that lands near 128M, the OB yield group is called on
+  only ~40% of video opportunities, which is a revenue question. **Safe to state
+  externally:** OB and Prebid Server request columns are not comparable
+  one-for-one because OB's are flattened ~5.11x and Prebid's are not; that alone
+  disposes of the chart's implied reading, and it licenses no replacement
+  ranking.
+  Also flagged there: **Prebid Server (3p Hosted)** turned 45.3M auctions into
+  36,971 paid impressions and **$551** in 30 days — 0.08% fill on the table's
+  highest eCPM — which is the bigger money question, and is AssertiveYield's PBS
+  (`pbs-us-east.ay.delivery`, `aypbs`/`server-ay`), diagnosable via the AY MCP.
+  The `Ad Responses` column is bids across seats, not per-auction, which is why
+  it reconciles against GAM `BIDS` and nothing else.
+  **The video refresh mechanism was settled without playback**, by reading the
+  page's own ad stack: Mux Player + a custom IMA integration expose two globals
+  tagged `[VIDEO REFRESH]` — `prebidVideoAd_refresh()` runs
+  `pbjs.requestBids({adUnitCodes:["video"]})` and `amznVideoAPS_refresh()` fetches
+  APS targeting; that targeting is appended to the IMA ad tag and **IMA requests
+  VAST from GAM**, so every end-of-video refresh increments GAM's callout count
+  *and* fires a fresh Prebid auction — **symmetric across OB and Prebid Server**,
+  so it cannot produce a gap between them. **Never *invoke* those two globals when
+  probing** — calling them fires real production ad requests, the exact metric in
+  dispute. To observe playback at all you need `BROWSER_CHANNEL=chrome` from a
+  laptop. AssertiveYield corroborates the mix (video is 14.4% of rubicon's prebid
+  requests vs GAM's own 16.9% video share), but **AY's absolute prebid counts run
+  ~0.5% of GAM's — sampled or narrowly scoped, so use its ratios only, never its
+  raw numbers.** Scripts: `scripts/pull_magnite_ob_video_requests.py` (+ one-off
+  workflow) and `scripts/video_slot_forensics.py`.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
@@ -1268,6 +1344,55 @@ retype a non-DRAFT line. Rules learned on SO01190:
 - `YIELD_GROUP_CALLOUTS` is what the GAM UI calls "Ad requests" for a yield
   partner. Bid funnel goes: `YIELD_GROUP_CALLOUTS` → `YIELD_GROUP_BIDS` →
   `YIELD_GROUP_AUCTIONS_WON` → `YIELD_GROUP_IMPRESSIONS`.
+- **`YIELD_GROUP_CALLOUTS` counts CALLOUTS, not the bid requests they are split
+  into — on video that is a ~5x difference.** Ad Manager applies **bid
+  flattening**: one video callout is split into several separate OpenRTB bid
+  requests before they reach the exchange, by **ad format**, **video duration**
+  (a request allowing both skippable and non-skippable becomes two) and **video
+  pods** (one request per pod position). All the split requests share one
+  `BidRequest.ext.google_query_id`. Confirmed by Google Partner Solutions
+  (2026-09-22, Ishika, escalated case) and publicly documented at
+  [Flattened bid requests](https://support.google.com/authorizedbuyers/answer/9198190).
+  The consequences, all load-bearing:
+  - **`YIELD_GROUP_CALLOUTS` is measured PRE-split; everything after it is
+    measured POST-split, per individual bid.** So the funnel changes units at the
+    first step: callouts → *(requests split ~5x)* → `YIELD_GROUP_BIDS` →
+    `YIELD_GROUP_BIDS_IN_AUCTION` → `YIELD_GROUP_AUCTIONS_WON` → impressions.
+  - **Never compare `YIELD_GROUP_CALLOUTS` to an SSP's own "ad request" count on
+    video.** It is not the number of requests the partner received — it is the
+    number of *opportunities*. An SSP reporting ~5x the callouts is counting the
+    split requests and is **correct**. (This is the exact error this repo made in
+    2026-09; see `docs/ob_vs_prebid_video_requests.md`.) And callouts are **not** a
+    total-opportunity count either: they count opportunities on which *this yield
+    group was called*, which is a subset — an OB yield group is invoked only once
+    an opportunity reaches the open auction, while a Prebid/wrapper request fires
+    on essentially every render. So callouts are not a channel-vs-channel volume
+    denominator against a wrapper's request count. Use impressions and revenue.
+  - **`YIELD_GROUP_BIDS` > `YIELD_GROUP_CALLOUTS` is normal on video** and is NOT
+    evidence of multi-seat bidding. It just means the partner's bid rate exceeds
+    1/split. Magnite video reads 2.29 bids/callout = a **44.7%** bid rate against
+    the real (split) request count — the same ~45% it bids on display, where no
+    split applies. The other nine OB partners bid 2–5%, so 5x their callouts still
+    leaves them under 1.0, which is why the effect only *looks* Magnite-specific.
+    To get a partner's true bid rate on video, divide by the split factor.
+  - **`YIELD_GROUP_AUCTIONS_WON` is counted per winning BID**, recorded at
+    ad-selection time before render. `AUCTIONS_WON / IMPRESSIONS` is **not** a
+    render rate and means nothing — on Magnite video it read 36,487,791 won vs
+    4,762,385 impressions and looked alarming. Don't raise it as a defect again.
+  - **Comparable across systems**: impressions and revenue (ours agree within
+    2.2%; OB billing is on Ad Manager totals). **Comparable with care**: bids vs
+    ad responses (within 3.0%). **Not comparable**: callouts vs any exchange-side
+    request count, and auctions-won vs impressions.
+  - **Split vs unsplit matters when talking to Support.** At buyer level Magnite
+    reads 307,600,758 callouts vs 237,651,418 bids (0.77) and Support's own
+    aggregate agreed. The >1 ratio only appears once `YIELD_GROUP_NAME` is a
+    dimension, and the split sums back to the buyer total exactly — so always
+    state which cut you ran, or you will talk past each other.
+  - **Flattening by format and duration can be opted out of** via the buyer's RTB
+    settings (a Google technical account manager change); **video-pod flattening
+    cannot**. Google's help page also states deal-type flattening does *not* apply
+    to Open Bidders, which is narrower than the escalation's summary — prefer the
+    help page on that detail.
 - `HEADER_BIDDER_INTEGRATION_TYPE_NAME` is **incompatible with every
   `YIELD_GROUP_*` metric** in the v1 REST reporting API — adding it returns
   `REPORT_ERROR_CONSTRAINTS_INCOMPATIBILITY`. To distinguish OB from
