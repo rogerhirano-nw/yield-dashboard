@@ -168,9 +168,10 @@ def main() -> int:
         ct = li.targeting.customTargeting
         print(f"  {li.id}  {li.status:<10} {li.lineItemType:<12} p{li.priority}  "
               f"{'KV-targeted' if ct else 'NO KV targeting'}  {li.name[:70]}")
-    if comp:
-        print("  → an untargeted one above priority/goal competes for hub impressions; a"
-              " breadcrumb-only creative serves there but renders nothing.")
+    loose = [li for li in comp if not li.targeting.customTargeting]
+    if loose:
+        print(f"  → {len(loose)} with no KV targeting can win oop1 on the hub (a"
+              " breadcrumb-only creative serves there but renders nothing).")
 
     existing = _q(li_svc, "getLineItemsByStatement", "orderId = :o AND name = :n",
                   o=ORDER_ID, n=name)

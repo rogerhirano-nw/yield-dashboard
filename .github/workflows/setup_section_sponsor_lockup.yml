@@ -2,8 +2,9 @@ name: Setup section sponsor lockup
 
 # GAM side of the section-hub "SPONSORED BY <logo>" lockup on oop1
 # (scripts/setup_section_sponsor_lockup.py, docs/section_sponsor_lockup.md).
-# A push is always a dry run (reports oop1, the categories KV and competing
-# oop1 line items); a manual dispatch writes only with apply=true.
+# A push is a dry run (reports oop1, the categories KV and competing oop1 line
+# items) unless APPLY_ON_PUSH is flipped to "true" in its own reviewed commit
+# (and flipped back in the next); a manual dispatch writes only with apply=true.
 
 on:
   workflow_dispatch:
@@ -35,6 +36,9 @@ on:
       - 'scripts/setup_section_sponsor_lockup.py'
       - 'docs/snippets/section_sponsor_lockup_creative.html'
       - '.github/workflows/setup_section_sponsor_lockup.yml'
+
+env:
+  APPLY_ON_PUSH: "true"
 
 permissions:
   contents: read
@@ -68,6 +72,7 @@ jobs:
           if [ "$EVENT" = "workflow_dispatch" ]; then ARGS+=(--demo-value "$IN_DEMO"); fi
           if [ -n "$IN_CREATIVE" ]; then ARGS+=(--creative-id "$IN_CREATIVE"); fi
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS+=(--apply); fi
           echo "args: ${ARGS[*]}"
           python scripts/setup_section_sponsor_lockup.py "${ARGS[@]}" 2>&1 | tee /tmp/out.txt
           { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

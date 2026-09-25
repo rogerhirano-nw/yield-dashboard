@@ -86,12 +86,12 @@ because it rendered outside its iframe. Clicks go through
 6. **Real flight:** clone onto the sales order with real dates, drop the
    `nwdemocr` criterion, and keep `categories=<slug>`.
 
-**Competing oop1 lines.** oop1 also carries the article sponsor logo
-(Infiniti Newsmakers, LI 7336465381), targeted at the ad unit with no page
-KV. If it's live, it can win oop1 on the hub, where its breadcrumb watcher
-renders nothing. That wastes a counted impression and shows no lockup. When
-the dry run lists such a line, either outrank it (priority) or add
-`page_type IS NOT categories` to it.
+**Competing oop1 lines.** Any line on oop1 without page-KV targeting can win
+the hub's oop1 impression and render nothing there (e.g. a breadcrumb-only
+article logo). The dry run lists them all. On 2026-09-25 there were two, both
+priority 4 and both KV-targeted (7248272621 "ResponsiveAds: Cinematic
+Background" and Infiniti Newsmakers 7394329898), so neither conflicts. If an
+untargeted one appears, outrank it or add `page_type IS NOT categories` to it.
 
 ## Verifying
 
