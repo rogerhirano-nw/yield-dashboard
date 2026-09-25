@@ -4,6 +4,16 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-25 — Section-hub sponsor lockup on oop1 (/ai-politics, Kia)
+
+The tent-pole hub mockups add a centered "SPONSORED BY <logo>" under the dek.
+The QA hub already renders `#dfp-ad-oop1` at exactly that spot and sends a
+`categories=<slug>` key-value. So the creative renders in-frame and resizes
+its own GPT iframe, with no DOM injection, and Active View measures the real
+lockup. The LI scopes to one hub by KV. Adds the creative snippet, a
+dry-run-first setup script and workflow, and a preview harness that passes
+at 1280/768/390 on the real QA page. See `docs/section_sponsor_lockup.md`.
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup

@@ -1079,6 +1079,22 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   by gluing the carrier slot onto the strip (carrier-reposition). Live flight: Infiniti Newsmakers
   LI 7336465381. Setup script: `scripts/setup_article_sponsor_logo.py`
   (dry-run by default, lookup-first, `--apply` to create).
+- `docs/section_sponsor_lockup.md` — centered **"SPONSORED BY <logo>"**
+  under the dek of a section hub (CategoryHub "tent pole" template; first:
+  **/ai-politics**, Kia). The hub renders `#dfp-ad-oop1` *inside* its header
+  right under the dek and sends `categories=<slug>` + `page_type=categories`,
+  so one LI on oop1 targeted `categories=<slug>` scopes it to one hub. The
+  creative (`docs/snippets/section_sponsor_lockup_creative.html`) renders
+  **in its own iframe** and resizes it to the lockup, with no parent-DOM
+  injection. So Active View measures the real ad, unlike the article logo's
+  carrier hack. It copies the page's Noto Sans `@font-face`
+  (`optional`→`swap`, or the iframe paints Arial) and self-guards to
+  `[class*="CategoryHubHeader"]`. Setup:
+  `scripts/setup_section_sponsor_lockup.py` / `setup_section_sponsor_lockup.yml`
+  (dry run lists competing oop1 LIs; the creative is UI-made "Out of page",
+  then `--creative-id` pushes the snippet). Check:
+  `scripts/preview_section_sponsor_lockup.py [--url …]` (QA basic auth via
+  `NW_QA_AUTH` env, never committed).
 - `docs/gam_placement_injection.md` — the generalized technique behind the
   sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
   agency third-party tags) at an arbitrary article-DOM position with zero
