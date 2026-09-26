@@ -1,12 +1,12 @@
 """Sync a GAM custom targeting key with an IAB Content Taxonomy TSV.
 
-Defaults to key 'iab_context_v3' + Content Taxonomy 3.1. The v2.2 taxonomy
-goes to key id 19649704:
-    python scripts/update_iab_context_kvps.py --tsv data/iab_content_taxonomy_2_2.tsv --key-id 19649704
+Defaults to key 'iab_context_v3' + Content Taxonomy 3.1. The others:
+    --tsv data/iab_content_taxonomy_2_2.tsv --key-id 19649704   (iab_context_v2.2)
+    --tsv data/iab_content_taxonomy_1_0.tsv --key-id 19649371   (v1.0)
 
 Each taxonomy row becomes one value on the key:
-    name        = the row's Unique ID   (e.g. "483", "JLBCU7", "v9i3On")
-    displayName = the row's Name        (e.g. "Sports", "Entertainment")
+    v2.x/v3.x: name = Unique ID (e.g. "483", "JLBCU7"), displayName = Name
+    v1.0:      name = IAB Code  (e.g. "IAB1-1"),        displayName = IAB Category
 
 Usage:
     python scripts/update_iab_context_kvps.py --dry-run
@@ -39,17 +39,24 @@ KEY_DISPLAY_NAME = "IAB Content Taxonomy v3.1"
 
 
 def load_taxonomy(path: str) -> list[tuple[str, str]]:
-    """Return [(unique_id, name)] from the IAB TSV (two header rows)."""
+    """Return [(unique_id, name)] from an IAB TSV.
+
+    v2.x/v3.x: two header rows, columns Unique ID / Parent / Name / Tier…
+    v1.0:      one header row,  columns IAB Code / Tier / IAB Category
+    """
     with open(path, newline="", encoding="utf-8") as f:
         rows = list(csv.reader(f, delimiter="\t"))
-    header = [c.strip() for c in rows[1]]
-    if header[:3] != ["Unique ID", "Parent", "Name"]:
-        sys.exit(f"Unexpected header row in {path}: {header[:3]}")
+    if [c.strip() for c in rows[0][:3]] == ["IAB Code", "Tier", "IAB Category"]:
+        body, name_col = rows[1:], 2
+    elif [c.strip() for c in rows[1][:3]] == ["Unique ID", "Parent", "Name"]:
+        body, name_col = rows[2:], 2
+    else:
+        sys.exit(f"Unrecognized IAB taxonomy header in {path}: {rows[0][:3]} / {rows[1][:3]}")
     out: list[tuple[str, str]] = []
-    for r in rows[2:]:
+    for r in body:
         if not r or not r[0].strip():
             continue
-        out.append((r[0].strip(), r[2].strip()[:255]))
+        out.append((r[0].strip(), r[name_col].strip()[:255]))
     ids = [i for i, _ in out]
     if len(ids) != len(set(ids)):
         sys.exit("Duplicate Unique IDs in taxonomy")

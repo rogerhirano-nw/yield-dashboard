@@ -1,4 +1,4 @@
-name: Update GAM IAB content-taxonomy KVPs (v3.1 + v2.2)
+name: Update GAM IAB content-taxonomy KVPs (v3.1 + v2.2 + v1.0)
 
 # A push that touches these files runs the sync. It is a DRY RUN unless
 # APPLY_ON_PUSH is "true" — flip it in its own commit, read the run, flip back.
@@ -9,6 +9,7 @@ on:
       - "scripts/update_iab_context_kvps.py"
       - "data/iab_content_taxonomy_3_1.tsv"
       - "data/iab_content_taxonomy_2_2.tsv"
+      - "data/iab_content_taxonomy_1_0.tsv"
       - ".github/workflows/update_iab_context_kvps.yml"
   workflow_dispatch:
     inputs:
@@ -36,6 +37,8 @@ jobs:
             args: "--tsv data/iab_content_taxonomy_3_1.tsv --key-name iab_context_v3"
           - taxonomy: "2.2"
             args: "--tsv data/iab_content_taxonomy_2_2.tsv --key-id 19649704"
+          - taxonomy: "1.0"
+            args: "--tsv data/iab_content_taxonomy_1_0.tsv --key-id 19649371"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
