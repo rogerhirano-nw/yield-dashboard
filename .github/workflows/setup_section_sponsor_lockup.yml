@@ -1,0 +1,88 @@
+name: Setup section sponsor lockup
+
+# GAM side of the section-hub "SPONSORED BY <logo>" lockup on oop1
+# (scripts/setup_section_sponsor_lockup.py, docs/section_sponsor_lockup.md).
+# A push is a dry run (reports oop1, the categories KV and competing oop1 line
+# items) unless APPLY_ON_PUSH is flipped to "true" in its own reviewed commit
+# (and flipped back in the next); a manual dispatch writes only with apply=true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      section:
+        description: 'Hub `categories` key-value (URL slug)'
+        required: false
+        default: 'ai-politics'
+      demo_value:
+        description: 'nwdemocr gate for the [TEST] line (blank = no gate)'
+        required: false
+        default: 'section-sponsor'
+      sponsor:
+        description: 'Logo alt text'
+        required: false
+        default: 'Kia'
+      creative_id:
+        description: 'UI-made Out-of-page creative to fill (optional)'
+        required: false
+        default: ''
+      template_id:
+        description: 'GAM creative template to build the creative from (optional)'
+        required: false
+        default: ''
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [claude/new-session-cm84ty]
+    paths:
+      - 'scripts/setup_section_sponsor_lockup.py'
+      - 'docs/snippets/section_sponsor_lockup_creative.html'
+      - '.github/workflows/setup_section_sponsor_lockup.yml'
+      - 'scripts/orders/assets/**'
+      - 'docs/snippets/section_sponsor_lockup_template.html'
+
+env:
+  APPLY_ON_PUSH: "false"
+  PUSH_ARGS: "--template-id 12589844"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Setup lockup
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          EVENT: ${{ github.event_name }}
+          IN_SECTION: ${{ inputs.section }}
+          IN_DEMO: ${{ inputs.demo_value }}
+          IN_SPONSOR: ${{ inputs.sponsor }}
+          IN_CREATIVE: ${{ inputs.creative_id }}
+          IN_TEMPLATE: ${{ inputs.template_id }}
+          IN_APPLY: ${{ inputs.apply }}
+        run: |
+          set -o pipefail
+          ARGS=(--section "${IN_SECTION:-ai-politics}" --sponsor "${IN_SPONSOR:-Kia}")
+          if [ "$EVENT" = "workflow_dispatch" ]; then ARGS+=(--demo-value "$IN_DEMO"); fi
+          if [ -n "$IN_CREATIVE" ]; then ARGS+=(--creative-id "$IN_CREATIVE"); fi
+          if [ -n "$IN_TEMPLATE" ]; then ARGS+=(--template-id "$IN_TEMPLATE"); fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS+=(--apply); fi
+          if [ "$EVENT" = "push" ] && [ -n "$PUSH_ARGS" ]; then ARGS+=($PUSH_ARGS); fi
+          echo "args: ${ARGS[*]}"
+          python scripts/setup_section_sponsor_lockup.py "${ARGS[@]}" 2>&1 | tee /tmp/out.txt
+          { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

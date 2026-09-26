@@ -1,0 +1,115 @@
+<!--
+  Section-hub "SPONSORED BY <logo>" lockup — out-of-page CustomCreative for
+  /22541732127/newsweek/oop1 on the CategoryHub (tent-pole) template, e.g.
+  https://www.newsweek.com/ai-politics. See docs/section_sponsor_lockup.md.
+
+  Renders IN ITS OWN GPT IFRAME — no parent-DOM injection. The hub template
+  places #dfp-ad-oop1 inside the header's __descriptionContainer, directly
+  under the dek, which is exactly where the lockup belongs. So the creative
+  draws the lockup in-frame and resizes its (friendly) iframe from 1x1 to the
+  lockup's size; Active View then measures the real ad and GAM counts real
+  clicks. Requirements: SafeFrame OFF (the resize needs window.frameElement),
+  creative size "Out of page", logo uploaded as the PNG1 asset.
+
+  CFG is the only block to edit per flight; scripts/setup_section_sponsor_lockup.py
+  rewrites it between the markers when it pushes this file to a creative.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #nw-ssl { display: none; align-items: center; justify-content: center; gap: 12px;
+    padding: 2px 0; text-decoration: none; color: #1f1e19; }
+  #nw-ssl.on { display: flex; }
+  #nw-ssl .ssl-label { font: 600 14px/1 "Noto Sans", "Noto Sans Fallback", Arial, sans-serif;
+    letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; color: #1f1e19; }
+  #nw-ssl .ssl-logo { display: block; height: 28px; width: auto; max-width: 180px; object-fit: contain; }
+  @media (max-width: 480px) {
+    #nw-ssl { gap: 10px; }
+    #nw-ssl .ssl-label { font-size: 12px; }
+    #nw-ssl .ssl-logo { height: 24px; max-width: 150px; }
+  }
+</style>
+<a id="nw-ssl" target="_blank" rel="noopener sponsored"><span class="ssl-label"></span><img class="ssl-logo" alt=""></a>
+<script>
+(function () {
+  var CFG = /*CFG*/{
+    "label": "Sponsored by",
+    "sponsor": "Sponsor",
+    "logo": "%%VIEW_URL_UNESC%%%%FILE:PNG1%%",
+    "href": "%%CLICK_URL_UNESC%%%%DEST_URL%%",
+    "host": "[class*=\"CategoryHubHeader\"]",
+    "pixels": []
+  }/*CFG*/;
+  var a = document.getElementById('nw-ssl');
+  var fe = null, slot = null;
+  try {
+    fe = window.frameElement;
+    slot = fe && fe.closest('[id^="dfp-ad-"]');
+  } catch (e) { /* SafeFrame / cross-origin: cannot size the frame */ }
+  /* Scope guard: render only inside the hub header. Off-template (targeting
+     slip, a future template move) the logo is never requested, so the
+     VIEW_URL-counted impression never fires, and the slot collapses. */
+  if (!fe || (CFG.host && !(fe.closest && fe.closest(CFG.host)))) {
+    try { if (slot) slot.style.display = 'none'; } catch (e) {}
+    return;
+  }
+  /* The iframe cannot see the page's web fonts; copy the parent's Noto Sans
+     @font-face rules (absolutized — they use stylesheet-relative URLs).
+     The page declares them font-display:optional, which a fresh iframe
+     abandons for the fallback on first paint; swap lets the label land in
+     Noto Sans once the (already-cached) file decodes. */
+  try {
+    var PD = fe.ownerDocument, css = '';
+    for (var i = 0; i < PD.styleSheets.length; i++) {
+      var ss = PD.styleSheets[i], rules;
+      try { rules = ss.cssRules; } catch (e) { continue; }
+      for (var j = 0; j < rules.length; j++) {
+        var r = rules[j];
+        if (r.type === 5 && /Noto Sans/.test(r.style.getPropertyValue('font-family'))) {
+          var base = ss.href || PD.location.href;
+          css += r.cssText.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/g, function (m, u) {
+            try { return 'url("' + new URL(u, base).href + '")'; } catch (x) { return m; }
+          }).replace(/font-display:\s*optional/, 'font-display: swap');
+        }
+      }
+    }
+    if (css) {
+      var st = document.createElement('style');
+      st.textContent = css;
+      document.head.appendChild(st);
+    }
+  } catch (e) {}
+  a.href = CFG.href;
+  a.querySelector('.ssl-label').textContent = CFG.label;
+  var img = a.querySelector('.ssl-logo');
+  img.alt = CFG.sponsor;
+  img.src = CFG.logo;
+  a.className = 'on';
+  /* Size the GPT iframe (and its wrappers) to the lockup: full container
+     width so the lockup centers under the dek, height = rendered content. */
+  function fit() {
+    try {
+      var h = Math.max(1, Math.ceil(a.getBoundingClientRect().height) + 4);
+      slot.style.display = 'block';
+      slot.style.width = '100%';
+      var c = fe.parentElement;
+      if (c && c !== slot) { c.style.width = '100%'; }
+      fe.style.width = '100%';
+      fe.style.height = h + 'px';
+      fe.style.display = 'block';
+      fe.setAttribute('width', '100%');
+      fe.setAttribute('height', String(h));
+    } catch (e) {}
+  }
+  fit();
+  img.addEventListener('load', fit);
+  try { new ResizeObserver(fit).observe(a); } catch (e) {}
+  try { document.fonts && document.fonts.ready.then(fit); } catch (e) {}
+  /* Agency impression pixels: once per render, same document as the ad. */
+  for (var k = 0; k < (CFG.pixels || []).length; k++) {
+    var p = new Image(1, 1);
+    p.style.display = 'none';
+    p.src = CFG.pixels[k];
+    document.body.appendChild(p);
+  }
+})();
+</script>

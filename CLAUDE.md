@@ -1079,6 +1079,33 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   by gluing the carrier slot onto the strip (carrier-reposition). Live flight: Infiniti Newsmakers
   LI 7336465381. Setup script: `scripts/setup_article_sponsor_logo.py`
   (dry-run by default, lookup-first, `--apply` to create).
+- `docs/section_sponsor_lockup.md` — centered **"SPONSORED BY <logo>"**
+  under the dek of a section hub (CategoryHub "tent pole" template; first:
+  **/ai-politics**, Kia). The hub renders `#dfp-ad-oop1` *inside* its header
+  right under the dek and sends `categories=<slug>` + `page_type=categories`,
+  so one LI on oop1 targeted `categories=<slug>` scopes it to one hub. The
+  creative (`docs/snippets/section_sponsor_lockup_creative.html`) renders
+  **in its own iframe** and resizes it to the lockup, with no parent-DOM
+  injection. So Active View measures the real ad, unlike the article logo's
+  carrier hack. It copies the page's Noto Sans `@font-face`
+  (`optional`→`swap`, or the iframe paints Arial) and self-guards to
+  `[class*="CategoryHubHeader"]`. Setup:
+  `scripts/setup_section_sponsor_lockup.py` / `setup_section_sponsor_lockup.yml`
+  (dry run lists competing oop1 LIs; the creative is UI-made "Out of page",
+  then `--creative-id` pushes the snippet). Check:
+  `scripts/preview_section_sponsor_lockup.py [--url …]` (QA basic auth via
+  `NW_QA_AUTH` env, never committed).
+  **Reusable GAM creative template** for any sponsor:
+  `docs/snippets/section_sponsor_lockup_template.html`, generated from the
+  snippet by `--print-template` (a test fails if they drift; never hand-edit
+  it). Variables `Logo` / `SponsorName` / `Label` / `ClickThroughURL` /
+  `ImpressionPixels`; template settings out-of-page ON, SafeFrame OFF. **The
+  API can't create creative templates** (read-only `CreativeTemplateService`),
+  so the template is made once in the UI; `--template-id <id>` then creates
+  `TemplateCreative`s from it.
+  Live template: **`Logo on Section Homepages` (12589844)**. Kia creative
+  138614849560 was built from it. Image-asset file names must be unique per
+  advertiser (`AssetError.NON_UNIQUE_NAME`), so the script suffixes them.
 - `docs/gam_placement_injection.md` — the generalized technique behind the
   sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
   agency third-party tags) at an arbitrary article-DOM position with zero
@@ -1310,6 +1337,10 @@ retype a non-DRAFT line. Rules learned on SO01190:
   every vendor that fires on the creative is declared.
 - **Out-of-page slots need "Out of page"-size creatives, not 1x1** — a
   plain 1x1 CustomCreative created via API will not serve an OOP slot.
+  **The API equivalent is `isInterstitial: True`** on the CustomCreative (UI
+  "Out of page" creatives read back as 1x1 + `isInterstitial=True`, e.g.
+  138562255517). `setup_section_sponsor_lockup.py --create-creative` mirrors
+  that and made 138613798793 (2026-09-25).
   LI placeholder: `creativeSizeType: INTERSTITIAL`; create the creative
   itself from the LI in the UI (size "Out of page"). The site's `?nwdemocr=`
   URL param sets a same-named GPT key-value for demo-gating test campaigns.
