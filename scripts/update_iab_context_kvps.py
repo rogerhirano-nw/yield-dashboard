@@ -1,4 +1,8 @@
-"""Sync GAM custom targeting key 'iab_context_v3' with IAB Content Taxonomy 3.1.
+"""Sync a GAM custom targeting key with an IAB Content Taxonomy TSV.
+
+Defaults to key 'iab_context_v3' + Content Taxonomy 3.1. The v2.2 taxonomy
+goes to key id 19649704:
+    python scripts/update_iab_context_kvps.py --tsv data/iab_content_taxonomy_2_2.tsv --key-id 19649704
 
 Each taxonomy row becomes one value on the key:
     name        = the row's Unique ID   (e.g. "483", "JLBCU7", "v9i3On")
@@ -55,6 +59,21 @@ def load_taxonomy(path: str) -> list[tuple[str, str]]:
     return out
 
 
+def get_key_by_id(svc, ad_manager, key_id: int) -> int:
+    sb = ad_manager.StatementBuilder(version="v202605")
+    sb.Where("id = :id")
+    sb.WithBindVariable("id", key_id)
+    resp = svc.getCustomTargetingKeysByStatement(sb.ToStatement())
+    results = getattr(resp, "results", None) or []
+    if not results:
+        sys.exit(f"No custom targeting key with id {key_id}")
+    k = results[0]
+    if str(getattr(k, "status", "ACTIVE")) != "ACTIVE":
+        sys.exit(f"Key {key_id} ('{k.name}') is {k.status}, not ACTIVE")
+    log.info("Found key id=%d → name='%s' type=%s", key_id, k.name, getattr(k, "type", "?"))
+    return key_id
+
+
 def find_or_create_key(svc, ad_manager, key_name: str, dry_run: bool) -> int | None:
     sb = ad_manager.StatementBuilder(version="v202605")
     sb.Where("name = :name AND status = 'ACTIVE'")
@@ -83,6 +102,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--tsv", default=DEFAULT_TSV)
     p.add_argument("--key-name", default=DEFAULT_KEY)
+    p.add_argument("--key-id", type=int, help="Target this key id (overrides --key-name; never creates)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -92,7 +112,10 @@ def main():
     client, ad_manager = get_soap_client()
     svc = client.GetService("CustomTargetingService", version="v202605")
 
-    key_id = find_or_create_key(svc, ad_manager, args.key_name, args.dry_run)
+    if args.key_id:
+        key_id = get_key_by_id(svc, ad_manager, args.key_id)
+    else:
+        key_id = find_or_create_key(svc, ad_manager, args.key_name, args.dry_run)
     existing = fetch_existing_values(svc, ad_manager, key_id) if key_id else {}
     # Index case-insensitively — GAM treats value names that way.
     existing_ci = {k.lower(): v | {"name": k} for k, v in existing.items()}
@@ -141,8 +164,8 @@ def main():
 
     final = fetch_existing_values(svc, ad_manager, key_id)
     missing = [i for i, _ in taxonomy if i.lower() not in {k.lower() for k in final}]
-    log.info("Done. Created %d, renamed %d. Key now has %d active values; %d taxonomy IDs missing.",
-             created, updated, len(final), len(missing))
+    log.info("Done. Created %d, renamed %d. Key %s now has %d active values; %d taxonomy IDs missing.",
+             created, updated, key_id, len(final), len(missing))
     if missing:
         sys.exit(f"Missing after sync: {missing[:20]}")
 

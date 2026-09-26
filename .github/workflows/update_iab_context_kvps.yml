@@ -1,4 +1,4 @@
-name: Update GAM 'iab_context_v3' KVPs (IAB Content Taxonomy 3.1)
+name: Update GAM IAB content-taxonomy KVPs (v3.1 + v2.2)
 
 # A push that touches these files runs the sync. It is a DRY RUN unless
 # APPLY_ON_PUSH is "true" — flip it in its own commit, read the run, flip back.
@@ -8,6 +8,7 @@ on:
     paths:
       - "scripts/update_iab_context_kvps.py"
       - "data/iab_content_taxonomy_3_1.tsv"
+      - "data/iab_content_taxonomy_2_2.tsv"
       - ".github/workflows/update_iab_context_kvps.yml"
   workflow_dispatch:
     inputs:
@@ -27,13 +28,21 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - taxonomy: "3.1"
+            args: "--tsv data/iab_content_taxonomy_3_1.tsv --key-name iab_context_v3"
+          - taxonomy: "2.2"
+            args: "--tsv data/iab_content_taxonomy_2_2.tsv --key-id 19649704"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install googleads
-      - name: Sync values
+      - name: Sync values (IAB ${{ matrix.taxonomy }})
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
@@ -42,4 +51,4 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "$APPLY_ON_PUSH" != "true" ]; then ARGS="--dry-run"; fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" != "false" ]; then ARGS="--dry-run"; fi
           echo "args: $ARGS"
-          python scripts/update_iab_context_kvps.py $ARGS
+          python scripts/update_iab_context_kvps.py ${{ matrix.args }} $ARGS
