@@ -45,7 +45,7 @@ on:
 
 env:
   APPLY_ON_PUSH: "false"
-  PUSH_ARGS: "--create-creative"
+  PUSH_ARGS: "--template-id 12589844"
 
 permissions:
   contents: read
