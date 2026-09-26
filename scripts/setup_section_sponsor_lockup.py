@@ -390,8 +390,12 @@ def main() -> int:
         order_svc = client.GetService("OrderService", version=V)
         adv = _q(order_svc, "getOrdersByStatement", "id = :o", o=li.orderId)[0].advertiserId
         vals = [
+            # Asset file names must be unique per advertiser (AssetError.
+            # NON_UNIQUE_NAME), and the custom creative already used the bare
+            # name, so the template creative's copy carries the template id.
             {"xsi_type": "AssetCreativeTemplateVariableValue", "uniqueName": "Logo",
-             "asset": {"assetByteArray": logo.read_bytes(), "fileName": logo.name}},
+             "asset": {"assetByteArray": logo.read_bytes(),
+                       "fileName": f"{logo.stem}-tpl{args.template_id}{logo.suffix}"}},
             {"xsi_type": "StringCreativeTemplateVariableValue", "uniqueName": "SponsorName",
              "value": args.sponsor},
             {"xsi_type": "StringCreativeTemplateVariableValue", "uniqueName": "Label",
