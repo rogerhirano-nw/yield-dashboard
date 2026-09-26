@@ -1095,6 +1095,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   then `--creative-id` pushes the snippet). Check:
   `scripts/preview_section_sponsor_lockup.py [--url …]` (QA basic auth via
   `NW_QA_AUTH` env, never committed).
+  **Reusable GAM creative template** for any sponsor:
+  `docs/snippets/section_sponsor_lockup_template.html`, generated from the
+  snippet by `--print-template` (a test fails if they drift; never hand-edit
+  it). Variables `Logo` / `SponsorName` / `Label` / `ClickThroughURL` /
+  `ImpressionPixels`; template settings out-of-page ON, SafeFrame OFF. **The
+  API can't create creative templates** (read-only `CreativeTemplateService`),
+  so the template is made once in the UI; `--template-id <id>` then creates
+  `TemplateCreative`s from it.
 - `docs/gam_placement_injection.md` — the generalized technique behind the
   sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
   agency third-party tags) at an arbitrary article-DOM position with zero

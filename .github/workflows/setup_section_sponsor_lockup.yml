@@ -25,6 +25,10 @@ on:
         description: 'UI-made Out-of-page creative to fill (optional)'
         required: false
         default: ''
+      template_id:
+        description: 'GAM creative template to build the creative from (optional)'
+        required: false
+        default: ''
       apply:
         description: 'Write to GAM (leave false for a dry run)'
         type: boolean
@@ -37,6 +41,7 @@ on:
       - 'docs/snippets/section_sponsor_lockup_creative.html'
       - '.github/workflows/setup_section_sponsor_lockup.yml'
       - 'scripts/orders/assets/**'
+      - 'docs/snippets/section_sponsor_lockup_template.html'
 
 env:
   APPLY_ON_PUSH: "false"
@@ -67,12 +72,14 @@ jobs:
           IN_DEMO: ${{ inputs.demo_value }}
           IN_SPONSOR: ${{ inputs.sponsor }}
           IN_CREATIVE: ${{ inputs.creative_id }}
+          IN_TEMPLATE: ${{ inputs.template_id }}
           IN_APPLY: ${{ inputs.apply }}
         run: |
           set -o pipefail
           ARGS=(--section "${IN_SECTION:-ai-politics}" --sponsor "${IN_SPONSOR:-Kia}")
           if [ "$EVENT" = "workflow_dispatch" ]; then ARGS+=(--demo-value "$IN_DEMO"); fi
           if [ -n "$IN_CREATIVE" ]; then ARGS+=(--creative-id "$IN_CREATIVE"); fi
+          if [ -n "$IN_TEMPLATE" ]; then ARGS+=(--template-id "$IN_TEMPLATE"); fi
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
           if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS+=(--apply); fi
           if [ "$EVENT" = "push" ] && [ -n "$PUSH_ARGS" ]; then ARGS+=($PUSH_ARGS); fi

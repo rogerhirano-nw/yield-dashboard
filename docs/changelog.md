@@ -4,6 +4,16 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-26 — Section sponsor lockup as a reusable GAM creative template
+
+The lockup now also ships as a GAM creative template so the next sponsor is a
+logo upload and four fields, not a code paste. The template code is generated
+from the creative snippet (a test pins them in sync), and the setup script
+creates `TemplateCreative`s from it with `--template-id`. GAM's API can't
+create creative templates, so the template itself is a one-time UI step,
+documented in `docs/section_sponsor_lockup.md`. The preview harness renders
+the template with `--template` and passes at all three widths on the QA hub.
+
 ## 2026-09-25 — Section-hub sponsor lockup on oop1 (/ai-politics, Kia)
 
 The tent-pole hub mockups add a centered "SPONSORED BY <logo>" under the dek.

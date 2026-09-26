@@ -93,6 +93,54 @@ priority 4 and both KV-targeted (7248272621 "ResponsiveAds: Cinematic
 Background" and Infiniti Newsmakers 7394329898), so neither conflicts. If an
 untargeted one appears, outrank it or add `page_type IS NOT categories` to it.
 
+## Reusable GAM creative template (any sponsor, any hub)
+
+So the next sponsor doesn't need code pasted, the lockup is also packaged as a
+GAM **creative template**. A trafficker creates a creative from it, uploads the
+logo and fills four fields. The template code is
+`docs/snippets/section_sponsor_lockup_template.html`. It is **generated** from
+the custom-creative snippet (`setup_section_sponsor_lockup.py --print-template`),
+and a test fails if the two drift, so a fix to the creative always reaches the
+template.
+
+**The GAM API can read creative templates but not create them**
+(`CreativeTemplateService` has no create method), so the template itself is a
+one-time UI step. In GAM go to *Delivery → Creatives → Creative templates → New
+creative template*, then:
+
+| Setting | Value |
+|---|---|
+| Name | `Section Sponsor Lockup` |
+| Out-of-page / interstitial | **On** (the API equivalent of the `isInterstitial` finding above) |
+| Serve into a SafeFrame | **Off** (the frame resize needs it) |
+| Code | paste `docs/snippets/section_sponsor_lockup_template.html` |
+
+Variables (unique names must match exactly; the code references them as `[%Name%]`):
+
+| Unique name | Type | Required | Notes |
+|---|---|---|---|
+| `Logo` | Asset (image) | yes | Transparent PNG or SVG, about 3× the 28px display height |
+| `SponsorName` | Text | yes | Logo alt text, e.g. `Kia`. No double quotes |
+| `Label` | List: `Sponsored by`, `Presented by`, `In partnership with` | yes | Default `Sponsored by` |
+| `ClickThroughURL` | URL | yes | Advertiser landing page |
+| `ImpressionPixels` | Text | no | Agency impression pixel URLs, space-separated. Declare their ad technology on the creative |
+
+The label and sponsor name are written into the markup rather than a script
+string, so an apostrophe (`Kia's`) can't break the creative.
+
+**Making a creative from it.** In the UI: *New creative → Section Sponsor
+Lockup*, fill the fields, and attach it to an oop1 line targeted
+`categories=<slug>`. From a script: `setup_section_sponsor_lockup.py
+--template-id <id> --sponsor Kia --click-url … --logo-file … --apply`. The
+script checks that the template carries every required variable, then creates a
+`TemplateCreative` (out of page, SafeFrame off) and links it to the line.
+
+Check a template render before shipping with
+`preview_section_sponsor_lockup.py --template --logo <file> [--label …] [--sponsor …]`.
+It fills the variables the way GAM would and runs the same placement checks. On
+2026-09-26 it passed at 1280/768/390 on the local replica and on the real QA
+hub, including with "Presented by" and a sponsor name containing an apostrophe.
+
 ## Verifying
 
 ```bash

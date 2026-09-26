@@ -36,6 +36,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SNIPPET = ROOT / "docs" / "snippets" / "section_sponsor_lockup_creative.html"
+TEMPLATE = ROOT / "docs" / "snippets" / "section_sponsor_lockup_template.html"
 WIDTHS = (1280, 768, 390)
 
 # Neutral placeholder wordmark (no real brand art in the repo).
@@ -125,9 +126,20 @@ def _logo_src(arg: str | None) -> str:
     return f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()
 
 
-def render_snippet(logo: str, click: str) -> str:
-    """The snippet as GAM would serve it: macros substituted."""
-    html = SNIPPET.read_text()
+def render_snippet(logo: str, click: str, template: bool = False,
+                   sponsor: str = "Kia", label: str = "Sponsored by") -> str:
+    """The snippet (or the creative template, with its variables filled) as
+    GAM would serve it: macros substituted."""
+    html = (TEMPLATE if template else SNIPPET).read_text()
+    if template:
+        html = (html.replace("[%Logo%]", logo)
+                    .replace("[%ClickThroughURL%]", click)
+                    .replace("[%SponsorName%]", sponsor)
+                    .replace("[%Label%]", label)
+                    .replace("[%ImpressionPixels%]", ""))
+        if "[%" in html:
+            raise SystemExit("!! unfilled template variable: "
+                             + html[html.index("[%"):html.index("[%") + 30])
     return (html.replace("%%VIEW_URL_UNESC%%", "")
                 .replace("%%CLICK_URL_UNESC%%", "")
                 .replace("%%DEST_URL%%", click)
@@ -169,11 +181,17 @@ def main() -> int:
     ap.add_argument("--logo", help="logo file/URL (default: neutral placeholder)")
     ap.add_argument("--click", default="https://www.newsweek.com/")
     ap.add_argument("--out", default="section_sponsor_preview")
+    ap.add_argument("--template", action="store_true",
+                    help="render the GAM creative template (variables filled) "
+                         "instead of the custom-creative snippet")
+    ap.add_argument("--sponsor", default="Kia")
+    ap.add_argument("--label", default="Sponsored by")
     args = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
 
-    html = render_snippet(_logo_src(args.logo), args.click)
+    html = render_snippet(_logo_src(args.logo), args.click, args.template,
+                          args.sponsor, args.label)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     launch: dict = {"args": ["--no-sandbox"]}

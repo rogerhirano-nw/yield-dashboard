@@ -68,6 +68,65 @@ def render_snippet(label: str, sponsor: str, pixels: list[str]) -> str:
     return html[:m.start(1)] + json.dumps(cfg, indent=4) + html[m.end(1):]
 
 
+TEMPLATE_FILE = ROOT / "docs" / "snippets" / "section_sponsor_lockup_template.html"
+
+# GAM creative-template variables (created in the UI; the API can only read
+# templates). uniqueName -> (type, required, note). Referenced as [%Name%].
+TEMPLATE_VARIABLES = [
+    ("Logo", "Asset (image)", True, "transparent PNG/SVG, ~3x the 28px display height"),
+    ("SponsorName", "Text", True, "logo alt text, e.g. Kia (no double quotes)"),
+    ("Label", "List: Sponsored by | Presented by | In partnership with", True,
+     "default Sponsored by"),
+    ("ClickThroughURL", "URL", True, "advertiser landing page"),
+    ("ImpressionPixels", "Text", False,
+     "agency impression pixel URLs, space-separated; declare their ad technology"),
+]
+
+
+def render_template() -> str:
+    """The creative-template code: the snippet with its per-flight values
+    replaced by template variables, so one template serves every sponsor.
+
+    Text values go into the markup (an apostrophe in a sponsor name can't
+    break the script); the script then reads them back from the DOM."""
+    html = SNIPPET_FILE.read_text()
+    m = re.search(r"/\*CFG\*/(\{.*?\})/\*CFG\*/", html, re.S)
+    if not m:
+        raise SystemExit(f"!! no /*CFG*/ block in {SNIPPET_FILE.name}")
+    host = json.loads(m.group(1))["host"]
+    cfg = (
+        "{\n"
+        "    \"label\": document.querySelector('#nw-ssl .ssl-label').textContent,\n"
+        "    \"sponsor\": document.querySelector('#nw-ssl .ssl-logo').alt,\n"
+        "    \"logo\": \"%%VIEW_URL_UNESC%%[%Logo%]\",\n"
+        "    \"href\": \"%%CLICK_URL_UNESC%%[%ClickThroughURL%]\",\n"
+        f"    \"host\": {json.dumps(host)},\n"
+        "    \"pixels\": \"[%ImpressionPixels%]\".split(/\\s+/).filter(Boolean)\n"
+        "  }"
+    )
+    out = html[:m.start(1)] + cfg + html[m.end(1):]
+    markup = ('<a id="nw-ssl" target="_blank" rel="noopener sponsored">'
+              '<span class="ssl-label"></span><img class="ssl-logo" alt=""></a>')
+    if markup not in out:
+        raise SystemExit("!! lockup markup changed; update render_template()")
+    out = out.replace(markup, (
+        '<a id="nw-ssl" target="_blank" rel="noopener sponsored">'
+        '<span class="ssl-label">[%Label%]</span>'
+        '<img class="ssl-logo" alt="[%SponsorName%]"></a>'))
+    head = re.match(r"<!--.*?-->\n", out, re.S)
+    note = (
+        "<!--\n"
+        "  GAM CREATIVE TEMPLATE \"Section Sponsor Lockup\" — generated from\n"
+        "  docs/snippets/section_sponsor_lockup_creative.html by\n"
+        "  `scripts/setup_section_sponsor_lockup.py --print-template`; do not edit by\n"
+        "  hand (tests/test_section_sponsor_lockup.py pins the two in sync).\n"
+        "  Template settings: out-of-page (interstitial) ON, SafeFrame OFF.\n"
+        "  Variables: " + ", ".join(v[0] for v in TEMPLATE_VARIABLES) + ".\n"
+        "  See docs/section_sponsor_lockup.md.\n"
+        "-->\n")
+    return note + out[head.end():] if head else note + out
+
+
 def _client():
     from googleads import ad_manager, oauth2  # type: ignore
     sa = json.loads(os.environ["GAM_SERVICE_ACCOUNT_JSON"])
@@ -123,6 +182,10 @@ def main() -> int:
     ap.add_argument("--pixel", action="append", default=[],
                     help="agency impression pixel URL (repeatable)")
     ap.add_argument("--creative-id", type=int, help="UI-made Out-of-page creative to fill")
+    ap.add_argument("--print-template", action="store_true",
+                    help="print the GAM creative-template code + variables and exit")
+    ap.add_argument("--template-id", type=int,
+                    help="create the creative from this GAM creative template instead")
     ap.add_argument("--create-creative", action="store_true",
                     help="create the CustomCreative via the API (mirrors --ref-creative's "
                          "out-of-page fields) instead of adding it in the UI")
@@ -134,6 +197,13 @@ def main() -> int:
                     help="known-serving UI-made oop creative whose size/isInterstitial to mirror")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
+
+    if args.print_template:
+        print(render_template())
+        print("\nVariables (unique name / type / required / note):")
+        for n, t, req, note in TEMPLATE_VARIABLES:
+            print(f"  {n:<17} {t:<55} {'required' if req else 'optional'}  {note}")
+        return 0
 
     name = f"[TEST] Section Sponsor Lockup - {args.section}"
     snippet = render_snippet(args.label, args.sponsor, args.pixel)
@@ -203,6 +273,30 @@ def main() -> int:
         if cur.strip() and SENTINEL not in cur:
             print(f"!! creative carries a different snippet (no {SENTINEL}) — refusing to overwrite")
             return 1
+    elif args.template_id:
+        tsvc = client.GetService("CreativeTemplateService", version=V)
+        tpl = _q(tsvc, "getCreativeTemplatesByStatement", "id = :i", i=args.template_id)
+        if not tpl:
+            print(f"!! creative template {args.template_id} not found")
+            return 1
+        tpl = tpl[0]
+        have = {v.uniqueName for v in (tpl.variables or [])}
+        missing = [v[0] for v in TEMPLATE_VARIABLES if v[2] and v[0] not in have]
+        print(f"template {tpl.id} {tpl.name!r}: variables {sorted(have)}  "
+              f"isInterstitial={getattr(tpl, 'isInterstitial', None)} "
+              f"safeframe={getattr(tpl, 'isSafeFrameCompatible', None)}")
+        if missing:
+            print(f"!! template is missing required variables {missing}")
+            return 1
+        tname = f"{name} (template)"
+        found = _q(cr_svc, "getCreativesByStatement", "name = :n", n=tname)
+        logo = Path(args.logo_file)
+        print(f"creative: {tname!r} "
+              + (f"[exists: {found[0].id}]" if found else
+                 f"[will create: TemplateCreative, Logo={logo.name}, "
+                 f"SponsorName={args.sponsor}, Label={args.label}, click {args.click_url}]"))
+        if found:
+            cr = found[0]
     elif args.create_creative:
         ref = _q(cr_svc, "getCreativesByStatement", "id = :i", i=args.ref_creative)
         if not ref:
@@ -282,6 +376,35 @@ def main() -> int:
         }])[0]
         print(f"created line item {li.id} ({li.status})")
 
+    if cr is None and args.template_id:
+        order_svc = client.GetService("OrderService", version=V)
+        adv = _q(order_svc, "getOrdersByStatement", "id = :o", o=li.orderId)[0].advertiserId
+        vals = [
+            {"xsi_type": "AssetCreativeTemplateVariableValue", "uniqueName": "Logo",
+             "asset": {"assetByteArray": logo.read_bytes(), "fileName": logo.name}},
+            {"xsi_type": "StringCreativeTemplateVariableValue", "uniqueName": "SponsorName",
+             "value": args.sponsor},
+            {"xsi_type": "StringCreativeTemplateVariableValue", "uniqueName": "Label",
+             "value": args.label},
+            {"xsi_type": "UrlCreativeTemplateVariableValue", "uniqueName": "ClickThroughURL",
+             "value": args.click_url},
+        ]
+        if args.pixel:
+            vals.append({"xsi_type": "StringCreativeTemplateVariableValue",
+                         "uniqueName": "ImpressionPixels", "value": " ".join(args.pixel)})
+        cr = cr_svc.createCreatives([{
+            "xsi_type": "TemplateCreative",
+            "name": tname,
+            "advertiserId": adv,
+            "size": {"width": 1, "height": 1, "isAspectRatio": False},
+            "creativeTemplateId": args.template_id,
+            "destinationUrl": args.click_url,
+            "isInterstitial": True,
+            "isSafeFrameCompatible": False,
+            "creativeTemplateVariableValues": vals,
+        }])[0]
+        print(f"created template creative {cr.id}")
+
     if cr is None and args.create_creative:
         order_svc = client.GetService("OrderService", version=V)
         adv = _q(order_svc, "getOrdersByStatement", "id = :o", o=li.orderId)[0].advertiserId
@@ -307,7 +430,7 @@ def main() -> int:
         print(f"created creative {cr.id} (isInterstitial={getattr(cr, 'isInterstitial', None)}, "
               f"safeframe={cr.isSafeFrameCompatible})")
 
-    if cr is not None:
+    if cr is not None and type(cr).__name__ == "CustomCreative":
         changed = False
         if (getattr(cr, "htmlSnippet", None) or "") != snippet:
             cr.htmlSnippet = snippet
@@ -318,6 +441,8 @@ def main() -> int:
         if changed:
             cr = cr_svc.updateCreatives([cr])[0]
             print(f"updated creative {cr.id} (snippet {len(cr.htmlSnippet)} chars, SafeFrame off)")
+
+    if cr is not None:
         try:
             lica_svc.createLineItemCreativeAssociations(
                 [{"lineItemId": li.id, "creativeId": cr.id}])
