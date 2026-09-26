@@ -252,6 +252,16 @@ def main() -> int:
         print(f"  → {len(loose)} with no KV targeting can win oop1 on the hub (a"
               " breadcrumb-only creative serves there but renders nothing).")
 
+    tsvc_all = client.GetService("CreativeTemplateService", version=V)
+    tpls = _q(tsvc_all, "getCreativeTemplatesByStatement",
+              "name LIKE :n", n="%Sponsor Lockup%")
+    print(f"\ncreative templates matching 'Sponsor Lockup': {len(tpls)}")
+    for t in tpls:
+        print(f"  {t.id}  {t.name!r}  status={t.status}  "
+              f"vars={[v.uniqueName for v in (t.variables or [])]}  "
+              f"isInterstitial={getattr(t, 'isInterstitial', None)}  "
+              f"safeframe={getattr(t, 'isSafeFrameCompatible', None)}")
+
     existing = _q(li_svc, "getLineItemsByStatement", "orderId = :o AND name = :n",
                   o=ORDER_ID, n=name)
     li = existing[0] if existing else None
