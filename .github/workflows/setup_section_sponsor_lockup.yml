@@ -44,7 +44,7 @@ on:
       - 'docs/snippets/section_sponsor_lockup_template.html'
 
 env:
-  APPLY_ON_PUSH: "true"
+  APPLY_ON_PUSH: "false"
   PUSH_ARGS: "--template-id 12589844"
 
 permissions:
