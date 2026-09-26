@@ -135,6 +135,15 @@ Lockup*, fill the fields, and attach it to an oop1 line targeted
 script checks that the template carries every required variable, then creates a
 `TemplateCreative` (out of page, SafeFrame off) and links it to the line.
 
+**Live template: `Logo on Section Homepages` (id 12589844)**, created in the UI
+2026-09-26. The API reads it back with all five variables, `isInterstitial=True`
+and SafeFrame off. Kia creative **138614849560** was built from it with
+`--template-id 12589844` and linked to LI 7439607552. GAM served it on the QA hub
+through its preview link at 1280 and 390, identical to the custom creative.
+**Gotcha:** image-asset file names must be unique per advertiser
+(`AssetError.NON_UNIQUE_NAME`), so the script names the template creative's logo
+`<stem>-tpl<template id>.<ext>`.
+
 Check a template render before shipping with
 `preview_section_sponsor_lockup.py --template --logo <file> [--label …] [--sponsor …]`.
 It fills the variables the way GAM would and runs the same placement checks. On

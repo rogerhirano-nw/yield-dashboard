@@ -1103,6 +1103,9 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   API can't create creative templates** (read-only `CreativeTemplateService`),
   so the template is made once in the UI; `--template-id <id>` then creates
   `TemplateCreative`s from it.
+  Live template: **`Logo on Section Homepages` (12589844)**. Kia creative
+  138614849560 was built from it. Image-asset file names must be unique per
+  advertiser (`AssetError.NON_UNIQUE_NAME`), so the script suffixes them.
 - `docs/gam_placement_injection.md` — the generalized technique behind the
   sponsor logo and the Apple FITO top banner: render any ad (incl. verbatim
   agency third-party tags) at an arbitrary article-DOM position with zero
