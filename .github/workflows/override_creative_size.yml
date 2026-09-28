@@ -31,7 +31,7 @@ on:
       - '.github/workflows/override_creative_size.yml'
 
 env:
-  APPLY_ON_PUSH: "true"
+  APPLY_ON_PUSH: "false"
   PUSH_CREATIVE: "138502478327"
   PUSH_SIZES: "970x250"
 
