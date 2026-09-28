@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 _envp = Path(__file__).resolve().parent.parent / ".env"
@@ -53,6 +54,18 @@ def _client():
                                       network_code=os.environ["GAM_NETWORK_ID"])
 
 
+def _retry(fn, tries=4):
+    """GAM answers the odd read with a transient ServerError.SERVER_ERROR."""
+    for n in range(tries):
+        try:
+            return fn()
+        except Exception as exc:
+            if "SERVER_ERROR" not in str(exc) or n == tries - 1:
+                raise
+            print(f"  (GAM {exc} — retry {n + 1} in {5 * 2 ** n}s)")
+            time.sleep(5 * 2 ** n)
+
+
 def _q(svc, method, where, **binds):
     """All pages — a Prebid catch-all sits on 600+ line items, past one page."""
     sb = ad_manager.StatementBuilder(version=V).Where(where).Limit(500)
@@ -60,7 +73,7 @@ def _q(svc, method, where, **binds):
         sb = sb.WithBindVariable(k, v)
     out = []
     while True:
-        resp = getattr(svc, method)(sb.ToStatement())
+        resp = _retry(lambda: getattr(svc, method)(sb.ToStatement()))
         page = list(getattr(resp, "results", []) or [])
         out.extend(page)
         sb.offset += sb.limit
@@ -149,7 +162,7 @@ def main() -> int:
         print(f"\nDRY RUN — {len(todo)} association(s) would change. Nothing written.")
         return 0
     if not todo:
-        print("\nNothing to do.")
+        print("\nNothing to do — every association already has the size(s).")
         return 0
 
     def _set(la, want):
