@@ -1,0 +1,56 @@
+name: Interstitial on-page forensics
+
+# Read-only: GAM preview of an interstitial creative on an article in headless
+# Chromium — GPT events, click-macro expansion, overlays, what a tap fires.
+# A push runs the defaults below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pairs:
+        description: 'Comma-separated lineItemId:creativeId pairs ("auto" = first LICA creative)'
+        required: false
+      article_url:
+        description: 'newsweek.com article URL'
+        required: false
+  push:
+    branches: [claude/great-goldberg-i4izey]
+    paths:
+      - 'scripts/interstitial_forensics.py'
+      - '.github/workflows/interstitial_forensics.yml'
+
+env:
+  # Sky Program Flight 3 (low CTR) vs Flight 1 (healthy, earlier Innovid tag).
+  PUSH_PAIRS: "7440622442:138615319255,7424771943:138597886006"
+  PUSH_ARTICLE: "https://www.newsweek.com/trump-admin-vows-to-hold-8647-national-mall-vandals-accountable-threat-12062049"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install google-ads-admanager google-auth pandas googleads playwright
+          playwright install --with-deps chromium
+      - name: Forensics
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_PAIRS: ${{ inputs.pairs }}
+          IN_ARTICLE: ${{ inputs.article_url }}
+        run: |
+          export PAIRS="${IN_PAIRS:-$PUSH_PAIRS}" ARTICLE_URL="${IN_ARTICLE:-$PUSH_ARTICLE}" PROFILES_RUN=mobile REPEAT=3 ORGANIC=0
+          python scripts/interstitial_forensics.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interstitial-shots
+          path: /tmp/shots/
+          if-no-files-found: ignore
