@@ -1,0 +1,51 @@
+name: Diagnose line item CTR
+
+# Read-only: one LI's setup (creatives + tags) and its CTR cut by creative,
+# size, device, ad unit and day against peer baselines. A push runs PUSH_LI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_item:
+        description: 'GAM line item id'
+        required: true
+      days:
+        description: 'Max lookback (days before yesterday)'
+        required: false
+        default: '45'
+  push:
+    branches: [claude/great-goldberg-i4izey]
+    paths:
+      - 'scripts/diagnose_li_ctr.py'
+      - '.github/workflows/diagnose_li_ctr.yml'
+
+env:
+  PUSH_LI: "7440622442"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+      - name: Setup (creatives + tags)
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_LI: ${{ inputs.line_item }}
+        run: python scripts/inspect_line_item.py "${IN_LI:-$PUSH_LI}"
+      - name: CTR diagnosis
+        if: always()
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_LI: ${{ inputs.line_item }}
+          IN_DAYS: ${{ inputs.days }}
+        run: python scripts/diagnose_li_ctr.py "${IN_LI:-$PUSH_LI}" --days "${IN_DAYS:-45}"
