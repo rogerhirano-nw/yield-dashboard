@@ -60,7 +60,7 @@ jobs:
         run: |
           set -o pipefail
           ARGS="--mode ${IN_MODE:-add}"
-          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="--apply"; fi
-          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="--apply"; fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="$ARGS --apply"; fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="$ARGS --apply"; fi
           python -u scripts/override_creative_size.py "${IN_CR:-$PUSH_CREATIVE}" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | tee /tmp/out.txt
           { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
