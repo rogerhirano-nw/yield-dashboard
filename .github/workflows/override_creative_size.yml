@@ -65,7 +65,7 @@ jobs:
           rm -f /tmp/failed
           for CR in $(echo "${IN_CR:-$PUSH_CREATIVE}" | tr ',' ' '); do
             echo "================ creative $CR ================"
-            python -u scripts/override_creative_size.py "$CR" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | grep -v -E '^    (placeholders|LICA ACTIVE)' || echo "$CR" >> /tmp/failed
+            python -u scripts/override_creative_size.py "$CR" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | grep -v -E '^(    placeholders|    LICA ACTIVE|  LI |    -> already set|$)' || echo "$CR" >> /tmp/failed
           done 2>&1 | tee /tmp/out.txt
           { echo '```'; grep -v -E '^(  LI |    -> set)' /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           if [ -s /tmp/failed ]; then echo "FAILED creatives: $(cat /tmp/failed)"; exit 1; fi
