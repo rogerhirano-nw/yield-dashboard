@@ -67,10 +67,11 @@ def _shape(df: pd.DataFrame) -> pd.DataFrame:
 
 def _rates(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["ctr_%"] = (100 * df["clicks"] / df["impr"].replace(0, pd.NA)).astype(float).round(3)
-    df["viewable_%"] = (100 * df["av_view"] / df["av_meas"].replace(0, pd.NA)).astype(float).round(1)
-    df["clicks_per_1k_viewable"] = (
-        1000 * df["clicks"] / df["av_view"].replace(0, pd.NA)).astype(float).round(2)
+    def _div(n, d, k):
+        return (k * n.astype(float) / d.astype(float).where(d > 0)).round(3)
+    df["ctr_%"] = _div(df["clicks"], df["impr"], 100)
+    df["viewable_%"] = _div(df["av_view"], df["av_meas"], 100).round(1)
+    df["clicks_per_1k_viewable"] = _div(df["clicks"], df["av_view"], 1000).round(2)
     return df
 
 
@@ -139,16 +140,33 @@ def main() -> int:
     _report(gam, ["AD_UNIT_NAME"], start, yesterday, f_li, "BY AD UNIT (leaf)",
             sort="impr", top=40)
     _report(gam, ["DATE"], start, yesterday, f_li, "BY DAY")
+    _report(gam, ["DEVICE_CATEGORY_NAME", "BROWSER_NAME"], start, yesterday, f_li,
+            "BY DEVICE x BROWSER", sort="impr", top=25)
     _report(gam, ["CREATIVE_ID", "DATE"], start, yesterday, f_li,
             "BY CREATIVE x DAY (last 14 rows per creative)")
 
     # ── Peers ────────────────────────────────────────────────────────────
-    _report(gam, ["LINE_ITEM_ID", "LINE_ITEM_NAME"], start, yesterday,
+    # Peers use the full lookback even when the LI itself is days old.
+    pstart = yesterday - timedelta(days=a.days)
+    unit_df = _report(gam, ["LINE_ITEM_ID", "AD_UNIT_NAME"], start, yesterday, f_li,
+                      "LI AD UNITS (for the peer cut)")
+    units = sorted(set(unit_df["ad_unit_name"])) if unit_df is not None else []
+    if units:
+        _report(gam, ["ORDER_NAME", "LINE_ITEM_ID", "LINE_ITEM_NAME"], pstart, yesterday,
+                [("AD_UNIT_NAME", "IN", units)],
+                f"PEERS: EVERY LI ON AD UNIT(S) {units} (top 40 by impr)",
+                sort="impr", top=40)
+        _report(gam, ["DEVICE_CATEGORY_NAME"], pstart, yesterday,
+                [("AD_UNIT_NAME", "IN", units)], f"PEERS: AD UNIT(S) {units} BY DEVICE")
+    _report(gam, ["LINE_ITEM_ID", "LINE_ITEM_NAME"], pstart, yesterday,
+            [("LINE_ITEM_NAME", "CONTAINS", ["Interstitial"])],
+            "PEERS: EVERY LI NAMED *Interstitial* (top 40 by impr)", sort="impr", top=40)
+    _report(gam, ["LINE_ITEM_ID", "LINE_ITEM_NAME"], pstart, yesterday,
             [("ORDER_ID", "IN", [order_id])], "PEERS: OTHER LIs IN THIS ORDER",
             sort="impr")
 
     peer = _report(
-        gam, ["RENDERED_CREATIVE_SIZE", "DEVICE_CATEGORY_NAME"], start, yesterday,
+        gam, ["RENDERED_CREATIVE_SIZE", "DEVICE_CATEGORY_NAME"], pstart, yesterday,
         [("LINE_ITEM_TYPE", "IN", ["STANDARD", "SPONSORSHIP"])],
         "PEERS: NETWORK STANDARD+SPONSORSHIP BY SIZE x DEVICE (top 30)",
         sort="impr", top=30,
