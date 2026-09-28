@@ -178,6 +178,11 @@ def _run(browser, url: str, profile: str, tag: str) -> None:
                 body = r.text()
             except Exception:
                 return
+            k = body.find("is-revealed")
+            if k >= 0:
+                # The reveal gate: print its whole neighbourhood once, so the
+                # predicate the site applies before showing the ad is visible.
+                print(f"\n[reveal-gate source {u.path}]\n{body[max(0, k - 3500):k + 1800]}\n[/reveal-gate]")
             i = 0
             while len(js_hits) < 12:
                 i = body.find("nterstitial", i)
