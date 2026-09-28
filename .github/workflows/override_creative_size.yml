@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       creative_id:
-        description: 'GAM creative id'
+        description: 'GAM creative id(s), comma or space separated'
         required: true
       sizes:
         description: 'Override size(s), comma-separated'
@@ -32,7 +32,7 @@ on:
 
 env:
   APPLY_ON_PUSH: "false"
-  PUSH_CREATIVE: "138502478327"
+  PUSH_CREATIVE: "138502478327 138502478330 138502478336 138502478603 138502478609 138502478612 138502478615 138502478621 138502478624 138502478630"
   PUSH_SIZES: "970x250"
 
 permissions:
@@ -62,5 +62,10 @@ jobs:
           ARGS="--mode ${IN_MODE:-add}"
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="$ARGS --apply"; fi
           if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="$ARGS --apply"; fi
-          python -u scripts/override_creative_size.py "${IN_CR:-$PUSH_CREATIVE}" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | tee /tmp/out.txt
-          { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          rm -f /tmp/failed
+          for CR in $(echo "${IN_CR:-$PUSH_CREATIVE}" | tr ',' ' '); do
+            echo "================ creative $CR ================"
+            python -u scripts/override_creative_size.py "$CR" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | grep -v -E '^    (placeholders|LICA ACTIVE)' || echo "$CR" >> /tmp/failed
+          done 2>&1 | tee /tmp/out.txt
+          { echo '```'; grep -v -E '^(  LI |    -> set)' /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s /tmp/failed ]; then echo "FAILED creatives: $(cat /tmp/failed)"; exit 1; fi
