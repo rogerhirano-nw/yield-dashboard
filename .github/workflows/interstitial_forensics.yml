@@ -46,7 +46,7 @@ jobs:
           IN_PAIRS: ${{ inputs.pairs }}
           IN_ARTICLE: ${{ inputs.article_url }}
         run: |
-          export PAIRS="${IN_PAIRS:-$PUSH_PAIRS}" ARTICLE_URL="${IN_ARTICLE:-$PUSH_ARTICLE}"
+          export PAIRS="${IN_PAIRS:-$PUSH_PAIRS}" ARTICLE_URL="${IN_ARTICLE:-$PUSH_ARTICLE}" PROFILES_RUN=mobile REPEAT=3 ORGANIC=0
           python scripts/interstitial_forensics.py
       - uses: actions/upload-artifact@v4
         if: always()

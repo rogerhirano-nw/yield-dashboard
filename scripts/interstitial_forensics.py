@@ -69,7 +69,24 @@ INIT_JS = r"""
     pa.addEventListener('slotRenderEnded', e => push(Object.assign({ev: 'render',
       empty: e.isEmpty, li: e.lineItemId, cr: e.creativeId, size: e.size && e.size.join('x')},
       info(e.slot))));
-    pa.addEventListener('slotOnload', e => push(Object.assign({ev: 'onload'}, info(e.slot))));
+    pa.addEventListener('slotOnload', e => {
+      push(Object.assign({ev: 'onload'}, info(e.slot)));
+      if (e.slot.getSlotElementId() !== 'dfp-ad-interstitial') return;
+      // The site's reveal gate runs ONCE at onload+200ms: iframe width/height
+      // attributes > 1 and a rect > 1px. Sample exactly what it would see.
+      for (const ms of [0, 100, 200, 300, 600, 1200, 3000]) setTimeout(() => {
+        const d = document.getElementById('dfp-ad-interstitial');
+        const f = d && d.querySelector('iframe');
+        const w = document.getElementById('dfp-ad-interstitial-wrapper');
+        const r = f && f.getBoundingClientRect();
+        push({ev: 'gate', ms, iframe: !!f,
+              attrW: f && f.getAttribute('width'), attrH: f && f.getAttribute('height'),
+              styleW: f && f.style.width, styleH: f && f.style.height,
+              disp: f && f.style.display, divDisp: d && d.style.display,
+              rect: r && [Math.round(r.width), Math.round(r.height)],
+              revealed: !!(w && w.classList.contains('is-revealed'))});
+      }, ms);
+    });
     pa.addEventListener('impressionViewable', e => push(Object.assign({ev: 'viewable'}, info(e.slot))));
     const maxv = S.maxVis = {};
     pa.addEventListener('slotVisibilityChanged', e => {
@@ -309,11 +326,13 @@ def main() -> int:
     from playwright.sync_api import sync_playwright
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-        for profile in ("mobile", "desktop"):
+        for profile in (os.environ.get("PROFILES_RUN") or "mobile,desktop").split(","):
             if ORGANIC:
                 _run(browser, ARTICLE_URL, profile, "organic")
-            for li, cr, u in previews:
-                _run(browser, u, profile, f"li{li}-cr{cr}")
+            # The reveal gate is a timing race, so repeat each preview.
+            for n in range(int(os.environ.get("REPEAT", "3"))):
+                for li, cr, u in previews:
+                    _run(browser, u, profile, f"li{li}-cr{cr}-r{n}")
         browser.close()
     print("\ndone.")
     return 0
