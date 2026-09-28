@@ -1,0 +1,59 @@
+name: Override creative size (LICA)
+
+# Sets LineItemCreativeAssociation.sizes for one creative on every line item it
+# is attached to. A push is a dry run unless APPLY_ON_PUSH is flipped to "true"
+# in its own commit; a manual dispatch writes only with apply=true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      creative_id:
+        description: 'GAM creative id'
+        required: true
+      sizes:
+        description: 'Override size(s), comma-separated'
+        required: true
+        default: '970x250'
+      apply:
+        description: 'Write to GAM (false = dry run)'
+        type: boolean
+        default: false
+  push:
+    branches: [claude/sleepy-babbage-cni9za]
+    paths:
+      - 'scripts/override_creative_size.py'
+      - '.github/workflows/override_creative_size.yml'
+
+env:
+  APPLY_ON_PUSH: "false"
+  PUSH_CREATIVE: "138502478327"
+  PUSH_SIZES: "970x250"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install googleads
+      - name: Override size
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_CR: ${{ inputs.creative_id }}
+          IN_SIZES: ${{ inputs.sizes }}
+          IN_APPLY: ${{ inputs.apply }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="--apply"; fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="--apply"; fi
+          python scripts/override_creative_size.py "${IN_CR:-$PUSH_CREATIVE}" "${IN_SIZES:-$PUSH_SIZES}" $ARGS 2>&1 | tee /tmp/out.txt
+          { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
