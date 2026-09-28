@@ -39,6 +39,8 @@ from gam_client import GAMClient  # noqa: E402
 PAIRS = [p.strip() for p in (os.environ.get("PAIRS") or "").split(",") if p.strip()]
 ARTICLE_URL = os.environ.get("ARTICLE_URL") or ""
 ORGANIC = os.environ.get("ORGANIC", "1") == "1"
+WARMUP = int(os.environ.get("WARMUP", "1"))
+_SEEN_JS: set = set()
 SHOTS = Path("/tmp/shots")
 SHOTS.mkdir(parents=True, exist_ok=True)
 
@@ -134,6 +136,9 @@ INSPECT_JS = r"""
   const chain = []; let p = top;
   while (p && chain.length < 6) { chain.push(desc(p)); p = p.parentElement; }
   out.centerStack = chain;
+  const w = document.getElementById('dfp-ad-interstitial-wrapper');
+  if (w) out.wrap = {cls: trim(w.className, 120), box: box(w), style: st(w),
+    html: trim(w.innerHTML.replace(/\s+/g, ' '), 400)};
   out.ev = (window.__nwi && window.__nwi.events) || [];
   out.maxVis = (window.__nwi && window.__nwi.maxVis) || {};
   return out;
@@ -160,21 +165,62 @@ def _run(browser, url: str, profile: str, tag: str) -> None:
     ctx.on("request", lambda r: reqs.append((time.time() - t0, r.url)))
     popups: list[str] = []
     ctx.on("page", lambda p: popups.append(p.url))
+    # The wrapper carries `dfp-ad-count`: the interstitial is likely gated on
+    # pageview count, so burn WARMUP plain pageviews in this context first.
+    js_hits: list[str] = []
+
+    def _on_resp(r):
+        u = urlparse(r.url)
+        if (tag == "organic" and len(js_hits) < 12 and u.path.endswith(".js")
+                and "newsweek" in u.netloc and u.path not in _SEEN_JS):
+            _SEEN_JS.add(u.path)
+            try:
+                body = r.text()
+            except Exception:
+                return
+            i = 0
+            while len(js_hits) < 12:
+                i = body.find("nterstitial", i)
+                if i < 0:
+                    break
+                js_hits.append(f"{urlparse(r.url).path[-40:]}: …{body[max(0, i - 220):i + 260]}…")
+                i += 800
+    pg.on("response", _on_resp)
     try:
+        for w in range(WARMUP):
+            pg.goto(ARTICLE_URL, wait_until="domcontentloaded", timeout=60_000)
+            time.sleep(5)
+            pg.mouse.wheel(0, 1500)
+            time.sleep(2)
+        t0 = time.time()
         pg.goto(url, wait_until="domcontentloaded", timeout=60_000)
     except Exception as e:
         print(f"  !! load failed: {e}")
         ctx.close()
         return
     snaps = {}
-    for t in (3, 8, 14):
-        time.sleep(t - (time.time() - t0) if t > time.time() - t0 else 0)
+    for t in (3, 8):
+        time.sleep(max(0.0, t - (time.time() - t0)))
         try:
             snaps[t] = pg.evaluate(INSPECT_JS)
             pg.screenshot(path=str(SHOTS / f"{tag}-{profile}-t{t}.png"))
         except Exception as e:
             print(f"  !! inspect t={t}: {e}")
-    last = snaps.get(14) or snaps.get(8) or snaps.get(3) or {}
+    # Scroll (lazy trigger), then sample again.
+    for _ in range(6):
+        pg.mouse.wheel(0, 600)
+        time.sleep(1.5)
+    for t in ("scrolled",):
+        try:
+            snaps[t] = pg.evaluate(INSPECT_JS)
+            pg.screenshot(path=str(SHOTS / f"{tag}-{profile}-scrolled.png"))
+        except Exception as e:
+            print(f"  !! inspect scrolled: {e}")
+    last = snaps.get("scrolled") or snaps.get(8) or snaps.get(3) or {}
+    if js_hits:
+        print("site JS mentioning 'interstitial':")
+        for h in js_hits:
+            print("   ", h.replace("\n", " ")[:520])
 
     print("GPT events (non-empty renders + all interstitial-ish slots):")
     for e in last.get("ev", []):
@@ -201,6 +247,7 @@ def _run(browser, url: str, profile: str, tag: str) -> None:
         print("  innovid elements:", json.dumps(s.get("innovid", [])[:8])[:1500])
         print("  fixed overlays:", json.dumps(s.get("overlays", []))[:1200])
         print("  element stack at viewport centre:", s.get("centerStack"))
+        print("  interstitial wrapper:", json.dumps(s.get("wrap")))
 
     # Tap the centre and see what fires.
     n_before = len(reqs)
