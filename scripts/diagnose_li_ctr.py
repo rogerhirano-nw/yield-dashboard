@@ -93,6 +93,8 @@ def _report(gam, dims, start, end, filters, label, sort=None, top=None):
         print("  (no rows)")
         return None
     df = _rates(_shape(df))
+    if "(14d, >=1k impr)" in label:
+        df = df[df["impr"] >= 1000].sort_values(["line_item_id", "date"])
     if sort:
         df = df.sort_values(sort, ascending=False)
     out = df.head(top) if top else df
@@ -156,6 +158,12 @@ def main() -> int:
                 [("AD_UNIT_NAME", "IN", units)],
                 f"PEERS: EVERY LI ON AD UNIT(S) {units} (top 40 by impr)",
                 sort="impr", top=40)
+        # Did the whole unit move on a date (site change), or just this LI?
+        _report(gam, ["DATE"], yesterday - timedelta(days=21), yesterday,
+                [("AD_UNIT_NAME", "IN", units)], f"PEERS: AD UNIT(S) {units} BY DAY (21d)")
+        _report(gam, ["DATE", "LINE_ITEM_ID"], yesterday - timedelta(days=14), yesterday,
+                [("AD_UNIT_NAME", "IN", units)],
+                f"PEERS: AD UNIT(S) {units} BY DAY x LI (14d, >=1k impr)", sort=None)
         _report(gam, ["DEVICE_CATEGORY_NAME"], pstart, yesterday,
                 [("AD_UNIT_NAME", "IN", units)], f"PEERS: AD UNIT(S) {units} BY DEVICE")
     _report(gam, ["LINE_ITEM_ID", "LINE_ITEM_NAME"], pstart, yesterday,
