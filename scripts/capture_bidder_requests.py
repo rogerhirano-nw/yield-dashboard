@@ -22,6 +22,10 @@ Usage (from the repo root; the first line is a one-time setup):
     python scripts/capture_bidder_requests.py
     python scripts/capture_bidder_requests.py --bidder smilewanted \\
         --articles 5 --device desktop --out /tmp/sw.json
+    # keep going until SmileWanted bids on the video unit (~2.8% bid rate,
+    # one video auction per article → expect 35-70 articles)
+    python scripts/capture_bidder_requests.py --stop-on-bid video \\
+        --articles 150 --tag video
 
 Options: BROWSER_CHANNEL=chrome uses your installed Chrome instead of the
 Playwright Chromium; BROWSER_PROXY routes through a proxy; HEADFUL=1 shows
@@ -69,6 +73,11 @@ def main() -> int:
     ap.add_argument("--articles", type=int, default=3)
     ap.add_argument("--device", choices=["mobile", "desktop"], default="mobile")
     ap.add_argument("--out", default="bidder_capture.json")
+    ap.add_argument("--stop-on-bid", metavar="TAG", default="",
+                    help="keep loading articles (up to --articles) until the "
+                         "bidder bids on this ad unit, e.g. video")
+    ap.add_argument("--tag", default="",
+                    help="only list this ad unit in the summary, e.g. video")
     args = ap.parse_args()
     needle = args.bidder.lower()
 
@@ -95,12 +104,20 @@ def main() -> int:
             if ARTICLE_RE.search(h) and h not in urls:
                 urls.append(h)
         home.close()
-        urls = urls[:args.articles]
         if not urls:
             raise SystemExit("no article links found on the homepage")
 
-        for url in urls:
-            print(f"loading {url}")
+        def _bids_on(tag: str) -> list[dict]:
+            return [c for c in caps if c["kind"] == "response"
+                    and isinstance(c.get("request"), dict)
+                    and c["request"].get("tagId") == tag
+                    and isinstance(c["body"], dict) and c["body"].get("cpm")]
+
+        done = 0
+        while urls and done < args.articles:
+            url = urls.pop(0)
+            done += 1
+            print(f"[{done}/{args.articles}] loading {url}")
             page = ctx.new_page()
 
             def on_request(r, url=url):
@@ -128,16 +145,40 @@ def main() -> int:
                 time.sleep(4)
                 caps.append({"kind": "adunits", "page": url,
                              "config": page.evaluate(ADUNITS_JS, needle)})
+                # Refill the queue from this article's own links, so a long
+                # --stop-on-bid run doesn't run out of homepage links.
+                if len(urls) < 20:
+                    for h in page.eval_on_selector_all(
+                            "a[href]", "as => as.map(a => a.href)"):
+                        if ARTICLE_RE.search(h) and h not in urls and h != url:
+                            urls.append(h)
             except Exception as exc:
                 print(f"  failed: {exc}")
             page.close()
+            # Write as we go, so stopping the run early keeps what it has.
+            Path(args.out).write_text(json.dumps(caps, indent=1))
+            if args.stop_on_bid:
+                n = sum(1 for c in caps if c["kind"] == "request"
+                        and isinstance(c["body"], dict)
+                        and c["body"].get("tagId") == args.stop_on_bid)
+                hit = _bids_on(args.stop_on_bid)
+                print(f"  {args.stop_on_bid}: {n} requests, {len(hit)} bids so far")
+                if hit:
+                    pair = {"request": hit[0]["request"], "response": hit[0]["body"],
+                            "status": hit[0]["status"], "page": hit[0]["page"]}
+                    first = Path(args.out).with_name(
+                        f"{needle}_{args.stop_on_bid}_bid.json")
+                    first.write_text(json.dumps(pair, indent=1))
+                    print(f"  → {args.stop_on_bid} bid captured: {first}")
+                    break
         browser.close()
 
     Path(args.out).write_text(json.dumps(caps, indent=1))
 
     # Summary: one line per bid response, keyed on the request it answers.
     pairs = [c for c in caps if c["kind"] == "response"
-             and isinstance(c.get("request"), dict)]
+             and isinstance(c.get("request"), dict)
+             and (not args.tag or c["request"].get("tagId") == args.tag)]
     n_req = sum(c["kind"] == "request" for c in caps)
     print(f"\n{n_req} requests, {len(pairs)} bid responses → {args.out}")
     for c in pairs:
