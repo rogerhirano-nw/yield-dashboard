@@ -4,6 +4,20 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-09-29 — SmileWanted video diagnosis + per-bidder video pull
+
+"SmileWanted video isn't transacting client side": it is, from 2026-09-26, at
+648 imps / $7 over two weeks, because it bids ~$0.86 against a ~$3.95 floor and
+answers at 300x250. The GAM setup (keys, `hb_pb`-only video lines, PBS-cache
+VAST creative) doesn't block it. New read-only
+`scripts/prebid_bidder_video.py` (+ `prebid_bidder_video.yml`) pulls any
+bidder's video keys, delivery by day, VAST errors vs peers, and the Prebid video
+line-item targeting. `scripts/capture_bidder_requests.py` records a bidder's live
+bid requests/responses on article pages (run it from a residential IP to see
+bids): it showed the video unit sends SmileWanted a *display* zone
+(`newsweek.com_hb_display_46`) with a $0.30 floor. Write-up:
+`docs/prebid_viewability.md`.
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup

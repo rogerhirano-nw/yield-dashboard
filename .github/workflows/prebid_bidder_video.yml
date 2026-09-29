@@ -1,0 +1,71 @@
+name: Prebid bidder on video (GAM, read-only)
+
+# Is one Prebid bidder transacting on video in GAM, and if not, where does it
+# stop? Keys, video delivery by day, VAST errors per bidder, and the Prebid
+# video line-item setup. See scripts/prebid_bidder_video.py +
+# docs/prebid_viewability.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Lookback window in days (ending yesterday)'
+        required: false
+        default: '14'
+      bidder:
+        description: 'hb_bidder value to detail'
+        required: false
+        default: 'smilewanted'
+  # A new workflow can't be dispatched until it's on main, so the first run
+  # rides a push that touches it.
+  push:
+    paths:
+      - scripts/prebid_bidder_video.py
+      - .github/workflows/prebid_bidder_video.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DAYS: ${{ inputs.days }}
+          BIDDER: ${{ inputs.bidder }}
+          OUT_DIR: /tmp/prebid-bidder-video
+        run: |
+          set -o pipefail
+          python scripts/prebid_bidder_video.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebid-bidder-video
+          path: /tmp/prebid-bidder-video/
+          if-no-files-found: ignore
+
+      - name: Write output to job summary
+        if: always()
+        run: |
+          {
+            echo '### Prebid bidder on video (GAM)'
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
