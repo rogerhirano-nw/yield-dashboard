@@ -502,3 +502,14 @@ far as SmileWanted knows. Ask: an in-stream video zone for newsweek.com, then
 swap it into the video ad unit's params and send the real floor. From a
 datacenter IP every request returns `204` (no bid); run the script from a
 residential connection to capture an actual bid body.
+
+**The automated capture can't produce a video bid.** From a residential US IP
+(2026-09-29) the script drew 3 display bids from ~57 requests but **0 video
+bids from 103 video requests** — against a 2.8% real-traffic video bid rate
+(expected ~3; P(0) ≈ 5%). Real traffic bids on video at 2–4% on *every*
+browser/OS, desktop Chrome on Mac included (3.6%), flat across the day, so the
+gap is the harness itself (automation-flagged Chromium, emulated-iPhone UA
+with Chromium client hints, 100+ page views in one session) — video demand
+filters bot-like traffic harder than display. Don't push the harness further
+(its winning renders are impressions billed to advertisers from non-human
+traffic); get a sample video bid from SmileWanted's own logs instead.
