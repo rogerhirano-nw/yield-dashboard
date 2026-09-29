@@ -12,7 +12,11 @@ answers at 300x250. The GAM setup (keys, `hb_pb`-only video lines, PBS-cache
 VAST creative) doesn't block it. New read-only
 `scripts/prebid_bidder_video.py` (+ `prebid_bidder_video.yml`) pulls any
 bidder's video keys, delivery by day, VAST errors vs peers, and the Prebid video
-line-item targeting. Write-up: `docs/prebid_viewability.md`.
+line-item targeting. `scripts/capture_bidder_requests.py` records a bidder's live
+bid requests/responses on article pages (run it from a residential IP to see
+bids): it showed the video unit sends SmileWanted a *display* zone
+(`newsweek.com_hb_display_46`) with a $0.30 floor. Write-up:
+`docs/prebid_viewability.md`.
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 

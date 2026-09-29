@@ -489,3 +489,16 @@ SmileWanted's VAST error rate (19.4% of imps) sits in the peer range.
 Verdict: demand/configuration on SmileWanted's side. Ask them to confirm the
 zone behind our video unit is a 640x360 in-stream zone and why it bids
 sub-$1; don't lower the video floor to let it in.
+
+**The live bid request settles the 300x250.** `scripts/capture_bidder_requests.py`
+records a bidder's real requests/responses on article pages. On 2026-09-29 the
+video ad unit (`tagId: video`, `context: instream`, `playerSize [[640,360]]`,
+full ORTB video params — our side is correct) sends SmileWanted
+**`zoneId: newsweek.com_hb_display_46`** — a *display* zone, same naming as the
+banner slots' `_display_25` / `_display_28` / `_display_3`; there is no video
+zone at all. It also sends **`bidfloor: 0.3`** ($0.24 on sticky) against an
+effective video floor of ~$3.95, so its $0.40–$0.90 bids are "above floor" as
+far as SmileWanted knows. Ask: an in-stream video zone for newsweek.com, then
+swap it into the video ad unit's params and send the real floor. From a
+datacenter IP every request returns `204` (no bid); run the script from a
+residential connection to capture an actual bid body.
