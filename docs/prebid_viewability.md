@@ -459,3 +459,33 @@ after the three above; not the same class of problem.
 * Never try to declare viewability with `%%VIEW_URL_UNESC%%` or any macro; it
   counts impressions for out-of-page creatives, not viewable impressions, and
   the 2026-06 live test returned a clean null result.
+
+## SmileWanted video: transacting, but barely (2026-09-29)
+
+Raised as "SmileWanted video is not transacting in Prebid client side". It is
+— just from 2026-09-26 and at trivial volume. Two sources:
+
+**AssertiveYield Prebid Analytics** (the wrapper side). SmileWanted's first
+video bids are 2026-09-26 (none since July 1 before that): 983 bids 9/26–9/28
+against ~11k for rubicon. Average bid **$0.86 vs a ~$3.95 floor** (peers bid
+$6–7), and every video bid comes back as **300x250** while every other bidder
+answers 640x360 / 640x480 / 1280x720 — which points at a display zone or a
+`playerSize`/`context` mismatch in its adapter params, not an in-stream zone.
+AY logs 0 video wins for *every* bidder (the IMA player, not GPT, spends the
+win), so it can't answer "did it transact" — GAM does.
+
+**GAM** (`scripts/prebid_bidder_video.py`, workflow
+`prebid_bidder_video.yml`, 9/15–9/28): **648 video-player impressions / $7**
+with `hb_bidder=smilewanted` (2 on 9/23, 1 on 9/24, then 144 / 217 / 284 on
+9/26–28) against 5.68M banner and 12.0M total Prebid video. The GAM eCPM
+($10.86) is the `hb_pb` price bucket, so it's the rare high bid that clears
+the floor, consistent with AY. Nothing ad-server-side blocks it:
+`smilewanted` is a registered `hb_bidder` value; the Prebid video order
+(`Newsweek_OpenExchange_Prebid_Video_$2.00 to $60.00`, 123 VIDEO_PLAYER
+lines) targets `hb_pb` only — no bidder restriction; the creative is a VAST
+redirect to Magnite's PBS cache (`…/cache?uuid=%%PATTERN:hb_uuid%%`), and
+SmileWanted's VAST error rate (19.4% of imps) sits in the peer range.
+
+Verdict: demand/configuration on SmileWanted's side. Ask them to confirm the
+zone behind our video unit is a 640x360 in-stream zone and why it bids
+sub-$1; don't lower the video floor to let it in.
