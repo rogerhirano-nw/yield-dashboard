@@ -1,0 +1,63 @@
+name: Advertiser PMP history
+
+# One-off: every PMP/programmatic deal that delivered for an advertiser over a
+# date range (scripts/pull_advertiser_pmp_history.py). GAM creds are CI-only
+# secrets; results print to the run log and upload as an XLSX artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      match:
+        description: "Advertiser substring (case-insensitive)"
+        required: true
+        default: "prudential"
+      start:
+        description: "Start date YYYY-MM-DD"
+        required: true
+        default: "2024-01-01"
+      end:
+        description: "End date YYYY-MM-DD"
+        required: true
+        default: "2025-12-31"
+  push:
+    branches: [claude/eager-pasteur-1ljvr9]
+    paths:
+      - 'scripts/pull_advertiser_pmp_history.py'
+      - '.github/workflows/pull_advertiser_pmp_history.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas openpyxl
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          MATCH: ${{ inputs.match || 'prudential' }}
+          START: ${{ inputs.start || '2024-01-01' }}
+          END: ${{ inputs.end || '2025-12-31' }}
+        run: |
+          set -o pipefail
+          python scripts/pull_advertiser_pmp_history.py --match "$MATCH" \
+            --start "$START" --end "$END" \
+            --xlsx "out/${MATCH}_pmps_${START}_${END}.xlsx" 2>&1 | tee /tmp/output.txt
+
+      - name: Upload workbook
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: advertiser-pmp-history
+          path: out/
+          retention-days: 14
