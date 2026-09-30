@@ -55,13 +55,16 @@ def _run(client: GAMClient, label: str, dims: list[str], start: date, end: date)
     except Exception as e:  # noqa: BLE001 — one rejected report shouldn't sink the rest
         print(f"[{label}] {dims} failed: {type(e).__name__}: {str(e)[:300]}")
         return None
-    for c in df.select_dtypes(include="object").columns:
+    for c in df.select_dtypes(include=["object", "str"]).columns:
         df[c] = df[c].astype(str).str.strip()
     df["month"] = df["month_year"].map(_decode_month)
     df["year"] = df["month"].str[:4]
     df["impressions"] = pd.to_numeric(df["impressions"], errors="coerce").fillna(0).astype("int64")
     df["revenue"] = pd.to_numeric(df["revenue_without_cpd"], errors="coerce").fillna(0.0)
-    print(f"[{label}] {len(df)} rows")
+    cov = df.groupby("month")["impressions"].sum()
+    print(f"[{label}] {len(df)} rows; months {cov.index.min()}..{cov.index.max()} "
+          f"({len(cov)} with data); impressions by year: "
+          f"{df.groupby('year')['impressions'].sum().to_dict()}")
     return df.drop(columns=["month_year", "revenue_without_cpd"])
 
 
