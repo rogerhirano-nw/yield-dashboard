@@ -49,17 +49,28 @@ def search(token: str, network: str, prop: str, params: dict) -> tuple[list[dict
     return [{k: v for k, v in a.items() if k not in DROP} for a in ads], None
 
 
+class PermissionDenied(RuntimeError):
+    pass
+
+
 def lookup(token: str, network: str, label: str, params: dict) -> list[dict]:
     found: list[dict] = []
+    errors = 0
     for prop in WEB_PROPERTIES:
         ads, err = search(token, network, prop, params)
         if err:
+            if err.startswith("HTTP 403"):
+                # A 403 is the service account's role, not the ad: say so once
+                # and stop, rather than reporting every ID as "not found".
+                raise PermissionDenied(err)
+            errors += 1
             print(f"  [{prop}] {err}")
         for a in ads:
             a["_webProperty"] = prop
             found.append(a)
     if not found:
-        print(f"  {label}: no ARC ad found")
+        print(f"  {label}: " + ("lookup failed" if errors == len(WEB_PROPERTIES)
+                                else "no ARC ad found"))
     for a in found:
         print(f"  {label}: [{a['_webProperty']}] ad={a.get('adReviewCenterAdId')} "
               f"status={a.get('status')} manual={a.get('manualReviewStatuses')} "
@@ -75,7 +86,15 @@ def main() -> int:
     a = p.parse_args()
     network = os.environ["GAM_NETWORK_ID"]
     token = _token()
+    try:
+        return _run(token, network, a)
+    except PermissionDenied as e:
+        print(f"PERMISSION_DENIED — the service account's GAM role can't read Ad "
+              f"Review Center, so nothing was looked up. {str(e)[:200]}")
+        return 1
 
+
+def _run(token: str, network: str, a) -> int:
     targets = set(a.ad_id)
     print("=== ARC ad ID lookup ===")
     for ad_id in a.ad_id:
