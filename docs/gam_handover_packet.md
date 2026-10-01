@@ -291,6 +291,9 @@ SUBTITLE 220 / HASHTAG 20.
 
 ## 9. Where to read deeper
 
+Sibling packets: `docs/ccr_handover_packet.md` (Comscore CCR forms) ·
+`docs/screenshots_handover_packet.md` (proof-of-placement decks).
+
 `CLAUDE.md` (the "GAM facts" section is the canonical list) ·
 `docs/gam_placement_injection.md` · `docs/article_sponsor_logo.md` ·
 `docs/insights_native_ad.md` · `docs/mobkoi_viewability.md` ·

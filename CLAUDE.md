@@ -2,7 +2,7 @@
 
 See `README.md` for project overview, files, and quickstart.
 See `docs/changelog.md` for the dated "what changed when, and why" index (keyed by PR).
-See `docs/gam_handover_packet.md` for a one-file GAM digest (for onboarding a new Claude account or person).
+See `docs/gam_handover_packet.md` for a one-file GAM digest (for onboarding a new Claude account or person), with sibling packets `docs/ccr_handover_packet.md` and `docs/screenshots_handover_packet.md`.
 See `docs/seller_comms.md` for seller/AM email templates (Chumba delivery-issue outreach, how to pull LI goals + deal IDs from GAM).
 
 ## Conventions
