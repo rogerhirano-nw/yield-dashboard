@@ -1,0 +1,81 @@
+name: ARC lookup (read-only)
+
+# Looks up GAM Ad Review Center ads by ARC ad ID and/or GPT Ad Response ID via
+# the REST v1 adReviewCenterAds:search endpoint. No writes. See scripts/arc_lookup.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ad_ids:
+        description: 'ARC ad IDs (space-separated)'
+        default: ''
+      response_ids:
+        description: 'GPT Ad Response IDs (space-separated)'
+        default: ''
+  push:
+    branches: [claude/new-session-p4dddg]
+    paths:
+      - 'scripts/arc_lookup.py'
+      - '.github/workflows/arc_lookup.yml'
+
+env:
+  # Used on push: the creative from the Confiant handoff + the 17 GPT Ad
+  # Response IDs the Confiant cron reported ARC-blocking in September 2026.
+  PUSH_AD_IDS: "AAyH9eQtXoELI35XlvYCsjQuBEvsTmYx+wCK2Sz8Z50PMaZPQQt31uq9Zw=="
+  PUSH_RESPONSE_IDS: >-
+    CKv75eWt1ZYDFcZh3gYdlLgQMw CIO0_oap1JYDFTInYwEd_AYFiA CMXn-tLV15YDFdUqJQYd3TM7yA
+    CLnKyaK815YDFeXNSgAdi7we-w CNfJ9LiK0pYDFW1Q_gUdU3QqAQ CMqsxtCs6ZYDFUpUjgUd4Lgplw
+    CPDdnfaI5JYDFXmspgQdZOMTOA CKCQruPG65YDFS1x3gYdszQfSw COunxL6O5JYDFUNy7QIdzR0jbA
+    CPG3pL6J5JYDFUsDpAYduMIIQw CNzg6O7v7ZYDFeTbDQkdayoelw CNirkvnq7ZYDFQz5AgcdSM42IA
+    CLHUjJOh8JYDFcXWDQkdYzshYQ CKyMu_au9ZYDFVcBBgQdoRY3xQ CMOxkK_V95YDFZkCBgQdfEQspw
+    CILBo_S-8pYDFb3PDQkdBb4IEQ CKLpsY60kZcDFU9OGAAdbjoDJA
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - run: pip install google-auth requests
+
+      - name: Lookup
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          AD_IDS: ${{ inputs.ad_ids || env.PUSH_AD_IDS }}
+          RESPONSE_IDS: ${{ inputs.response_ids || env.PUSH_RESPONSE_IDS }}
+        run: |
+          set -o pipefail
+          args=()
+          for x in $AD_IDS; do args+=(--ad-id "$x"); done
+          for x in $RESPONSE_IDS; do args+=(--response-id "$x"); done
+          python scripts/arc_lookup.py "${args[@]}" 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### GAM Ad Review Center lookup'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            head -c 60000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
