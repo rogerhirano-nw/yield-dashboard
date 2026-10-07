@@ -1151,6 +1151,17 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are healthy and need nothing. **SmileWanted** is requested on every
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress.
+- `docs/openads_secure_signals.md` — why Google Open Bidding gets almost no
+  user IDs when OpenAds (`oajs`) registers in `window._pbjsGlobals` ahead of our
+  main Prebid (`pbjs`): GAM's "use your Prebid configuration" secure signals
+  reads the *first* instance, and `oajs`'s own ID store holds only
+  `adserver.org`. On the Next.js site both are `afterInteractive` `<Script>`s
+  inserted as async at the same instant, so the order is a download race
+  (`oajs` won 7/8 loads on 2026-10-07), not layout order — the fix is injecting
+  OpenAds from `pbjs.que`. Verify with `CHECK=signals` on
+  `scripts/prebid_render_forensics.py` (registration order + decoded `a3p` ID
+  *sources*, never values, fast and throttled; `HOME_URL` for QA, `STRICT=1`
+  to gate).
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in
