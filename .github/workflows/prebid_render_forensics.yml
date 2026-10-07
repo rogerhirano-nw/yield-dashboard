@@ -4,10 +4,26 @@ name: Prebid render forensics (on-page)
 # Prebid, and reports how each winning bidder's creative renders — the DOM
 # evidence that separates a Mobkoi-class breakout from a placement-mix story.
 # See docs/prebid_viewability.md.
+#
+# check=signals instead checks the _pbjsGlobals registration order (pbjs vs
+# OpenAds) and the ID sources GPT forwards to Open Bidding in `a3p`, per load,
+# fast and throttled. See docs/openads_secure_signals.md.
 
 on:
   workflow_dispatch:
     inputs:
+      check:
+        description: 'render (bidder render forensics) or signals (_pbjsGlobals order + a3p IDs)'
+        required: false
+        default: 'render'
+      home_url:
+        description: 'Site to scrape article links from (point at QA to test there)'
+        required: false
+        default: 'https://www.newsweek.com/'
+      throttle:
+        description: 'signals only: network per load (off, on, or off,on)'
+        required: false
+        default: 'off,on'
       loads:
         description: 'Article page loads (each load runs every profile)'
         required: false
@@ -47,6 +63,9 @@ jobs:
 
       - name: Run forensics
         env:
+          CHECK: ${{ inputs.check }}
+          HOME_URL: ${{ inputs.home_url }}
+          THROTTLE: ${{ inputs.throttle }}
           LOADS: ${{ inputs.loads }}
           PROFILES: ${{ inputs.profiles }}
           TARGET_BIDDERS: ${{ inputs.target_bidders }}
@@ -60,7 +79,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: prebid-render-forensics
+          name: prebid-forensics-${{ inputs.check }}
           path: /tmp/prebid-forensics/
           if-no-files-found: ignore
 
@@ -74,7 +93,7 @@ jobs:
             echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
           fi
           {
-            echo '### Prebid on-page render forensics'
+            echo "### Prebid on-page forensics (check=${{ inputs.check }})"
             echo ''
             echo "Workflow run (screenshots + renders.json in artifacts): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ''

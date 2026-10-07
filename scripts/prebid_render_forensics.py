@@ -54,6 +54,13 @@ requested on every auction and essentially never bids, so its render cannot
 be observed there at all.
 Output is plain text (the companion workflow posts it as a PR comment) plus
 a JSON dump of every observed render at $SHOTS_DIR/renders.json.
+
+CHECK=signals runs a different check: which Prebid instance registers first
+in _pbjsGlobals (pbjs vs OpenAds' oajs) on each load, fast and throttled, and
+which ID sources GPT forwards to Open Bidding in each ad request's `a3p`. See
+docs/openads_secure_signals.md. Knobs: THROTTLE (off,on), EXPECT_SOURCES
+(pubcid.org), STRICT=1; HOME_URL points the article scrape at QA. Writes
+$SHOTS_DIR/signals.json.
 """
 
 from __future__ import annotations
@@ -115,10 +122,24 @@ SCROLL_STEPS = int(os.environ.get("SCROLL_STEPS") or "24")
 SCROLL_DWELL = float(os.environ.get("SCROLL_DWELL") or "1.6")
 # Write results after every load so a long sweep survives being interrupted.
 INCREMENTAL = os.environ.get("INCREMENTAL", "1") == "1"
+# CHECK=signals swaps the render sweep for the secure-signals load-order check
+# (`_signals_main`): which Prebid instance registers first in _pbjsGlobals and
+# which ID sources GPT forwards to Open Bidding in each ad request's `a3p`.
+CHECK = (os.environ.get("CHECK") or "render").lower()
+# Network conditions per load in the signals check: "off", "on" or "off,on".
+# The ordering bug is timing-driven, so a fast load alone proves nothing.
+THROTTLE = [t.strip() for t in (os.environ.get("THROTTLE") or "off,on").split(",") if t.strip()]
+# ID sources that must reach Google in the a3p of the FIRST ad request.
+EXPECT_SOURCES = [s.strip() for s in (os.environ.get("EXPECT_SOURCES") or "pubcid.org").split(",")
+                  if s.strip()]
+# STRICT=1 exits non-zero when any load fails a check, for gating a QA deploy.
+STRICT = os.environ.get("STRICT") == "1"
 
 # Article URLs look like /slug-1234567 — the homepage also links sections and
 # live blogs, which run a different slot set, so match the numeric id suffix.
-_ARTICLE_RE = re.compile(r"^https://www\.newsweek\.com/[a-z0-9-]+-\d{6,}$")
+# The host follows HOME_URL so the same sweep can run against QA.
+_ARTICLE_RE = re.compile(
+    rf"^https?://{re.escape(urlparse(HOME_URL).netloc)}/[a-z0-9-]+-\d{{6,}}$")
 
 IPHONE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
              "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
@@ -672,7 +693,262 @@ def _fmt_slot(d: dict | None) -> str:
     return head + " | " + " ; ".join(parts) + (" | " + ", ".join(flags) if flags else "")
 
 
+# ── secure-signals load-order check (CHECK=signals) ─────────────────────────
+# GAM's "use your Prebid configuration" secure-signals setting makes GPT read
+# user IDs from the FIRST instance in window._pbjsGlobals. With OpenAds (oajs)
+# on the page that is whichever wrapper executes first — and Next.js inserts
+# both as async scripts at the same moment, so it is a download race, not the
+# order in the layout. oajs's own ID store holds only adserver.org (Drawbridge
+# injects IDs per bid request, not into the store), so an oajs-first load
+# sends Open Bidding almost nothing. This check records, per load, the
+# registration order and the ID *sources* GPT actually forwarded.
+
+SIGNALS_INIT_JS = r"""
+window.__nws = {pushes: []};
+(function () {
+  const rec = n => window.__nws.pushes.push({name: String(n), t: Math.round(performance.now())});
+  let arr;
+  const wrap = v => {
+    if (Array.isArray(v) && !v.__nwsWrapped) {
+      const p = v.push;
+      v.push = function (...a) { a.forEach(rec); return p.apply(this, a); };
+      Object.defineProperty(v, '__nwsWrapped', {value: true});
+      v.forEach(rec);
+    }
+    return v;
+  };
+  Object.defineProperty(window, '_pbjsGlobals', {
+    configurable: true, get() { return arr; }, set(v) { arr = wrap(v); }
+  });
+})();
+"""
+
+SIGNALS_INSPECT_JS = r"""
+() => {
+  const src = inst => {
+    try { return (window[inst] && window[inst].getUserIdsAsEids)
+            ? window[inst].getUserIdsAsEids().map(e => e.source) : null; }
+    catch (e) { return null; }
+  };
+  return {
+    globals: (window._pbjsGlobals || []).slice(),
+    pushes: (window.__nws && window.__nws.pushes) || [],
+    adReqT: performance.getEntriesByType('resource')
+      .filter(e => e.name.includes('/gampad/ads')).map(e => Math.round(e.startTime)),
+    pbjsEids: src('pbjs'),
+    oajsEids: src('oajs'),
+  };
+}
+"""
+
+# ~Slow-4G: enough latency that the larger /prebid.js loses the race to the
+# CDN-hosted OpenAds file, which is the failure mode we need to reproduce.
+THROTTLE_CONDITIONS = {"offline": False, "latency": 150,
+                       "downloadThroughput": 1.6e6 / 8, "uploadThroughput": 750e3 / 8}
+
+
+def _varint(buf: bytes, i: int) -> tuple[int, int]:
+    n = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        n |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return n, i
+        shift += 7
+
+
+def _proto_fields(buf: bytes):
+    """Minimal protobuf walk: yields (field_number, value) for varint and
+    length-delimited fields; skips fixed32/64."""
+    i = 0
+    while i < len(buf):
+        key, i = _varint(buf, i)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            v, i = _varint(buf, i)
+        elif wire == 2:
+            ln, i = _varint(buf, i)
+            v, i = buf[i:i + ln], i + ln
+        elif wire == 1:
+            v, i = None, i + 8
+        elif wire == 5:
+            v, i = None, i + 4
+        else:
+            raise ValueError(f"unsupported wire type {wire}")
+        yield field, v
+
+
+def a3p_sources(a3p: str) -> list[str]:
+    """Decode GPT's `a3p` ad-request parameter to the ID *source* names it
+    carries (adserver.org, pubcid.org, esp.criteo.com, …).
+
+    `a3p` is URL-safe base64 ('.' as padding) of a protobuf whose repeated
+    field 2 is one signal each, with the source domain in sub-field 1. The ID
+    values themselves are deliberately never returned: this output lands in
+    public Actions logs and PR comments.
+    """
+    import base64
+    raw = base64.urlsafe_b64decode(a3p.replace(".", "=") + "=" * (-len(a3p) % 4))
+    out: list[str] = []
+    for field, v in _proto_fields(raw):
+        if field == 2 and isinstance(v, bytes):
+            for sub, sv in _proto_fields(v):
+                if sub == 1 and isinstance(sv, bytes):
+                    out.append(sv.decode("utf-8", "replace"))
+                    break
+    return out
+
+
+def _signals_one(browser, url: str, profile: str, throttle: bool) -> dict:
+    from urllib.parse import parse_qs
+    ctx = browser.new_context(**PROFILE_CFG[profile])
+    ctx.add_init_script(SIGNALS_INIT_JS)
+    pg = ctx.new_page()
+    pg.set_default_timeout(30_000)
+    a3ps: list[str | None] = []
+
+    def _on_req(r):
+        if "/gampad/ads" in r.url and "doubleclick.net" in r.url:
+            a3ps.append((parse_qs(urlparse(r.url).query).get("a3p") or [None])[0])
+    pg.on("request", _on_req)
+    if throttle:
+        ctx.new_cdp_session(pg).send("Network.emulateNetworkConditions", THROTTLE_CONDITIONS)
+    try:
+        pg.goto(url, wait_until="domcontentloaded", timeout=90_000)
+    except Exception as exc:
+        print(f"[warn] {profile} {url}: {exc}")
+        ctx.close()
+        if "ERR_PROXY_CONNECTION_FAILED" in str(exc) or "ERR_TUNNEL" in str(exc):
+            return {"_proxy_error": True}
+        return {}
+    # Long enough for every wrapper to register and the first auction to go
+    # out; a throttled load needs roughly twice as long.
+    time.sleep(20 if throttle else 10)
+    try:
+        d = pg.evaluate(SIGNALS_INSPECT_JS)
+    except Exception as exc:
+        print(f"[warn] inspect failed on {url}: {exc}")
+        d = {}
+    ctx.close()
+    if not d:
+        return {}
+    pushes = d.get("pushes") or []
+    order = []
+    for p in pushes:  # first registration of each instance, in order
+        if p["name"] not in order:
+            order.append(p["name"])
+    t_pbjs = next((p["t"] for p in pushes if p["name"] == "pbjs"), None)
+    t_req = min(d.get("adReqT") or [None], key=lambda x: (x is None, x))
+    decoded = []
+    for a in a3ps:
+        try:
+            decoded.append(a3p_sources(a) if a else [])
+        except Exception:
+            decoded.append(["(undecodable)"])
+    return {
+        "url": url, "profile": profile, "throttle": throttle,
+        "order": order, "globals": d.get("globals"),
+        "pbjsDupes": sum(1 for p in pushes if p["name"] == "pbjs") > 1,
+        "tPbjs": t_pbjs, "tFirstAdReq": t_req,
+        "adReqBeforePbjs": (t_req is not None and (t_pbjs is None or t_req < t_pbjs)),
+        "a3pFirst": decoded[0] if decoded else None,
+        "a3pAll": sorted({s for srcs in decoded for s in srcs}),
+        "adRequests": len(a3ps),
+        "pbjsEids": d.get("pbjsEids"), "oajsEids": d.get("oajsEids"),
+    }
+
+
+def _signals_main() -> int:
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    from playwright.sync_api import sync_playwright
+
+    runs: list[dict] = []
+    with sync_playwright() as pw:
+        browser = _launch(pw)
+        urls = _article_urls(browser, LOADS)
+        for i, url in enumerate(urls):
+            for profile in PROFILES:
+                for th in THROTTLE:
+                    throttle = th == "on"
+                    print(f"[load {i + 1}/{len(urls)} {profile} "
+                          f"{'throttled' if throttle else 'fast'}] {url}")
+                    r = _signals_one(browser, url, profile, throttle)
+                    if r.get("_proxy_error"):
+                        print(f"    [proxy moved] relaunching browser on {_current_proxy()}")
+                        try:
+                            browser.close()
+                        except Exception:
+                            pass
+                        browser = _launch(pw)
+                        r = _signals_one(browser, url, profile, throttle)
+                    if not r or r.get("_proxy_error"):
+                        continue
+                    runs.append(r)
+                    print(f"    order={r['order']} first a3p={r['a3pFirst']}")
+        browser.close()
+    (SHOTS / "signals.json").write_text(json.dumps(runs, indent=1))
+
+    def _first_ok(r):
+        return r["a3pFirst"] is not None and all(s in r["a3pFirst"] for s in EXPECT_SOURCES)
+
+    def _any_ok(r):
+        return all(s in r["a3pAll"] for s in EXPECT_SOURCES)
+
+    def _pb_first(r):
+        return bool(r["order"]) and r["order"][0] == "pbjs"
+
+    print("\n" + "=" * 78)
+    print("SECURE SIGNALS — _pbjsGlobals ORDER + IDs FORWARDED TO GOOGLE (a3p)")
+    print("=" * 78)
+    print(f"site={HOME_URL}  expected in first a3p: {', '.join(EXPECT_SOURCES)}")
+    print("Only ID source names are decoded; ID values are never printed.\n")
+    print(f"{'#':>3} {'profile':<8}{'net':<10}{'registration order':<22}"
+          f"{'req<pbjs':<9}{'first a3p sources'}")
+    for n, r in enumerate(runs, 1):
+        print(f"{n:>3} {r['profile']:<8}{'throttled' if r['throttle'] else 'fast':<10}"
+              f"{','.join(r['order']) or '(none)':<22}"
+              f"{'yes' if r['adReqBeforePbjs'] else 'no':<9}"
+              f"{','.join(r['a3pFirst'] or []) or '(no ad request)'}")
+        print(f"{'':>12}pbjs ids: {','.join(r['pbjsEids'] or []) or '-'}   "
+              f"oajs ids: {','.join(r['oajsEids'] or []) or '-'}")
+
+    total = len(runs)
+    if not total:
+        print("\nno completed loads")
+        return 1
+    print("\n-- verdict --")
+    groups = sorted({(r["profile"], r["throttle"]) for r in runs})
+
+    def _line(label, pred):
+        ok = sum(1 for r in runs if pred(r))
+        parts = []
+        for prof, th in groups:
+            g = [r for r in runs if r["profile"] == prof and r["throttle"] == th]
+            parts.append(f"{prof}/{'throttled' if th else 'fast'} "
+                         f"{sum(1 for r in g if pred(r))}/{len(g)}")
+        mark = "PASS" if ok == total else "FAIL"
+        print(f"  [{mark}] {label}: {ok}/{total}  ({'; '.join(parts)})")
+        return ok == total
+
+    passed = all([
+        _line("pbjs registered first in _pbjsGlobals", _pb_first),
+        _line(f"first GPT ad request carried {'+'.join(EXPECT_SOURCES)}", _first_ok),
+        _line(f"any GPT ad request carried {'+'.join(EXPECT_SOURCES)}", _any_ok),
+    ])
+    early = sum(1 for r in runs if r["adReqBeforePbjs"])
+    print(f"  [info] first GPT ad request went out before pbjs registered: {early}/{total}")
+    dupes = sum(1 for r in runs if r["pbjsDupes"])
+    if dupes:
+        print(f"  [info] pbjs registered more than once in _pbjsGlobals on {dupes}/{total} "
+              "loads (double include in the Prebid build; harmless to ordering)")
+    print(f"\nsignals.json: {SHOTS}")
+    return 1 if (STRICT and not passed) else 0
+
+
 def main() -> int:
+    if CHECK == "signals":
+        return _signals_main()
     SHOTS.mkdir(parents=True, exist_ok=True)
     from playwright.sync_api import sync_playwright
 
