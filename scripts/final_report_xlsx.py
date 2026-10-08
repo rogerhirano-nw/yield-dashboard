@@ -138,6 +138,114 @@ def _table(ws, row: int, headers: list[str], rows: list[list], fmts: list[str | 
     return last + 2
 
 
+def _vs(value, ref, tol=0.10) -> str:
+    """'above' / 'in line with' / 'below' a reference, ±10% relative band."""
+    if value is None or not ref:
+        return ""
+    r = value / ref - 1
+    return "above" if r > tol else "below" if r < -tol else "in line with"
+
+
+def benchmarks(p: dict) -> list[dict]:
+    """One row per KPI: campaign value, Newsweek target, same-period Newsweek
+    Direct peers on the same creative sizes, and a plain-words read."""
+    t = p["totals"]
+    peers = p.get("peers") or {}
+    tgt = p.get("targets") or {}
+    dv = p.get("dv") or {}
+    ab = dv.get("attention_benchmarks") or {}
+    att = dv.get("attention_overall")
+    rows = []
+    if t.get("pct_of_goal") is not None:
+        rows.append({"metric": "Delivery vs goal", "value": t["pct_of_goal"] / 100, "fmt": PCT1,
+                     "target": 1.0, "target_label": "100% of goal",
+                     "peer": None, "peer_label": "",
+                     "read": "Delivered in full" if t["pct_of_goal"] >= 99.5 else "Under-delivered"})
+    v, vt, vp = t.get("viewability_pct"), tgt.get("viewability_pct"), peers.get("viewability_pct")
+    if v is not None:
+        parts = []
+        if vt:
+            parts.append(f"{'Above' if v >= vt else 'Below'} the {vt:.0f}% target")
+        if vp:
+            parts.append(f"{_vs(v, vp, 0.03)} same-size Direct peers")
+        rows.append({"metric": "Viewability (Active View)", "value": v / 100, "fmt": PCT1,
+                     "target": vt / 100 if vt else None, "peer": vp / 100 if vp else None,
+                     "read": "; ".join(parts)})
+    c, ct, cp = t.get("ctr_pct"), tgt.get("ctr_pct"), peers.get("ctr_pct")
+    if c is not None:
+        parts = []
+        if ct:
+            parts.append(f"{'Above' if c >= ct else 'Below'} the {ct:.2f}% target")
+        if cp:
+            parts.append(f"{_vs(c, cp)} same-size Direct peers")
+        rows.append({"metric": "CTR", "value": c / 100, "fmt": PCT2,
+                     "target": ct / 100 if ct else None, "peer": cp / 100 if cp else None,
+                     "read": "; ".join(parts)})
+    if att is not None:
+        dm = ab.get("direct_mean")
+        parts = [f"{att / 100 - 1:+.0%} vs DV's 100 baseline"]
+        if dm:
+            parts.append(f"{_vs(att, dm, 0.05)} the Newsweek Direct average")
+        rows.append({"metric": "Attention (DV index)", "value": att, "fmt": ATT,
+                     "target": 100, "target_label": "100 (DV baseline)", "peer": dm,
+                     "read": "; ".join(parts)})
+    return rows
+
+
+def callouts(p: dict) -> list[str]:
+    """Plain-language highlights, derived only from the pulled numbers."""
+    t, peers = p["totals"], p.get("peers") or {}
+    dv = p.get("dv") or {}
+    ab = dv.get("attention_benchmarks") or {}
+    tgt = p.get("targets") or {}
+    out = []
+    if t.get("pct_of_goal") is not None and t.get("goal"):
+        out.append(f"Delivered {t['pct_of_goal']:.1f}% of goal "
+                   f"({t['impressions']:,.0f} of {t['goal']:,.0f} impressions) by the flight's end.")
+    att = dv.get("attention_overall")
+    if att is not None:
+        days = dv.get("attention_daily") or {}
+        line = f"Attention index {att:.0f}: {att / 100 - 1:.0%} above DoubleVerify's 100 baseline"
+        if days:
+            line += f", and above 100 on every reported day ({min(days.values()):.0f}–{max(days.values()):.0f})" \
+                if min(days.values()) > 100 else f" (daily {min(days.values()):.0f}–{max(days.values()):.0f})"
+        dm = ab.get("direct_mean")
+        if dm:
+            line += f". Newsweek Direct lines averaged {dm:.0f} over the same dates"
+            pb = ab.get("direct_pct_below")
+            if pb is not None:
+                line += f"; this campaign out-scored {pb:.0f}% of them"
+        out.append(line + ".")
+    v = t.get("viewability_pct")
+    if v is not None:
+        daily = [r["viewability_pct"] for r in p.get("by_day") or [] if r.get("viewability_pct") is not None]
+        line = f"Viewability {v:.1f}%"
+        if tgt.get("viewability_pct"):
+            line += f", {'above' if v >= tgt['viewability_pct'] else 'below'} Newsweek's {tgt['viewability_pct']:.0f}% target"
+        if daily:
+            line += f" (daily {min(daily):.1f}–{max(daily):.1f}%)"
+        if peers.get("viewability_pct"):
+            line += f"; same-size Newsweek Direct campaigns ran {peers['viewability_pct']:.1f}%"
+        out.append(line + ".")
+    c = t.get("ctr_pct")
+    if c is not None:
+        line = f"CTR {c:.2f}% ({t['clicks']:,.0f} clicks)"
+        if peers.get("ctr_pct"):
+            line += (f", {_vs(c, peers['ctr_pct'])} same-size Newsweek Direct campaigns "
+                     f"({peers['ctr_pct']:.2f}%)")
+        if tgt.get("ctr_pct"):
+            line += f"; Newsweek's {tgt['ctr_pct']:.2f}% display target was not reached" if c < tgt["ctr_pct"] \
+                else f"; above Newsweek's {tgt['ctr_pct']:.2f}% display target"
+        out.append(line + ".")
+    dev = p.get("by_device") or []
+    tot_clk = sum(r["ad_server_clicks"] for r in dev) or 0
+    if dev and tot_clk:
+        top = max(dev, key=lambda r: r["ad_server_clicks"])
+        out.append(f"{top['device_category_name']} drove {top['ad_server_clicks'] / tot_clk:.0%} of clicks "
+                   f"at {top['ctr_pct']:.2f}% CTR, the strongest device.")
+    return out
+
+
 def _att_or_pending(att_day: dict, day: str):
     """A day after DV's latest reported date reads "pending" (DV lags ~2
     days, so the flight's last day or two arrive in a later email); an
@@ -186,6 +294,17 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
         vc.alignment = Alignment(horizontal="left", indent=1, vertical="center")
     ws.row_dimensions[vr].height = 34
     row = vr + 2
+
+    # Highlights
+    row = _section(ws, row, "Highlights")
+    for line in callouts(p):
+        c = ws.cell(row, 2, f"•  {line}")
+        c.font = F_BODY
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
+        ws.row_dimensions[row].height = 28
+        row += 1
+    row += 1
 
     # Campaign details
     row = _section(ws, row, "Campaign")
@@ -237,6 +356,37 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     li_total = row - 2
     for rr in range(li_first, li_total + 1):
         ws.cell(rr, 2).alignment = Alignment(wrap_text=True, vertical="center")
+
+    # Against Newsweek benchmarks
+    bm = benchmarks(p)
+    if bm:
+        row = _section(ws, row, "Against Newsweek benchmarks")
+        b_first = row + 1
+        row = _table(ws, row, ["Metric", "This campaign", "Newsweek target", "Direct peers", "Read"],
+                     [[b["metric"], b["value"], b.get("target"), b.get("peer"), b["read"]] for b in bm],
+                     [None, None, None, None, None])
+        for i, b in enumerate(bm):
+            r = b_first + i
+            for col in (3, 4, 5):
+                ws.cell(r, col).number_format = b["fmt"]
+            if b.get("target_label"):
+                ws.cell(r, 4).value = b["target_label"]
+            rd = ws.cell(r, 6)
+            rd.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
+            ws.row_dimensions[r].height = 28
+        ws.cell(b_first - 1, 6).alignment = Alignment(horizontal="left", vertical="center")
+        ws.merge_cells(start_row=b_first - 1, start_column=6, end_row=b_first - 1, end_column=9)
+        peers = p.get("peers") or {}
+        ab = (p.get("dv") or {}).get("attention_benchmarks") or {}
+        if peers or ab:
+            ws.cell(row - 1, 2,
+                    "Direct peers: other Newsweek Direct campaigns over the same dates"
+                    + (f" on the same sizes ({', '.join(peers['sizes'])}; {peers['orders']} campaigns "
+                       "with 50k+ impressions)" if peers else "")
+                    + (f"; attention across {ab['direct_lines']} Direct line items." if ab.get("direct_lines") else ".")
+                    ).font = F_NOTE
+            row += 1
 
     notes = [
         "Delivery, clicks and viewability: Google Ad Manager ad server and Active View, "

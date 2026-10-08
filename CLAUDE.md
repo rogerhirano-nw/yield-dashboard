@@ -1247,7 +1247,18 @@ pulling. Every sheet's masthead carries **the Newsweek wordmark (left,
 brand red) and the client's logo (right)** — pass `--client-logo <url|path>`
 (or the workflow's `client_logo` input; SVG is rasterised with cairosvg).
 Source the client mark from the client's own site, never a third-party logo
-aggregator. A $0-CPM line reports $0 revenue: GAM
+aggregator.
+**Every report grades the campaign against Newsweek benchmarks** (Roger,
+2026-10-08: "is this a good campaign or not?") — a Highlights block and an
+"Against Newsweek benchmarks" table on the Summary sheet: Newsweek's own
+targets (`settings.json benchmarks_by_format`, Display 70% viewability /
+0.30% CTR), **same-period Newsweek Direct peers on the campaign's own creative
+sizes** (other `Newsweek_Direct` orders, 50k+ impressions; size matters, a
+300x250 must not be graded against interscrollers), and Attention vs DV's 100
+baseline and the Newsweek Direct average over the same dates. The 0.30% CTR
+target is aspirational for standard display: on 2026-09-23..10-07 no
+same-size Direct campaign reached it (peers 0.09–0.13%), so CTR reads against
+peers first. A $0-CPM line reports $0 revenue: GAM
 holds no billing for it. The first one was order 4202666637 (Elevance Health,
 AI Health Summit 2026, 2026-10-08).
 

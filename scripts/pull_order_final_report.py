@@ -161,7 +161,7 @@ def _attention_from_inbox(out: dict, ids: list[str], start, end) -> None:
         return
     if df.empty or "line_item_id" not in df.columns:
         return
-    df = df[df["line_item_id"].isin(set(ids)) & df["attention_index"].notna()].copy()
+    df = df[df["attention_index"].notna()].copy()
     df["date"] = pd.to_datetime(df["date"]).dt.date
     df = df[(df["date"] >= start) & (df["date"] <= end)]
     if df.empty:
@@ -173,6 +173,10 @@ def _attention_from_inbox(out: dict, ids: list[str], start, end) -> None:
     best = df.groupby(["date", "line_item_id"])["_msg_end"].transform("max")
     df = df[df["_msg_end"] == best]
     df = df.drop_duplicates(subset=[c for c in df.columns if c not in ("_email_message_id",)])
+    out["attention_benchmarks"] = _attention_peers(df, ids)
+    df = df[df["line_item_id"].isin(set(ids))]
+    if df.empty:
+        return
     out["attention"] = [
         {"line_item_id": li, "attention_index": float(g["attention_index"].mean()),
          "rows": int(len(g)), "first_date": str(g["date"].min()), "last_date": str(g["date"].max())}
@@ -181,6 +185,76 @@ def _attention_from_inbox(out: dict, ids: list[str], start, end) -> None:
                               for d, g in df.groupby("date")}
     out["attention_overall"] = float(df["attention_index"].mean())
     out["attention_source"] = "DV report emails (inbox)"
+
+
+# Internal/test orders never count as peers (same list as the dashboard's
+# _EXCLUDED_ORDER_IDS).
+_EXCLUDED_ORDER_IDS = {"3648897741", "4082002976"}
+
+
+def _attention_peers(df: pd.DataFrame, ids: list[str]) -> dict:
+    """Same-window DV Attention for the rest of Newsweek: every DV-measured
+    line, and Newsweek Direct lines (other orders) — so a campaign's index is
+    read against the house, not only against DV's 100 baseline."""
+    own = df["line_item_id"].isin(set(ids))
+    rest = df[~own]
+    direct = rest[rest["order_name"].fillna("").str.startswith("Newsweek_Direct")]
+    per_li = direct.groupby("line_item_id")["attention_index"].mean()
+    own_mean = df.loc[own, "attention_index"].mean() if own.any() else None
+    return {
+        "site_mean": float(rest["attention_index"].mean()) if not rest.empty else None,
+        "direct_mean": float(direct["attention_index"].mean()) if not direct.empty else None,
+        "direct_lines": int(per_li.size),
+        "direct_pct_below": (float((per_li < own_mean).mean() * 100)
+                             if own_mean is not None and per_li.size else None),
+    }
+
+
+def _peer_benchmarks(gc: GAMClient, start, end, sizes: list[str], order_id: str) -> dict:
+    """Same-period Newsweek Direct peers on the campaign's own creative sizes
+    (CTR and viewability depend heavily on size, so mixing in other units
+    would grade a 300x250 against interscrollers). Peers = other
+    Newsweek_Direct orders with >= 50k impressions on those sizes."""
+    df = gc._run_report(["ORDER_ID", "ORDER_NAME", "RENDERED_CREATIVE_SIZE"],
+                        METRICS, start, end)
+    if df.empty:
+        return {}
+    df = _num(df)
+    df["order_id"] = df["order_id"].astype(str)
+    d = df[df["order_name"].fillna("").str.startswith("Newsweek_Direct")
+           & ~df["order_id"].isin(_EXCLUDED_ORDER_IDS)
+           & df["rendered_creative_size"].isin(sizes)]
+    g = d.groupby("order_id")[[m.lower() for m in METRICS]].sum()
+    g = g[g["ad_server_impressions"] >= 50_000]
+    g["ctr"] = g["ad_server_clicks"] / g["ad_server_impressions"] * 100
+    g["view"] = (g["ad_server_active_view_viewable_impressions"]
+                 / g["ad_server_active_view_measurable_impressions"] * 100)
+    peers = g.drop(index=order_id, errors="ignore")
+    if peers.empty:
+        return {}
+    pooled = peers.sum()
+    out = {
+        "sizes": sizes, "orders": int(len(peers)),
+        "ctr_pct": float(pooled["ad_server_clicks"] / pooled["ad_server_impressions"] * 100),
+        "viewability_pct": float(pooled["ad_server_active_view_viewable_impressions"]
+                                 / pooled["ad_server_active_view_measurable_impressions"] * 100),
+        "ctr_median": float(peers["ctr"].median()),
+        "viewability_median": float(peers["view"].median()),
+    }
+    if order_id in g.index:
+        out["ctr_rank"] = int((g["ctr"] > g.loc[order_id, "ctr"]).sum() + 1)
+        out["viewability_rank"] = int((g["view"] > g.loc[order_id, "view"]).sum() + 1)
+        out["ranked_of"] = int(len(g))
+    return out
+
+
+def _settings_benchmark(fmt: str) -> dict:
+    """Newsweek's own targets (settings.json benchmarks_by_format)."""
+    try:
+        b = json.loads((REPO_ROOT / "settings.json").read_text()).get("benchmarks_by_format") or {}
+    except Exception:
+        return {}
+    return b.get(fmt) or b.get("Display") or {}
 
 
 def _fmt_int(v) -> str:
@@ -212,6 +286,23 @@ def build_markdown(p: dict) -> str:
           f"- **Reporting window:** {p['window']['start']} → {p['window']['end']}"
           + (" (flight not yet ended — partial)" if p["window"]["partial"] else ""),
           ""]
+    from final_report_xlsx import benchmarks, callouts
+    hl = callouts(p)
+    if hl:
+        L += ["## Highlights", ""] + [f"- {x}" for x in hl] + [""]
+    bm = benchmarks(p)
+    if bm:
+        def _f(v, fmt):
+            if v is None:
+                return "—"
+            return f"{v:.0f}" if fmt == "0;-0;\"–\"" else (f"{v*100:.2f}%" if "0.00%" in fmt else f"{v*100:.1f}%")
+        L += ["## Against Newsweek benchmarks", "",
+              "| Metric | This campaign | Target | Direct peers | Read |", "|---|---:|---:|---:|---|"]
+        for b in bm:
+            L.append(f"| {b['metric']} | {_f(b['value'], b['fmt'])} | "
+                     f"{b.get('target_label') or _f(b.get('target'), b['fmt'])} | "
+                     f"{_f(b.get('peer'), b['fmt'])} | {b['read']} |")
+        L.append("")
     L += ["## Totals", "",
           "| Impressions | Goal | % of goal | Clicks | CTR | Viewability | Measurable | Attention | Revenue |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -308,6 +399,9 @@ def _decorate(p: dict) -> dict:
         if camp.lower().startswith(adv.lower() + "-"):
             camp = camp[len(adv) + 1:]
         o["display_advertiser"], o["display_campaign"] = _pretty(adv), _pretty(camp)
+    fmts = {(li.get("name") or "").split("_")[10]
+            for li in p["line_items"] if len((li.get("name") or "").split("_")) > 10}
+    p["targets"] = _settings_benchmark(fmts.pop() if len(fmts) == 1 else "Display")
     for li in p["line_items"]:
         lp = (li.get("name") or "").split("_")
         fmt = lp[10] if len(lp) > 10 else ""
@@ -433,6 +527,10 @@ def main() -> int:
         "by_size": by_size.to_dict(orient="records"),
         "by_device": by_device.to_dict(orient="records"),
         "dv": {"note": "skipped (--no-dv)"} if args.no_dv else _dv(li_ids, start, end),
+        "peers": _peer_benchmarks(gc, start, end,
+                                  [r["rendered_creative_size"] for r in by_size.to_dict(orient="records")
+                                   if r["ad_server_impressions"] > 0] if not by_size.empty else [],
+                                  order["id"]),
     }
     payload["pulled"] = str(date.today())
     payload = _decorate(payload)
