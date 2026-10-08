@@ -225,16 +225,62 @@ def build_markdown(p: dict) -> str:
     return "\n".join(L)
 
 
+def _pretty(tok: str) -> str:
+    return tok.replace("-", " ").strip()
+
+
+def _decorate(p: dict) -> dict:
+    """Client-facing labels from the Newsweek naming convention: advertiser =
+    token 7, campaign = token 8 with the advertiser prefix it repeats dropped
+    (the same rule as dashboard_logic.line_item_display_name)."""
+    o = p["order"]
+    o["seller"] = _seller(o.get("name"))
+    parts = (o.get("name") or "").split("_")
+    if len(parts) > 8 and parts[0] == "Newsweek":
+        adv, camp = parts[7], parts[8]
+        if camp.lower().startswith(adv.lower() + "-"):
+            camp = camp[len(adv) + 1:]
+        o["display_advertiser"], o["display_campaign"] = _pretty(adv), _pretty(camp)
+    for li in p["line_items"]:
+        lp = (li.get("name") or "").split("_")
+        fmt = lp[10] if len(lp) > 10 else ""
+        sizes = ", ".join(s for s in dict.fromkeys(li.get("sizes") or []) if s)
+        li["display_name"] = " · ".join(x for x in (_pretty(fmt), sizes) if x) or li["name"]
+    w = p["window"]
+    def _d(s):
+        dt = datetime.strptime(s[:10], "%Y-%m-%d")
+        return f"{dt.day} {dt.strftime('%b %Y')}"
+    p["flight_label"] = f"{_d(w['start'])} – {_d(w['end'])}"
+    att_day = (p.get("dv") or {}).get("attention_daily") or {}
+    if att_day and not p["dv"].get("attention_window"):
+        ks = sorted(att_day)
+        p["dv"]["attention_window"] = f"{_d(ks[0])} – {_d(ks[-1])}"
+    p.setdefault("pulled", w["end"])
+    return p
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--order", default=os.environ.get("FINAL_REPORT_ORDER_ID"))
     ap.add_argument("--out", default="final_report.json")
     ap.add_argument("--markdown", default="final_report.md")
+    ap.add_argument("--xlsx", default=None,
+                    help="also write a Newsweek-styled Excel report here")
+    ap.add_argument("--from-json", default=None,
+                    help="re-render from a saved payload instead of pulling")
     ap.add_argument("--no-dv", action="store_true",
                     help="skip DV Attention/IVT (local runs without DATABASE_URL)")
     args = ap.parse_args()
-    if not args.order:
+    if not args.order and not args.from_json:
         ap.error("pass --order or set FINAL_REPORT_ORDER_ID")
+
+    if args.from_json:
+        payload = _decorate(json.loads(Path(args.from_json).read_text()))
+        Path(args.markdown).write_text(build_markdown(payload))
+        if args.xlsx:
+            from final_report_xlsx import build_xlsx
+            build_xlsx(payload, args.xlsx)
+        return 0
 
     gc = GAMClient()
     client = gc._get_soap_client()
@@ -318,7 +364,12 @@ def main() -> int:
         "by_device": by_device.to_dict(orient="records"),
         "dv": {"note": "skipped (--no-dv)"} if args.no_dv else _dv(li_ids, start, end),
     }
+    payload["pulled"] = str(date.today())
+    payload = _decorate(payload)
     Path(args.out).write_text(json.dumps(payload, indent=2, default=str))
+    if args.xlsx:
+        from final_report_xlsx import build_xlsx
+        build_xlsx(payload, args.xlsx)
     md = build_markdown(payload)
     Path(args.markdown).write_text(md)
     print(md)

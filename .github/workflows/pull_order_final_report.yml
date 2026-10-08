@@ -34,7 +34,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas googleads "sqlalchemy<2.1" psycopg2-binary
+        run: pip install google-ads-admanager google-auth pandas googleads openpyxl "sqlalchemy<2.1" psycopg2-binary
 
       - name: Run pull
         env:
@@ -45,7 +45,7 @@ jobs:
         run: |
           set -o pipefail
           python scripts/pull_order_final_report.py \
-            --out final_report.json --markdown final_report.md 2>&1 | tee /tmp/output.txt
+            --out final_report.json --markdown final_report.md --xlsx final_report.xlsx 2>&1 | tee /tmp/output.txt
           cat final_report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload report
@@ -56,4 +56,5 @@ jobs:
           path: |
             final_report.json
             final_report.md
+            final_report.xlsx
           if-no-files-found: warn
