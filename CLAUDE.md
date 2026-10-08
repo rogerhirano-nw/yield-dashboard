@@ -1224,7 +1224,10 @@ Comscore logos.
 its flight, ending yesterday if the flight is still running: totals against the
 impression goal, then per line item, day, rendered creative size and device
 (impressions, clicks, CTR, Active View viewable/measurable, revenue), plus DV
-Attention/IVT from the cache when `DATABASE_URL` is set. It writes markdown +
+Attention/IVT from the cache. **Attention is always in the report** (Roger,
+2026-10-08): it is a column on the totals, line-item and daily-delivery tables,
+and the script refuses to run without `DATABASE_URL` (`--no-dv` only for a local
+GAM-only check). A gap reads "no DV data", never a number. It writes markdown +
 JSON (the `final-report` artifact). A $0-CPM line reports $0 revenue: GAM
 holds no billing for it. The first one was order 4202666637 (Elevance Health,
 AI Health Summit 2026, 2026-10-08).

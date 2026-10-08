@@ -86,7 +86,10 @@ def _report(gc: GAMClient, dims, li_ids, start, end) -> pd.DataFrame:
 def _dv(li_ids, start, end) -> dict:
     url = os.environ.get("DATABASE_URL")
     if not url:
-        return {"note": "DATABASE_URL not set — DV skipped"}
+        # Attention is a standing part of every final report (Roger,
+        # 2026-10-08) — fail rather than ship a report without it.
+        raise SystemExit("!! DATABASE_URL is not set — DV Attention is required "
+                         "in a final report (run via the workflow, or pass --no-dv)")
     from sqlalchemy import create_engine, text
     out: dict = {}
     eng = create_engine(url)
@@ -100,6 +103,20 @@ def _dv(li_ids, start, end) -> dict:
                 "AND attention_index IS NOT NULL GROUP BY line_item_id"),
                 c, params={"ids": ids})
             out["attention"] = att.to_dict(orient="records")
+            overall = pd.read_sql(text(
+                "SELECT AVG(attention_index) AS attention_index, COUNT(*) AS rows "
+                "FROM dv_attention WHERE line_item_id = ANY(:ids) "
+                "AND attention_index IS NOT NULL"),
+                c, params={"ids": ids})
+            daily = pd.read_sql(text(
+                "SELECT date, AVG(attention_index) AS attention_index "
+                "FROM dv_attention WHERE line_item_id = ANY(:ids) "
+                "AND attention_index IS NOT NULL GROUP BY date ORDER BY date"),
+                c, params={"ids": ids})
+            out["attention_daily"] = {str(d)[:10]: float(a) for d, a in
+                                      zip(daily["date"], daily["attention_index"])}
+            v = overall["attention_index"].iloc[0] if not overall.empty else None
+            out["attention_overall"] = None if v is None or pd.isna(v) else float(v)
             ivt = pd.read_sql(text(
                 "SELECT line_item_id, traffic_validity, SUM(monitored_ads) AS monitored_ads "
                 "FROM dv_ivt WHERE line_item_id = ANY(:ids) "
@@ -124,6 +141,12 @@ def _fmt_int(v) -> str:
     return "—" if v is None or pd.isna(v) else f"{int(round(v)):,}"
 
 
+def _fmt_att(v) -> str:
+    """DV Attention index — 100 = DV's baseline. A gap reads as "no DV data",
+    never as a number."""
+    return "no DV data" if v is None or pd.isna(v) else f"{v:.0f}"
+
+
 def _fmt_pct(v, dp=1) -> str:
     return "—" if v is None or pd.isna(v) else f"{v:.{dp}f}%"
 
@@ -132,6 +155,9 @@ def build_markdown(p: dict) -> str:
     o, lis = p["order"], p["line_items"]
     by_li = {r["line_item_id"]: r for r in p["by_line_item"]}
     t = p["totals"]
+    dv = p.get("dv") or {}
+    att_all = dv.get("attention_overall")
+    att_by_li = {str(a["line_item_id"]): a.get("attention_index") for a in dv.get("attention") or []}
     L = [f"# Final report — {o['name']}", ""]
     L += [f"- **Order:** {o['id']} · {o['status']}",
           f"- **Advertiser:** {o.get('advertiser') or '—'}",
@@ -141,14 +167,14 @@ def build_markdown(p: dict) -> str:
           + (" (flight not yet ended — partial)" if p["window"]["partial"] else ""),
           ""]
     L += ["## Totals", "",
-          "| Impressions | Goal | % of goal | Clicks | CTR | Viewability | Measurable | Revenue |",
-          "|---:|---:|---:|---:|---:|---:|---:|---:|",
+          "| Impressions | Goal | % of goal | Clicks | CTR | Viewability | Measurable | Attention | Revenue |",
+          "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
           f"| {_fmt_int(t['impressions'])} | {_fmt_int(t['goal'])} | {_fmt_pct(t['pct_of_goal'])} "
           f"| {_fmt_int(t['clicks'])} | {_fmt_pct(t['ctr_pct'], 2)} | {_fmt_pct(t['viewability_pct'])} "
-          f"| {_fmt_pct(t['measurable_pct'])} | ${t['revenue']:,.2f} |", ""]
+          f"| {_fmt_pct(t['measurable_pct'])} | {_fmt_att(att_all)} | ${t['revenue']:,.2f} |", ""]
     L += ["## By line item", "",
-          "| Line item | ID | Type | Flight | Goal | Delivered | % goal | Clicks | CTR | Viewability | CPM | Revenue |",
-          "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+          "| Line item | ID | Type | Flight | Goal | Delivered | % goal | Clicks | CTR | Viewability | Attention | CPM | Revenue |",
+          "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for li in lis:
         r = by_li.get(li["id"], {})
         imp = r.get("ad_server_impressions", 0) or 0
@@ -159,6 +185,7 @@ def build_markdown(p: dict) -> str:
             f"{li['end'][:10] if li['end'] else '—'} | {_fmt_int(goal) if goal and goal > 0 else '—'} "
             f"| {_fmt_int(imp)} | {_fmt_pct(pg)} | {_fmt_int(r.get('ad_server_clicks'))} "
             f"| {_fmt_pct(r.get('ctr_pct'), 2)} | {_fmt_pct(r.get('viewability_pct'))} "
+            f"| {_fmt_att(att_by_li.get(li['id']))} "
             f"| {'$%.2f' % li['rate'] if li.get('rate') is not None else '—'} "
             f"| ${(r.get('ad_server_revenue') or 0):,.2f} |")
     L.append("")
@@ -174,12 +201,15 @@ def build_markdown(p: dict) -> str:
         L.append("")
     daily = p.get("by_day") or []
     if daily:
-        L += ["## By day", "", "| Date | Impressions | Clicks | CTR | Viewability |", "|---|---:|---:|---:|---:|"]
+        att_day = dv.get("attention_daily") or {}
+        L += ["## Daily delivery", "",
+              "| Date | Impressions | Clicks | CTR | Viewability | Attention |",
+              "|---|---:|---:|---:|---:|---:|"]
         for r in daily:
             L.append(f"| {r['date']} | {_fmt_int(r['ad_server_impressions'])} | {_fmt_int(r['ad_server_clicks'])} "
-                     f"| {_fmt_pct(r['ctr_pct'], 2)} | {_fmt_pct(r['viewability_pct'])} |")
+                     f"| {_fmt_pct(r['ctr_pct'], 2)} | {_fmt_pct(r['viewability_pct'])} "
+                     f"| {_fmt_att(att_day.get(str(r['date'])[:10]))} |")
         L.append("")
-    dv = p.get("dv") or {}
     L += ["## DoubleVerify", ""]
     if dv.get("attention"):
         for a in dv["attention"]:
@@ -200,6 +230,8 @@ def main() -> int:
     ap.add_argument("--order", default=os.environ.get("FINAL_REPORT_ORDER_ID"))
     ap.add_argument("--out", default="final_report.json")
     ap.add_argument("--markdown", default="final_report.md")
+    ap.add_argument("--no-dv", action="store_true",
+                    help="skip DV Attention/IVT (local runs without DATABASE_URL)")
     args = ap.parse_args()
     if not args.order:
         ap.error("pass --order or set FINAL_REPORT_ORDER_ID")
@@ -284,7 +316,7 @@ def main() -> int:
         "by_day": by_day.to_dict(orient="records"),
         "by_size": by_size.to_dict(orient="records"),
         "by_device": by_device.to_dict(orient="records"),
-        "dv": _dv(li_ids, start, end),
+        "dv": {"note": "skipped (--no-dv)"} if args.no_dv else _dv(li_ids, start, end),
     }
     Path(args.out).write_text(json.dumps(payload, indent=2, default=str))
     md = build_markdown(payload)
