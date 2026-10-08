@@ -138,6 +138,23 @@ def _table(ws, row: int, headers: list[str], rows: list[list], fmts: list[str | 
     return last + 2
 
 
+METRIC_NOTES = [
+    ("Attention index",
+     "DoubleVerify's Authentic Attention index scores how much attention an ad "
+     "impression earns. It combines exposure (how long the ad was in view, how "
+     "much of the screen it took and how prominent it was) with engagement "
+     "(signs a person was present and interacting, such as scrolling or touching). "
+     "It is indexed to DoubleVerify's norm of 100, so 132 means about 32% more "
+     "attention than the norm."),
+    ("Viewability",
+     "Share of measurable impressions seen under the MRC standard: at least 50% "
+     "of the ad's pixels on screen for at least one continuous second (Google Ad "
+     "Manager Active View)."),
+    ("CTR",
+     "Click-through rate: clicks divided by impressions."),
+]
+
+
 def _vs(value, ref, tol=0.10) -> str:
     """'above' / 'in line with' / 'below' a reference, ±10% relative band."""
     if value is None or not ref:
@@ -422,6 +439,21 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
         ws.cell(row, 2, n).font = F_NOTE
         row += 1
 
+    # What the attention number means — a client reading "132" needs the scale.
+    row += 1
+    row = _section(ws, row, "About the metrics")
+    for term, text in METRIC_NOTES:
+        a = ws.cell(row, 2, term.upper())
+        a.font = F_HEAD
+        a.alignment = Alignment(vertical="top")
+        b = ws.cell(row, 3, text)
+        b.font = F_BODY
+        b.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=9)
+        # merged cells don't auto-fit: ~90 chars a line at 12pt across C:I
+        ws.row_dimensions[row].height = 18 * -(-len(text) // 90) + 8
+        row += 1
+
     # KPI values now that the referenced cells exist
     vals = [f"=D{li_total}", f"=E{li_total}", f"=F{li_total}", f"=G{li_total}",
             f"=H{li_total}", f"=I{li_total}"]
@@ -495,6 +527,8 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
                           "=IF(C{r}>0,D{r}/C{r},\"\")", "=SUM(F{first}:F{last})",
                           "=IF(H{r}>0,F{r}/H{r},\"\")", "=SUM(H{first}:H{last})"])
     wb_.column_dimensions["H"].width = 17
+    wb_.cell(r, 2, "Attention is not broken out by size or device: DoubleVerify's attention "
+                   "report is split by date and line item only.").font = F_NOTE
 
     for s in wb.worksheets:
         s.sheet_properties.tabColor = INK
