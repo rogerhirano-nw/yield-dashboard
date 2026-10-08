@@ -254,7 +254,7 @@ def build_markdown(p: dict) -> str:
         for r in daily:
             L.append(f"| {r['date']} | {_fmt_int(r['ad_server_impressions'])} | {_fmt_int(r['ad_server_clicks'])} "
                      f"| {_fmt_pct(r['ctr_pct'], 2)} | {_fmt_pct(r['viewability_pct'])} "
-                     f"| {_fmt_att(att_day.get(str(r['date'])[:10]))} |")
+                     f"| {_fmt_att(att_day.get(str(r['date'])[:10])) if str(r['date'])[:10] in att_day or not att_day or str(r['date'])[:10] < max(att_day) else 'pending (DV lag)'} |")
         L.append("")
     L += ["## DoubleVerify", ""]
     if dv.get("attention"):

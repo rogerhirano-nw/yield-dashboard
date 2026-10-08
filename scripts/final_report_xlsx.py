@@ -138,6 +138,15 @@ def _table(ws, row: int, headers: list[str], rows: list[list], fmts: list[str | 
     return last + 2
 
 
+def _att_or_pending(att_day: dict, day: str):
+    """A day after DV's latest reported date reads "pending" (DV lags ~2
+    days, so the flight's last day or two arrive in a later email); an
+    earlier gap stays blank — that day genuinely has no DV data."""
+    if day in att_day:
+        return att_day[day]
+    return "pending" if att_day and day > max(att_day) else None
+
+
 def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     o, t = p["order"], p["totals"]
     dv = p.get("dv") or {}
@@ -266,7 +275,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
             d["ad_server_active_view_viewable_impressions"],
             d["ad_server_active_view_measurable_impressions"],
             "=IF(G{r}>0,F{r}/G{r},\"\")",
-            att_day.get(str(d["date"])[:10]),
+            _att_or_pending(att_day, str(d["date"])[:10]),
         ])
     end = _table(wd, r0, ["Date", "Impressions", "Clicks", "CTR", "Viewable impr.",
                           "Measurable impr.", "Viewability", "Attention"],
@@ -274,8 +283,17 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
                  total=["Total", "=SUM(C{first}:C{last})", "=SUM(D{first}:D{last})",
                         "=IF(C{r}>0,D{r}/C{r},\"\")", "=SUM(F{first}:F{last})",
                         "=SUM(G{first}:G{last})", "=IF(G{r}>0,F{r}/G{r},\"\")", att_all])
-    wd.cell(end, 2, "Attention is blank on days DoubleVerify has not reported; "
-                    "the total is DV's flight average.").font = F_NOTE
+    pending = False
+    for row_cells in wd.iter_rows(min_row=r0 + 1, max_row=end, min_col=9, max_col=9):
+        for c in row_cells:
+            if c.value == "pending":
+                c.font = Font(name=SANS, size=9, italic=True, color=MUTED)
+                pending = True
+    wd.cell(end, 2, ("“Pending”: DoubleVerify reports about two days behind, so the last "
+                     "day arrives in a later DV report. " if pending else "")
+                    + "The total is DV's average over the days it has reported"
+                    + (f" ({dv['attention_window']})." if dv.get("attention_window") else ".")
+                    ).font = F_NOTE
     wd.freeze_panes = wd.cell(r0 + 1, 3)
 
     # ------------------------------------------------------------ Breakdown
@@ -311,3 +329,37 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
         s.page_setup.fitToWidth = 1
         s.sheet_properties.pageSetUpPr.fitToPage = True
     wb.save(path)
+    suppress_formula_warnings(path)
+
+
+def suppress_formula_warnings(path: str) -> None:
+    """Silence Excel's "Inconsistent Formula" green triangles.
+
+    A total row is SUMs with ratio formulas between them (% of goal, CTR,
+    viewability), so Excel's row-consistency check flags every ratio as
+    differing from its neighbours — on a client deliverable that reads as an
+    error although the value is right. openpyxl can't write <ignoredErrors>,
+    so it is spliced into each sheet's XML after saving (schema position:
+    before <drawing>/<legacyDrawing>/<tableParts>/<extLst>, else at the end).
+    Idempotent; re-run it after anything that rewrites the file (e.g. a
+    LibreOffice recalc), which drops the element."""
+    import re
+    import shutil
+    import tempfile
+    import zipfile
+
+    tag = ('<ignoredErrors><ignoredError sqref="A1:Z500" formula="1" '
+           'formulaRange="1" unlockedFormula="1"/></ignoredErrors>')
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if re.match(r"xl/worksheets/sheet\d+\.xml$", item.filename):
+                xml = data.decode("utf-8")
+                if "<ignoredErrors" not in xml:
+                    m = re.search(r"<(?:\w+:)?(drawing|legacyDrawing|tableParts|extLst)\b", xml)
+                    i = m.start() if m else xml.rindex("</")
+                    xml = xml[:i] + tag + xml[i:]
+                data = xml.encode("utf-8")
+            zout.writestr(item, data)
+    shutil.move(tmp, path)
