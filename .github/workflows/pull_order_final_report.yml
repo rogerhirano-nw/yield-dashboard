@@ -1,0 +1,59 @@
+name: Pull order final report (any order)
+
+# Read-only end-of-flight delivery report for a GAM order: totals vs goal,
+# per line item, per day, per creative size, per device, plus DV Attention/IVT
+# from the cache. Markdown + JSON land in the "final-report" artifact and the
+# run summary. See scripts/pull_order_final_report.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: 'GAM order id'
+        required: true
+  push:
+    branches: [claude/bold-dirac-b8td1j]
+    paths:
+      - 'scripts/pull_order_final_report.py'
+      - '.github/workflows/pull_order_final_report.yml'
+
+env:
+  PUSH_ORDER: "4202666637"
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads "sqlalchemy<2.1" psycopg2-binary
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FINAL_REPORT_ORDER_ID: ${{ inputs.order || env.PUSH_ORDER }}
+        run: |
+          set -o pipefail
+          python scripts/pull_order_final_report.py \
+            --out final_report.json --markdown final_report.md 2>&1 | tee /tmp/output.txt
+          cat final_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-report
+          path: |
+            final_report.json
+            final_report.md
+          if-no-files-found: warn

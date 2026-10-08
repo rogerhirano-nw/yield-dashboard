@@ -1218,6 +1218,17 @@ removed, the script refuses to write if one reappears, and a test pins it.
 Keep Pillow installed wherever the script runs, or openpyxl silently drops the
 Comscore logos.
 
+## Final (end-of-flight) delivery reports
+`scripts/pull_order_final_report.py --order <id>` (or dispatch
+`pull_order_final_report.yml`) is a read-only pull of any order's delivery over
+its flight, ending yesterday if the flight is still running: totals against the
+impression goal, then per line item, day, rendered creative size and device
+(impressions, clicks, CTR, Active View viewable/measurable, revenue), plus DV
+Attention/IVT from the cache when `DATABASE_URL` is set. It writes markdown +
+JSON (the `final-report` artifact). A $0-CPM line reports $0 revenue: GAM
+holds no billing for it. The first one was order 4202666637 (Elevance Health,
+AI Health Summit 2026, 2026-10-08).
+
 ## Creating a Direct order from a signed IO
 `scripts/setup_io_order.py` + one spec per IO under `scripts/orders/<IO#>.json`
 (first used for **SO01190**, OMD / Apple TV+ "Way of the Warrior Kid", 2026-09-23
