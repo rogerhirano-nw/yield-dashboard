@@ -1261,7 +1261,11 @@ workflow's `targets` input, comma-separated); the report then says "campaign
 target" instead of "Newsweek target". Elevance was sold at a **0.10% CTR**
 target (Roger, 2026-10-08), not the 0.30% settings default — grading it
 against 0.30% read a met KPI as a miss. Always ask for, or read off the IO,
-the campaign's own KPI targets before grading a report. A $0-CPM line reports $0 revenue: GAM
+the campaign's own KPI targets before grading a report. **Direct-peer comparisons
+appear only when favourable** (campaign at or above peers — Roger,
+2026-10-08); an unfavourable peer is dropped from the workbook and markdown
+(highlights, benchmark table, footnote) but kept in the JSON. Targets and
+DV's 100 baseline are always shown, met or not. A $0-CPM line reports $0 revenue: GAM
 holds no billing for it. The first one was order 4202666637 (Elevance Health,
 AI Health Summit 2026, 2026-10-08).
 

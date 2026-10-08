@@ -152,9 +152,17 @@ def _tgt_kind(p: dict, key: str) -> str:
     return "campaign" if key in (p.get("target_overrides") or {}) else "Newsweek"
 
 
+def _shown(value, peer):
+    """Peer comparisons are client-facing, so one is shown only when it
+    flatters the campaign (at or above peers) — Roger, 2026-10-08: "remove the
+    direct peers when it's not favorable". Unfavourable peers stay in the JSON
+    for internal use; targets and DV's baseline are always shown."""
+    return peer if (value is not None and peer and value >= peer) else None
+
+
 def benchmarks(p: dict) -> list[dict]:
-    """One row per KPI: campaign value, Newsweek target, same-period Newsweek
-    Direct peers on the same creative sizes, and a plain-words read."""
+    """One row per KPI: campaign value, target, same-period Newsweek Direct
+    peers on the same creative sizes (only where favourable), and a read."""
     t = p["totals"]
     peers = p.get("peers") or {}
     tgt = p.get("targets") or {}
@@ -167,7 +175,8 @@ def benchmarks(p: dict) -> list[dict]:
                      "target": 1.0, "target_label": "100% of goal",
                      "peer": None, "peer_label": "",
                      "read": "Delivered in full" if t["pct_of_goal"] >= 99.5 else "Under-delivered"})
-    v, vt, vp = t.get("viewability_pct"), tgt.get("viewability_pct"), peers.get("viewability_pct")
+    v, vt = t.get("viewability_pct"), tgt.get("viewability_pct")
+    vp = _shown(v, peers.get("viewability_pct"))
     if v is not None:
         parts = []
         if vt:
@@ -177,7 +186,8 @@ def benchmarks(p: dict) -> list[dict]:
         rows.append({"metric": "Viewability (Active View)", "value": v / 100, "fmt": PCT1,
                      "target": vt / 100 if vt else None, "peer": vp / 100 if vp else None,
                      "read": "; ".join(parts)})
-    c, ct, cp = t.get("ctr_pct"), tgt.get("ctr_pct"), peers.get("ctr_pct")
+    c, ct = t.get("ctr_pct"), tgt.get("ctr_pct")
+    cp = _shown(c, peers.get("ctr_pct"))
     if c is not None:
         parts = []
         if ct:
@@ -188,7 +198,7 @@ def benchmarks(p: dict) -> list[dict]:
                      "target": ct / 100 if ct else None, "peer": cp / 100 if cp else None,
                      "read": "; ".join(parts)})
     if att is not None:
-        dm = ab.get("direct_mean")
+        dm = _shown(att, ab.get("direct_mean"))
         parts = [f"{att / 100 - 1:+.0%} vs DV's 100 baseline"]
         if dm:
             parts.append(f"{_vs(att, dm, 0.05)} the Newsweek Direct "
@@ -216,7 +226,7 @@ def callouts(p: dict) -> list[str]:
         if days:
             line += f", and above 100 on every reported day ({min(days.values()):.0f}–{max(days.values()):.0f})" \
                 if min(days.values()) > 100 else f" (daily {min(days.values()):.0f}–{max(days.values()):.0f})"
-        dm = ab.get("direct_mean")
+        dm = _shown(att, ab.get("direct_mean"))
         if dm:
             fmt = (ab.get("format") or "").lower()
             line += f". Newsweek Direct {fmt + ' ' if fmt else ''}lines averaged {dm:.0f} over the same dates"
@@ -233,13 +243,13 @@ def callouts(p: dict) -> list[str]:
                      f"{tgt['viewability_pct']:.0f}% {_tgt_kind(p, 'viewability_pct')} target")
         if daily:
             line += f" (daily {min(daily):.1f}–{max(daily):.1f}%)"
-        if peers.get("viewability_pct"):
+        if _shown(v, peers.get("viewability_pct")):
             line += f"; same-size Newsweek Direct campaigns ran {peers['viewability_pct']:.1f}%"
         out.append(line + ".")
     c = t.get("ctr_pct")
     if c is not None:
         line = f"CTR {c:.2f}% ({t['clicks']:,.0f} clicks)"
-        if peers.get("ctr_pct"):
+        if _shown(c, peers.get("ctr_pct")):
             line += (f", {_vs(c, peers['ctr_pct'])} same-size Newsweek Direct campaigns "
                      f"({peers['ctr_pct']:.2f}%)")
         if tgt.get("ctr_pct"):
@@ -387,8 +397,10 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
             ws.row_dimensions[r].height = 28
         ws.cell(b_first - 1, 6).alignment = Alignment(horizontal="left", vertical="center", indent=2)
         ws.merge_cells(start_row=b_first - 1, start_column=6, end_row=b_first - 1, end_column=9)
-        peers = p.get("peers") or {}
-        ab = (p.get("dv") or {}).get("attention_benchmarks") or {}
+        shown = [b for b in bm if b.get("peer") is not None]
+        peers = (p.get("peers") or {}) if any(b["metric"] != "Attention (DV index)" for b in shown) else {}
+        ab = ((p.get("dv") or {}).get("attention_benchmarks") or {}) \
+            if any(b["metric"] == "Attention (DV index)" for b in shown) else {}
         if peers or ab:
             ws.cell(row - 1, 2,
                     "Direct peers: other Newsweek Direct campaigns over the same dates"
