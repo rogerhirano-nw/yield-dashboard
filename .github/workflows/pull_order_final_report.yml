@@ -41,6 +41,8 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           FINAL_REPORT_ORDER_ID: ${{ inputs.order || env.PUSH_ORDER }}
         run: |
           set -o pipefail

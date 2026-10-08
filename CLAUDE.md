@@ -1227,7 +1227,16 @@ impression goal, then per line item, day, rendered creative size and device
 Attention/IVT from the cache. **Attention is always in the report** (Roger,
 2026-10-08): it is a column on the totals, line-item and daily-delivery tables,
 and the script refuses to run without `DATABASE_URL` (`--no-dv` only for a local
-GAM-only check). A gap reads "no DV data", never a number. It writes markdown +
+GAM-only check). A gap reads "no DV data", never a number. **Attention is read from DV's
+report emails for the whole flight**, not just the cache: `dv_attention` is a
+rolling ~7-day window (each refresh `_safe_replace`s it with the 2 newest DV
+emails), so a longer flight's early days are gone from it — Elevance
+(23 Sep–7 Oct) had cache attention for 30 Sep–6 Oct only. The report pulls
+enough inbox emails to span the flight (newest email wins per day) and falls
+back to the cache without `AGENTMAIL_*`. DV lags ~2 days, so a flight's last
+day or two can still read blank. **SIVT/GIVT stay out of the client
+workbook** (not client-relevant, Roger 2026-10-08); IVT is kept in the JSON
+and the internal markdown only. It writes markdown +
 JSON + **an Excel workbook in the Newsweek "Paper" design**
 (`--xlsx`, `scripts/final_report_xlsx.py`: Summary with KPI strip · Daily
 delivery · Breakdown by size/device; paper canvas, serif figures, brand-red

@@ -4,7 +4,8 @@ text, serif display figures, Franklin Gothic UI, tracked-uppercase eyebrows.
 
 Brand red is chrome only (the eyebrow tick); nothing here is severity-coloured.
 Rates are live formulas over the counts beside them, so the sheet stays
-consistent if a count is edited. Attention/IVT are DV's numbers and are typed in.
+consistent if a count is edited. Attention is DV's number and is typed in.
+IVT is deliberately absent: not client-relevant (Roger, 2026-10-08).
 """
 from __future__ import annotations
 
@@ -120,7 +121,6 @@ def build_xlsx(p: dict, path: str) -> None:
     att_all = dv.get("attention_overall")
     att_by_li = {str(a["line_item_id"]): a.get("attention_index") for a in dv.get("attention") or []}
     att_day = dv.get("attention_daily") or {}
-    ivt = dv.get("ivt_totals") or {}
     advertiser = o.get("display_advertiser") or o.get("advertiser") or ""
     campaign = o.get("display_campaign") or o["name"]
 
@@ -140,7 +140,7 @@ def build_xlsx(p: dict, path: str) -> None:
 
     # KPI strip: label row, value row (tiles). Values are formulas into the
     # line-item table / DV cells below so the strip can't disagree with them.
-    kpis = ["Impressions", "% of goal", "Clicks", "CTR", "Viewability", "Attention", "SIVT", "GIVT"]
+    kpis = ["Impressions", "% of goal", "Clicks", "CTR", "Viewability", "Attention"]
     lr, vr = row, row + 1
     for j, k in enumerate(kpis):
         lc = ws.cell(lr, 2 + j, k.upper())
@@ -162,7 +162,7 @@ def build_xlsx(p: dict, path: str) -> None:
         ["Flight", p["flight_label"]],
         ["Seller", o.get("seller") or "—"],
         ["GAM order", f"{o['id']}" + (f" ({o['po_number']})" if o.get("po_number") else "")],
-        ["Measurement", "GAM ad server + Active View; DoubleVerify Attention & IVT"],
+        ["Measurement", "GAM ad server + Active View; DoubleVerify Attention"],
     ]
     for k, v in details:
         a = ws.cell(row, 2, k.upper())
@@ -205,25 +205,11 @@ def build_xlsx(p: dict, path: str) -> None:
     for rr in range(li_first, li_total + 1):
         ws.cell(rr, 2).alignment = Alignment(wrap_text=True, vertical="center")
 
-    # DV quality
-    row = _section(ws, row, "Verification (DoubleVerify)")
-    ivt_rows = [
-        ["Attention index (100 = DV baseline)", att_all],
-        ["SIVT (sophisticated invalid traffic)", (ivt.get("Fraud/SIVT") or 0) / 100 if ivt else None],
-        ["GIVT (general invalid traffic)", (ivt.get("Fraud/GIVT") or 0) / 100 if ivt else None],
-        ["DV-monitored impressions", ivt.get("monitored_ads")],
-    ]
-    dv_first = row + 1
-    row = _table(ws, row, ["Metric", "Value"], ivt_rows, [None, None])
-    for k, fmt in zip(range(4), (ATT, PCT2, PCT2, INT)):
-        ws.cell(dv_first + k, 3).number_format = fmt
-    att_cell, sivt_cell, givt_cell = f"C{dv_first}", f"C{dv_first + 1}", f"C{dv_first + 2}"
-
     notes = [
         "Delivery, clicks and viewability: Google Ad Manager ad server and Active View, "
         f"{p['window']['start']} to {p['window']['end']}.",
-        "Attention and IVT: DoubleVerify, impression-weighted IVT per MRC; "
-        + (f"Attention covers {dv['attention_window']}." if dv.get("attention_window") else ""),
+        "Attention: DoubleVerify Authentic Attention index, 100 = DV baseline"
+        + (f"; covers {dv['attention_window']}." if dv.get("attention_window") else "."),
         f"Pulled {p['pulled']}.",
     ]
     for n in notes:
@@ -232,8 +218,8 @@ def build_xlsx(p: dict, path: str) -> None:
 
     # KPI values now that the referenced cells exist
     vals = [f"=D{li_total}", f"=E{li_total}", f"=F{li_total}", f"=G{li_total}",
-            f"=H{li_total}", f"={att_cell}", f"={sivt_cell}", f"={givt_cell}"]
-    for j, (v, fmt) in enumerate(zip(vals, (INT, PCT1, INT, PCT2, PCT1, ATT, PCT2, PCT2))):
+            f"=H{li_total}", f"=I{li_total}"]
+    for j, (v, fmt) in enumerate(zip(vals, (INT, PCT1, INT, PCT2, PCT1, ATT))):
         c = ws.cell(vr, 2 + j, v)
         c.number_format = fmt
 

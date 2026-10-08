@@ -134,7 +134,53 @@ def _dv(li_ids, start, end) -> dict:
                 }
     except Exception as e:  # report what's there; DV is supplementary
         out["error"] = f"{type(e).__name__}: {e}"
+    _attention_from_inbox(out, ids, start, end)
     return out
+
+
+def _attention_from_inbox(out: dict, ids: list[str], start, end) -> None:
+    """Full-flight Attention straight from DV's report emails.
+
+    The `dv_attention` cache is a rolling window, not history: each refresh
+    `_safe_replace`s it with the 2 newest DV emails (each a rolling 7 days),
+    so a flight longer than ~a week has its early days overwritten (seen
+    2026-10-08: Elevance, 23 Sep-7 Oct flight, cache held only 30 Sep-6 Oct).
+    The emails themselves stay in the inbox, so read back far enough to cover
+    the flight. Newest email wins per (date, line item), as in the cache.
+    Overrides the cache figures only when the inbox yields rows."""
+    key, inbox = os.environ.get("AGENTMAIL_API_KEY"), os.environ.get("AGENTMAIL_INBOX_ID")
+    if not key or not inbox:
+        out.setdefault("notes", []).append("AGENTMAIL creds not set — attention from cache only")
+        return
+    from dv_attention_client import pull_dv_attention
+    days = (end - start).days + 1
+    try:
+        df = pull_dv_attention(key, inbox, limit=min(60, days + 10))
+    except Exception as e:
+        out.setdefault("notes", []).append(f"inbox pull failed: {type(e).__name__}: {e}")
+        return
+    if df.empty or "line_item_id" not in df.columns:
+        return
+    df = df[df["line_item_id"].isin(set(ids)) & df["attention_index"].notna()].copy()
+    df["date"] = pd.to_datetime(df["date"]).dt.date
+    df = df[(df["date"] >= start) & (df["date"] <= end)]
+    if df.empty:
+        return
+    # Newest email = the one whose rolling window reaches furthest; for each
+    # (date, LI) keep only that email's rows (no assumption on inbox order).
+    msg_end = df.groupby("_email_message_id")["date"].transform("max")
+    df = df.assign(_msg_end=msg_end)
+    best = df.groupby(["date", "line_item_id"])["_msg_end"].transform("max")
+    df = df[df["_msg_end"] == best]
+    df = df.drop_duplicates(subset=[c for c in df.columns if c not in ("_email_message_id",)])
+    out["attention"] = [
+        {"line_item_id": li, "attention_index": float(g["attention_index"].mean()),
+         "rows": int(len(g)), "first_date": str(g["date"].min()), "last_date": str(g["date"].max())}
+        for li, g in df.groupby("line_item_id")]
+    out["attention_daily"] = {str(d): float(g["attention_index"].mean())
+                              for d, g in df.groupby("date")}
+    out["attention_overall"] = float(df["attention_index"].mean())
+    out["attention_source"] = "DV report emails (inbox)"
 
 
 def _fmt_int(v) -> str:
