@@ -1255,10 +1255,13 @@ targets (`settings.json benchmarks_by_format`, Display 70% viewability /
 0.30% CTR), **same-period Newsweek Direct peers on the campaign's own creative
 sizes** (other `Newsweek_Direct` orders, 50k+ impressions; size matters, a
 300x250 must not be graded against interscrollers), and Attention vs DV's 100
-baseline and the Newsweek Direct average over the same dates. The 0.30% CTR
-target is aspirational for standard display: on 2026-09-23..10-07 no
-same-size Direct campaign reached it (peers 0.09–0.13%), so CTR reads against
-peers first. A $0-CPM line reports $0 revenue: GAM
+baseline and the Newsweek Direct average over the same dates. **Campaign (IO)
+targets win over those defaults** — pass `--target ctr_pct=0.10` (or the
+workflow's `targets` input, comma-separated); the report then says "campaign
+target" instead of "Newsweek target". Elevance was sold at a **0.10% CTR**
+target (Roger, 2026-10-08), not the 0.30% settings default — grading it
+against 0.30% read a met KPI as a miss. Always ask for, or read off the IO,
+the campaign's own KPI targets before grading a report. A $0-CPM line reports $0 revenue: GAM
 holds no billing for it. The first one was order 4202666637 (Elevance Health,
 AI Health Summit 2026, 2026-10-08).
 

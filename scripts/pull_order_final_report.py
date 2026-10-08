@@ -394,6 +394,16 @@ def _client_logo(src: str | None, xlsx_path: str) -> str | None:
     return str(out)
 
 
+def _parse_targets(items: list[str]) -> dict:
+    out = {}
+    for it in items:
+        k, _, v = it.strip().partition("=")
+        if k.strip() not in ("ctr_pct", "viewability_pct", "vcr_pct"):
+            raise SystemExit(f"!! unknown target {k!r} (ctr_pct, viewability_pct, vcr_pct)")
+        out[k.strip()] = float(v)
+    return out
+
+
 def _pretty(tok: str) -> str:
     return tok.replace("-", " ").strip()
 
@@ -412,7 +422,10 @@ def _decorate(p: dict) -> dict:
         o["display_advertiser"], o["display_campaign"] = _pretty(adv), _pretty(camp)
     fmts = {(li.get("name") or "").split("_")[10]
             for li in p["line_items"] if len((li.get("name") or "").split("_")) > 10}
-    p["targets"] = _settings_benchmark(fmts.pop() if len(fmts) == 1 else "Display")
+    p["targets"] = dict(_settings_benchmark(fmts.pop() if len(fmts) == 1 else "Display"))
+    # Campaign (IO) targets win over the Newsweek defaults: a campaign sold at
+    # a 0.10% CTR KPI is graded against 0.10%, not settings.json's 0.30%.
+    p["targets"].update(p.get("target_overrides") or {})
     for li in p["line_items"]:
         lp = (li.get("name") or "").split("_")
         fmt = lp[10] if len(lp) > 10 else ""
@@ -441,6 +454,9 @@ def main() -> int:
     ap.add_argument("--client-logo", default=os.environ.get("FINAL_REPORT_CLIENT_LOGO") or None,
                     help="client logo for the workbook masthead: a PNG/JPG path or URL "
                          "(SVG needs cairosvg)")
+    ap.add_argument("--target", action="append", default=[],
+                    help="campaign KPI target overriding the Newsweek default, e.g. "
+                         "--target ctr_pct=0.10 --target viewability_pct=70 (percent units)")
     ap.add_argument("--from-json", default=None,
                     help="re-render from a saved payload instead of pulling")
     ap.add_argument("--no-dv", action="store_true",
@@ -449,8 +465,13 @@ def main() -> int:
     if not args.order and not args.from_json:
         ap.error("pass --order or set FINAL_REPORT_ORDER_ID")
 
+    overrides = _parse_targets(args.target or
+                               [t for t in os.environ.get("FINAL_REPORT_TARGETS", "").split(",") if t.strip()])
     if args.from_json:
-        payload = _decorate(json.loads(Path(args.from_json).read_text()))
+        raw = json.loads(Path(args.from_json).read_text())
+        if overrides:
+            raw["target_overrides"] = overrides
+        payload = _decorate(raw)
         Path(args.markdown).write_text(build_markdown(payload))
         if args.xlsx:
             from final_report_xlsx import build_xlsx
@@ -544,6 +565,8 @@ def main() -> int:
                                   order["id"]),
     }
     payload["pulled"] = str(date.today())
+    if overrides:
+        payload["target_overrides"] = overrides
     payload = _decorate(payload)
     Path(args.out).write_text(json.dumps(payload, indent=2, default=str))
     if args.xlsx:

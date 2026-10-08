@@ -11,6 +11,10 @@ on:
       order:
         description: 'GAM order id'
         required: true
+      targets:
+        description: 'Campaign KPI targets from the IO, e.g. ctr_pct=0.10,viewability_pct=70 (blank = Newsweek defaults)'
+        required: false
+        default: ''
       client_logo:
         description: 'Client logo URL (PNG/JPG/SVG) for the workbook masthead'
         required: false
@@ -25,6 +29,7 @@ on:
 
 env:
   PUSH_ORDER: "4202666637"
+  PUSH_TARGETS: "ctr_pct=0.10"
   PUSH_CLIENT_LOGO: "https://www.elevancehealth.com/content/dam/elevance-health-non-index/logos/Apex-Header.svg"
 
 permissions:
@@ -51,6 +56,7 @@ jobs:
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           FINAL_REPORT_ORDER_ID: ${{ inputs.order || env.PUSH_ORDER }}
+          FINAL_REPORT_TARGETS: ${{ github.event_name == 'push' && env.PUSH_TARGETS || inputs.targets }}
           FINAL_REPORT_CLIENT_LOGO: ${{ github.event_name == 'push' && env.PUSH_CLIENT_LOGO || inputs.client_logo }}
         run: |
           set -o pipefail

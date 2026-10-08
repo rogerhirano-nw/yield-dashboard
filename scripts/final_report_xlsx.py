@@ -146,6 +146,12 @@ def _vs(value, ref, tol=0.10) -> str:
     return "above" if r > tol else "below" if r < -tol else "in line with"
 
 
+def _tgt_kind(p: dict, key: str) -> str:
+    """'campaign' when the target came from the IO (--target), else the
+    Newsweek default from settings.json."""
+    return "campaign" if key in (p.get("target_overrides") or {}) else "Newsweek"
+
+
 def benchmarks(p: dict) -> list[dict]:
     """One row per KPI: campaign value, Newsweek target, same-period Newsweek
     Direct peers on the same creative sizes, and a plain-words read."""
@@ -165,7 +171,7 @@ def benchmarks(p: dict) -> list[dict]:
     if v is not None:
         parts = []
         if vt:
-            parts.append(f"{'Above' if v >= vt else 'Below'} the {vt:.0f}% target")
+            parts.append(f"{'Above' if v >= vt else 'Below'} the {vt:.0f}% {_tgt_kind(p, 'viewability_pct')} target")
         if vp:
             parts.append(f"{_vs(v, vp, 0.03)} same-size Direct peers")
         rows.append({"metric": "Viewability (Active View)", "value": v / 100, "fmt": PCT1,
@@ -175,7 +181,7 @@ def benchmarks(p: dict) -> list[dict]:
     if c is not None:
         parts = []
         if ct:
-            parts.append(f"{'Above' if c >= ct else 'Below'} the {ct:.2f}% target")
+            parts.append(f"{'Met' if round(c, 2) >= ct else 'Below'} the {ct:.2f}% {_tgt_kind(p, 'ctr_pct')} target")
         if cp:
             parts.append(f"{_vs(c, cp)} same-size Direct peers")
         rows.append({"metric": "CTR", "value": c / 100, "fmt": PCT2,
@@ -223,7 +229,8 @@ def callouts(p: dict) -> list[str]:
         daily = [r["viewability_pct"] for r in p.get("by_day") or [] if r.get("viewability_pct") is not None]
         line = f"Viewability {v:.1f}%"
         if tgt.get("viewability_pct"):
-            line += f", {'above' if v >= tgt['viewability_pct'] else 'below'} Newsweek's {tgt['viewability_pct']:.0f}% target"
+            line += (f", {'above' if v >= tgt['viewability_pct'] else 'below'} the "
+                     f"{tgt['viewability_pct']:.0f}% {_tgt_kind(p, 'viewability_pct')} target")
         if daily:
             line += f" (daily {min(daily):.1f}–{max(daily):.1f}%)"
         if peers.get("viewability_pct"):
@@ -236,8 +243,9 @@ def callouts(p: dict) -> list[str]:
             line += (f", {_vs(c, peers['ctr_pct'])} same-size Newsweek Direct campaigns "
                      f"({peers['ctr_pct']:.2f}%)")
         if tgt.get("ctr_pct"):
-            line += f"; Newsweek's {tgt['ctr_pct']:.2f}% display target was not reached" if c < tgt["ctr_pct"] \
-                else f"; above Newsweek's {tgt['ctr_pct']:.2f}% display target"
+            line += (f"; below the {tgt['ctr_pct']:.2f}% {_tgt_kind(p, 'ctr_pct')} target"
+                     if round(c, 2) < tgt["ctr_pct"]
+                     else f"; met the {tgt['ctr_pct']:.2f}% {_tgt_kind(p, 'ctr_pct')} target")
         out.append(line + ".")
     dev = p.get("by_device") or []
     tot_clk = sum(r["ad_server_clicks"] for r in dev) or 0
@@ -364,7 +372,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     if bm:
         row = _section(ws, row, "Against Newsweek benchmarks")
         b_first = row + 1
-        row = _table(ws, row, ["Metric", "This campaign", "Newsweek target", "Direct peers", "Read"],
+        row = _table(ws, row, ["Metric", "This campaign", "Target", "Direct peers", "Read"],
                      [[b["metric"], b["value"], b.get("target"), b.get("peer"), b["read"]] for b in bm],
                      [None, None, None, None, None])
         for i, b in enumerate(bm):
