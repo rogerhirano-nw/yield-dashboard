@@ -374,10 +374,10 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
             if b.get("target_label"):
                 ws.cell(r, 4).value = b["target_label"]
             rd = ws.cell(r, 6)
-            rd.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            rd.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=2)
             ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
             ws.row_dimensions[r].height = 28
-        ws.cell(b_first - 1, 6).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(b_first - 1, 6).alignment = Alignment(horizontal="left", vertical="center", indent=2)
         ws.merge_cells(start_row=b_first - 1, start_column=6, end_row=b_first - 1, end_column=9)
         peers = p.get("peers") or {}
         ab = (p.get("dv") or {}).get("attention_benchmarks") or {}
