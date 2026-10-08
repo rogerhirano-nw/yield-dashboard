@@ -1242,7 +1242,12 @@ JSON + **an Excel workbook in the Newsweek "Paper" design**
 delivery · Breakdown by size/device; paper canvas, serif figures, brand-red
 eyebrow tick only, rates as live formulas over the counts) — all three in the
 `final-report` artifact. `--from-json` re-renders a saved payload without
-pulling. A $0-CPM line reports $0 revenue: GAM
+pulling. Every sheet's masthead carries **the Newsweek wordmark (left,
+`assets/newsweek_logo.png`, rendered from newsweek.com's own logotype SVG in
+brand red) and the client's logo (right)** — pass `--client-logo <url|path>`
+(or the workflow's `client_logo` input; SVG is rasterised with cairosvg).
+Source the client mark from the client's own site, never a third-party logo
+aggregator. A $0-CPM line reports $0 revenue: GAM
 holds no billing for it. The first one was order 4202666637 (Elevance Health,
 AI Health Summit 2026, 2026-10-08).
 

@@ -9,7 +9,10 @@ IVT is deliberately absent: not client-relevant (Roger, 2026-10-08).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -57,16 +60,36 @@ def _canvas(ws, rows: int, cols: int) -> None:
     ws.sheet_view.showGridLines = False
 
 
-def _masthead(ws, eyebrow: str, title: str, sub: str) -> int:
-    ws.row_dimensions[2].height = 14
-    e = ws.cell(2, 2, eyebrow.upper())
+NEWSWEEK_LOGO = Path(__file__).resolve().parent.parent / "assets" / "newsweek_logo.png"
+
+
+def _logo(path, height_px: int) -> XLImage | None:
+    if not path or not Path(path).exists():
+        return None
+    img = XLImage(str(path))
+    img.width, img.height = round(img.width * height_px / img.height), height_px
+    return img
+
+
+def _masthead(ws, eyebrow: str, title: str, sub: str,
+              client_logo=None, right_col: str = "I") -> int:
+    """Logo row (Newsweek wordmark left, client mark right), then the
+    eyebrow / serif title / subtitle stack."""
+    ws.row_dimensions[2].height = 36
+    nw = _logo(NEWSWEEK_LOGO, 26)
+    if nw:
+        ws.add_image(nw, "B2")
+    cl = _logo(client_logo, 50)
+    if cl:
+        ws.add_image(cl, f"{right_col}2")
+    e = ws.cell(4, 2, eyebrow.upper())
     e.font = F_EYEBROW
     e.border = Border(left=TICK)
     e.alignment = Alignment(indent=1)
-    ws.cell(3, 2, title).font = F_TITLE
-    ws.row_dimensions[3].height = 30
-    ws.cell(4, 2, sub).font = F_SUB
-    return 6
+    ws.cell(5, 2, title).font = F_TITLE
+    ws.row_dimensions[5].height = 30
+    ws.cell(6, 2, sub).font = F_SUB
+    return 8
 
 
 def _section(ws, row: int, text: str) -> int:
@@ -115,7 +138,7 @@ def _table(ws, row: int, headers: list[str], rows: list[list], fmts: list[str | 
     return last + 2
 
 
-def build_xlsx(p: dict, path: str) -> None:
+def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     o, t = p["order"], p["totals"]
     dv = p.get("dv") or {}
     att_all = dv.get("attention_overall")
@@ -131,12 +154,13 @@ def build_xlsx(p: dict, path: str) -> None:
     ws.title = "Summary"
     _canvas(ws, 60, 12)
     ws.column_dimensions["A"].width = 3
-    for col, w in zip("BCDEFGHIJK", (30, 14, 14, 14, 14, 14, 14, 14, 14, 3)):
+    for col, w in zip("BCDEFGHIJK", (30, 17, 17, 17, 17, 17, 17, 14, 14, 3)):
         ws.column_dimensions[col].width = w
     row = _masthead(ws, "Newsweek · Campaign final report",
                     f"{advertiser} — {campaign}" if advertiser else campaign,
                     f"Flight {p['flight_label']} · Order {o['id']}"
-                    + (f" · {o['po_number']}" if o.get("po_number") else ""))
+                    + (f" · {o['po_number']}" if o.get("po_number") else ""),
+                    client_logo, "I")
 
     # KPI strip: label row, value row (tiles). Values are formulas into the
     # line-item table / DV cells below so the strip can't disagree with them.
@@ -231,7 +255,7 @@ def build_xlsx(p: dict, path: str) -> None:
     for col, w in zip("BCDEFGHIJ", (14, 14, 12, 10, 14, 14, 12, 12, 3)):
         wd.column_dimensions[col].width = w
     r0 = _masthead(wd, "Newsweek · Daily delivery", f"{advertiser} — {campaign}" if advertiser else campaign,
-                   f"Flight {p['flight_label']}")
+                   f"Flight {p['flight_label']}", client_logo, "I")
     drows = []
     for d in p.get("by_day") or []:
         drows.append([
@@ -261,7 +285,7 @@ def build_xlsx(p: dict, path: str) -> None:
     for col, w in zip("BCDEFGH", (22, 14, 12, 10, 14, 14, 3)):
         wb_.column_dimensions[col].width = w
     r = _masthead(wb_, "Newsweek · Delivery breakdown", f"{advertiser} — {campaign}" if advertiser else campaign,
-                  f"Flight {p['flight_label']}")
+                  f"Flight {p['flight_label']}", client_logo, "H")
     for key, title, col in (("by_size", "By creative size", "rendered_creative_size"),
                             ("by_device", "By device", "device_category_name")):
         rows = p.get(key) or []

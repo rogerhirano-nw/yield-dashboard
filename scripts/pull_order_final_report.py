@@ -271,6 +271,27 @@ def build_markdown(p: dict) -> str:
     return "\n".join(L)
 
 
+def _client_logo(src: str | None, xlsx_path: str) -> str | None:
+    """Local PNG path for the client logo: downloads a URL and rasterises an
+    SVG (via cairosvg) next to the workbook. None when no logo was given."""
+    if not src:
+        return None
+    import urllib.request
+    data = src
+    if src.startswith(("http://", "https://")):
+        req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
+        data = urllib.request.urlopen(req, timeout=30).read()
+    else:
+        data = Path(src).read_bytes()
+    out = Path(xlsx_path).with_name("client_logo.png")
+    if src.lower().split("?")[0].endswith(".svg") or data.lstrip()[:5] in (b"<?xml", b"<svg "):
+        import cairosvg
+        cairosvg.svg2png(bytestring=data, write_to=str(out), output_height=176)
+    else:
+        out.write_bytes(data)
+    return str(out)
+
+
 def _pretty(tok: str) -> str:
     return tok.replace("-", " ").strip()
 
@@ -312,6 +333,9 @@ def main() -> int:
     ap.add_argument("--markdown", default="final_report.md")
     ap.add_argument("--xlsx", default=None,
                     help="also write a Newsweek-styled Excel report here")
+    ap.add_argument("--client-logo", default=os.environ.get("FINAL_REPORT_CLIENT_LOGO") or None,
+                    help="client logo for the workbook masthead: a PNG/JPG path or URL "
+                         "(SVG needs cairosvg)")
     ap.add_argument("--from-json", default=None,
                     help="re-render from a saved payload instead of pulling")
     ap.add_argument("--no-dv", action="store_true",
@@ -325,7 +349,7 @@ def main() -> int:
         Path(args.markdown).write_text(build_markdown(payload))
         if args.xlsx:
             from final_report_xlsx import build_xlsx
-            build_xlsx(payload, args.xlsx)
+            build_xlsx(payload, args.xlsx, _client_logo(args.client_logo, args.xlsx))
         return 0
 
     gc = GAMClient()
@@ -415,7 +439,7 @@ def main() -> int:
     Path(args.out).write_text(json.dumps(payload, indent=2, default=str))
     if args.xlsx:
         from final_report_xlsx import build_xlsx
-        build_xlsx(payload, args.xlsx)
+        build_xlsx(payload, args.xlsx, _client_logo(args.client_logo, args.xlsx))
     md = build_markdown(payload)
     Path(args.markdown).write_text(md)
     print(md)

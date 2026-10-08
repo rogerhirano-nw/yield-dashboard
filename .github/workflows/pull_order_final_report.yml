@@ -11,14 +11,21 @@ on:
       order:
         description: 'GAM order id'
         required: true
+      client_logo:
+        description: 'Client logo URL (PNG/JPG/SVG) for the workbook masthead'
+        required: false
+        default: ''
   push:
     branches: [claude/bold-dirac-b8td1j]
     paths:
       - 'scripts/pull_order_final_report.py'
+      - 'scripts/final_report_xlsx.py'
+      - 'assets/newsweek_logo.png'
       - '.github/workflows/pull_order_final_report.yml'
 
 env:
   PUSH_ORDER: "4202666637"
+  PUSH_CLIENT_LOGO: "https://www.elevancehealth.com/content/dam/elevance-health-non-index/logos/Apex-Header.svg"
 
 permissions:
   contents: read
@@ -34,7 +41,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas googleads openpyxl "sqlalchemy<2.1" psycopg2-binary
+        run: pip install google-ads-admanager google-auth pandas googleads openpyxl pillow cairosvg "sqlalchemy<2.1" psycopg2-binary
 
       - name: Run pull
         env:
@@ -44,6 +51,7 @@ jobs:
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           FINAL_REPORT_ORDER_ID: ${{ inputs.order || env.PUSH_ORDER }}
+          FINAL_REPORT_CLIENT_LOGO: ${{ github.event_name == 'push' && env.PUSH_CLIENT_LOGO || inputs.client_logo }}
         run: |
           set -o pipefail
           python scripts/pull_order_final_report.py \
