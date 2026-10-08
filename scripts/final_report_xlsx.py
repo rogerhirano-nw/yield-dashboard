@@ -185,7 +185,8 @@ def benchmarks(p: dict) -> list[dict]:
         dm = ab.get("direct_mean")
         parts = [f"{att / 100 - 1:+.0%} vs DV's 100 baseline"]
         if dm:
-            parts.append(f"{_vs(att, dm, 0.05)} the Newsweek Direct average")
+            parts.append(f"{_vs(att, dm, 0.05)} the Newsweek Direct "
+                         f"{(ab.get('format') or '').lower()} average".replace("  ", " "))
         rows.append({"metric": "Attention (DV index)", "value": att, "fmt": ATT,
                      "target": 100, "target_label": "100 (DV baseline)", "peer": dm,
                      "read": "; ".join(parts)})
@@ -211,7 +212,8 @@ def callouts(p: dict) -> list[str]:
                 if min(days.values()) > 100 else f" (daily {min(days.values()):.0f}–{max(days.values()):.0f})"
         dm = ab.get("direct_mean")
         if dm:
-            line += f". Newsweek Direct lines averaged {dm:.0f} over the same dates"
+            fmt = (ab.get("format") or "").lower()
+            line += f". Newsweek Direct {fmt + ' ' if fmt else ''}lines averaged {dm:.0f} over the same dates"
             pb = ab.get("direct_pct_below")
             if pb is not None:
                 line += f"; this campaign out-scored {pb:.0f}% of them"
@@ -384,7 +386,8 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
                     "Direct peers: other Newsweek Direct campaigns over the same dates"
                     + (f" on the same sizes ({', '.join(peers['sizes'])}; {peers['orders']} campaigns "
                        "with 50k+ impressions)" if peers else "")
-                    + (f"; attention across {ab['direct_lines']} Direct line items." if ab.get("direct_lines") else ".")
+                    + (f"; attention across {ab['direct_lines']} Direct {(ab.get('format') or '').lower()} line items."
+                       if ab.get("direct_lines") else ".")
                     ).font = F_NOTE
             row += 1
 

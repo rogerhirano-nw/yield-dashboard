@@ -196,13 +196,24 @@ def _attention_peers(df: pd.DataFrame, ids: list[str]) -> dict:
     """Same-window DV Attention for the rest of Newsweek: every DV-measured
     line, and Newsweek Direct lines (other orders) — so a campaign's index is
     read against the house, not only against DV's 100 baseline."""
+    from dashboard_logic import derive_format
     own = df["line_item_id"].isin(set(ids))
     rest = df[~own]
-    direct = rest[rest["order_name"].fillna("").str.startswith("Newsweek_Direct")]
+    direct_all = rest[rest["order_name"].fillna("").str.startswith("Newsweek_Direct")]
+    # Grade like against like: a 300x250 display line next to takeovers,
+    # interstitials and video reads low on attention by construction (those
+    # formats dominate the screen). Peers = Direct lines of the same canonical
+    # format (dashboard_logic.derive_format on the line-item name).
+    fmt_of = lambda n: derive_format(None, n) if isinstance(n, str) else None
+    own_fmts = {fmt_of(n) for n in df.loc[own, "line_item_name"].dropna().unique()} - {None}
+    direct = direct_all[direct_all["line_item_name"].map(fmt_of).isin(own_fmts)] if own_fmts else direct_all
     per_li = direct.groupby("line_item_id")["attention_index"].mean()
     own_mean = df.loc[own, "attention_index"].mean() if own.any() else None
     return {
         "site_mean": float(rest["attention_index"].mean()) if not rest.empty else None,
+        "direct_all_formats_mean": (float(direct_all["attention_index"].mean())
+                                    if not direct_all.empty else None),
+        "format": ", ".join(sorted(own_fmts)) or None,
         "direct_mean": float(direct["attention_index"].mean()) if not direct.empty else None,
         "direct_lines": int(per_li.size),
         "direct_pct_below": (float((per_li < own_mean).mean() * 100)
