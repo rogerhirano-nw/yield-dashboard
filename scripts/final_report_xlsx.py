@@ -36,16 +36,16 @@ HAIR = Side(style="thin", color=BORDER)
 STRONG = Side(style="medium", color=INK)
 TICK = Side(style="thick", color=BRAND_RED)
 
-F_EYEBROW = Font(name=SANS, size=8, bold=True, color=SECONDARY)
-F_TITLE = Font(name=SERIF, size=20, color=INK)
-F_SUB = Font(name=SANS, size=10, color=SECONDARY)
-F_SECTION = Font(name=SERIF, size=13, color=INK)
-F_HEAD = Font(name=SANS, size=8, bold=True, color=SECONDARY)
-F_BODY = Font(name=SANS, size=10, color=INK)
-F_BODY_B = Font(name=SANS, size=10, bold=True, color=INK)
-F_NOTE = Font(name=SANS, size=8, italic=True, color=MUTED)
-F_KPI_L = Font(name=SANS, size=8, bold=True, color=SECONDARY)
-F_KPI_V = Font(name=SERIF, size=18, color=INK)
+F_EYEBROW = Font(name=SANS, size=10, bold=True, color=SECONDARY)
+F_TITLE = Font(name=SERIF, size=24, color=INK)
+F_SUB = Font(name=SANS, size=12, color=SECONDARY)
+F_SECTION = Font(name=SERIF, size=16, color=INK)
+F_HEAD = Font(name=SANS, size=10, bold=True, color=SECONDARY)
+F_BODY = Font(name=SANS, size=12, color=INK)
+F_BODY_B = Font(name=SANS, size=12, bold=True, color=INK)
+F_NOTE = Font(name=SANS, size=10, italic=True, color=MUTED)
+F_KPI_L = Font(name=SANS, size=10, bold=True, color=SECONDARY)
+F_KPI_V = Font(name=SERIF, size=22, color=INK)
 
 INT = '#,##0;-#,##0;"–"'
 PCT1 = '0.0%;-0.0%;"–"'
@@ -75,11 +75,11 @@ def _masthead(ws, eyebrow: str, title: str, sub: str,
               client_logo=None, right_col: str = "I") -> int:
     """Logo row (Newsweek wordmark left, client mark right), then the
     eyebrow / serif title / subtitle stack."""
-    ws.row_dimensions[2].height = 36
-    nw = _logo(NEWSWEEK_LOGO, 26)
+    ws.row_dimensions[2].height = 46
+    nw = _logo(NEWSWEEK_LOGO, 32)
     if nw:
         ws.add_image(nw, "B2")
-    cl = _logo(client_logo, 50)
+    cl = _logo(client_logo, 60)
     if cl:
         ws.add_image(cl, f"{right_col}2")
     e = ws.cell(4, 2, eyebrow.upper())
@@ -87,14 +87,14 @@ def _masthead(ws, eyebrow: str, title: str, sub: str,
     e.border = Border(left=TICK)
     e.alignment = Alignment(indent=1)
     ws.cell(5, 2, title).font = F_TITLE
-    ws.row_dimensions[5].height = 30
+    ws.row_dimensions[5].height = 36
     ws.cell(6, 2, sub).font = F_SUB
     return 8
 
 
 def _section(ws, row: int, text: str) -> int:
     ws.cell(row, 2, text).font = F_SECTION
-    ws.row_dimensions[row].height = 20
+    ws.row_dimensions[row].height = 24
     return row + 1
 
 
@@ -108,7 +108,7 @@ def _table(ws, row: int, headers: list[str], rows: list[list], fmts: list[str | 
         c.border = Border(bottom=STRONG)
         c.alignment = Alignment(horizontal="left" if j == 0 else "right",
                                 vertical="center", wrap_text=True)
-    ws.row_dimensions[row].height = 24
+    ws.row_dimensions[row].height = 30
     first = row + 1
     for i, vals in enumerate(rows):
         r = first + i
@@ -291,7 +291,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     ws.title = "Summary"
     _canvas(ws, 60, 12)
     ws.column_dimensions["A"].width = 3
-    for col, w in zip("BCDEFGHIJK", (30, 17, 17, 17, 17, 17, 17, 14, 14, 3)):
+    for col, w in zip("BCDEFGHIJK", (38, 20, 20, 20, 20, 20, 20, 17, 17, 3)):
         ws.column_dimensions[col].width = w
     row = _masthead(ws, "Newsweek · Campaign final report",
                     f"{advertiser} — {campaign}" if advertiser else campaign,
@@ -312,7 +312,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
         vc.font, vc.fill = F_KPI_V, TILE
         vc.border = Border(left=HAIR, right=HAIR, bottom=HAIR)
         vc.alignment = Alignment(horizontal="left", indent=1, vertical="center")
-    ws.row_dimensions[vr].height = 34
+    ws.row_dimensions[vr].height = 42
     row = vr + 2
 
     # Highlights
@@ -322,7 +322,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
         c.font = F_BODY
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
-        ws.row_dimensions[row].height = 28
+        ws.row_dimensions[row].height = 34
         row += 1
     row += 1
 
@@ -394,7 +394,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
             rd = ws.cell(r, 6)
             rd.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=2)
             ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=9)
-            ws.row_dimensions[r].height = 28
+            ws.row_dimensions[r].height = 34
         ws.cell(b_first - 1, 6).alignment = Alignment(horizontal="left", vertical="center", indent=2)
         ws.merge_cells(start_row=b_first - 1, start_column=6, end_row=b_first - 1, end_column=9)
         shown = [b for b in bm if b.get("peer") is not None]
@@ -434,7 +434,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     n = len(p.get("by_day") or [])
     _canvas(wd, n + 12, 11)
     wd.column_dimensions["A"].width = 3
-    for col, w in zip("BCDEFGHIJ", (14, 14, 12, 10, 14, 14, 12, 12, 3)):
+    for col, w in zip("BCDEFGHIJ", (16, 16, 12, 11, 17, 17, 14, 14, 3)):
         wd.column_dimensions[col].width = w
     r0 = _masthead(wd, "Newsweek · Daily delivery", f"{advertiser} — {campaign}" if advertiser else campaign,
                    f"Flight {p['flight_label']}", client_logo, "I")
@@ -460,7 +460,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     for row_cells in wd.iter_rows(min_row=r0 + 1, max_row=end, min_col=9, max_col=9):
         for c in row_cells:
             if c.value == "pending":
-                c.font = Font(name=SANS, size=9, italic=True, color=MUTED)
+                c.font = Font(name=SANS, size=11, italic=True, color=MUTED)
                 pending = True
     wd.cell(end, 2, ("“Pending”: DoubleVerify reports about two days behind, so the last "
                      "day arrives in a later DV report. " if pending else "")
@@ -473,7 +473,7 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
     wb_ = wb.create_sheet("Breakdown")
     _canvas(wb_, 40, 9)
     wb_.column_dimensions["A"].width = 3
-    for col, w in zip("BCDEFGH", (22, 14, 12, 10, 14, 14, 3)):
+    for col, w in zip("BCDEFGH", (26, 16, 12, 11, 17, 14, 3)):
         wb_.column_dimensions[col].width = w
     r = _masthead(wb_, "Newsweek · Delivery breakdown", f"{advertiser} — {campaign}" if advertiser else campaign,
                   f"Flight {p['flight_label']}", client_logo, "H")
@@ -494,15 +494,29 @@ def build_xlsx(p: dict, path: str, client_logo: str | None = None) -> None:
                    total=["Total", "=SUM(C{first}:C{last})", "=SUM(D{first}:D{last})",
                           "=IF(C{r}>0,D{r}/C{r},\"\")", "=SUM(F{first}:F{last})",
                           "=IF(H{r}>0,F{r}/H{r},\"\")", "=SUM(H{first}:H{last})"])
-    wb_.column_dimensions["H"].width = 14
+    wb_.column_dimensions["H"].width = 17
 
     for s in wb.worksheets:
         s.sheet_properties.tabColor = INK
         s.page_setup.orientation = "landscape"
+        # Fit to the page WIDTH only: fitting height too squeezed the whole
+        # Summary onto one page and shrank the type (Roger: "too small").
         s.page_setup.fitToWidth = 1
+        s.page_setup.fitToHeight = 0
         s.sheet_properties.pageSetUpPr.fitToPage = True
+        s.print_area = f"A1:{get_column_letter(s.max_column)}{_last_used_row(s)}"
+        s.sheet_view.zoomScale = 110
     wb.save(path)
     suppress_formula_warnings(path)
+
+
+def _last_used_row(ws) -> int:
+    """Last row holding a value (the paper canvas fills rows past the content)."""
+    last = 1
+    for row in ws.iter_rows():
+        if any(c.value is not None for c in row):
+            last = row[0].row
+    return last + 1
 
 
 def suppress_formula_warnings(path: str) -> None:

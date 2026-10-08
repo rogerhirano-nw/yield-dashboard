@@ -152,13 +152,26 @@ def _attention_from_inbox(out: dict, ids: list[str], start, end) -> None:
     if not key or not inbox:
         out.setdefault("notes", []).append("AGENTMAIL creds not set — attention from cache only")
         return
-    from dv_attention_client import pull_dv_attention
+    import dv_attention_client as dac
     days = (end - start).days + 1
+    # Log the raw report's column names (headers only — Actions logs are
+    # public) so it is visible which breakdowns DV's export carries; the
+    # parser keeps only COLUMN_MAP.
+    raw_cols: set[str] = set()
+    _orig_norm = dac._normalize_dv_frame
+    def _spy(frame):
+        raw_cols.update(str(c) for c in frame.columns if str(c))
+        return _orig_norm(frame)
+    dac._normalize_dv_frame = _spy
     try:
-        df = pull_dv_attention(key, inbox, limit=min(60, days + 10))
+        df = dac.pull_dv_attention(key, inbox, limit=min(60, days + 10))
     except Exception as e:
         out.setdefault("notes", []).append(f"inbox pull failed: {type(e).__name__}: {e}")
         return
+    finally:
+        dac._normalize_dv_frame = _orig_norm
+    out["raw_columns"] = sorted(raw_cols)
+    print("DV attention report columns:", sorted(raw_cols))
     if df.empty or "line_item_id" not in df.columns:
         return
     df = df[df["attention_index"].notna()].copy()
