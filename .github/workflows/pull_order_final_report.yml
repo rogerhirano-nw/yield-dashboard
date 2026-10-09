@@ -28,7 +28,7 @@ on:
       - '.github/workflows/pull_order_final_report.yml'
 
 env:
-  PUSH_ORDER: "4202666637"
+  PUSH_ORDER: "4202665578"
   PUSH_TARGETS: "ctr_pct=0.10"
   PUSH_CLIENT_LOGO: ""
 
