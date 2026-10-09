@@ -1,0 +1,76 @@
+name: Pull order final report (any order)
+
+# Read-only end-of-flight delivery report for a GAM order: totals vs goal,
+# per line item, per day, per creative size, per device, plus DV Attention/IVT
+# from the cache. Markdown + JSON land in the "final-report" artifact and the
+# run summary. See scripts/pull_order_final_report.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: 'GAM order id'
+        required: true
+      targets:
+        description: 'Campaign KPI targets from the IO, e.g. ctr_pct=0.10,viewability_pct=70 (blank = Newsweek defaults)'
+        required: false
+        default: ''
+      client_logo:
+        description: 'Client logo URL (PNG/JPG/SVG) for the workbook masthead'
+        required: false
+        default: ''
+  push:
+    branches: [claude/bold-dirac-b8td1j]
+    paths:
+      - 'scripts/pull_order_final_report.py'
+      - 'scripts/final_report_xlsx.py'
+      - 'assets/newsweek_logo.png'
+      - '.github/workflows/pull_order_final_report.yml'
+
+env:
+  PUSH_ORDER: "4202665578"
+  PUSH_TARGETS: "ctr_pct=0.10"
+  PUSH_CLIENT_LOGO: ""
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads openpyxl pillow cairosvg "sqlalchemy<2.1" psycopg2-binary
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          FINAL_REPORT_ORDER_ID: ${{ inputs.order || env.PUSH_ORDER }}
+          FINAL_REPORT_TARGETS: ${{ github.event_name == 'push' && env.PUSH_TARGETS || inputs.targets }}
+          FINAL_REPORT_CLIENT_LOGO: ${{ github.event_name == 'push' && env.PUSH_CLIENT_LOGO || inputs.client_logo }}
+        run: |
+          set -o pipefail
+          python scripts/pull_order_final_report.py \
+            --out final_report.json --markdown final_report.md --xlsx final_report.xlsx 2>&1 | tee /tmp/output.txt
+          cat final_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-report
+          path: |
+            final_report.json
+            final_report.md
+            final_report.xlsx
+          if-no-files-found: warn

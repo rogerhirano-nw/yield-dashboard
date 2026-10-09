@@ -1218,6 +1218,57 @@ removed, the script refuses to write if one reappears, and a test pins it.
 Keep Pillow installed wherever the script runs, or openpyxl silently drops the
 Comscore logos.
 
+## Final (end-of-flight) delivery reports
+`scripts/pull_order_final_report.py --order <id>` (or dispatch
+`pull_order_final_report.yml`) is a read-only pull of any order's delivery over
+its flight, ending yesterday if the flight is still running: totals against the
+impression goal, then per line item, day, rendered creative size and device
+(impressions, clicks, CTR, Active View viewable/measurable, revenue), plus DV
+Attention/IVT from the cache. **Attention is always in the report** (Roger,
+2026-10-08): it is a column on the totals, line-item and daily-delivery tables,
+and the script refuses to run without `DATABASE_URL` (`--no-dv` only for a local
+GAM-only check). A gap reads "no DV data", never a number. **Attention is read from DV's
+report emails for the whole flight**, not just the cache: `dv_attention` is a
+rolling ~7-day window (each refresh `_safe_replace`s it with the 2 newest DV
+emails), so a longer flight's early days are gone from it — Elevance
+(23 Sep–7 Oct) had cache attention for 30 Sep–6 Oct only. The report pulls
+enough inbox emails to span the flight (newest email wins per day) and falls
+back to the cache without `AGENTMAIL_*`. DV lags ~2 days, so a flight's last
+day or two can still read blank. **SIVT/GIVT stay out of the client
+workbook** (not client-relevant, Roger 2026-10-08); IVT is kept in the JSON
+and the internal markdown only. It writes markdown +
+JSON + **an Excel workbook in the Newsweek "Paper" design**
+(`--xlsx`, `scripts/final_report_xlsx.py`: Summary with KPI strip · Daily
+delivery · Breakdown by size/device; paper canvas, serif figures, brand-red
+eyebrow tick only, rates as live formulas over the counts) — all three in the
+`final-report` artifact. `--from-json` re-renders a saved payload without
+pulling. Every sheet's masthead carries **the Newsweek wordmark (left,
+`assets/newsweek_logo.png`, rendered from newsweek.com's own logotype SVG in
+brand red) and the client's logo (right)** — pass `--client-logo <url|path>`
+(or the workflow's `client_logo` input; SVG is rasterised with cairosvg).
+Source the client mark from the client's own site, never a third-party logo
+aggregator.
+**Every report grades the campaign against Newsweek benchmarks** (Roger,
+2026-10-08: "is this a good campaign or not?") — a Highlights block and an
+"Against Newsweek benchmarks" table on the Summary sheet: Newsweek's own
+targets (`settings.json benchmarks_by_format`, Display 70% viewability /
+0.30% CTR), **same-period Newsweek Direct peers on the campaign's own creative
+sizes** (other `Newsweek_Direct` orders, 50k+ impressions; size matters, a
+300x250 must not be graded against interscrollers), and Attention vs DV's 100
+baseline and the Newsweek Direct average over the same dates. **Campaign (IO)
+targets win over those defaults** — pass `--target ctr_pct=0.10` (or the
+workflow's `targets` input, comma-separated); the report then says "campaign
+target" instead of "Newsweek target". Elevance was sold at a **0.10% CTR**
+target (Roger, 2026-10-08), not the 0.30% settings default — grading it
+against 0.30% read a met KPI as a miss. Always ask for, or read off the IO,
+the campaign's own KPI targets before grading a report. **Direct-peer comparisons
+appear only when favourable** (campaign at or above peers — Roger,
+2026-10-08); an unfavourable peer is dropped from the workbook and markdown
+(highlights, benchmark table, footnote) but kept in the JSON. Targets and
+DV's 100 baseline are always shown, met or not. A $0-CPM line reports $0 revenue: GAM
+holds no billing for it. The first one was order 4202666637 (Elevance Health,
+AI Health Summit 2026, 2026-10-08).
+
 ## Creating a Direct order from a signed IO
 `scripts/setup_io_order.py` + one spec per IO under `scripts/orders/<IO#>.json`
 (first used for **SO01190**, OMD / Apple TV+ "Way of the Warrior Kid", 2026-09-23
