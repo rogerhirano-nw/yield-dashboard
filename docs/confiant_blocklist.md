@@ -385,6 +385,38 @@ PR #133 for the fix. The plist should carry only `PATH`, paths
 (`CONFIANT_BLOCKLIST_PROFILE_DIR`, `CONFIANT_BLOCKLIST_STATE`), and
 process-control keys (`AbandonProcessGroup`, etc.).
 
+## Phase 2 is OFF by default (2026-10) — the Apple PG incident
+
+In 2026-09 the 04:00 ET cron blocked **Apple PG creatives in GAM Ad Review
+Center that Confiant never flagged**. Verified against the Confiant API for
+2026-08-15..10-14: all 182 Google cloaked-by-ID flags (87 creatives) were
+served by the open-exchange order `Newsweek_OpenExchange_GoogleAdExchange`
+(3670823949) — 179 MediaGo native ads + one TTD/citymd.com creative — and
+none touched an Apple PG order, line item, domain or creative. The bad blocks
+came from `gam_arc.block_in_arc`: it waited a fixed 8s after filtering, then
+clicked the **first** "Block ad" button on the page. When GAM's filter was
+slower than that (or the reload fallback dropped the filter), the page was
+still the unfiltered ARC feed, whose top cards were the high-volume Apple PG
+creatives. It then reported "blocked" against the MediaGo response ID, so the
+summary email looked normal.
+
+Fixes:
+- Phase 2 only runs with **`--arc`** (`--no-arc` is a kept-for-compat no-op).
+  The launchd plist doesn't pass it, so the nightly job never touches ARC.
+- `block_in_arc` now polls for a settled result and clicks only when exactly
+  **one** card is on screen (held across two polls), the page carries the
+  response ID being filtered, and the card isn't a Programmatic Guaranteed /
+  Preferred Deal ad. Otherwise it returns `ambiguous` / `unconfirmed` /
+  `deal-ad` / `no-block-btn` and clicks nothing. `tests/test_gam_arc.py`
+  replays the incident's page states (the old code fails 10 of 12).
+- The deal-marker and response-ID checks read the whole page text, not a
+  scoped card — if ARC's sidebar ever lists "Programmatic guaranteed" as a
+  filter label, every block will be refused as `deal-ad`. That fails safe;
+  scope it to the card element once someone inspects the live DOM.
+
+Before turning `--arc` back on, run it once watched (`--arc --debug`,
+non-headless) and confirm a real block lands on the right card.
+
 ## Phase 2 integration: ARC blocks happen in the daily cron too
 
 As of PR #277 (2026-06-18) the daily `confiant_blocklist.py` cron has a
