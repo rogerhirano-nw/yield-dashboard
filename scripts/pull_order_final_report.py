@@ -418,7 +418,9 @@ def _parse_targets(items: list[str]) -> dict:
 
 
 def _pretty(tok: str) -> str:
-    return tok.replace("-", " ").strip()
+    # A doubled hyphen is the convention's stand-in for a separator
+    # ("Interview--AI-Health-Summit" -> "Interview – AI Health Summit").
+    return " ".join(tok.replace("--", " \u2013 ").replace("-", " ").split())
 
 
 def _decorate(p: dict) -> dict:

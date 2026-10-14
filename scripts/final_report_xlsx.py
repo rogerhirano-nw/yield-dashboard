@@ -63,11 +63,18 @@ def _canvas(ws, rows: int, cols: int) -> None:
 NEWSWEEK_LOGO = Path(__file__).resolve().parent.parent / "assets" / "newsweek_logo.png"
 
 
-def _logo(path, height_px: int) -> XLImage | None:
+def _logo(path, height_px: int, max_width_px: int | None = None) -> XLImage | None:
+    """Scale to height_px; a wide mark (e.g. KFSHRC's 3:1 lockup) is instead
+    scaled up to fill max_width_px, capped at 1.4x the height, so it isn't
+    tiny next to a square one."""
     if not path or not Path(path).exists():
         return None
     img = XLImage(str(path))
-    img.width, img.height = round(img.width * height_px / img.height), height_px
+    ratio = img.width / img.height
+    h = height_px
+    if max_width_px and ratio * height_px < max_width_px:
+        h = min(round(max_width_px / ratio), round(height_px * 1.4))
+    img.width, img.height = round(ratio * h), h
     return img
 
 
@@ -79,7 +86,7 @@ def _masthead(ws, eyebrow: str, title: str, sub: str,
     nw = _logo(NEWSWEEK_LOGO, 32)
     if nw:
         ws.add_image(nw, "B2")
-    cl = _logo(client_logo, 60)
+    cl = _logo(client_logo, 60, max_width_px=220)
     if cl:
         ws.add_image(cl, f"{right_col}2")
     e = ws.cell(4, 2, eyebrow.upper())
