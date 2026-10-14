@@ -152,7 +152,7 @@ class RunSummary:
     cloaked_for_review: list[confiant_client.FlaggedRow]
     dry_run: bool
     success: bool
-    arc: ArcStats | None = None  # Phase 2 results (None if --no-arc or n/a)
+    arc: ArcStats | None = None  # Phase 2 results (None unless --arc, or n/a)
     # Set by push_and_record when GAMBlocklistBrowser had to fall back to a
     # non-primary URL candidate to reach the Protection detail page. Surfaces
     # as a yellow callout in the daily email so we know to update
@@ -915,9 +915,16 @@ def _parse_args() -> argparse.Namespace:
                         "Default: ~/.confiant-blocklist/playwright-profile")
     p.add_argument("--no-email", action="store_true",
                    help="Skip the summary email even if env vars are set.")
+    p.add_argument("--arc", action="store_true",
+                   help="Also run Phase 2: block cloaked-by-ID creatives in "
+                        "GAM Ad Review Center. OFF by default since 2026-10 — "
+                        "an unverified click in that phase blocked Apple PG "
+                        "creatives Confiant never flagged (see "
+                        "docs/confiant_blocklist.md). Opt in only on a "
+                        "watched run.")
     p.add_argument("--no-arc", action="store_true",
-                   help="Skip the GAM Ad Review Center Phase 2 (just push "
-                        "URL flags to Protection and finish).")
+                   help="No-op, kept so older launchd plists still parse; "
+                        "Phase 2 is off unless --arc is passed.")
     p.add_argument("--auto-fix", action="store_true",
                    help="On hard failure (after URL fallback chain exhausts), "
                         "call Anthropic via auto_fix.py to propose a fix as a "
@@ -1060,7 +1067,7 @@ def main() -> int:
     # Phase 2: GAM Ad Review Center manual block for cloaked-by-ID rows.
     # Isolated from Phase 1 — any failure here is captured into ArcStats and
     # logged, but doesn't flip summary.success or alter the URL-push outcome.
-    if not args.dry_run and not args.no_arc and network_id and cloaked:
+    if args.arc and not args.no_arc and not args.dry_run and network_id and cloaked:
         summary.arc = run_arc_phase(
             cloaked_for_review=cloaked,
             profile_dir=profile_dir,

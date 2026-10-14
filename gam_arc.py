@@ -70,48 +70,111 @@ def apply_ad_response_id_filter(page, gpt_id: str) -> None:
     page.wait_for_timeout(8000)
 
 
-def block_in_arc(page, gpt_id: str, network_id: str) -> str:
-    """Filter the ARC by `Ad response ID: <gpt_id>` and click Block on the
-    matching card. Returns one of:
+# Statuses block_in_arc returns when it refuses to click. Every one of these
+# means "nothing was blocked" — the caller must not record a block.
+REFUSED_STATUSES = ("ambiguous", "deal-ad", "unconfirmed", "no-block-btn")
 
-      "blocked"      — Block clicked successfully, state.sqlite caller can record
-      "not-in-arc"   — Filter applied, ARC showed "Couldn't find matching ad"
-                       (commonly: served by an Open Bidding partner, not GAM)
-      "no-block-btn" — Card present but Block button didn't surface even after
-                       the reload trick. Rare; usually fixed by a manual visit.
+# Deal channels whose ads must never be auto-blocked: blocking a creative in
+# ARC blocks it everywhere, including the PG/PD deals a buyer has paid for.
+_DEAL_MARKERS = ("programmatic guaranteed", "preferred deal")
+
+_NOT_FOUND = "Couldn't find matching ad"
+_BLOCK_BTN = 'button[aria-label="Block ad"]'
+
+
+def _visible_block_buttons(page) -> int:
+    btns = page.locator(_BLOCK_BTN)
+    return sum(1 for i in range(btns.count()) if btns.nth(i).is_visible())
+
+
+def _wait_for_filtered_result(page, timeout_ms: int) -> str:
+    """Poll until ARC shows a settled, filtered result.
+
+    Returns "not-in-arc" (the no-match message), "one" (exactly one ad card
+    with a Block button), "many" (more than one — the filter didn't narrow the
+    list), or "none" (nothing rendered before the timeout).
+
+    The 2026-09 Apple PG incident: the old flow waited a fixed 8s and then
+    clicked the FIRST Block button on the page. When GAM was slower than 8s
+    the page was still the unfiltered ARC feed, so the cron blocked whatever
+    high-volume ad sat at the top — Apple PG creatives Confiant never flagged.
+    "many" is exactly that state, and it is never a reason to click.
+    """
+    waited = 0
+    step = 1000
+    last = "none"
+    while waited <= timeout_ms:
+        if _NOT_FOUND in page.inner_text("body"):
+            return "not-in-arc"
+        n = _visible_block_buttons(page)
+        last = "one" if n == 1 else ("many" if n > 1 else "none")
+        # Require the single-card state to hold across two polls so a list
+        # that is mid-refresh can't pass on a transient count of one.
+        if last == "one":
+            page.wait_for_timeout(step)
+            waited += step
+            if _NOT_FOUND in page.inner_text("body"):
+                return "not-in-arc"
+            if _visible_block_buttons(page) == 1:
+                return "one"
+            continue
+        page.wait_for_timeout(step)
+        waited += step
+    return last
+
+
+def block_in_arc(page, gpt_id: str, network_id: str) -> str:
+    """Filter the ARC by `Ad response ID: <gpt_id>` and block the matching
+    card — only when it can prove the card is the one Confiant flagged.
+    Returns one of:
+
+      "blocked"      — exactly one card matched, it isn't a deal ad, and the
+                       click went through; the caller records the block
+      "not-in-arc"   — ARC showed "Couldn't find matching ad" (commonly:
+                       Confiant RTB caught it upstream, or Open Bidding)
+      "ambiguous"    — more than one ad on screen after filtering, i.e. the
+                       filter didn't apply. Refused: clicking here is what
+                       blocked unflagged Apple PG creatives in 2026-09
+      "deal-ad"      — the matched card is a PG / preferred-deal ad. Refused:
+                       those need a human decision
+      "unconfirmed"  — the card didn't show the response ID we filtered on
+      "no-block-btn" — no card rendered even after the reload trick
+
+    Anything other than "blocked" means nothing was clicked.
     """
     page.goto(arc_url(network_id), wait_until="load", timeout=60000)
     page.wait_for_timeout(7000)
     apply_ad_response_id_filter(page, gpt_id)
 
-    if "Couldn't find matching ad" in page.inner_text("body"):
-        return "not-in-arc"
-
-    # Wait for the Block button. If it doesn't appear, try the reload trick:
-    # GAM persists the filter as &as=<blob> in the URL hash, post-reload
-    # hydration renders skeleton-stuck cards properly.
-    try:
-        page.locator('button[aria-label="Block ad"]').first.wait_for(
-            state="visible", timeout=15000
-        )
-    except Exception:
+    state = _wait_for_filtered_result(page, timeout_ms=20000)
+    if state == "none":
+        # Skeleton-stuck low-impression cards: reload. GAM persists the filter
+        # in the URL hash (&as=…) — but if it doesn't, the reload lands on the
+        # unfiltered feed, which the "many" check below refuses.
         page.reload(wait_until="load")
         page.wait_for_timeout(15000)
-        try:
-            page.locator('button[aria-label="Block ad"]').first.wait_for(
-                state="visible", timeout=20000
-            )
-        except Exception:
-            return "no-block-btn"
+        state = _wait_for_filtered_result(page, timeout_ms=20000)
 
-    card = page.locator('div:has-text("Ad match")').first
+    if state == "not-in-arc":
+        return "not-in-arc"
+    if state == "many":
+        return "ambiguous"
+    if state != "one":
+        return "no-block-btn"
+
+    card_text = page.inner_text("body")
+    if gpt_id not in card_text:
+        return "unconfirmed"
+    if any(m in card_text.lower() for m in _DEAL_MARKERS):
+        return "deal-ad"
+
+    btn = page.locator(_BLOCK_BTN).first
     try:
-        card.hover()
+        btn.hover()
         page.wait_for_timeout(800)
     except Exception:
         pass
-
-    page.locator('button[aria-label="Block ad"]').first.click()
+    btn.click()
     page.wait_for_timeout(4000)
 
     # Confirm dialog (if any)

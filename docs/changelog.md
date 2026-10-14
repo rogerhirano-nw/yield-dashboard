@@ -4,6 +4,15 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-10-14 — Confiant ARC auto-block: off by default, refuses unverified clicks
+
+The daily Confiant cron's Ad Review Center phase blocked Apple PG creatives
+Confiant never flagged (all 182 cloaked flags Aug 15–Oct 14 were open-exchange
+MediaGo/TTD ads). Cause: `block_in_arc` clicked the first "Block ad" button
+after a fixed 8s wait, which on a slow filter was the top of the unfiltered
+feed. Phase 2 now needs `--arc`, and the click requires exactly one matching,
+non-deal card. Details in `docs/confiant_blocklist.md`.
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup
