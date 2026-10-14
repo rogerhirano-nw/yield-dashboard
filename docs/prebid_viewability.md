@@ -432,6 +432,55 @@ deficient, which is why the banner-focused DOM work found nothing wrong.
 Both sit around −3 to −7pp render with a similar amount of mix. Worth a look
 after the three above; not the same class of problem.
 
+## Off-size renders: the mobile 300x600 that wasn't Ozone's (2026-10-14)
+
+**The report.** A 300x600 was seen rendering on a mobile article page, where
+no slot's size array includes 300x600, and was reported to Ozone. Ozone
+checked their data, said they had sent no 300x600 bids for the slot, and asked
+for a HAR. They were right.
+
+**What the screenshot showed.** Ozone did win `dfp-ad-inarticle1` (300x250,
+$0.72), and served a 300x250. The 300x600 was a different element: an Ogury
+in-article "reveal" (`ogy-root-container-wm-hb-iart-…`, class
+`ogy-in-article ogy-reveal-fixed-container`, iframe `ogy-iframe-wm-hb-iart-…`).
+Inside it, a creative iframe was styled `width:300px; height:600px;
+transform: scale(1.46667)`, where 1.46667 = 440/300 stretches it to the
+viewport. The creative was Xandr creative 777024489 / member 17879, and it
+loaded a stylesheet from `static.mediagotechnology.com`.
+
+**The bid-level sweep.** `scripts/prebid_size_hunt.py`, 20 mobile article
+loads at 440x956 from a US datacenter IP:
+
+* **0 of ~260 bid responses were 300x600, from any bidder.** Ozone bid
+  300x250 / 336x280 in-article plus 640x480 video. Searched across every HAR,
+  "300x600" appears only in library code: Prebid's size table and Ogury's
+  runtime (`presage.io`), whose `knownIabSizes` lists 300x600.
+* **Ogury comes in on two paths.** One is its own s2s bidder `ogury` via
+  Magnite PBS, bidding 300x50 on the sticky slot. The other is **inside
+  Amazon APS**: `aps` bids whose `creativeId` is `ogy-3-12_74_…` and whose
+  `meta.networkId` is `sbadxc`, seen at 300x50 on `dfp-ad-sticky` and 1x1 on
+  `dfp-ad-inarticle5`.
+* **Ogury bids a legal size, then renders its own size.** Its footer format
+  (`ogy-…-wm-hb-foot-…`, a 440x100 bar outside every `dfp-ad-*` slot) rendered
+  a **970x250 creative at `scale(0.4)`** after an APS `ogy-` 300x50 win. Another
+  time it rendered a 320x50 at `scale(1.375)`. The in-article 300x600 is the
+  same behaviour on an in-article slot. It did not render in these 20 loads,
+  but datacenter demand is thin.
+
+**So the bid size is not the render size for Ogury.** Prebid and GAM only see
+the size Ogury bid (300x250 / 300x50 / 1x1). The size that paints is chosen by
+Ogury's format runtime afterwards, so the slot's size array cannot prevent it.
+The fix is on Ogury's side (restrict delivery to the bid size, or turn the
+reveal/footer formats off for Newsweek), raised with Ogury and cc'd to Amazon.
+If that can't be fixed, the levers are the `ogury` bidder in PBS and the
+Ogury network inside APS.
+
+**Before blaming a partner for an off-size ad**, read the creative's container
+id, not just the slot it sits in. A `google_ads_iframe_*` holding the off-size
+creative points at the GAM/Prebid winner; an `ogy-*` (or other vendor)
+container points at that vendor. To confirm, run `pbjs.getAllWinningBids()` or
+open the Prebid extension's BIDS tab while the ad is on screen.
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take
