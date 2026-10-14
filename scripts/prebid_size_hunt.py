@@ -18,7 +18,7 @@ Usage:
     python3 scripts/prebid_size_hunt.py OUT_DIR
     LOADS=14 SKIP=6 SIZE=300x600 python3 scripts/prebid_size_hunt.py OUT_DIR
 
-Env: LOADS (6), SKIP (0, offset into the scraped article list), SIZE
+Env: LOADS (6), HEADFUL (1 = show the browser window), SKIP (0, offset into the scraped article list), SIZE
 (300x600), VIEWPORT (440x956), CHROME_PATH (Playwright's own Chromium when
 unset), HTTPS_PROXY (passed to the browser when set).
 Runs from a datacenter IP sees thinner demand than a real phone: absence of a
@@ -79,7 +79,8 @@ def articles(b):
 with sync_playwright() as pw:
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     b = pw.chromium.launch(executable_path=os.environ.get("CHROME_PATH") or None,
-                           proxy={"server": proxy} if proxy else None)
+                           proxy={"server": proxy} if proxy else None,
+                           headless=os.environ.get("HEADFUL") != "1")
     urls = articles(b)[SKIP:][:LOADS]
     print(f"{len(urls)} articles", flush=True)
     summary = []
