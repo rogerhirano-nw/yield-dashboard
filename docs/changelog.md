@@ -4,6 +4,22 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-10-15 — Social campaign report: delivery, IO billing and pacing (PepsiCo SO01195)
+
+PepsiCo World Food Day (SO01195, $175k, 10/16–11/16) puts $110k into paid
+social, a pooled 4.4M-impression goal at a $25 CPM across LinkedIn, Facebook
+and Instagram. Nothing in the repo tracked social. `scripts/social/SO01195.json`
+transcribes the "Tier 1-175k" media plan, and `scripts/social_report.py` turns
+platform delivery rows into a daily .xlsx: per-IO-line pacing and projection,
+date × platform billable vs actual spend, and an Off-plan tab for Meta's
+automatic placements (Threads / WhatsApp / Audience Network). Those placements
+aren't billed but their spend is counted. The decisions are
+`dl.io_line_pacing` + `dl.social_daily_billing` (the goal cap is pooled across
+platforms), with tests. For now the rows come from Supermetrics: Meta works,
+but LinkedIn Ads and GA4 are outside the current Supermetrics license.
+Historical Meta CPM on our account (Mar–Oct 2026, 3.2M impressions) is ~$2.06,
+so this line must pace on **impressions**, not spend.
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup
