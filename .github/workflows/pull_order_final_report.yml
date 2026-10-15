@@ -3,7 +3,7 @@ name: Pull order final report (any order)
 # Read-only end-of-flight delivery report for a GAM order: totals vs goal,
 # per line item, per day, per creative size, per device, plus DV Attention/IVT
 # from the cache. Markdown + JSON land in the "final-report" artifact and the
-# run summary. See scripts/pull_order_final_report.py.
+# run summary. See scripts/pull_order_final_report.py. (Re-run 2026-10-15: KFSHRC 13 Oct attention.)
 
 on:
   workflow_dispatch:
