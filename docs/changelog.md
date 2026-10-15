@@ -15,10 +15,11 @@ date × platform billable vs actual spend, and an Off-plan tab for Meta's
 automatic placements (Threads / WhatsApp / Audience Network). Those placements
 aren't billed but their spend is counted. The decisions are
 `dl.io_line_pacing` + `dl.social_daily_billing` (the goal cap is pooled across
-platforms), with tests. For now the rows come from Supermetrics: Meta works,
-but LinkedIn Ads and GA4 are outside the current Supermetrics license.
-Historical Meta CPM on our account (Mar–Oct 2026, 3.2M impressions) is ~$2.06,
-so this line must pace on **impressions**, not spend.
+platforms), with tests. For now the rows come from Supermetrics (Meta, LinkedIn
+and GA4 all readable after the 2026-10-15 license upgrade). Historical cost per
+thousand impressions on our accounts (Mar–Oct 2026) is ~$2.06 on Meta (3.2M
+impressions) and ~$2.07 on LinkedIn (4.58M), so this line must pace on
+**impressions**, not spend.
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 

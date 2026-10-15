@@ -57,12 +57,17 @@ platform spend, and pacing is straight-line over the inclusive flight
 deliver ~10× the goal. Meta's automatic placements spill into Threads / WhatsApp /
 Audience Network. The report lists those on an Off-plan tab, doesn't bill them,
 and still counts their spend. Restrict placements on campaigns whose IO sells
-only Facebook/Instagram. Data source today: a Supermetrics pull (MCP, interactive)
-written to CSV. LinkedIn Ads and GA4 are connected in Supermetrics but **outside
-its license** (`LICENSE_DATA_SOURCE_NOT_AVAILABLE`), so they need a license
-upgrade or direct API clients (GA4 Data API via the GAM service account; LinkedIn
-Marketing API app). First flight: PepsiCo World Food Day SO01195. Its GA4 tracking
-URLs carry `utm_id=SO01195`.
+only Facebook/Instagram. Data source today: a Supermetrics pull (MCP,
+interactive) written to CSV. Meta (`FA`), LinkedIn Ads (`LIA`, report type
+`ad_analytics_campaign`) and GA4 (`GAWA`, property `359317277` "1_GA4 -
+Newsweek") all read through Supermetrics license 2041828 (LinkedIn added
+2026-10-15). An automated daily feed still needs direct API credentials. Historical
+cost per thousand on our accounts (Mar–Oct 2026) is **~$2 on both Meta and
+LinkedIn** (LinkedIn: $9.5k / 4.58M impressions, $2.07; one video pre-roll
+campaign ran $88). **Past paid social was mostly not UTM-tagged**: in GA4,
+`paid_social` sessions carry `(not set)` or a numeric ad id as the campaign, so
+page views couldn't be tied to a flight. Flights tagged per the UTM-sheet
+pattern (`utm_id=<IO#>`) can be. First flight: PepsiCo World Food Day SO01195.
 
 **The replacement report does NOT reach `newsweek@agentmail.to`** (proven
 2026-09-17 by dispatching `refresh_ttd.yml` and reading the candidate log). The
