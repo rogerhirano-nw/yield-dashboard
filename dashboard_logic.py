@@ -1401,3 +1401,75 @@ def viewability_mix_adjusted(df, group_col, cell_cols,
         })
     out = pd.DataFrame(rows).sort_values("impressions", ascending=False)
     return out.reset_index(drop=True)
+
+
+# ── Social campaign pacing + billing (IO spec in scripts/social/<IO>.json) ──
+
+def _as_date(x):
+    return None if x is None else pd.Timestamp(x).date()
+
+
+def io_line_pacing(goal, start, end, delivered, as_of, daily_rate=None):
+    """Straight-line pacing for one IO line, graded through `as_of` (the
+    last day with data — yesterday, not today).
+
+    Returns ``{total_days, elapsed_days, days_left, expected, pace_pct,
+    needed_per_day, projected, projected_pct, short}`` or None when the
+    line has no positive goal (added-value lines). Flight days are
+    inclusive (10/16–11/16 is 32 days). `daily_rate` drives the projection;
+    it defaults to the flight-to-date average. Before the flight starts
+    nothing is expected, so pace_pct is None rather than a divide-by-zero."""
+    g = _num(goal)
+    if math.isnan(g) or g <= 0:
+        return None
+    s, e, a = _as_date(start), _as_date(end), _as_date(as_of)
+    total = (e - s).days + 1
+    elapsed = min(max((a - s).days + 1, 0), total)
+    left = total - elapsed
+    d = _num(delivered)
+    d = 0.0 if math.isnan(d) else d
+    expected = g * elapsed / total
+    rate = _num(daily_rate)
+    if math.isnan(rate):
+        rate = d / elapsed if elapsed else 0.0
+    proj = landing_projection(g, d, rate, left)
+    return {
+        "total_days": total, "elapsed_days": elapsed, "days_left": left,
+        "expected": expected,
+        "pace_pct": d / expected * 100.0 if expected > 0 else None,
+        "needed_per_day": max(g - d, 0.0) / left if left > 0 else None,
+        **proj,
+    }
+
+
+def social_daily_billing(df: pd.DataFrame, cpm: float, goal=None,
+                         date_col: str = "date",
+                         imp_col: str = "impressions",
+                         spend_col: str = "spend") -> pd.DataFrame:
+    """Add billing columns to platform delivery rows for one CPM IO line.
+
+    `billable_impressions` is delivery capped at the IO `goal`, applied in
+    date order across ALL rows (the goal is pooled across platforms, so the
+    cap is too). On the day the cap is crossed, the billable remainder is
+    shared pro rata across that day's rows. Then `billable` = billable
+    impressions x CPM / 1000, `margin` = billable - actual spend, and
+    `actual_cpm` = what the platform charged. Returns a copy; input rows
+    are not modified. No goal means nothing is capped."""
+    out = df.copy()
+    imps = pd.to_numeric(out[imp_col], errors="coerce").fillna(0.0)
+    spend = pd.to_numeric(out[spend_col], errors="coerce").fillna(0.0)
+    g = _num(goal)
+    if math.isnan(g) or g <= 0:
+        billable_imps = imps
+    else:
+        day = pd.to_datetime(out[date_col]).dt.date
+        per_day = imps.groupby(day).sum().sort_index()
+        cum_before = per_day.cumsum() - per_day
+        day_billable = (g - cum_before).clip(lower=0).combine(per_day, min)
+        share = (day_billable / per_day.where(per_day > 0)).fillna(0.0)
+        billable_imps = imps * day.map(share).astype(float)
+    out["billable_impressions"] = billable_imps
+    out["billable"] = billable_imps * float(cpm) / 1000.0
+    out["margin"] = out["billable"] - spend
+    out["actual_cpm"] = (spend / imps.where(imps > 0) * 1000.0)
+    return out

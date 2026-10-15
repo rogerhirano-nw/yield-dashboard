@@ -1228,3 +1228,57 @@ def test_viewability_mix_adjusted_empty_frame():
     from dashboard_logic import viewability_mix_adjusted
     out = viewability_mix_adjusted(_vw_frame([]), "bidder", ["unit", "device"])
     assert out.empty and "render_gap_pp" in out.columns
+
+
+# ── Social IO pacing + billing (SO01195 PepsiCo shapes) ──────────────────
+
+def test_io_line_pacing_pepsi_paid_social():
+    from dashboard_logic import io_line_pacing
+    # 4.4M over 10/16–11/16 inclusive = 32 days = 137,500/day straight-line.
+    p = io_line_pacing(4_400_000, "2026-10-16", "2026-11-16", 275_000,
+                       datetime.date(2026, 10, 17))
+    assert p["total_days"] == 32 and p["elapsed_days"] == 2 and p["days_left"] == 30
+    assert p["expected"] == 275_000
+    assert p["pace_pct"] == 100.0
+    assert p["needed_per_day"] == (4_400_000 - 275_000) / 30
+    # Default run rate = flight-to-date average → lands exactly on goal.
+    assert math.isclose(p["projected_pct"], 100.0)
+
+
+def test_io_line_pacing_edges():
+    from dashboard_logic import io_line_pacing
+    assert io_line_pacing(None, "2026-10-16", "2026-11-16", 0, "2026-10-20") is None
+    assert io_line_pacing(0, "2026-10-16", "2026-11-16", 0, "2026-10-20") is None
+    pre = io_line_pacing(1000, "2026-10-16", "2026-11-16", 0, "2026-10-15")
+    assert pre["elapsed_days"] == 0 and pre["pace_pct"] is None
+    done = io_line_pacing(1000, "2026-10-16", "2026-11-16", 900, "2026-12-01")
+    assert done["days_left"] == 0 and done["needed_per_day"] is None
+    assert done["projected_pct"] == 90.0 and done["short"] == 100.0
+    # Explicit run rate drives the projection, not the flight average.
+    slow = io_line_pacing(3200, "2026-10-16", "2026-11-16", 200, "2026-10-17", daily_rate=50)
+    assert slow["projected"] == 200 + 50 * 30
+
+
+def test_social_daily_billing_cap_is_pooled_across_platforms():
+    from dashboard_logic import social_daily_billing
+    df = pd.DataFrame({
+        "date": ["2026-10-16", "2026-10-16", "2026-10-17", "2026-10-17", "2026-10-18"],
+        "platform": ["facebook", "instagram", "facebook", "instagram", "facebook"],
+        "impressions": [600, 400, 300, 100, 500],
+        "spend": [1.2, 1.2, 0.6, 0.3, 1.0],
+    })
+    out = social_daily_billing(df, cpm=25.0, goal=1200)
+    # Day 1 fully billable (1000), day 2 has 200 of 400 left → 50% pro rata,
+    # day 3 is over goal → 0.
+    assert list(out["billable_impressions"]) == [600, 400, 150, 50, 0]
+    assert math.isclose(out["billable"].sum(), 1200 * 25 / 1000)
+    assert math.isclose(out["margin"].iloc[0], 600 * 25 / 1000 - 1.2)
+    assert math.isclose(out["actual_cpm"].iloc[0], 2.0)
+    assert "billable" not in df.columns  # input untouched
+
+
+def test_social_daily_billing_no_goal_bills_everything():
+    from dashboard_logic import social_daily_billing
+    df = pd.DataFrame({"date": ["2026-10-16"], "impressions": [0], "spend": [0.0]})
+    out = social_daily_billing(df, cpm=25.0)
+    assert out["billable"].iloc[0] == 0 and pd.isna(out["actual_cpm"].iloc[0])

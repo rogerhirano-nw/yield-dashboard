@@ -1,0 +1,70 @@
+{
+  "_source": "Newsweek-PepsiCo World Food Day Media Plan '26 - INTERNAL Plan.xlsx, tab \"Tier 1-175k\" ($175,000, flight 10/16/26-11/16/26). Tier 1 is the plan the GA4 UTM sheet (pepsico_world_food_day_26_utm_urls) was built from; Tier 2 ($200k) is the unsold alternative. Contact Theresa Hern; AM Xhejsi Kamenica.",
+  "io_number": "SO01195",
+  "advertiser": "PepsiCo Foundation",
+  "campaign": "Newsweek- PepsiCo World Food Day 26'",
+  "budget": 175000,
+  "flight_start": "2026-10-16",
+  "flight_end": "2026-11-16",
+  "campaign_name_match": ["SO01195", "IO1195"],
+  "ga4": {"property_id": "359317277", "utm_id": "SO01195",
+          "utm_campaign": "pepsico-foundation-world-food-day"},
+  "lines": [
+    {
+      "key": "paid_social",
+      "name": "META & LinkedIn Multi-Format Activation",
+      "source": "social",
+      "platforms": ["facebook", "instagram", "linkedin"],
+      "cost_method": "CPM",
+      "cpm": 25.0,
+      "impressions": 4400000,
+      "amount": 110000.0,
+      "start": "2026-10-16",
+      "end": "2026-11-16",
+      "_note": "One pooled impression goal across LinkedIn, Facebook and Instagram; the plan does not split it by platform. Billable = delivered impressions x $25 CPM, capped at the 4.4M goal."
+    },
+    {
+      "key": "apple_news",
+      "name": "Apple News Multi-Format Display Activation",
+      "source": "gam",
+      "platforms": ["apple_news"],
+      "cost_method": "CPM",
+      "cpm": 11.0,
+      "impressions": 4545455,
+      "amount": 50000.0,
+      "start": "2026-10-16",
+      "end": "2026-11-16",
+      "_note": "Served from GAM (applenews.newsweek ad unit). The plan shows 4,545,454.5 impressions ($50,000 / $11 CPM); rounded up here."
+    },
+    {
+      "key": "custom_article",
+      "name": "Longform Featured Editorial Article",
+      "source": "ga4",
+      "cost_method": "Flat",
+      "amount": 15000.0,
+      "page_views": 60000,
+      "start": "2026-10-16",
+      "end": "2026-11-16",
+      "_note": "Plan has no end date for the article; graded over the campaign flight. Page-view goal comes from GA4 on the article URL."
+    },
+    {
+      "key": "organic_social",
+      "name": "Organic META & LinkedIn Multi-Format Activation",
+      "source": "social_organic",
+      "platforms": ["facebook", "instagram", "linkedin", "tiktok", "x"],
+      "cost_method": "AV",
+      "impressions": 250000,
+      "start": "2026-10-16",
+      "end": "2026-11-16",
+      "_note": "Added value. 15 posts (3 per platform) per the UTM sheet, superseding the plan's 2 per platform."
+    },
+    {
+      "key": "newsletter",
+      "name": "The Gist of It Newsletter Sponsorship",
+      "source": "beehiiv",
+      "cost_method": "AV",
+      "start": "2026-10-16",
+      "end": "2026-10-23"
+    }
+  ]
+}
