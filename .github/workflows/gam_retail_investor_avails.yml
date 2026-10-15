@@ -1,0 +1,85 @@
+name: GAM retail-investor avails
+
+# Read-only GAM forecast: 1P finance-context KVs, 3P investor audience
+# segments, and both combined (scripts/gam_retail_investor_avails.py).
+# A push to the branch runs it with defaults. Dispatch it to pass a month or
+# a hand-picked segment list.
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to forecast YYYY-MM (default: next month)"
+        required: false
+      pick:
+        description: "How many 3P segments to auto-pick"
+        required: false
+        default: "10"
+      segment_ids:
+        description: "Comma-separated 3P segment ids (overrides the auto-pick)"
+        required: false
+      ad_units:
+        description: "Comma-separated ad unit names to scope Display to (default: whole site)"
+        required: false
+      sizes:
+        description: "Comma-separated WxH display sizes (default: 300x250,320x50,970x250,728x90)"
+        required: false
+      bidder:
+        description: "Scope Display to where this Prebid bidder serves (e.g. mobkoi); implies display only"
+        required: false
+      display_only:
+        description: "Skip video"
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [claude/laughing-brahmagupta-0gtb87]
+    paths:
+      - 'scripts/gam_retail_investor_avails.py'
+      - '.github/workflows/gam_retail_investor_avails.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  avails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager googleads google-auth pandas openpyxl
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          MONTH: ${{ inputs.month }}
+          PICK: ${{ inputs.pick }}
+          SEGMENT_IDS: ${{ inputs.segment_ids }}
+          AD_UNITS: ${{ inputs.ad_units }}
+          SIZES: ${{ inputs.sizes }}
+          DISPLAY_ONLY: ${{ inputs.display_only }}
+          BIDDER: ${{ inputs.bidder }}
+        run: |
+          set -o pipefail
+          ARGS="--pick ${PICK:-10}"
+          if [ -n "$MONTH" ]; then ARGS="$ARGS --month $MONTH"; fi
+          if [ -n "$SEGMENT_IDS" ]; then ARGS="$ARGS --segment-ids $SEGMENT_IDS"; fi
+          if [ -n "$AD_UNITS" ]; then ARGS="$ARGS --ad-units $AD_UNITS"; fi
+          if [ -n "$SIZES" ]; then ARGS="$ARGS --sizes $SIZES"; fi
+          if [ -n "$BIDDER" ]; then ARGS="$ARGS --bidder $BIDDER"; fi
+          if [ "$DISPLAY_ONLY" = "true" ]; then ARGS="$ARGS --display-only"; fi
+          python scripts/gam_retail_investor_avails.py $ARGS \
+            --csv-dir out --xlsx out/Newsweek_Retail_Investor_Avails.xlsx
+
+      - name: Upload workbook + CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retail-investor-avails
+          path: out/
