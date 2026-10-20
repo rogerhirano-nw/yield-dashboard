@@ -23,6 +23,9 @@ reference. The pull now follows their conventions (B from the inventory-format
 split, video G = `B+D+E`, discrepancy ÷ pageviews) and matches 107 of 108
 cells. The one mismatch is display Jan B. The runbook then switched from naming
 saved `TAG:` reports to defining each column by GAM dimension, metric and filter.
+Then two more calls from Roger: columns are named, never lettered; and video
+Ad Exchange always includes both In-stream video and In-stream video or audio,
+which makes video Jan and Jul–Sep entry errors too (99 of 108 cells match).
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 

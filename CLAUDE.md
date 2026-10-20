@@ -1049,10 +1049,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   have a scripted pull: `tag_ivt_gam_pull.yml` → `scripts/tag_ivt_gam_pull.py`
   queries those definitions via the API (Roger's saved `TAG:` UI reports are
   private to him, so the service account 404s on them by id). **The 2026 workbooks are the reference** (Roger, 2026-10-20): the script
-  follows their conventions (video G = `B+D+E`; column B from the
-  inventory-format split; discrepancy = `÷ pageviews`) and matches 107 of 108
-  workbook cells. The one mismatch is display Jan B, an entry error. DV and
-  GA4 numbers stay manual.
+  follows their conventions (video GAM total = Ad Exchange + PMP – PA + Ad
+  server; Ad Exchange from the inventory-format split, **video always = In-stream
+  video + In-stream video or audio**; discrepancy = `÷ pageviews`). It matches
+  99 of 108 workbook cells; the 9 others are entry errors the doc lists
+  (display Jan Ad Exchange; video Ad Exchange/GAM total Jan + Jul–Sep missing
+  the "or audio" format). Columns are referred to by name, never by letter.
+  DV and GA4 numbers stay manual. The `.pptx` walkthrough of this runbook is
+  for people **without GitHub access**, so it covers the GAM UI path only.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

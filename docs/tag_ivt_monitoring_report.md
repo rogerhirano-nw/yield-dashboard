@@ -20,14 +20,15 @@ is the one the 2026 workbooks already use, so each new month is comparable with
 the months already in them:
 - **Discrepancy** = `(GA4 pageviews − DV pre-bid) / GA4 pageviews`, the formula
   in the DV-GA sheet. Slide 4 uses the same formula.
-- **GAM total (G)** = Total code served count on the display sheet, and
-  `=B+D+E` on the video sheet.
-- **Column B (Ad Exchange)** comes from the inventory-format split: the Banner
-  row for display, the In-stream video row for video.
+- **GAM total** = Total code served count on the display sheet, and
+  Ad Exchange + PMP – PA + Ad server on the video sheet (the sheet's formula).
+- **Ad Exchange** comes from the inventory-format split: the Banner
+  row for display; **In-stream video + In-stream video or audio** for video
+  (always both — Roger, 2026-10-20).
 
 ---
 
-## 1. GAM: columns B–G, by dimension and metric
+## 1. GAM: the GAM columns, by dimension and metric
 
 Each column is defined below by its GAM **dimensions, metric and filters**.
 Build it in Ad Manager or pull it through the API; both read the same fields,
@@ -36,11 +37,11 @@ so the result is the same either way.
 **Fast path:** dispatch **`.github/workflows/tag_ivt_gam_pull.yml`** (inputs
 `start` / `end` as `YYYY-MM`; defaults run January through last closed month).
 It runs `scripts/tag_ivt_gam_pull.py`, which queries the definitions below and
-prints both sheets' columns B–G in workbook order to the run summary, with a
+prints both sheets' GAM columns (Ad Exchange through GAM total) in workbook order to the run summary, with a
 CSV attached. Locally:
 `GAM_SERVICE_ACCOUNT_JSON=… GAM_NETWORK_ID=22541732127 python scripts/tag_ivt_gam_pull.py --start 2026-10 --end 2026-12`.
-Checked against the 2026 workbook for Jan–Sep (2026-10-20): **107 of 108 cells
-match exactly**. The one exception is display January, column B (see below).
+Checked against the 2026 workbook for Jan–Sep (2026-10-20): **99 of 108 cells
+match exactly**. The 9 that don't are workbook entry errors, listed below.
 
 **Manual path:** Ad Manager → Reporting → Interactive reports → **Create my own
 report** → Historical. For every column:
@@ -58,21 +59,21 @@ video sheet. Use the *top-level* ad unit: the leaf **Ad unit**
 
 Then add the metric and any extra filter for the column:
 
-| Col | Metric (UI · API) | Extra filter (UI · API) |
+| Column | Metric (UI · API) | Extra filter (UI · API) |
 |---|---|---|
-| **B** Ad Exchange | **Ad Exchange impressions** · `AD_EXCHANGE_IMPRESSIONS` | none. **Exception:** replace the Ad unit (top level) dimension with **Inventory format** · `INVENTORY_FORMAT_NAME`, and drop the ad-unit filter. Take the **Banner** row for display and the **In-stream video** row for video |
-| **C** Open Bidding | **Total impressions** · `IMPRESSIONS` | **Demand channel** = Open Bidding · `DEMAND_CHANNEL_NAME` |
-| **D** PMP – PA | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** = Private Auction · `DEMAND_SUBCHANNEL_NAME` |
-| **E** Ad server | **Ad server unfiltered downloaded impressions** · `AD_SERVER_UNFILTERED_DOWNLOADED_IMPRESSIONS` | none |
-| **F** PMP – PD+PG | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** is any of Programmatic Guaranteed, Preferred Deals · `DEMAND_SUBCHANNEL_NAME` |
-| **G** GAM total, display | **Total code served count** · `CODE_SERVED_COUNT` | none (use the `newsweek` row) |
-| **G** GAM total, video | no metric: the sheet's formula `=B+D+E` | |
+| **Ad Exchange** | **Ad Exchange impressions** · `AD_EXCHANGE_IMPRESSIONS` | none. **Exception:** replace the Ad unit (top level) dimension with **Inventory format** · `INVENTORY_FORMAT_NAME`, and drop the ad-unit filter. Take the **Banner** row for display. For video, **add In-stream video + In-stream video or audio** (always both) |
+| **Open Bidding** | **Total impressions** · `IMPRESSIONS` | **Demand channel** = Open Bidding · `DEMAND_CHANNEL_NAME` |
+| **PMP – PA** | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** = Private Auction · `DEMAND_SUBCHANNEL_NAME` |
+| **Ad server** | **Ad server unfiltered downloaded impressions** · `AD_SERVER_UNFILTERED_DOWNLOADED_IMPRESSIONS` | none |
+| **PMP – PD+PG** | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** is any of Programmatic Guaranteed, Preferred Deals · `DEMAND_SUBCHANNEL_NAME` |
+| **GAM total**, display | **Total code served count** · `CODE_SERVED_COUNT` | none (use the `newsweek` row) |
+| **GAM total**, video | no metric: the sheet's formula, Ad Exchange + PMP – PA + Ad server | |
 
 Settings for all of them: currency USD, time zone = publisher
 (America/New_York). In the API, **Month and year** comes back as an integer,
 `(year − 1900) × 12 + (month − 1)`; 1519 = 2026-08.
 
-The workbook's column F header says "Ad server unfiltered downloaded
+The workbook's **PMP – PD+PG** header row says "Ad server unfiltered downloaded
 impressions", but the numbers in it are **Total impressions** (Jan 41,970,488;
 unfiltered downloaded with the same filter is 42,209,988). Total impressions is
 the convention (the script pulls it); rename the header to match.
@@ -86,34 +87,37 @@ be rebuilt even if a saved report is changed, deleted or unshared.
 - **Ad Exchange impressions already include Private Auction.** Split Ad
   Exchange impressions by **Programmatic channel** (`PROGRAMMATIC_CHANNEL_NAME`)
   and Open Auction + Private Auction = the total, every month (Feb display:
-  48,732,896 + 681,691 = 49,414,587). So column B is never Programmatic channel
-  = Open Auction, and PA is never added on top of B as if it were separate.
-- **Display January, column B: fix this cell.** The workbook has 59,562,722,
+  48,732,896 + 681,691 = 49,414,587). So Ad Exchange is never Programmatic channel
+  = Open Auction, and PA is never added on top of Ad Exchange as if it were separate.
+- **Display January, Ad Exchange: fix this cell.** The workbook has 59,562,722,
   which is Ad Exchange impressions with **Programmatic channel = Open Auction**
   (Ad Exchange minus PA). The column definition gives 59,956,722. The difference
   is exactly 394,000, January's PA. February–September follow the definition.
-  GAM total isn't affected on either sheet: display G is code served count, and
-  video G uses only the video sheet's own B.
+  Display GAM total isn't affected (it's code served count).
+- **Video Ad Exchange, Jan and Jul–Sep: fix these cells.** The workbook took
+  only the **In-stream video** row and left out **In-stream video or audio**.
+  The rule is now both, always. Corrected values: Jan 3,236,963 (+1),
+  Jul 1,332,567 (+83), Aug 1,716,850 (+82,199), Sep 2,370,358 (+42,531).
+  Video GAM total moves by the same amounts, since it's
+  Ad Exchange + PMP – PA + Ad server: Jan 46,725,759, Jul 28,890,985,
+  Aug 26,572,383, Sep 32,903,406.
 - **What the convention includes and leaves out** (by design, so months stay
   comparable):
-  - Video `G = B+D+E` counts PA twice, because B already contains it. That's
-    0.03–0.4% of G.
-  - Column B for video takes only the **In-stream video** value of Inventory
-    format and leaves out **In-stream video or audio** (82,199 impressions in
-    Aug 2026, 42,531 in Sep).
-  - Video G is ~70% of `vid.newsweek` code served count (Jan: 46.7M vs 65.4M).
+  - Video GAM total (Ad Exchange + PMP – PA + Ad server) counts PA twice,
+    because Ad Exchange already contains it. That's 0.03–0.4% of GAM total.
+  - Video GAM total is ~70% of `vid.newsweek` code served count (Jan: 46.7M vs 65.4M).
     The display sheet uses code served count directly.
 
 ## 2. DoubleVerify: post-bid impressions and SIVT
 
 From the DV Pinnacle UI, separately for display and video, by month:
 
-| Workbook cell | DV number |
+| Workbook column | DV number |
 |---|---|
-| **H** total DV gross impressions – post-bid | Monitored (gross) impressions for the month, Newsweek O&O |
-| **J** SIVT rate | Fraud/SIVT rate for the month (enter as a decimal: `0.0004` = 0.04%) |
+| **total DV gross impressions – post-bid** | Monitored (gross) impressions for the month, Newsweek O&O |
+| **SIVT Rate** | Fraud/SIVT rate for the month (enter as a decimal: `0.0004` = 0.04%) |
 
-**Export the exact count. Don't read it off a UI tile.** The 2026 H column is
+**Export the exact count. Don't read it off a UI tile.** The 2026 DV post-bid impressions column is
 rounded to the nearest 100k (370,000,000 / 316,400,000 / …), which is what a
 headline tile shows. That rounding moves the DV↔GAM discrepancy by up to ~0.03pp
 a month. Use the Pinnacle report export (Standard report → Impressions +
@@ -130,9 +134,9 @@ disagree by more than about 2×, find out why before you publish.
 
 | Workbook column (`Y<year>`) | Source |
 |---|---|
-| **D** Pageviews | The saved GA4 exploration (below): **Year month** × **Platform**, metric **Views**, Platform = `web` |
-| **E** Prebid Reqs | DV pre-bid page-level requests for the month (the pre-bid integration evaluates every page view before ad requests go out; see slide 7) |
-| **F** Discrepancy | formula, already in the sheet |
+| **Pageviews** | The saved GA4 exploration (below): **Year month** × **Platform**, metric **Views**, Platform = `web` |
+| **Prebid Reqs** | DV pre-bid page-level requests for the month (the pre-bid integration evaluates every page view before ad requests go out; see slide 7) |
+| **Discrepancy** | formula, already in the sheet |
 
 **GA4 source of record:** this saved exploration (account 131632414, property
 359317277):
@@ -156,8 +160,9 @@ average the three monthly rates (MRC weighting, the same rule the dashboard
 uses):
 
 ```
-Quarter SIVT  = Σ(H × J) / Σ H              over the quarter's 3 months
-Overall SIVT  = Σ(H × J) over display + video  /  Σ H over display + video
+Quarter SIVT  = Σ(DV post-bid impressions × SIVT Rate) / Σ DV post-bid impressions
+                over the quarter's 3 months
+Overall SIVT  = the same, with display + video summed together
 Quarter disc. = (Σ pageviews − Σ prebid) / Σ pageviews
 ```
 
@@ -194,7 +199,9 @@ workbook, and confirm the source footnotes name the year.
 ## Known gaps (fix when convenient)
 
 - DV post-bid impressions are rounded (step 2).
-- Display January column B has to be corrected to 59,956,722 (step 1).
+- Display January Ad Exchange has to be corrected to 59,956,722 (step 1).
+- Video Ad Exchange and GAM total for Jan and Jul–Sep need the In-stream video
+  or audio impressions added (step 1).
 - Slide 4's discrepancies use `÷ DV`; restate them `÷ pageviews` (step 4).
-- Rename the column F header to "Total impressions" to match its numbers (step 1).
+- Rename the PMP – PD+PG header to "Total impressions" to match its numbers (step 1).
 - The DV pre-bid menu path isn't written down yet (step 3).
