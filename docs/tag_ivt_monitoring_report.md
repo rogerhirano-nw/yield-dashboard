@@ -2,8 +2,9 @@
 
 How to refresh the **Newsweek IVT Monitoring Report** deck, the evidence pack for
 TAG Certified Against Fraud (CAF), and the two workbooks behind it. Do this once
-a quarter, after the quarter closes. It is a manual pull: nothing in the
-dashboard or the sweep produces these numbers.
+a quarter, after the quarter closes. Nothing in the dashboard or the sweep
+produces these numbers. The GAM columns have a scripted pull (step 1). The
+DV and GA4 numbers are copied by hand.
 
 | File | What it holds | Feeds |
 |---|---|---|
@@ -16,44 +17,76 @@ which cells it fills.
 
 ---
 
-## 1. GAM: re-run the `TAG:` reports
+## 1. GAM: the `TAG:` reports (or one scripted pull)
 
-Ad Manager → Reporting → Interactive reports, search **`TAG`**. All eleven are
-owned by roger.hirano@newsweek.com, date range **This year**. Re-run each one
-(open → Run), switch the date dimension to **Month and year**, and copy the
-months you need.
+**Fast path:** dispatch **`.github/workflows/tag_ivt_gam_pull.yml`** (inputs
+`start` / `end` as `YYYY-MM`; defaults run January through last closed month).
+It runs `scripts/tag_ivt_gam_pull.py`, prints both sheets' columns B–G in
+workbook order to the run summary, and uploads a CSV. Locally:
+`GAM_SERVICE_ACCOUNT_JSON=… GAM_NETWORK_ID=22541732127 python scripts/tag_ivt_gam_pull.py --start 2026-10 --end 2026-12`.
 
-**Which report fills which column.** The display sheet is filtered to ad unit
-**`newsweek`** and the video sheet to **`vid.newsweek`**. Both are *top-level*
-ad units, so filter on top-level ad unit: the leaf `AD_UNIT_NAME = newsweek` is
-the bare parent unit, ~173 impressions a month (see the GAM facts in
-`CLAUDE.md`).
+The script rebuilds the reports through the API rather than opening them. The
+saved UI reports are private to their owner, so the service account gets a 404
+on them by id. Checked against the 2026 workbook for Jan–Sep (2026-10-20): it
+reproduces display C–G and video C–F exactly. The column B differences are
+explained below.
 
-| Workbook column | `inpage display` (ad unit `newsweek`) | `instream video` (ad unit `vid.newsweek`) | GAM metric |
-|---|---|---|---|
-| **B** Ad Exchange | `TAG: Ad Exchange Impressions` | `TAG: Ad Exchange Impressions` (video ad unit) | Ad Exchange impressions |
-| **C** Open Bidding | `TAG: Open Bidding` | `TAG: Open Bidding` (video ad unit) | Yield group impressions |
-| **D** PMP – PA | `TAG: Private Auction Display` | `TAG: Private Auction Video` | Total impressions |
-| **E** Ad server | `TAG: Ad server unfiltered downloaded impressions` | same report, video ad unit | Ad server unfiltered downloaded impressions |
-| **F** PMP – PD+PG | `TAG: Programmatic PD + PG - Display only` | `TAG: Programmatic PD + PG - Video only` | Ad server unfiltered downloaded impressions |
-| **G** GAM total | `TAG: Total code served count`, **typed in** | **formula** `=B+D+E` | Total code served count |
+**Manual path:** Ad Manager → Reporting → Interactive reports, search
+**`TAG`**. All eleven are owned by roger.hirano@newsweek.com, with date range
+**This year** and split **Totals only**. Re-run each one and copy the months
+you need. The definitions below come from the reports themselves (2026-10-20).
+"AU" means *Ad unit (top level)*. Use the top-level unit: the leaf
+`AD_UNIT_NAME = newsweek` is the bare parent unit, ~173 impressions a month.
 
-Leave these three alone. Each shows a ⚠ last-run status in the list:
-- `TAG: Total code served count Display` (last run 2026-08-21)
-- `TAG: Open Exchange` (2026-07-28)
-- `TAG: Preferred Deals and PGs` (2026-03-05)
+| Col | Sheet | UI report (id) | Dimensions | Metric | Filters |
+|---|---|---|---|---|---|
+| **B** | both | `TAG: Ad Exchange Impressions` (6778957922) | Inventory format × Month | Ad Exchange impressions | none. **Banner** row → display, **In-stream video** row → video |
+| **C** | both | `TAG: Open Bidding` (6778924131) | Month × Demand channel × AU | Total impressions | Demand channel = Open Bidding; AU ∈ newsweek, vid.newsweek |
+| **D** | display | `TAG: Private Auction Display` (6779703054) | Month × AU × Inventory format | Total impressions | Demand subchannel = Private Auction; AU = newsweek |
+| **D** | video | `TAG: Private Auction Video` (6778990880) | Month × AU | Total impressions | Demand subchannel = Private Auction; AU = vid.newsweek |
+| **E** | both | `TAG: Ad server unfiltered downloaded impressions` (6837002391) | AU × Month | Ad server unfiltered downloaded impressions | AU ∈ newsweek, vid.newsweek |
+| **F** | display | `TAG: Programmatic PD + PG - Display only` (6779748229) | Month × AU | **Total impressions** (the report also carries unfiltered downloaded; the workbook uses Total) | Demand subchannel ∈ Programmatic Guaranteed, Preferred Deals; AU = newsweek |
+| **F** | video | `TAG: Programmatic PD + PG - Video only` (6779754895) | Month × AU | Total impressions | Demand subchannel ∈ Programmatic Guaranteed, Preferred Deals; AU = vid.newsweek |
+| **G** | display | `TAG: Total code served count` (6837114072) | AU × Month | Total code served count | AU ∈ newsweek, vid.newsweek (use the `newsweek` rows) |
+| **G** | video | none: **formula** `=B+D+E` | | | |
 
-They look like older versions of the reports above (PD+PG has since been split
-into Display-only and Video-only). If one of them turns out to be the source of
-record, update this table.
+The workbook's column F header says "Ad server unfiltered downloaded
+impressions", but the numbers in it are **Total impressions** (Jan 41,970,488;
+the unfiltered figure is 42,209,988). Fix the header or the source so the two
+agree.
 
-> **The two sheets define "GAM total" differently.** On display, G is a pasted
-> *Total code served count*. Jan 2026 reads 401,193,896, and that matches no
-> sum of B–F (B+C+D+E+F = 423,797,952). On video, G is `=B+D+E`: Ad Exchange +
-> PA + ad server, leaving out Open Bidding (C) and PD+PG (F). Either can be
-> defended, but the deck should not show two definitions as if they were one.
-> Pick one and fix the other sheet. Code served count is the closer match to
-> what DV measures post-bid, since DV fires when the creative is served.
+**Superseded. Don't use these three** (each shows ⚠ in the list):
+- `TAG: Total code served count Display` (6779042369): the same query as
+  6837114072, filtered to `newsweek` only.
+- `TAG: Open Exchange` (6779681686): Programmatic channel × Month × AU, Ad
+  Exchange impressions, Demand channel = Ad Exchange. Its *Open Auction* rows
+  are Ad Exchange **minus** Private Auction.
+- `TAG: Preferred Deals and PGs` (6779516327): Month × Ad server impressions,
+  Programmatic channel ∈ PD/PG, Inventory format ≠ In-stream video. It returns
+  the same numbers as the Display-only report, which replaced it.
+
+### What the API check found
+
+- **Ad Exchange impressions already include Private Auction.** For each month,
+  Open Auction + PA = Ad Exchange exactly (Feb display: 48,732,896 + 681,691 =
+  49,414,587). Two consequences:
+  - **Display January, column B** reads 59,562,722, the Open Auction figure from
+    the superseded `TAG: Open Exchange` report. February–September are full Ad
+    Exchange. January is short by exactly 394,000, which is January's PA. Use
+    59,956,722.
+  - **The video sheet's `G = B+D+E` counts PA twice**: once inside B, and again
+    as D.
+- **Video column B misses part of Ad Exchange video.** GAM splits Ad Exchange
+  video on `vid.newsweek` into two inventory formats, *In-stream video* and
+  *In-stream video or audio*. The UI report splits by format, and only the
+  first row was copied. The gap was 82,199 in Aug (5%) and 42,531 in Sep. The
+  script filters on the ad unit, so it counts both.
+- **The two sheets define GAM total differently.** On display, G is code
+  served count (Jan 401,193,896). On video, G is `B+D+E` (Jan 46.7M), while
+  code served for `vid.newsweek` that month is 65.4M. Against DV's 40.9M, that
+  is a 12% discrepancy one way and a 37% discrepancy the other. Pick one
+  definition and use it on both sheets. The script prints both video figures
+  so you can compare.
 
 ## 2. DoubleVerify: post-bid impressions and SIVT
 
@@ -146,10 +179,8 @@ workbook, and confirm the source footnotes name the year.
 ## Known gaps (fix when convenient)
 
 - DV post-bid impressions are rounded (step 2).
-- The two sheets define GAM total differently (step 1).
+- The two sheets define GAM total differently, and the video formula counts PA
+  twice (step 1).
+- Display January column B and video column B are entered from the wrong report rows (step 1).
 - The deck and the workbook use different discrepancy denominators (step 4).
 - The DV pre-bid menu path isn't written down yet (step 3).
-- The GAM pulls could be scripted the way the other one-off pulls are (a
-  workflow on `secrets.GAM_SERVICE_ACCOUNT_JSON`, like
-  `pull_index_ob_requests.yml`) so the GAM half of the workbook fills itself.
-  Not built.

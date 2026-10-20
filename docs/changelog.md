@@ -13,6 +13,13 @@ files: slide 4 divides the discrepancy by DV while the workbook divides by
 pageviews (3.21% vs 3.11% for Q1); "GAM total" is code served count on the
 display sheet but `B+D+E` on the video sheet; DV post-bid impressions are
 entered rounded to 100k.
+Follow-up: `scripts/tag_ivt_gam_pull.py` + `tag_ivt_gam_pull.yml` rebuild
+the eleven `TAG:` reports via the API, with definitions taken from Roger's UI
+screenshots. Checked against Jan–Sep, it reproduces display C–G and video C–F
+exactly. Column B showed two entry errors: display January is Open Auction
+(Ad Exchange minus PA, −394,000), and video B dropped the "In-stream video or
+audio" format rows (−82,199 in Aug). Ad Exchange includes PA, so the video
+sheet's `G = B+D+E` counts PA twice.
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 

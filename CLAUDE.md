@@ -1045,7 +1045,12 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   discrepancy, DV-GAM impressions + SIVT). Maps each `TAG:` GAM interactive
   report to its workbook column, says where the DV / GA4 numbers come from,
   and fixes the quarter math (SIVT is impression-weighted, never averaged).
-  Manual: nothing in the sweep produces these numbers.
+  The GAM columns have a scripted pull: `tag_ivt_gam_pull.yml` →
+  `scripts/tag_ivt_gam_pull.py` rebuilds the reports via the API (the saved UI
+  reports are private to their owner, so the service account 404s on them by
+  id). It reproduces the 2026 workbook exactly, apart from the column-B entry
+  errors the doc lists. **Ad Exchange impressions include Private Auction**,
+  so never add PA on top of Ad Exchange. DV and GA4 numbers stay manual.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
