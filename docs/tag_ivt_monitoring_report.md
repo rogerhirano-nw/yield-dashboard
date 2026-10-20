@@ -15,8 +15,9 @@ DV and GA4 numbers are copied by hand.
 ### What's in each workbook
 
 **DV-GA discrepancy** (`DV-GA_discrepancy_<year>.xlsx`, one sheet `Y<year>`,
-titled "Prebid - DV vs GA Page views"). **Pre-bid monitoring**: shows that
-DoubleVerify's pre-bid check sees almost every page Newsweek serves. One row per month (`202601`, …), grouped
+titled "Prebid - DV vs GA Page views"). **Pre-bid monitoring.** The goal is to show
+TAG and TAG auditors that every pageview is monitored by DoubleVerify: comparing
+GA4 pageviews with DV pre-bid requests shows how close DV's coverage is to 100%. One row per month (`202601`, …), grouped
 Q1–Q4, with a Totals row at the bottom.
 
 | Column | What it holds | Source |
