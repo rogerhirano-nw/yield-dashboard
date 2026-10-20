@@ -76,6 +76,20 @@ def main() -> None:
     print(g.to_csv(index=False), end="")
     print("GAMCSV_END")
 
+    # Name the deals TTD credits conversions to in-window but that may have
+    # stopped delivering (post-view attribution trails a flight by weeks).
+    client = GAMClient()
+    from datetime import timedelta
+    prior = client._run_report(
+        dimensions=["LINE_ITEM_ID", "LINE_ITEM_NAME", "DEAL_ID"],
+        metrics=["AD_SERVER_IMPRESSIONS", "AD_SERVER_CLICKS", "AD_SERVER_REVENUE"],
+        start_date=start - timedelta(days=90), end_date=end,
+    )
+    prior = prior[prior["line_item_name"].map(_is_chumba)]
+    print("PRIORMAP_BEGIN")
+    print(prior.to_csv(index=False), end="")
+    print("PRIORMAP_END")
+
     t, _ = ttd_frame(start, end)
     print(f"\n=== TTD Chumba rows {start}..{end}: {len(t)} ===")
     if not t.empty:
