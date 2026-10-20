@@ -13,15 +13,17 @@ in docs/tag_ivt_monitoring_report.md.
   D PMP - PA                   TAG: Private Auction Display / Video
   E Ad server                  TAG: Ad server unfiltered downloaded impressions
   F PMP - PD+PG                TAG: Programmatic PD + PG - Display / Video only
-  G Total code served count    TAG: Total code served count
+  G GAM total                  display: TAG: Total code served count
+                               video:   workbook formula =B+D+E
 
-Every query is split by top-level ad unit and filtered to `newsweek` (display
-sheet) and `vid.newsweek` (video sheet). "TAG: Ad Exchange Impressions" splits
-by inventory format instead (Banner / In-stream video, no ad-unit filter);
-filtering by ad unit gives the same display figures and moves video by <0.1%.
-
-The video sheet's own G is a formula (=B+D+E), not code served count; G is
-printed for both sheets so the two definitions can be compared.
+The workbook is the reference: each column follows the report and convention
+the 2026 workbook already uses, so a new month lines up with the old ones.
+Columns C-F and display G are split by top-level ad unit and filtered to
+`newsweek` (display) / `vid.newsweek` (video). Column B mirrors "TAG: Ad
+Exchange Impressions", which splits by inventory format with no ad-unit
+filter: the Banner row goes to display, the In-stream video row to video. That
+leaves out the small "In-stream video or audio" format, the same way the
+workbook does.
 
 Usage:
     python scripts/tag_ivt_gam_pull.py                       # Jan..last closed month
@@ -45,9 +47,11 @@ from gam_client import GAMClient
 
 AD_UNITS = {"display": "newsweek", "video": "vid.newsweek"}
 
+# Column B: inventory format -> sheet, as "TAG: Ad Exchange Impressions" reports it.
+B_FORMATS = {"Banner": "newsweek", "In-stream video": "vid.newsweek"}
+
 # (column, metric, extra filters) — all also split/filtered by top-level ad unit.
 COLUMNS = [
-    ("B_ad_exchange", "AD_EXCHANGE_IMPRESSIONS", []),
     ("C_open_bidding", "IMPRESSIONS",
      [("DEMAND_CHANNEL_NAME", "IN", ["Open Bidding"])]),
     ("D_pmp_pa", "IMPRESSIONS",
@@ -82,6 +86,15 @@ def pull(start: date, end: date) -> pd.DataFrame:
         )
         df.columns = ["ad_unit", "month", col]
         frames.append(df.set_index(["ad_unit", "month"]))
+    b = gam._run_report(
+        dimensions=["INVENTORY_FORMAT_NAME", "MONTH_YEAR"],
+        metrics=["AD_EXCHANGE_IMPRESSIONS"],
+        start_date=start,
+        end_date=end,
+    )
+    b.columns = ["format", "month", "B_ad_exchange"]
+    b = b[b["format"].isin(B_FORMATS)].assign(ad_unit=lambda d: d["format"].map(B_FORMATS))
+    frames.insert(0, b.drop(columns="format").set_index(["ad_unit", "month"]))
     out = pd.concat(frames, axis=1).fillna(0).astype("int64").reset_index()
     out["month"] = out["month"].map(_month_code_to_str)
     months = set(out["month"])
@@ -116,7 +129,8 @@ def main() -> None:
     for sheet, unit in AD_UNITS.items():
         part = df[df["ad_unit"] == unit].drop(columns="ad_unit")
         if sheet == "video":
-            part = part.assign(G_formula_BDE=part["B_ad_exchange"] + part["D_pmp_pa"] + part["E_ad_server"])
+            part = part.assign(G_code_served=part["B_ad_exchange"] + part["D_pmp_pa"] + part["E_ad_server"])
+        part = part.rename(columns={"G_code_served": "G_gam_total"})
         print(f"\n## {sheet} sheet (ad unit {unit})")
         print(part.to_string(index=False))
     if args.csv:

@@ -1048,9 +1048,11 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   The GAM columns have a scripted pull: `tag_ivt_gam_pull.yml` →
   `scripts/tag_ivt_gam_pull.py` rebuilds the reports via the API (the saved UI
   reports are private to their owner, so the service account 404s on them by
-  id). It reproduces the 2026 workbook exactly, apart from the column-B entry
-  errors the doc lists. **Ad Exchange impressions include Private Auction**,
-  so never add PA on top of Ad Exchange. DV and GA4 numbers stay manual.
+  id). **The 2026 workbooks are the reference** (Roger, 2026-10-20): the script
+  follows their conventions (video G = `B+D+E`; column B from the
+  inventory-format split; discrepancy = `÷ pageviews`) and matches 107 of 108
+  workbook cells. The one mismatch is display Jan B, an entry error. DV and
+  GA4 numbers stay manual.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
