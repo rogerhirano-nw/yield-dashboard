@@ -402,6 +402,45 @@ cross two keys). Aug 24 – Sep 22, advertisers 5724335726 + 5713671547:
 | inarticle4 | 694,305 | 32.2% | 73.3% | 68.8% |
 | inarticle5–10 | 1,295,467 | 24–32% | 72–74% | 71–73% |
 
+### SmileWanted: in-banner video paused (2026-10-20)
+
+**Action taken: we asked SmileWanted to pause all of its in-banner video
+(IBV) demand** on Newsweek. IBV is the leading explanation for a deficit that
+is uniform across every unit: a video player served into a display slot
+through the Prebid universal creative. The "outstream hypothesis not
+supported" call above was weaker than it read — it rested on the size cut,
+and GAM books every SmileWanted impression as `1x1`, so size can neither
+confirm nor rule out video. A per-unit-uniform ~38pp render gap is what you
+would expect if a share of every unit's fills were IBV that sits below the
+fold, waits on a player, or collapses when it has no fill.
+
+How to tell whether the pause fixed it — the pause *is* the experiment, so
+read it as a before/after on the same cut, not a new investigation:
+
+* Wait for **7+ full days** after SmileWanted confirms the pause (GAM reporting
+  is complete for yesterday; a shorter window is noisy on the in-article
+  units). Dispatch `prebid_source_viewability.yml` with `days` covering only
+  post-pause days, and compare per unit against the Aug 24 – Sep 22 table
+  above (sticky 53.7%, inarticle1 52.0%, inarticle2 34.2%, …).
+* Faster read, any time: `prebid_bidder_daily_viewability.yml`
+  (`scripts/prebid_bidder_daily_viewability.py`) prints SmileWanted's
+  viewable% **per day** against peers re-weighted to that day's ad-unit mix,
+  then before vs after a split — `pause_date` if given (first day after the
+  pause), else the day that best separates the gap series (a suggestion to
+  check against when SmileWanted actually switched it off). A pause that took
+  shows as a step in the gap, and usually in volume too.
+* **Gap closes to within ~5pp of PBJS peers on every unit** → IBV was the
+  cause. Keep it paused, or let it back only on a placement where it can
+  measure, and say so in this doc.
+* **Gap unchanged** → IBV wasn't it (or the pause didn't take — check that
+  SmileWanted's volume and eCPM moved at all; a pause with no volume change
+  means it never happened). Back to the open question, with EU-egress on-page
+  forensics as the next step.
+* **Volume drops sharply with it** → the remaining banner demand is the
+  number to quote; weigh SmileWanted's lost revenue ($5.00 eCPM, ~$23k per
+  three weeks before the pause) against the ~2pp it was costing the whole
+  Prebid banner rate.
+
 ### Ogury: confirmed sticky-only, exactly as the DOM forensics said
 
 | Ad unit | Imps | ogury | peers |
