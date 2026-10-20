@@ -29,7 +29,9 @@ Q1–Q4, with a Totals row at the bottom.
 | Discrepancy | `(Pageviews − Prebid Reqs) / Pageviews` | formula, don't overwrite |
 
 **DV-GAM discrepancy** (`DV-GAM_discrepancy_report.xlsx`). **Post-bid
-monitoring**: reconciles what Ad
+monitoring.** The goal is to show TAG and TAG auditors that every post-bid
+impression is measured: comparing all impressions GAM records with what DV
+records shows how close DV's post-bid coverage is to 100%. It reconciles what Ad
 Manager counted against what DoubleVerify measured post-bid, and holds DV's
 SIVT rate. Two sheets with the same layout: **`inpage display <year>`** (ad unit
 `newsweek`) and **`instream video <year>`** (ad unit `vid.newsweek`). One row per
