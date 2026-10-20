@@ -1040,6 +1040,12 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
+- `docs/tag_ivt_monitoring_report.md` — quarterly refresh of the TAG CAF
+  IVT Monitoring Report deck and its two workbooks (DV-GA pageview
+  discrepancy, DV-GAM impressions + SIVT). Maps each `TAG:` GAM interactive
+  report to its workbook column, says where the DV / GA4 numbers come from,
+  and fixes the quarter math (SIVT is impression-weighted, never averaged).
+  Manual: nothing in the sweep produces these numbers.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

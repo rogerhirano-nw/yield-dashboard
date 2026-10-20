@@ -4,6 +4,16 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-10-20 — TAG IVT monitoring report runbook
+
+`docs/tag_ivt_monitoring_report.md`: how to refresh the TAG CAF IVT deck and
+its DV-GA / DV-GAM workbooks each quarter from the `TAG:` GAM reports, DV
+Pinnacle and GA4. Writing it down turned up three inconsistencies in the 2026
+files: slide 4 divides the discrepancy by DV while the workbook divides by
+pageviews (3.21% vs 3.11% for Q1); "GAM total" is code served count on the
+display sheet but `B+D+E` on the video sheet; DV post-bid impressions are
+entered rounded to 100k.
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup
