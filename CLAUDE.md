@@ -1152,8 +1152,9 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   auction and never bids from a US datacenter IP (67/67 no-bid), so on-page
   forensics for it needs an EU/residential egress. **2026-10-20: we asked SmileWanted to
   pause all in-banner video (IBV) demand** — the leading cause of its uniform
-  ~38pp render gap. Verify with `prebid_source_viewability.yml` over 7+
-  post-pause days against the doc's per-unit baseline.
+  ~38pp render gap. **It took on 2026-10-08:** viewable 42.8% → 65.0% at flat
+  volume, gap −35.8 → −14.2pp (`prebid_bidder_daily_viewability.yml`); a
+  ~14pp residual remains and inarticle1 alone got worse.
 - `docs/betting_cpa.md` — Spinfinite betting/gambling CPA optimization
   (order 4068491190, IO1109). Covers the sub_id contract with Improvado,
   the macro-expansion learning (GAM doesn't expand `%`-prefixed macros in

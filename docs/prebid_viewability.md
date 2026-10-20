@@ -441,6 +441,27 @@ read it as a before/after on the same cut, not a new investigation:
   three weeks before the pause) against the ~2pp it was costing the whole
   Prebid banner rate.
 
+### Result: the pause took on 2026-10-08, and the gap more than halved
+
+First run of `prebid_bidder_daily_viewability.yml` (60 days to 2026-10-19,
+auto split). The daily gap sits at −30 to −41pp through 10-07 and steps to
+**−21pp on 10-08**, then −10 to −17pp every day after. The auto-split picked
+10-09; 10-08 is the first changed day (likely a mid-day switch-off).
+
+| | imps/day | rev/day | eCPM | viewable | peers (mix-adj) | gap |
+|---|---:|---:|---:|---:|---:|---:|
+| before (49 days) | 311k | $1,485 | $4.77 | **42.8%** | 78.6% | −35.8pp |
+| after (11 days) | 312k | $1,369 | $4.38 | **65.0%** | 79.2% | **−14.2pp** |
+
+* **Volume held** (+0%/day) and revenue/day fell ~8%. SmileWanted backfilled
+  the IBV with other demand instead of losing it, so the pause cost little.
+* **Every in-article unit from 2 to 10 rose ~+30pp**, to 60–64%, and sticky
+  rose to 77.7% (+23pp). That confirms IBV as the main driver.
+* **It is not fully closed.** A ~14pp gap remains: in-article units at 60–64%
+  vs ~73% peers, sticky 77.7% vs 92.4%.
+* **inarticle1 got worse** (50.1% → 45.6%, gap −4.6pp), the one unit that
+  bucked the trend. It is the unit to raise with SmileWanted next.
+
 ### Ogury: confirmed sticky-only, exactly as the DOM forensics said
 
 | Ad unit | Imps | ogury | peers |
