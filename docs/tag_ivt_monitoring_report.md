@@ -12,6 +12,40 @@ DV and GA4 numbers are copied by hand.
 | `DV-GAM_discrepancy_report.xlsx` (sheets `inpage display <year>`, `instream video <year>`) | GAM impressions by demand channel, DV post-bid gross impressions, DV SIVT rate, by month | Deck slide 10 (SIVT), plus the DV↔GAM reconciliation |
 | `NEWSWEEK_IVT_-_<year>_MONITORING_REPORT.pptx` | The deck | TAG auditor / buyers |
 
+### What's in each workbook
+
+**DV-GA discrepancy** (`DV-GA_discrepancy_<year>.xlsx`, one sheet `Y<year>`,
+titled "Prebid - DV vs GA Page views"). Shows that DoubleVerify's pre-bid check
+sees almost every page Newsweek serves. One row per month (`202601`, …), grouped
+Q1–Q4, with a Totals row at the bottom.
+
+| Column | What it holds | Source |
+|---|---|---|
+| Month of Year | `YYYYMM` | — |
+| Platform | always `web` | — |
+| Pageviews | GA4 web views for the month | GA4 (step 3) |
+| Prebid Reqs | pages DV's pre-bid integration evaluated | DV (step 3) |
+| Discrepancy | `(Pageviews − Prebid Reqs) / Pageviews` | formula, don't overwrite |
+
+**DV-GAM discrepancy** (`DV-GAM_discrepancy_report.xlsx`). Reconciles what Ad
+Manager counted against what DoubleVerify measured post-bid, and holds DV's
+SIVT rate. Two sheets with the same layout: **`inpage display <year>`** (ad unit
+`newsweek`) and **`instream video <year>`** (ad unit `vid.newsweek`). One row per
+month, Totals row at the bottom.
+
+| Column | What it holds | Source |
+|---|---|---|
+| Month and year | the month | — |
+| Ad Exchange | Ad Exchange impressions (includes Private Auction) | GAM (step 1) |
+| Open Bidding | Open Bidding impressions | GAM (step 1) |
+| PMP – PA | Private Auction impressions | GAM (step 1) |
+| Ad server | Ad server unfiltered downloaded impressions | GAM (step 1) |
+| PMP – PD+PG | Preferred Deal + Programmatic Guaranteed impressions | GAM (step 1) |
+| GAM total (header "GAM Total code served count" on display, "GAM gross impressions" on video) | display: Total code served count; video: formula Ad Exchange + PMP – PA + Ad server | GAM / formula |
+| total DV gross impressions – post-bid | impressions DV measured post-bid | DV (step 2) |
+| DV-GAM discrepancy | `1 − DV impressions / GAM total` | formula, don't overwrite |
+| SIVT Rate | DV's sophisticated invalid traffic rate, as a decimal | DV (step 2) |
+
 The order matters: **GAM → DV → GA4 → workbooks → deck.** Each step below says
 which cells it fills.
 
