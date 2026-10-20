@@ -1,29 +1,26 @@
 """
 GAM half of the TAG IVT monitoring workbook (`DV-GAM_discrepancy_report.xlsx`).
 
-Rebuilds the `TAG:` interactive reports through the API and prints one row per
-month for each sheet, in workbook column order, ready to paste. The saved UI
-reports are private to their owner, so the service account can't open them by
-id (404); each one is re-expressed here from its definition, which is recorded
-in docs/tag_ivt_monitoring_report.md.
+Queries each workbook column straight from its GAM dimensions and metric, and
+prints one row per month for each sheet, in workbook column order, ready to
+paste. The definitions are recorded in docs/tag_ivt_monitoring_report.md.
 
-  Column                       UI report it mirrors
-  B Ad Exchange                TAG: Ad Exchange Impressions
-  C Open Bidding               TAG: Open Bidding
-  D PMP - PA                   TAG: Private Auction Display / Video
-  E Ad server                  TAG: Ad server unfiltered downloaded impressions
-  F PMP - PD+PG                TAG: Programmatic PD + PG - Display / Video only
-  G GAM total                  display: TAG: Total code served count
-                               video:   workbook formula =B+D+E
+  Column            Metric                                        Extra filter
+  B Ad Exchange     AD_EXCHANGE_IMPRESSIONS                       (split by INVENTORY_FORMAT_NAME)
+  C Open Bidding    IMPRESSIONS                                   DEMAND_CHANNEL_NAME = Open Bidding
+  D PMP - PA        IMPRESSIONS                                   DEMAND_SUBCHANNEL_NAME = Private Auction
+  E Ad server       AD_SERVER_UNFILTERED_DOWNLOADED_IMPRESSIONS   -
+  F PMP - PD+PG     IMPRESSIONS                                   DEMAND_SUBCHANNEL_NAME in Programmatic
+                                                                  Guaranteed, Preferred Deals
+  G GAM total       display: CODE_SERVED_COUNT; video: workbook formula =B+D+E
 
-The workbook is the reference: each column follows the report and convention
-the 2026 workbook already uses, so a new month lines up with the old ones.
-Columns C-F and display G are split by top-level ad unit and filtered to
-`newsweek` (display) / `vid.newsweek` (video). Column B mirrors "TAG: Ad
-Exchange Impressions", which splits by inventory format with no ad-unit
-filter: the Banner row goes to display, the In-stream video row to video. That
-leaves out the small "In-stream video or audio" format, the same way the
-workbook does.
+The workbook is the reference: each column follows the convention the 2026
+workbook already uses, so a new month lines up with the old ones. Columns C-F
+and display G are split by MONTH_YEAR x AD_UNIT_NAME_TOP_LEVEL and filtered to
+`newsweek` (display) / `vid.newsweek` (video). Column B is split by
+MONTH_YEAR x INVENTORY_FORMAT_NAME with no ad-unit filter: the Banner row goes
+to display, the In-stream video row to video. That leaves out the small
+"In-stream video or audio" format, the same way the workbook does.
 
 Usage:
     python scripts/tag_ivt_gam_pull.py                       # Jan..last closed month
@@ -47,7 +44,7 @@ from gam_client import GAMClient
 
 AD_UNITS = {"display": "newsweek", "video": "vid.newsweek"}
 
-# Column B: inventory format -> sheet, as "TAG: Ad Exchange Impressions" reports it.
+# Column B: INVENTORY_FORMAT_NAME value -> sheet.
 B_FORMATS = {"Banner": "newsweek", "In-stream video": "vid.newsweek"}
 
 # (column, metric, extra filters) — all also split/filtered by top-level ad unit.

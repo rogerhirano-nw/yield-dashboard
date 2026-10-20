@@ -27,72 +27,80 @@ the months already in them:
 
 ---
 
-## 1. GAM: the `TAG:` reports (or one scripted pull)
+## 1. GAM: columns B–G, by dimension and metric
+
+Each column is defined below by its GAM **dimensions, metric and filters**.
+Build it in Ad Manager or pull it through the API; both read the same fields,
+so the result is the same either way.
 
 **Fast path:** dispatch **`.github/workflows/tag_ivt_gam_pull.yml`** (inputs
 `start` / `end` as `YYYY-MM`; defaults run January through last closed month).
-It runs `scripts/tag_ivt_gam_pull.py`, prints both sheets' columns B–G in
-workbook order to the run summary, and uploads a CSV. Locally:
+It runs `scripts/tag_ivt_gam_pull.py`, which queries the definitions below and
+prints both sheets' columns B–G in workbook order to the run summary, with a
+CSV attached. Locally:
 `GAM_SERVICE_ACCOUNT_JSON=… GAM_NETWORK_ID=22541732127 python scripts/tag_ivt_gam_pull.py --start 2026-10 --end 2026-12`.
+Checked against the 2026 workbook for Jan–Sep (2026-10-20): **107 of 108 cells
+match exactly**. The one exception is display January, column B (see below).
 
-The script rebuilds the reports through the API rather than opening them. The
-saved UI reports are private to their owner, so the service account gets a 404
-on them by id. Checked against the 2026 workbook for Jan–Sep (2026-10-20): it
-matches **107 of 108 cells exactly**. The one exception is display January,
-column B (see below). Video G is computed by the script as `B+D+E`, the same
-as the sheet's formula.
+**Manual path:** Ad Manager → Reporting → Interactive reports → **Create my own
+report** → Historical. For every column:
 
-**Manual path:** Ad Manager → Reporting → Interactive reports, search
-**`TAG`**. All eleven are owned by roger.hirano@newsweek.com, with date range
-**This year** and split **Totals only**. Re-run each one and copy the months
-you need. The definitions below come from the reports themselves (2026-10-20).
-"AU" means *Ad unit (top level)*. Use the top-level unit: the leaf
-`AD_UNIT_NAME = newsweek` is the bare parent unit, ~173 impressions a month.
+| Setting | GAM UI | API (`ReportDefinition`) |
+|---|---|---|
+| Date range | the months you need | `FixedDateRange` |
+| Dimension | **Month and year** | `MONTH_YEAR` |
+| Dimension | **Ad unit (top level)** | `AD_UNIT_NAME_TOP_LEVEL` |
+| Filter | **Ad unit (top level)** is any of `newsweek`, `vid.newsweek` | `AD_UNIT_NAME_TOP_LEVEL IN (…)` |
 
-| Col | Sheet | UI report (id) | Dimensions | Metric | Filters |
-|---|---|---|---|---|---|
-| **B** | both | `TAG: Ad Exchange Impressions` (6778957922) | Inventory format × Month | Ad Exchange impressions | none. **Banner** row → display, **In-stream video** row → video |
-| **C** | both | `TAG: Open Bidding` (6778924131) | Month × Demand channel × AU | Total impressions | Demand channel = Open Bidding; AU ∈ newsweek, vid.newsweek |
-| **D** | display | `TAG: Private Auction Display` (6779703054) | Month × AU × Inventory format | Total impressions | Demand subchannel = Private Auction; AU = newsweek |
-| **D** | video | `TAG: Private Auction Video` (6778990880) | Month × AU | Total impressions | Demand subchannel = Private Auction; AU = vid.newsweek |
-| **E** | both | `TAG: Ad server unfiltered downloaded impressions` (6837002391) | AU × Month | Ad server unfiltered downloaded impressions | AU ∈ newsweek, vid.newsweek |
-| **F** | display | `TAG: Programmatic PD + PG - Display only` (6779748229) | Month × AU | **Total impressions** (the report also carries unfiltered downloaded; the workbook uses Total) | Demand subchannel ∈ Programmatic Guaranteed, Preferred Deals; AU = newsweek |
-| **F** | video | `TAG: Programmatic PD + PG - Video only` (6779754895) | Month × AU | Total impressions | Demand subchannel ∈ Programmatic Guaranteed, Preferred Deals; AU = vid.newsweek |
-| **G** | display | `TAG: Total code served count` (6837114072) | AU × Month | Total code served count | AU ∈ newsweek, vid.newsweek (use the `newsweek` rows) |
-| **G** | video | none: **formula** `=B+D+E` | | | |
+The `newsweek` rows go to the display sheet and the `vid.newsweek` rows to the
+video sheet. Use the *top-level* ad unit: the leaf **Ad unit**
+(`AD_UNIT_NAME`) = `newsweek` is the bare parent unit, ~173 impressions a month.
+
+Then add the metric and any extra filter for the column:
+
+| Col | Metric (UI · API) | Extra filter (UI · API) |
+|---|---|---|
+| **B** Ad Exchange | **Ad Exchange impressions** · `AD_EXCHANGE_IMPRESSIONS` | none. **Exception:** replace the Ad unit (top level) dimension with **Inventory format** · `INVENTORY_FORMAT_NAME`, and drop the ad-unit filter. Take the **Banner** row for display and the **In-stream video** row for video |
+| **C** Open Bidding | **Total impressions** · `IMPRESSIONS` | **Demand channel** = Open Bidding · `DEMAND_CHANNEL_NAME` |
+| **D** PMP – PA | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** = Private Auction · `DEMAND_SUBCHANNEL_NAME` |
+| **E** Ad server | **Ad server unfiltered downloaded impressions** · `AD_SERVER_UNFILTERED_DOWNLOADED_IMPRESSIONS` | none |
+| **F** PMP – PD+PG | **Total impressions** · `IMPRESSIONS` | **Demand subchannel** is any of Programmatic Guaranteed, Preferred Deals · `DEMAND_SUBCHANNEL_NAME` |
+| **G** GAM total, display | **Total code served count** · `CODE_SERVED_COUNT` | none (use the `newsweek` row) |
+| **G** GAM total, video | no metric: the sheet's formula `=B+D+E` | |
+
+Settings for all of them: currency USD, time zone = publisher
+(America/New_York). In the API, **Month and year** comes back as an integer,
+`(year − 1900) × 12 + (month − 1)`; 1519 = 2026-08.
 
 The workbook's column F header says "Ad server unfiltered downloaded
 impressions", but the numbers in it are **Total impressions** (Jan 41,970,488;
-the unfiltered figure is 42,209,988). Total impressions is the convention (the
-script pulls it); rename the header to match.
+unfiltered downloaded with the same filter is 42,209,988). Total impressions is
+the convention (the script pulls it); rename the header to match.
 
-**Superseded. Don't use these three** (each shows ⚠ in the list):
-- `TAG: Total code served count Display` (6779042369): the same query as
-  6837114072, filtered to `newsweek` only.
-- `TAG: Open Exchange` (6779681686): Programmatic channel × Month × AU, Ad
-  Exchange impressions, Demand channel = Ad Exchange. Its *Open Auction* rows
-  are Ad Exchange **minus** Private Auction.
-- `TAG: Preferred Deals and PGs` (6779516327): Month × Ad server impressions,
-  Programmatic channel ∈ PD/PG, Inventory format ≠ In-stream video. It returns
-  the same numbers as the Display-only report, which replaced it.
+The saved `TAG:` interactive reports in GAM (owner roger.hirano@newsweek.com)
+produce these same numbers. The table above is the definition, so a column can
+be rebuilt even if a saved report is changed, deleted or unshared.
 
 ### What the API check found
 
-- **Display January, column B: fix this cell.** The workbook has 59,562,722;
-  the report returns 59,956,722. The difference is exactly 394,000, January's
-  Private Auction. 59,562,722 is the *Open Auction* row of the superseded
-  `TAG: Open Exchange` report (Ad Exchange minus PA), while February–September
-  use full Ad Exchange, as the column definition says. GAM total isn't affected
-  on either sheet: display G is code served count, and video G uses only the
-  video sheet's own B.
+- **Ad Exchange impressions already include Private Auction.** Split Ad
+  Exchange impressions by **Programmatic channel** (`PROGRAMMATIC_CHANNEL_NAME`)
+  and Open Auction + Private Auction = the total, every month (Feb display:
+  48,732,896 + 681,691 = 49,414,587). So column B is never Programmatic channel
+  = Open Auction, and PA is never added on top of B as if it were separate.
+- **Display January, column B: fix this cell.** The workbook has 59,562,722,
+  which is Ad Exchange impressions with **Programmatic channel = Open Auction**
+  (Ad Exchange minus PA). The column definition gives 59,956,722. The difference
+  is exactly 394,000, January's PA. February–September follow the definition.
+  GAM total isn't affected on either sheet: display G is code served count, and
+  video G uses only the video sheet's own B.
 - **What the convention includes and leaves out** (by design, so months stay
   comparable):
-  - Ad Exchange impressions already include Private Auction (Open Auction + PA
-    = Ad Exchange exactly), so video `G = B+D+E` counts PA twice. That's
+  - Video `G = B+D+E` counts PA twice, because B already contains it. That's
     0.03–0.4% of G.
-  - Column B for video takes only the *In-stream video* format row and leaves
-    out *In-stream video or audio* (82,199 impressions in Aug 2026, 42,531 in
-    Sep).
+  - Column B for video takes only the **In-stream video** value of Inventory
+    format and leaves out **In-stream video or audio** (82,199 impressions in
+    Aug 2026, 42,531 in Sep).
   - Video G is ~70% of `vid.newsweek` code served count (Jan: 46.7M vs 65.4M).
     The display sheet uses code served count directly.
 

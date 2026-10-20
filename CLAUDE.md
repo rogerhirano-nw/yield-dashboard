@@ -1042,13 +1042,13 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   conversion, compute upgrade).
 - `docs/tag_ivt_monitoring_report.md` — quarterly refresh of the TAG CAF
   IVT Monitoring Report deck and its two workbooks (DV-GA pageview
-  discrepancy, DV-GAM impressions + SIVT). Maps each `TAG:` GAM interactive
-  report to its workbook column, says where the DV / GA4 numbers come from,
-  and fixes the quarter math (SIVT is impression-weighted, never averaged).
-  The GAM columns have a scripted pull: `tag_ivt_gam_pull.yml` →
-  `scripts/tag_ivt_gam_pull.py` rebuilds the reports via the API (the saved UI
-  reports are private to their owner, so the service account 404s on them by
-  id). **The 2026 workbooks are the reference** (Roger, 2026-10-20): the script
+  discrepancy, DV-GAM impressions + SIVT). Defines each workbook column by
+  its GAM dimensions, metric and filters (not by saved report — Roger,
+  2026-10-20), says where the DV / GA4 numbers come from, and fixes the
+  quarter math (SIVT is impression-weighted, never averaged). The GAM columns
+  have a scripted pull: `tag_ivt_gam_pull.yml` → `scripts/tag_ivt_gam_pull.py`
+  queries those definitions via the API (Roger's saved `TAG:` UI reports are
+  private to him, so the service account 404s on them by id). **The 2026 workbooks are the reference** (Roger, 2026-10-20): the script
   follows their conventions (video G = `B+D+E`; column B from the
   inventory-format split; discrepancy = `÷ pageviews`) and matches 107 of 108
   workbook cells. The one mismatch is display Jan B, an entry error. DV and

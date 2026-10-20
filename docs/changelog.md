@@ -21,7 +21,8 @@ exactly. Column B showed two entry errors: display January is Open Auction
 audio" format rows (−82,199 in Aug). Roger's call: the workbooks are the
 reference. The pull now follows their conventions (B from the inventory-format
 split, video G = `B+D+E`, discrepancy ÷ pageviews) and matches 107 of 108
-cells. The one mismatch is display Jan B.
+cells. The one mismatch is display Jan B. The runbook then switched from naming
+saved `TAG:` reports to defining each column by GAM dimension, metric and filter.
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
