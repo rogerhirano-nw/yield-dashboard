@@ -1,0 +1,43 @@
+name: Chumba by-line-item report
+
+# Pulls GAM delivery per Chumba line item + TTD Chumba conversions (joined by
+# deal id) for a window. Prints CSV to the log and uploads an .xlsx artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start: {description: "Start date (YYYY-MM-DD)", required: true}
+      end:   {description: "End date (YYYY-MM-DD)", required: true}
+  push:
+    branches: [claude/practical-noether-xfut1q]
+    paths:
+      - 'scripts/chumba_li_report.py'
+      - '.github/workflows/chumba_li_report.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt openpyxl
+      - name: Pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python scripts/chumba_li_report.py \
+            --start "${{ inputs.start || '2026-10-01' }}" \
+            --end   "${{ inputs.end   || '2026-10-19' }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chumba-li-report
+          path: chumba_li_report.xlsx
