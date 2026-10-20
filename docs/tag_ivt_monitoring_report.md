@@ -8,15 +8,15 @@ DV and GA4 numbers are copied by hand.
 
 | File | What it holds | Feeds |
 |---|---|---|
-| `DV-GA_discrepancy_<year>.xlsx` (sheet `Y<year>`) | GA4 web pageviews vs DV pre-bid requests, by month | Deck slide 4 |
-| `DV-GAM_discrepancy_report.xlsx` (sheets `inpage display <year>`, `instream video <year>`) | GAM impressions by demand channel, DV post-bid gross impressions, DV SIVT rate, by month | Deck slide 10 (SIVT), plus the DV↔GAM reconciliation |
+| `DV-GA_discrepancy_<year>.xlsx` (sheet `Y<year>`) | Pre-bid monitoring: GA4 web pageviews vs DV pre-bid requests, by month | Deck slide 4 |
+| `DV-GAM_discrepancy_report.xlsx` (sheets `inpage display <year>`, `instream video <year>`) | Post-bid monitoring: GAM impressions by demand channel, DV post-bid gross impressions, DV SIVT rate, by month | Deck slide 10 (SIVT), plus the DV↔GAM reconciliation |
 | `NEWSWEEK_IVT_-_<year>_MONITORING_REPORT.pptx` | The deck | TAG auditor / buyers |
 
 ### What's in each workbook
 
 **DV-GA discrepancy** (`DV-GA_discrepancy_<year>.xlsx`, one sheet `Y<year>`,
-titled "Prebid - DV vs GA Page views"). Shows that DoubleVerify's pre-bid check
-sees almost every page Newsweek serves. One row per month (`202601`, …), grouped
+titled "Prebid - DV vs GA Page views"). **Pre-bid monitoring**: shows that
+DoubleVerify's pre-bid check sees almost every page Newsweek serves. One row per month (`202601`, …), grouped
 Q1–Q4, with a Totals row at the bottom.
 
 | Column | What it holds | Source |
@@ -27,7 +27,8 @@ Q1–Q4, with a Totals row at the bottom.
 | Prebid Reqs | pages DV's pre-bid integration evaluated | DV (step 3) |
 | Discrepancy | `(Pageviews − Prebid Reqs) / Pageviews` | formula, don't overwrite |
 
-**DV-GAM discrepancy** (`DV-GAM_discrepancy_report.xlsx`). Reconciles what Ad
+**DV-GAM discrepancy** (`DV-GAM_discrepancy_report.xlsx`). **Post-bid
+monitoring**: reconciles what Ad
 Manager counted against what DoubleVerify measured post-bid, and holds DV's
 SIVT rate. Two sheets with the same layout: **`inpage display <year>`** (ad unit
 `newsweek`) and **`instream video <year>`** (ad unit `vid.newsweek`). One row per
