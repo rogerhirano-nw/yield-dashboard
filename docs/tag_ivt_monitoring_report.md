@@ -81,9 +81,17 @@ disagree by more than about 2×, find out why before you publish.
 
 | Workbook column (`Y<year>`) | Source |
 |---|---|
-| **D** Pageviews | GA4 → Explore, dimensions **Year month** × **Platform**, metric **Views**, filter Platform = `web` |
+| **D** Pageviews | The saved GA4 exploration (below): **Year month** × **Platform**, metric **Views**, Platform = `web` |
 | **E** Prebid Reqs | DV pre-bid page-level requests for the month (the pre-bid integration evaluates every page view before ad requests go out; see slide 7) |
 | **F** Discrepancy | formula, already in the sheet |
+
+**GA4 source of record:** this saved exploration (account 131632414, property
+359317277):
+<https://analytics.google.com/analytics/web/#/analysis/a131632414p359317277/edit/Gbsqfd36SraxUc8LJyQB6g>.
+Open it, set the date range to the quarter, and copy the `web` Views per month.
+You need access to that property for the link to open, and the exploration
+belongs to whoever saved it. If that person leaves, save a copy under the
+shared team account first.
 
 Fill one row per month (`202610`, `202611`, …). Leave the Totals row alone; it
 is a `SUM`.
