@@ -1044,6 +1044,26 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
+- `docs/tag_ivt_monitoring_report.md` — **monthly** refresh of the TAG CAF
+  IVT Monitoring Report deck and its two workbooks (DV-GA pageview
+  discrepancy, DV-GAM impressions + SIVT). Defines each workbook column by
+  its GAM dimensions, metric and filters (not by saved report — Roger,
+  2026-10-20), says where the DV / GA4 numbers come from, and fixes the
+  quarter math (SIVT is impression-weighted, never averaged). The GAM columns
+  have a scripted pull: `tag_ivt_gam_pull.yml` → `scripts/tag_ivt_gam_pull.py`
+  queries those definitions via the API (Roger's saved `TAG:` UI reports are
+  private to him, so the service account 404s on them by id). **The 2026 workbooks are the reference** (Roger, 2026-10-20): the script
+  follows their conventions (video GAM total = Ad Exchange + PMP – PA + Ad
+  server; Ad Exchange from the inventory-format split, **video always = In-stream
+  video + In-stream video or audio**; discrepancy = `÷ pageviews`). It matches
+  99 of 108 workbook cells; the 9 others are entry errors the doc lists
+  (display Jan Ad Exchange, and video Ad Exchange/GAM total Jan + Jul–Sep
+  missing the "or audio" format; all corrected 2026-10-21). Columns are referred to by name, never by letter.
+  DV and GA4 numbers stay manual; DV's are read off the Inventory Quality UI
+  tiles, no export. SIVT goal: under 1%. Reviewers: Michael (CTO) and Kelly Liu
+  (SVP Yield & AdOps); it goes to Katrina Eddy at AAM; TAG's deadline is near year end, with
+  AAM's review call in January (the runbook lists its evidence and questions). The `.pptx` walkthrough of this runbook is
+  for people **without GitHub access**, so it covers the GAM UI path only.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

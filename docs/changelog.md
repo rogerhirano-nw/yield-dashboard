@@ -15,6 +15,33 @@ per-minute metrics scrape spilled to temp every time it read the view.
 statement per table), proven equivalent to the old path on a real Postgres.
 The view was reset on prod. Runbook: `docs/supabase_disk_io.md`.
 
+## 2026-10-20 — TAG IVT monitoring report runbook
+
+`docs/tag_ivt_monitoring_report.md`: how to refresh the TAG CAF IVT deck and
+its DV-GA / DV-GAM workbooks each quarter from the `TAG:` GAM reports, DV
+Pinnacle and GA4. Writing it down turned up three inconsistencies in the 2026
+files: slide 4 divides the discrepancy by DV while the workbook divides by
+pageviews (3.21% vs 3.11% for Q1); "GAM total" is code served count on the
+display sheet but `B+D+E` on the video sheet; DV post-bid impressions are
+entered rounded to 100k.
+Follow-up: `scripts/tag_ivt_gam_pull.py` + `tag_ivt_gam_pull.yml` rebuild
+the eleven `TAG:` reports via the API, with definitions taken from Roger's UI
+screenshots. Checked against Jan–Sep, it reproduces display C–G and video C–F
+exactly. Column B showed two entry errors: display January is Open Auction
+(Ad Exchange minus PA, −394,000), and video B dropped the "In-stream video or
+audio" format rows (−82,199 in Aug). Roger's call: the workbooks are the
+reference. The pull now follows their conventions (B from the inventory-format
+split, video G = `B+D+E`, discrepancy ÷ pageviews) and matches 107 of 108
+cells. The one mismatch is display Jan B. The runbook then switched from naming
+saved `TAG:` reports to defining each column by GAM dimension, metric and filter.
+Then two more calls from Roger: columns are named, never lettered; and video
+Ad Exchange always includes both In-stream video and In-stream video or audio,
+which makes video Jan and Jul–Sep entry errors too (99 of 108 cells match).
+Display January Ad Exchange corrected to the full figure, 59,956,722 (it had been
+entered as Open Auction only); the guide's "Ad Exchange includes PA" card was
+removed at Roger's request.
+2026-10-21: the refresh is now monthly; the guide covers the yearly AAM review, names the reviewers and recipient, and drops IAS. Video post-bid is measured at 100% because DoubleVerify is GAM's Open Measurement Viewability Partner (replaces the old 1–5% sampled answer).
+
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
 Comscore kept finding Direct campaigns with live tag activity and no CCR setup
