@@ -1,8 +1,9 @@
-# TAG IVT monitoring report: quarterly update runbook
+# TAG IVT monitoring report: monthly update runbook
 
 How to refresh the **Newsweek IVT Monitoring Report** deck, the evidence pack for
-TAG Certified Against Fraud (CAF), and the two workbooks behind it. Do this once
-a quarter, after the quarter closes. Nothing in the dashboard or the sweep
+TAG Certified Against Fraud (CAF), and the two workbooks behind it. Do this **every
+month**, about 3 days after the month closes so DV's data is complete
+(Roger, 2026-10-21). Nothing in the dashboard or the sweep
 produces these numbers. The GAM columns have a scripted pull (step 1). The
 DV and GA4 numbers are copied by hand.
 
@@ -206,7 +207,7 @@ disagree by more than about 2×, find out why before you publish.
 **GA4 source of record:** this saved exploration (account 131632414, property
 359317277):
 <https://analytics.google.com/analytics/web/#/analysis/a131632414p359317277/edit/Gbsqfd36SraxUc8LJyQB6g>.
-Open it, set the date range to the quarter, and copy the `web` Views per month.
+Open it, set the date range to the new month, and copy its `web` Views.
 You need access to that property for the link to open, and the exploration
 belongs to whoever saved it. If that person leaves, save a copy under the
 shared team account first.
@@ -238,6 +239,9 @@ Quarter disc. = (Σ pageviews − Σ prebid) / Σ pageviews
 
 Pageviews and prebid requests are counts, so a quarter is just the sum.
 
+Each month, recompute the current quarter (quarter-to-date until its third
+month is in) and the YTD row.
+
 **2026 Q1–Q3 from the current workbooks** (so the next person can check their
 arithmetic):
 
@@ -258,9 +262,9 @@ arithmetic):
 | Slide | What to change |
 |---|---|
 | 1 | Title year. |
-| 4 (GA4 vs DV pre-bid) | Add the new quarter's Pageviews / DV / Discrepancy, and update the **year row** (it is year-to-date, so it moves every quarter). Q4 placeholders read `0,0,0` / `0.0%` until filled. Check that each DV figure is inside its column group: Q2's DV number (119,051,343) sits in a loose text box outside the DV group and is easy to miss. Update the source footnote. |
+| 4 (GA4 vs DV pre-bid) | Add the new month's Pageviews / DV / Discrepancy, its quarter, and the **year row** (it is year-to-date, so it moves every month). Q4 placeholders read `0,0,0` / `0.0%` until filled. Check that each DV figure is inside its column group: Q2's DV number (119,051,343) sits in a loose text box outside the DV group and is easy to miss. Update the source footnote. |
 | 10 (SIVT by quarter) | One row per quarter; columns Overall / Display / Video. The bottom row is labelled **Q4**. If it's meant to be the full-year figure, relabel it **Full year** (or YTD), so the Q4 row isn't mistaken for a real quarter. As of the 2026 Q2 copy, the Q3 (0.01%) and bottom-row values were not 2026 numbers. Replace them from the step 4 table. |
-| 9 (Key changes) | Anything that changed traffic or measurement that quarter: replatforming, a new video player, a new verification vendor, a pre-bid threshold change. Q2 2026 pageviews fell by about half quarter over quarter, so the auditor will ask about it. |
+| 9 (Key changes) | Anything that changed traffic or measurement that month: replatforming, a new video player, a new verification vendor, a pre-bid threshold change. Q2 2026 pageviews fell by about half quarter over quarter, so the auditor will ask about it. |
 | 5–7 | Coverage text (DV pre/post-bid, GAM filtration). Change only if the setup changed. **We no longer use IAS**: the 2025/2026 copies still have an IAS slide and name it among the "three pathways". Remove it so these slides name only DV and GAM (two pathways). |
 
 Before sending it, check every percentage on slides 4 and 10 against the

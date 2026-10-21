@@ -1040,7 +1040,7 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
-- `docs/tag_ivt_monitoring_report.md` — quarterly refresh of the TAG CAF
+- `docs/tag_ivt_monitoring_report.md` — **monthly** refresh of the TAG CAF
   IVT Monitoring Report deck and its two workbooks (DV-GA pageview
   discrepancy, DV-GAM impressions + SIVT). Defines each workbook column by
   its GAM dimensions, metric and filters (not by saved report — Roger,
