@@ -12,7 +12,9 @@ Michael (CTO) and Kelly Liu (SVP, Yield & AdOps) review the deck before it
 goes to TAG (Roger, 2026-10-21).
 Send it to **Katrina Eddy**, VP Tech Assurance, Alliance for Audited Media
 (AAM, TAG's auditor): katrina.eddy@auditedmedia.com · O 203-447-2883 ·
-M 203-675-5652.
+M 203-675-5652. Copy Jonathan Reid (AAM, runs the review;
+Jonathan.Reid@auditedmedia.com) and TechAssurance@auditedmedia.com. AAM's review
+call follows in January (see "The yearly AAM review" below).
 
 | File | What it holds | Feeds |
 |---|---|---|
@@ -272,6 +274,40 @@ arithmetic):
 
 Before sending it, check every percentage on slides 4 and 10 against the
 workbook, and confirm the source footnotes name the year.
+
+## The yearly AAM review
+
+AAM (Alliance for Audited Media) audits the TAG CAF seal once a year, on a call
+in January. Afterwards Jonathan Reid sends a list of evidence to drop in the
+shared folder. The January 2026 list, so the next one is no surprise:
+
+- The report deck, as presented on the call.
+- DV screenshots of IVT rates.
+- DV raw pre-bid scanning data (the monthly CSVs), plus DV's emails for any
+  months that arrived by email (October and November last time).
+- GA4 screenshots of pageview counts.
+- The discrepancy report, display and video.
+- DV screenshots backing up the post-bid numbers on the discrepancy report,
+  display and video.
+- ads.txt: a screenshot of the update log and one sample update ticket.
+- Confirmation that the complaint resolution process hasn't changed, with an
+  example if one happened that year.
+- ~~IAS post-impression screenshots~~: no longer applies, we stopped using IAS.
+
+Questions they ask, with last year's answers:
+
+| They ask | Last year's answer |
+|---|---|
+| Material changes since the last review? | Name them, e.g. IAS dropped in 2026. |
+| What share of traffic does DV scan? | Display 100%; video 1–5% (sampled). |
+| Which DV lists do you ingest pre-bid? | None. DV runs client-side on the page (Michael, Jan 2026). |
+| Traffic that can't be scanned? | Google AdX. DV's wrapper can't go on exchange tags, so post-bid covers ad-server traffic only. This is also most of the video DV↔GAM gap (13.3% YTD 2026). |
+| Description of Methodology link? | https://advertising.newsweek.com/#about-section (the old newsweek.com/advertise link broke in Jan 2026). Check it works. |
+| Do you need a sellers.json? | No. Newsweek is a publisher, not an intermediary. Make sure every exchange we work with lists Newsweek in *its* sellers.json (AAM, Apr 2026). |
+| Who responds to fraud incidents? | The CTO, supported by the Director of Operations and the VP of Ad Ops. |
+
+They also run newsweek.com/ads.txt (and app-ads.txt) through third-party
+validators and send back any errors.
 
 ## Known gaps (fix when convenient)
 
