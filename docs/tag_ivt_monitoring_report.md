@@ -6,6 +6,10 @@ a quarter, after the quarter closes. Nothing in the dashboard or the sweep
 produces these numbers. The GAM columns have a scripted pull (step 1). The
 DV and GA4 numbers are copied by hand.
 
+**Deadline and reviewers.** TAG's deadline falls close to the end of the year.
+Michael (CTO) and Kelly Liu (SVP, Yield & AdOps) review the deck before it
+goes to TAG (Roger, 2026-10-21).
+
 | File | What it holds | Feeds |
 |---|---|---|
 | `DV-GA_discrepancy_<year>.xlsx` (sheet `Y<year>`) | Pre-bid monitoring: GA4 web pageviews vs DV pre-bid requests, by month | Deck slide 4 |
@@ -139,9 +143,9 @@ be rebuilt even if a saved report is changed, deleted or unshared.
   Auction**, i.e. missing January's 394,000 PA impressions. Every month uses the
   full Ad Exchange figure. Display GAM total isn't affected (it's code served
   count).
-- **Video Ad Exchange, Jan and Jul–Sep: fix these cells.** The workbook took
-  only the **In-stream video** row and left out **In-stream video or audio**.
-  The rule is now both, always. Corrected values: Jan 3,236,963 (+1),
+- **Video Ad Exchange, Jan and Jul–Sep: corrected** (Roger, 2026-10-21). The
+  workbook had taken only the **In-stream video** row and left out **In-stream
+  video or audio**. The rule is now both, always. Corrected values: Jan 3,236,963 (+1),
   Jul 1,332,567 (+83), Aug 1,716,850 (+82,199), Sep 2,370,358 (+42,531).
   Video GAM total moves by the same amounts, since it's
   Ad Exchange + PMP – PA + Ad server: Jan 46,725,759, Jul 28,890,985,
@@ -172,17 +176,17 @@ Impressions** (→ SIVT Rate; the same as 100% − the Fraud/SIVT Free Rate donu
 Repeat with **Video**, then the next month. Check: July 2026 Display reads
 193.4M, the workbook's July display figure.
 
-> **Check the SIVT Rate scale before the next update.** For July 2026 (display +
-> video, unfiltered) the UI shows 836.5K Fraud/SIVT of 218.9M monitored, about
-> **0.38%** (Fraud/SIVT Free Rate 99.6%). The workbook's July SIVT Rate is
-> `0.0004` (0.04%) display and `0.0001` (0.01%) video — roughly 10× lower.
-> Confirm which figure the workbook is meant to hold before quoting SIVT to TAG.
+> **The SIVT goal is under 1%** (Roger, 2026-10-21). Worth knowing: for July
+> 2026 (display + video, unfiltered) the UI shows 836.5K Fraud/SIVT of 218.9M
+> monitored, about **0.38%** (Fraud/SIVT Free Rate 99.6%). The workbook's July
+> SIVT Rate is `0.0004` (0.04%) display and `0.0001` (0.01%) video, roughly 10×
+> lower. Both clear the 1% goal. Read the rate the same way every month so the
+> trend stays comparable.
 
-**Export the exact count. Don't read it off a UI tile.** The 2026 DV post-bid impressions column is
-rounded to the nearest 100k (370,000,000 / 316,400,000 / …), which is what a
-headline tile shows. That rounding moves the DV↔GAM discrepancy by up to ~0.03pp
-a month. Export the Inventory Quality report (impressions + Fraud/SIVT by
-month, display and video as separate rows) instead.
+**Read the numbers off the UI tiles. No export is needed** (Roger, 2026-10-21).
+A tile shows impressions to the nearest 100k (370.0M → 370,000,000), which is
+how the 2026 column was filled. That rounding moves the DV↔GAM discrepancy by
+at most ~0.03pp a month, well inside what TAG looks at.
 
 **Cross-check against the cache.** The daily DV IVT email already lands in the
 `dv_ivt` table (see `CLAUDE.md` → DoubleVerify IVT). Impression-weighted
@@ -264,9 +268,6 @@ workbook, and confirm the source footnotes name the year.
 
 ## Known gaps (fix when convenient)
 
-- DV post-bid impressions are rounded (step 2).
-- Video Ad Exchange and GAM total for Jan and Jul–Sep need the In-stream video
-  or audio impressions added (step 1).
 - Slide 4's discrepancies use `÷ DV`; restate them `÷ pageviews` (step 4).
 - Rename the PMP – PD+PG header to "Total impressions" to match its numbers (step 1).
 - The DV pre-bid menu path isn't written down yet (step 3).
