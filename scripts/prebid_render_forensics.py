@@ -116,6 +116,19 @@ SCROLL_DWELL = float(os.environ.get("SCROLL_DWELL") or "1.6")
 # Write results after every load so a long sweep survives being interrupted.
 INCREMENTAL = os.environ.get("INCREMENTAL", "1") == "1"
 
+# Hosts and log lines that belong to the bidder under test. The GPT frame a
+# wrapper bidder renders into is cross-origin, so "did their payload even
+# arrive, and did it throw" is invisible to the page's own JS — it has to come
+# off the network and console streams, filtered to the vendor. Ogury serves
+# from presage.io and marks its frames `ogy-*`, hence the extra defaults.
+VENDOR_HOSTS = [h.strip().lower() for h in (
+    os.environ.get("VENDOR_HOSTS") or "ogury,presage,ogy"
+).split(",") if h.strip()] + TARGET_BIDDERS
+_VENDOR_RE = re.compile("|".join(re.escape(h) for h in dict.fromkeys(VENDOR_HOSTS)))
+# A busy article fires thousands of requests; keep the tail bounded so one
+# chatty load can't crowd out the rest of the sweep.
+_LOG_CAP = 500
+
 # Article URLs look like /slug-1234567 — the homepage also links sections and
 # live blogs, which run a different slot set, so match the numeric id suffix.
 _ARTICLE_RE = re.compile(r"^https://www\.newsweek\.com/[a-z0-9-]+-\d{6,}$")
@@ -490,6 +503,40 @@ def _article_urls(browser, want: int) -> list[str]:
     return (urls * ((want // len(urls)) + 1))[:want]
 
 
+def _frame_dump(pg, code: str) -> dict:
+    """What is actually inside the GPT frame for `code`.
+
+    The decisive unknown on a blank render: the page can see the frame is 0x0
+    but not what it contains, because it is cross-origin. Playwright crosses
+    that boundary, so a blank win can be told apart from a frame that holds a
+    creative which simply never sized itself.
+    """
+    want = (code or "").replace("dfp-ad-", "")
+    for fr in pg.frames:
+        name = fr.name or ""
+        if "google_ads_iframe" not in name or not want or want not in name:
+            continue
+        out = {"name": name[:90], "url": (fr.url or "")[:120]}
+        try:
+            html = fr.content() or ""
+        except Exception as exc:
+            out["error"] = str(exc)[:120]
+            return out
+        out["htmlLen"] = len(html)
+        for key, expr in (("bodyLen", "() => (document.body && document.body.innerHTML || '').length"),
+                          ("nIframes", "() => document.querySelectorAll('iframe').length"),
+                          ("nScripts", "() => document.querySelectorAll('script').length"),
+                          ("nImgs", "() => document.querySelectorAll('img, video, canvas').length"),
+                          ("bodyText", "() => (document.body && document.body.innerText || '').slice(0, 200)")):
+            try:
+                out[key] = fr.evaluate(expr)
+            except Exception:
+                pass
+        out["head"] = html[:1200]
+        return out
+    return {}
+
+
 def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     ctx = browser.new_context(**PROFILE_CFG[profile])
     ctx.add_init_script(INIT_JS)
@@ -502,7 +549,50 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     pg.set_default_timeout(30_000)
     pg.set_default_navigation_timeout(45_000)
     hosts: Counter = Counter()
+    netlog: list[dict] = []
+    conlog: list[dict] = []
+    frame_dumps: list[dict] = []
+    t0 = time.monotonic()
+
+    def _ms() -> int:
+        return int((time.monotonic() - t0) * 1000)
+
+    def _net(entry: dict) -> None:
+        if len(netlog) < _LOG_CAP:
+            netlog.append(entry)
+
+    def _on_response(resp) -> None:
+        try:
+            host = urlparse(resp.url).netloc
+            if resp.status >= 400:
+                _net({"t": _ms(), "kind": f"HTTP {resp.status}", "url": resp.url[:150]})
+            elif _VENDOR_RE.search(host.lower()):
+                _net({"t": _ms(), "kind": f"vendor {resp.status}", "url": resp.url[:150]})
+        except Exception:
+            pass
+
+    def _on_failed(req) -> None:
+        try:
+            _net({"t": _ms(), "kind": f"FAILED {(req.failure or '')[:40]}",
+                  "url": req.url[:150]})
+        except Exception:
+            pass
+
+    def _on_console(msg) -> None:
+        try:
+            txt = (msg.text or "")[:260]
+            if len(conlog) < _LOG_CAP and (
+                    msg.type in ("error", "warning") or _VENDOR_RE.search(txt.lower())):
+                conlog.append({"t": _ms(), "type": msg.type, "text": txt})
+        except Exception:
+            pass
+
     pg.on("request", lambda r: hosts.update([urlparse(r.url).netloc]))
+    pg.on("response", _on_response)
+    pg.on("requestfailed", _on_failed)
+    pg.on("console", _on_console)
+    pg.on("pageerror", lambda e: conlog.append(
+        {"t": _ms(), "type": "pageerror", "text": str(e)[:260]}))
     try:
         pg.goto(url, wait_until="domcontentloaded", timeout=60_000)
     except Exception as exc:
@@ -568,6 +658,14 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
                                     f"{sn['bidder']}-{sn.get('code', 'x')}.png"))
                     except Exception:
                         pass
+                    try:
+                        frame_dumps.append({
+                            "bidder": sn.get("bidder"), "code": sn.get("code"),
+                            "t": sn.get("t"), "frame": _frame_dump(pg, sn.get("code") or "")})
+                    except Exception as exc:
+                        frame_dumps.append({"bidder": sn.get("bidder"),
+                                            "code": sn.get("code"),
+                                            "frame": {"error": str(exc)[:120]}})
             seen_snaps = len(snaps)
     time.sleep(4)
     try:
@@ -581,6 +679,9 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         data["consentClicked"] = consent_clicked
         data["consentControls"] = consent_controls
         data["reqHosts"] = hosts.most_common(30)
+        data["netlog"] = netlog
+        data["consoleLog"] = conlog
+        data["frameDumps"] = frame_dumps
         try:
             shot = SHOTS / f"{idx:02d}-{profile}.png"
             pg.screenshot(path=str(shot), full_page=False)
@@ -899,6 +1000,75 @@ def main() -> int:
                   f"iframes={o.get('iframes')}")
     if not seen:
         print("  none — nothing large renders outside the ad slots")
+
+    # ── inside the frame, and what the vendor's own payload did ──────────
+    # The GPT render path is identical for every wrapper bidder, so "GPT
+    # creates the frame hidden and reveals it on paint" explains nothing on
+    # its own. What separates a bidder that blanks from the 29 that don't has
+    # to come from inside its frame and off its own network/console traffic.
+    print("\n" + "=" * 78)
+    print("INSIDE THE GPT FRAME ON A TARGET-BIDDER WIN")
+    print("=" * 78)
+    dumps = [(p_, d) for p_ in pages for d in (p_.get("frameDumps") or [])]
+    if not dumps:
+        print("no target-bidder wins in this sample")
+    for p_, d in dumps:
+        fr = d.get("frame") or {}
+        if not fr:
+            print(f"\n[{p_.get('profile')}] {d.get('bidder')} -> {d.get('code')}: "
+                  f"no matching google_ads_iframe_* frame found")
+            continue
+        if fr.get("error"):
+            print(f"\n[{p_.get('profile')}] {d.get('bidder')} -> {d.get('code')}: "
+                  f"frame unreadable: {fr['error']}")
+            continue
+        print(f"\n[{p_.get('profile')}] {d.get('bidder')} -> {d.get('code')} "
+              f"at t={d.get('t')}ms")
+        print(f"    frame {fr.get('name')}")
+        print(f"    url {fr.get('url') or '(about:blank)'}")
+        print(f"    html={fr.get('htmlLen')}ch body={fr.get('bodyLen')}ch "
+              f"scripts={fr.get('nScripts')} iframes={fr.get('nIframes')} "
+              f"media={fr.get('nImgs')}")
+        txt = (fr.get("bodyText") or "").strip().replace("\n", " ")
+        print(f"    body text: {txt[:150] or '(none)'}")
+        print(f"    head: {(fr.get('head') or '').strip()[:260] or '(empty)'}")
+
+    # ── the vendor's own traffic, split by how that load turned out ──────
+    print("\n" + "=" * 78)
+    print("VENDOR NETWORK + CONSOLE, BLANK LOADS vs HEALTHY LOADS")
+    print("=" * 78)
+    def _blanked(p_: dict) -> bool:
+        for sn in p_.get("snaps") or []:
+            if (sn.get("bidder") or "").lower() not in TARGET_BIDDERS:
+                continue
+            for f in sn.get("iframes") or []:
+                if f.get("gpt") and (f["box"]["w"] == 0 or f.get("display") == "none"):
+                    return True
+        return False
+
+    groups = {"BLANK": [p_ for p_ in pages if _blanked(p_)],
+              "HEALTHY": [p_ for p_ in pages
+                          if not _blanked(p_) and (p_.get("frameDumps") or [])]}
+    for label, grp in groups.items():
+        print(f"\n-- {label} loads ({len(grp)}) --")
+        if not grp:
+            print("    none in this sample")
+            continue
+        net: Counter = Counter()
+        con: Counter = Counter()
+        for p_ in grp:
+            for e in p_.get("netlog") or []:
+                if _VENDOR_RE.search(e.get("url", "").lower()) or e["kind"].startswith(("HTTP", "FAILED")):
+                    net.update([f"{e['kind']}  {urlparse(e['url']).netloc}"
+                                f"{urlparse(e['url']).path[:40]}"])
+            for e in p_.get("consoleLog") or []:
+                con.update([f"[{e['type']}] {e['text'][:110]}"])
+        print(f"    network ({sum(net.values())} entries, top 12):")
+        for k, n in net.most_common(12):
+            print(f"      {n:3d}x {k}")
+        print(f"    console ({sum(con.values())} entries, top 12):")
+        for k, n in con.most_common(12):
+            print(f"      {n:3d}x {k}")
 
     print(f"\nrenders.json + screenshots: {SHOTS}")
     return 0
