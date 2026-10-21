@@ -1,0 +1,35 @@
+name: List GAM custom targeting keys
+
+# Read-only dump of every custom targeting key (ACTIVE + INACTIVE) with its
+# value count, for reconciling a KV cleanup register against the network.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/focused-einstein-4g10lc]
+    paths:
+      - 'scripts/list_custom_targeting_keys.py'
+      - '.github/workflows/list_custom_targeting_keys.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install googleads
+      - name: List keys
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: python scripts/list_custom_targeting_keys.py --out kv_keys.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kv-keys
+          path: kv_keys.json
