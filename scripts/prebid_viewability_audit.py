@@ -36,7 +36,8 @@ Also reported, because it separates the failure modes further:
     renders somewhere AV can't instrument shows up here, not in viewable%.
   * per-day series — is this a regression with a start date, or structural?
 
-Env: DAYS (default 21), PREBID_ADVERTISER_ID (default 5724335726, the
+Env: DAYS (default 21), END (last day, ISO; default yesterday),
+PREBID_ADVERTISER_ID (default 5724335726, the
 advertiser the source report filtered on), BIDDERS (extra bidders to detail),
 OUT_DIR. Requires GAM_SERVICE_ACCOUNT_JSON + GAM_NETWORK_ID, so it runs in
 Actions (see .github/workflows/prebid_viewability_audit.yml) or locally with
@@ -185,10 +186,21 @@ def _bidder_table(df: pd.DataFrame, title: str) -> None:
               f"{_rate(r.viewable_impressions, r.measurable):>15.1f}%")
 
 
+def _window(days: int) -> tuple:
+    """(start, end) for the pull. END pins the last day, else yesterday.
+
+    A fixed END is what lets two runs straddle a known date — the 2026-10-08
+    wrapper change split Ogury's month into a better and a worse half, and a
+    rolling "last N days" window can't show that.
+    """
+    env_end = (os.environ.get("END") or "").strip()
+    end = date.fromisoformat(env_end) if env_end else date.today() - timedelta(days=1)
+    return end - timedelta(days=days - 1), end
+
+
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    end = date.today() - timedelta(days=1)
-    start = end - timedelta(days=DAYS - 1)
+    start, end = _window(DAYS)
     gam = GAMClient()
 
     print("=" * 78)

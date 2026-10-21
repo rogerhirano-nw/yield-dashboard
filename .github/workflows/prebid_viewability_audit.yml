@@ -16,6 +16,10 @@ on:
         required: false
         default: 'smilewanted,ogury,oms,onetag'
 
+      end:
+        description: 'Last day of the window (YYYY-MM-DD; blank = yesterday)'
+        required: false
+        default: ''
 permissions:
   contents: read
   pull-requests: write
@@ -40,6 +44,7 @@ jobs:
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           DAYS: ${{ inputs.days }}
           BIDDERS: ${{ inputs.bidders }}
+          END: ${{ inputs.end }}
           OUT_DIR: /tmp/prebid-viewability-audit
         run: |
           set -o pipefail

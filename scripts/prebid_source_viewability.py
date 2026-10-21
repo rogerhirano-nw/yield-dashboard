@@ -20,7 +20,8 @@ CUSTOM_DIMENSION_<n>_VALUE column. The script looks both keys up, and:
 Peers are every other bidder on the same ad unit *and the same source*, so
 each path is graded against like-for-like demand.
 
-Env: DAYS (default 30, ending yesterday), PREBID_ADVERTISER_IDS (default
+Env: DAYS (default 30), END (last day, ISO; default yesterday),
+PREBID_ADVERTISER_IDS (default
 5724335726,5713671547 — the filter on the GAM report RevOps pulled),
 BIDDER (default smilewanted), OUT_DIR. Needs GAM_SERVICE_ACCOUNT_JSON +
 GAM_NETWORK_ID, so it runs in Actions (.github/workflows/
@@ -104,10 +105,21 @@ def _pct(x: float) -> str:
     return "   —  " if pd.isna(x) else f"{x:5.1f}%"
 
 
+def _window(days: int) -> tuple:
+    """(start, end) for the pull. END pins the last day, else yesterday.
+
+    A fixed END is what lets two runs straddle a known date — the 2026-10-08
+    wrapper change split Ogury's month into a better and a worse half, and a
+    rolling "last N days" window can't show that.
+    """
+    env_end = (os.environ.get("END") or "").strip()
+    end = date.fromisoformat(env_end) if env_end else date.today() - timedelta(days=1)
+    return end - timedelta(days=days - 1), end
+
+
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    end = date.today() - timedelta(days=1)
-    start = end - timedelta(days=DAYS - 1)
+    start, end = _window(DAYS)
     gam = GAMClient()
 
     print("=" * 78)
