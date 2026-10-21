@@ -10,6 +10,9 @@ DV and GA4 numbers are copied by hand.
 **Deadline and reviewers.** TAG's deadline falls close to the end of the year.
 Michael (CTO) and Kelly Liu (SVP, Yield & AdOps) review the deck before it
 goes to TAG (Roger, 2026-10-21).
+Send it to **Katrina Eddy**, VP Tech Assurance, Alliance for Audited Media
+(AAM, TAG's auditor): katrina.eddy@auditedmedia.com · O 203-447-2883 ·
+M 203-675-5652.
 
 | File | What it holds | Feeds |
 |---|---|---|

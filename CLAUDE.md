@@ -1057,7 +1057,7 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   missing the "or audio" format; all corrected 2026-10-21). Columns are referred to by name, never by letter.
   DV and GA4 numbers stay manual; DV's are read off the Inventory Quality UI
   tiles, no export. SIVT goal: under 1%. Reviewers: Michael (CTO) and Kelly Liu
-  (SVP Yield & AdOps); TAG's deadline is near year end. The `.pptx` walkthrough of this runbook is
+  (SVP Yield & AdOps); it goes to Katrina Eddy at AAM; TAG's deadline is near year end. The `.pptx` walkthrough of this runbook is
   for people **without GitHub access**, so it covers the GAM UI path only.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
   pipeline. Three jobs that all read/write the same `state.sqlite`:
