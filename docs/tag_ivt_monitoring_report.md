@@ -79,7 +79,8 @@ prints both sheets' GAM columns (Ad Exchange through GAM total) in workbook orde
 CSV attached. Locally:
 `GAM_SERVICE_ACCOUNT_JSON=… GAM_NETWORK_ID=22541732127 python scripts/tag_ivt_gam_pull.py --start 2026-10 --end 2026-12`.
 Checked against the 2026 workbook for Jan–Sep (2026-10-20): **99 of 108 cells
-match exactly**. The 9 that don't are workbook entry errors, listed below.
+match exactly** (100 once display January is corrected). The rest are workbook
+entry errors, listed below.
 
 **Manual path:** Ad Manager → Reporting → Interactive reports → **Create my own
 report** → Historical. For every column:
@@ -127,11 +128,12 @@ be rebuilt even if a saved report is changed, deleted or unshared.
   and Open Auction + Private Auction = the total, every month (Feb display:
   48,732,896 + 681,691 = 49,414,587). So Ad Exchange is never Programmatic channel
   = Open Auction, and PA is never added on top of Ad Exchange as if it were separate.
-- **Display January, Ad Exchange: fix this cell.** The workbook has 59,562,722,
-  which is Ad Exchange impressions with **Programmatic channel = Open Auction**
-  (Ad Exchange minus PA). The column definition gives 59,956,722. The difference
-  is exactly 394,000, January's PA. February–September follow the definition.
-  Display GAM total isn't affected (it's code served count).
+- **Display January, Ad Exchange: corrected to 59,956,722** (Roger, 2026-10-21 —
+  "it's a mistake; full Ad Exchange for Jan too"). The original entry,
+  59,562,722, was Ad Exchange filtered to **Programmatic channel = Open
+  Auction**, i.e. missing January's 394,000 PA impressions. Every month uses the
+  full Ad Exchange figure. Display GAM total isn't affected (it's code served
+  count).
 - **Video Ad Exchange, Jan and Jul–Sep: fix these cells.** The workbook took
   only the **In-stream video** row and left out **In-stream video or audio**.
   The rule is now both, always. Corrected values: Jan 3,236,963 (+1),
@@ -253,7 +255,6 @@ workbook, and confirm the source footnotes name the year.
 ## Known gaps (fix when convenient)
 
 - DV post-bid impressions are rounded (step 2).
-- Display January Ad Exchange has to be corrected to 59,956,722 (step 1).
 - Video Ad Exchange and GAM total for Jan and Jul–Sep need the In-stream video
   or audio impressions added (step 1).
 - Slide 4's discrepancies use `÷ DV`; restate them `÷ pageviews` (step 4).

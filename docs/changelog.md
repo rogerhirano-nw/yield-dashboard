@@ -26,6 +26,9 @@ saved `TAG:` reports to defining each column by GAM dimension, metric and filter
 Then two more calls from Roger: columns are named, never lettered; and video
 Ad Exchange always includes both In-stream video and In-stream video or audio,
 which makes video Jan and Jul–Sep entry errors too (99 of 108 cells match).
+Display January Ad Exchange corrected to the full figure, 59,956,722 (it had been
+entered as Open Auction only); the guide's "Ad Exchange includes PA" card was
+removed at Roger's request.
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 

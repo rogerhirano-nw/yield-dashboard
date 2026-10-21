@@ -1053,8 +1053,8 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   server; Ad Exchange from the inventory-format split, **video always = In-stream
   video + In-stream video or audio**; discrepancy = `÷ pageviews`). It matches
   99 of 108 workbook cells; the 9 others are entry errors the doc lists
-  (display Jan Ad Exchange; video Ad Exchange/GAM total Jan + Jul–Sep missing
-  the "or audio" format). Columns are referred to by name, never by letter.
+  (display Jan Ad Exchange — now corrected to the full 59,956,722; video Ad
+  Exchange/GAM total Jan + Jul–Sep missing the "or audio" format). Columns are referred to by name, never by letter.
   DV and GA4 numbers stay manual. The `.pptx` walkthrough of this runbook is
   for people **without GitHub access**, so it covers the GAM UI path only.
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
