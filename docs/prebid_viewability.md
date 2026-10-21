@@ -477,6 +477,40 @@ and 1.69M impressions confirms the blank-render mechanism found on page —
 and gives a quotable number (43.0% vs a 91.8% peer rate on the same unit)
 that does not depend on any sampling rate.
 
+### Ogury sticky by device and OS (2026-10-21): a mobile-only defect that worsens with newer OSes
+
+`prebid_bidder_segment_viewability.yml` (Oct 10–20, sticky only, every row
+graded against the other bidders in the same segment; measurable is 100%
+throughout):
+
+| Device | Ogury imps | Ogury viewable | Other bidders | Gap |
+|---|---:|---:|---:|---:|
+| Smartphone | 415,088 (94%) | **34.4%** | 92.7% | −58.4pp |
+| Tablet | 16,644 | 46.3% | 94.9% | −48.6pp |
+| **Desktop** | 9,130 | **95.7%** | 94.2% | **+1.5pp** |
+
+**On desktop Ogury's sticky is healthy;** the defect is mobile and tablet
+only, and smartphones carry 97% of the shortfall.
+
+By OS version the rate falls steadily as the OS gets newer, on both
+platforms, while other bidders hold 90–97% on every version:
+
+* **Android:** 11 → 73.6%, 12 → 63.5%, 13 → 61.1%, 14 → 61.8%, 15 → 53.2%,
+  16 → 45.6%, 17 → 30.9%.
+* **iOS:** 18.7 → 35.6%, 26.2–26.6 → 25–28%, 27 → 19.6%.
+
+iOS 26.6 alone is 42% of the shortfall. A creative that fails more often on
+every newer OS release points at something the newer mobile browsers
+restrict and Ogury's sticky creative depends on, rather than at our page.
+Candidates are storage or cookie partitioning, autoplay rules, or throttling
+of off-screen or fixed-position frames. That is a hypothesis for Ogury to
+confirm, not something this cut proves. GAM refused `BROWSER_NAME` and
+`DEVICE_MODEL_NAME` crossed with the hb_bidder custom dimension, so the
+browser split isn't available.
+
+**Consequence for the fix:** take Ogury off sticky on **mobile and tablet
+only**. Desktop sticky is fine and can stay.
+
 ### OneTag: video-only
 
 | Unit / size | Imps | onetag | peers |
