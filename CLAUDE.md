@@ -196,7 +196,16 @@ braces, `refresh_cache._lockdown_table` now also enables RLS + revokes
 anon/authenticated *at table creation* in the same transaction as the write
 (the `_safe_replace` drop path, `_refresh_ttd_campaign`'s schema-change
 drop, and first-time creates on those paths) — so recreated tables are born
-locked instead of waiting for the next health check. Code-level failures (id format, join
+locked instead of waiting for the next health check. **Supabase's
+2026-10-30 change** (new `public` tables no longer get automatic Data API
+grants) needs **no action here**: nothing in this stack uses the Data API
+(sweep, dashboard and health check all go through `DATABASE_URL` as the table
+owner), and the change matches the lockdown — the revoke in `_lockdown_table`
+just becomes a usual no-op, kept for plain Postgres and any default that
+flips back. **Never apply the notice's sample `GRANT … TO anon/authenticated`
+migration** — it re-opens the cache and fails RLS hygiene. If something ever
+needs PostgREST/supabase-js, grant that one table to `service_role` only.
+Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients
