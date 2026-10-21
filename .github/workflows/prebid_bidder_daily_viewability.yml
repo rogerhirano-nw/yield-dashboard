@@ -1,0 +1,76 @@
+name: Prebid bidder viewability — daily, before vs after (GAM)
+
+# One bidder's Active View day by day vs mix-adjusted peers, then before vs
+# after a split date (PAUSE_DATE, or the best-separating day). Built to read
+# the 2026-10 SmileWanted IBV pause. See
+# scripts/prebid_bidder_daily_viewability.py + docs/prebid_viewability.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Lookback window in days (ending yesterday)'
+        required: false
+        default: '60'
+      bidder:
+        description: 'hb_bidder value to detail'
+        required: false
+        default: 'smilewanted'
+      pause_date:
+        description: 'First day after the pause (YYYY-MM-DD); blank = auto-detect'
+        required: false
+        default: ''
+  # A new workflow can't be dispatched until it's on main, so the first run
+  # rides a push that touches it.
+  push:
+    paths:
+      - scripts/prebid_bidder_daily_viewability.py
+      - .github/workflows/prebid_bidder_daily_viewability.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install google-ads-admanager google-auth pandas
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DAYS: ${{ inputs.days }}
+          BIDDER: ${{ inputs.bidder }}
+          PAUSE_DATE: ${{ inputs.pause_date }}
+          OUT_DIR: /tmp/prebid-bidder-daily
+        run: |
+          set -o pipefail
+          python scripts/prebid_bidder_daily_viewability.py 2>&1 | tee /tmp/output.txt
+
+      - name: Upload CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebid-bidder-daily
+          path: /tmp/prebid-bidder-daily/
+          if-no-files-found: ignore
+
+      - name: Write output to job summary
+        if: always()
+        run: |
+          {
+            echo '### Prebid bidder viewability — daily, before vs after'
+            echo ''
+            echo '```'
+            tail -c 60000 /tmp/output.txt 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -113,6 +113,16 @@ CONSENT = (os.environ.get("CONSENT") or "accept").lower()
 # measuring viewability, a shorter dwell buys far more page loads per hour.
 SCROLL_STEPS = int(os.environ.get("SCROLL_STEPS") or "24")
 SCROLL_DWELL = float(os.environ.get("SCROLL_DWELL") or "1.6")
+# Creative autopsy (target-bidder wins only): what the winning bid handed the
+# page, what the GPT iframe actually contains, and what the vendor's own code
+# did on the network and the console around the win. AUTOPSY_SLOT narrows it
+# to slot ids containing that string (e.g. "sticky"); AUTOPSY_HOSTS are the
+# substrings that mark a request or console line as the vendor's.
+AUTOPSY_SLOT = (os.environ.get("AUTOPSY_SLOT") or "").strip().lower()
+AUTOPSY_HOSTS = [h.strip().lower() for h in (
+    os.environ.get("AUTOPSY_HOSTS") or "ogury,presage"
+).split(",") if h.strip()]
+AD_HEAD = int(os.environ.get("AD_HEAD") or "2500")
 # Write results after every load so a long sweep survives being interrupted.
 INCREMENTAL = os.environ.get("INCREMENTAL", "1") == "1"
 
@@ -136,6 +146,7 @@ PROFILE_CFG = {
 # registering from `cmd`/`que` works no matter how early we run.
 INIT_JS = r"""
 window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
+const AD_HEAD = __AD_HEAD__;
 (function () {
   const push = (bucket, o) => { o.t = Date.now() - window.__nwf.t0; window.__nwf[bucket].push(o); };
   window.googletag = window.googletag || {cmd: []};
@@ -326,6 +337,16 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
           window.__nwf.snaps.push({
             t: Date.now() - window.__nwf.t0,
             bidder: b && b.bidder, code: code,
+            // The bid as the bidder returned it: what size it claimed, what
+            // markup it handed the Prebid universal creative to write.
+            bid: b ? {
+              adId: b.adId, size: b.size, width: b.width, height: b.height,
+              mediaType: b.mediaType, cpm: b.cpm, source: b.source,
+              dealId: b.dealId || null, ttl: b.ttl, creativeId: b.creativeId,
+              hasRenderer: !!b.renderer, adUrl: (b.adUrl || '').slice(0, 300),
+              adLen: (b.ad || '').length, ad: (b.ad || '').slice(0, AD_HEAD),
+              meta: b.meta ? JSON.stringify(b.meta).slice(0, 400) : null
+            } : null,
             slotHTML: div ? div.innerHTML.slice(0, 1200) : null,
             slotBox: div ? bx(div) : null,
             iframes: div ? [...div.querySelectorAll('iframe')].map(f => ({
@@ -347,13 +368,78 @@ window.__nwf = {gpt: [], pb: [], viz: {}, t0: Date.now()};
                       cpm: (d && (d.cpm || (d.bid && d.bid.cpm))) || null,
                       size: (d && (d.size || (d.bid && d.bid.size))) || null,
                       mediaType: (d && (d.mediaType || (d.bid && d.bid.mediaType))) || null,
-                      creativeId: (d && (d.creativeId || (d.bid && d.bid.creativeId))) || null});
+                      creativeId: (d && (d.creativeId || (d.bid && d.bid.creativeId))) || null,
+                      adId: (d && (d.adId || (d.bid && d.bid.adId))) || null,
+                      // adRenderFailed says WHY (cannotFindAd, exception,
+                      // preventWritingOnMainDocument, …) — the first thing to
+                      // read on a blank.
+                      reason: (d && d.reason) || null,
+                      message: (d && d.message) ? String(d.message).slice(0, 300) : null});
         });
       } catch (_) {}
     });
   });
 })();
 """
+
+INIT_JS = INIT_JS.replace("__AD_HEAD__", str(AD_HEAD))
+
+# Runs inside a frame (Playwright reaches cross-origin frames through CDP):
+# what the creative actually put on the page, if anything.
+FRAME_JS = r"""
+() => {
+  const vis = el => { const r = el.getBoundingClientRect(), c = getComputedStyle(el);
+    return r.width > 1 && r.height > 1 && c.display !== 'none' && c.visibility !== 'hidden'; };
+  const els = document.body ? [...document.body.querySelectorAll('*')] : [];
+  return {
+    url: location.href.slice(0, 200), vw: innerWidth, vh: innerHeight,
+    ready: document.readyState,
+    bodyLen: document.body ? document.body.innerHTML.length : 0,
+    visibleEls: els.filter(vis).length,
+    imgs: [...document.images].map(i => ({src: (i.currentSrc || i.src || '').slice(0, 140),
+      w: i.naturalWidth, h: i.naturalHeight, done: i.complete})).slice(0, 8),
+    scripts: [...document.scripts].map(x => x.src ? x.src.slice(0, 160)
+      : 'inline:' + x.text.replace(/\s+/g, ' ').slice(0, 160)).slice(0, 15),
+    iframes: [...document.querySelectorAll('iframe')].map(f => ({id: (f.id || '').slice(0, 60),
+      src: (f.getAttribute('src') || '').slice(0, 160), w: f.offsetWidth, h: f.offsetHeight,
+      display: getComputedStyle(f).display})),
+    html: document.documentElement.outerHTML.replace(/\s+/g, ' ').slice(0, 1500)
+  };
+}
+"""
+
+
+def _vendor(text: str) -> bool:
+    t = (text or "").lower()
+    return any(h in t for h in AUTOPSY_HOSTS)
+
+
+def _dump_slot_frames(pg, code: str) -> list[dict]:
+    """Every frame under the slot div, nested ones included, with depth."""
+    out: list[dict] = []
+
+    def walk(fr, depth):
+        try:
+            d = fr.evaluate(FRAME_JS)
+        except Exception as exc:
+            d = {"url": (fr.url or "")[:200], "error": str(exc)[:160]}
+        d["depth"] = depth
+        d["name"] = (fr.name or "")[:80]
+        out.append(d)
+        for ch in fr.child_frames:
+            walk(ch, depth + 1)
+
+    for fr in pg.main_frame.child_frames:
+        try:
+            el = fr.frame_element()
+            owner = el.evaluate("e => { const s = e.closest('[id^=\"dfp-ad-\"]');"
+                                " return s ? s.id : null; }")
+        except Exception:
+            continue
+        if owner == code:
+            walk(fr, 0)
+    return out
+
 
 # Runs after the scroll pass. Everything here is same-realm DOM inspection —
 # cross-origin iframe interiors are deliberately not touched.
@@ -503,6 +589,33 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
     pg.set_default_navigation_timeout(45_000)
     hosts: Counter = Counter()
     pg.on("request", lambda r: hosts.update([urlparse(r.url).netloc]))
+    t_start = time.time()
+    net: list[dict] = []
+    cons: list[dict] = []
+    ms = lambda: int((time.time() - t_start) * 1000)
+
+    def _resp(r):
+        if _vendor(r.url):
+            net.append({"t": ms(), "status": r.status, "type": r.request.resource_type,
+                        "url": r.url[:220], "frame": (r.frame.url if r.frame else "")[:100]})
+
+    def _fail(r):
+        if _vendor(r.url):
+            net.append({"t": ms(), "status": "FAILED", "type": r.resource_type,
+                        "url": r.url[:220], "err": (r.failure or "")[:120]})
+
+    def _console(m):
+        loc = (m.location or {}).get("url", "") if hasattr(m, "location") else ""
+        if m.type in ("error", "warning") or _vendor(m.text) or _vendor(loc):
+            if _vendor(m.text) or _vendor(loc) or m.type == "error":
+                cons.append({"t": ms(), "type": m.type, "text": m.text[:300], "src": loc[:140]})
+
+    pg.on("response", _resp)
+    pg.on("requestfailed", _fail)
+    pg.on("console", _console)
+    pg.on("pageerror", lambda e: cons.append({"t": ms(), "type": "pageerror",
+                                              "text": str(e)[:300], "src": ""}))
+    autopsies: list[dict] = []
     try:
         pg.goto(url, wait_until="domcontentloaded", timeout=60_000)
     except Exception as exc:
@@ -561,6 +674,17 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         if len(snaps) > seen_snaps:
             for sn in snaps[seen_snaps:]:
                 if (sn.get("bidder") or "").lower() in TARGET_BIDDERS:
+                    code = sn.get("code") or ""
+                    if not AUTOPSY_SLOT or AUTOPSY_SLOT in code.lower():
+                        # Look twice: right away, and again after the vendor's
+                        # code has had seconds to paint — a creative that is
+                        # merely slow looks blank on the first look only.
+                        a = {"bidder": sn.get("bidder"), "code": code, "bid": sn.get("bid"),
+                             "winT": ms(), "early": _dump_slot_frames(pg, code)}
+                        time.sleep(3)
+                        a["late"] = _dump_slot_frames(pg, code)
+                        a["lateT"] = ms()
+                        autopsies.append(a)
                     shot_n += 1
                     try:
                         pg.screenshot(path=str(
@@ -581,6 +705,9 @@ def _run_one(browser, url: str, profile: str, idx: int) -> dict:
         data["consentClicked"] = consent_clicked
         data["consentControls"] = consent_controls
         data["reqHosts"] = hosts.most_common(30)
+        data["autopsies"] = autopsies
+        data["vendorNet"] = net
+        data["console"] = cons
         try:
             shot = SHOTS / f"{idx:02d}-{profile}.png"
             pg.screenshot(path=str(shot), full_page=False)
@@ -670,6 +797,94 @@ def _fmt_slot(d: dict | None) -> str:
     if d.get("slotTallerThanIframe"):
         flags.append("slot >> iframe")
     return head + " | " + " ; ".join(parts) + (" | " + ", ".join(flags) if flags else "")
+
+
+def _painted(frames: list[dict]) -> bool:
+    """Did anything visible end up inside the slot's frames?"""
+    return any((f.get("vw") or 0) > 1 and (f.get("vh") or 0) > 1 and (f.get("visibleEls") or 0) > 0
+               for f in frames)
+
+
+def _print_autopsies(pages: list[dict]) -> None:
+    rows = [(p, a) for p in pages for a in (p.get("autopsies") or [])]
+    print("\n" + "=" * 78)
+    print(f"CREATIVE AUTOPSY — {', '.join(TARGET_BIDDERS)}"
+          + (f" on slots matching '{AUTOPSY_SLOT}'" if AUTOPSY_SLOT else ""))
+    print("=" * 78)
+    if not rows:
+        print("no target-bidder wins captured on matching slots")
+        return
+    tally: Counter = Counter()
+    sizes: dict[str, Counter] = defaultdict(Counter)
+    reasons: Counter = Counter()
+    for n, (p, a) in enumerate(rows, 1):
+        bid = a.get("bid") or {}
+        ok = _painted(a.get("late") or [])
+        outcome = "PAINTED" if ok else "BLANK"
+        tally[outcome] += 1
+        sizes[outcome][f"{bid.get('width')}x{bid.get('height')}"] += 1
+        print(f"\n#{n} [{outcome}] {a.get('bidder')} on {a.get('code')} "
+              f"({p.get('profile')}) {p.get('url')}")
+        print(f"  bid: {bid.get('width')}x{bid.get('height')} {bid.get('mediaType')} "
+              f"cpm={bid.get('cpm')} source={bid.get('source')} deal={bid.get('dealId')} "
+              f"renderer={'Y' if bid.get('hasRenderer') else 'N'} adLen={bid.get('adLen')} "
+              f"adUrl={bid.get('adUrl') or '-'}")
+        if bid.get("meta"):
+            print(f"  meta: {bid['meta'][:200]}")
+        ev = [e for e in (p.get("pb") or []) if e.get("adId") and e.get("adId") == bid.get("adId")]
+        for e in ev:
+            if e.get("type") in ("adRenderSucceeded", "adRenderFailed"):
+                reasons[e["type"] + (f":{e.get('reason')}" if e.get("reason") else "")] += 1
+                print(f"  prebid {e['type']} reason={e.get('reason')} {e.get('message') or ''}")
+        if not any(e.get("type") in ("adRenderSucceeded", "adRenderFailed") for e in ev):
+            reasons["no render event"] += 1
+            print("  prebid: no adRenderSucceeded/adRenderFailed for this adId")
+        gr = [e for e in (p.get("gpt") or [])
+              if e.get("type") == "slotRenderEnded" and e.get("slot") == a.get("code")]
+        for e in gr:
+            print(f"  gpt slotRenderEnded size={e.get('size')} li={e.get('lineItemId')} "
+                  f"creative={e.get('creativeId')} hb_size={(e.get('hb') or {}).get('hb_size')}")
+        for phase in ("early", "late"):
+            print(f"  frames ({phase}):")
+            fr = a.get(phase) or []
+            if not fr:
+                print("    (no frame under the slot)")
+            for f in fr:
+                pad = "    " + "  " * (f.get("depth") or 0)
+                if f.get("error"):
+                    print(f"{pad}{f.get('url')} ERROR {f['error']}")
+                    continue
+                print(f"{pad}{f.get('url')[:90]} {f.get('vw')}x{f.get('vh')} "
+                      f"ready={f.get('ready')} visibleEls={f.get('visibleEls')} "
+                      f"bodyLen={f.get('bodyLen')} iframes={len(f.get('iframes') or [])}")
+                if phase == "late":
+                    for x in (f.get("scripts") or [])[:6]:
+                        print(f"{pad}  script {x[:120]}")
+                    for x in f.get("iframes") or []:
+                        print(f"{pad}  iframe #{x.get('id') or '-'} {x.get('w')}x{x.get('h')} "
+                              f"{x.get('display')} {x.get('src')[:100]}")
+                    for x in (f.get("imgs") or [])[:4]:
+                        print(f"{pad}  img {x.get('w')}x{x.get('h')} done={x.get('done')} {x.get('src')[:90]}")
+        lo, hi = (a.get("winT") or 0) - 4000, (a.get("lateT") or 0) + 4000
+        net = [x for x in (p.get("vendorNet") or []) if lo <= x["t"] <= hi]
+        st = Counter(str(x["status"]) for x in net)
+        print(f"  vendor network around the win: {len(net)} requests "
+              f"({', '.join(f'{k}×{v}' for k, v in st.most_common())})")
+        for x in net[:14]:
+            print(f"    +{x['t'] - (a.get('winT') or 0):>6}ms {x['status']} {x['type']} "
+                  f"{x['url'][:120]}{' ' + x['err'] if x.get('err') else ''}")
+        con = [x for x in (p.get("console") or []) if lo <= x["t"] <= hi]
+        for x in con[:8]:
+            print(f"    console {x['type']}: {x['text'][:160]} [{(x.get('src') or '')[:60]}]")
+        if bid.get("ad"):
+            print(f"  ad markup (first 600 of {bid.get('adLen')}): "
+                  f"{bid['ad'].replace(chr(10), ' ')[:600]}")
+
+    print("\n-- autopsy summary --")
+    print("outcomes: " + ", ".join(f"{k}×{v}" for k, v in tally.most_common()))
+    for k, c in sizes.items():
+        print(f"bid sizes when {k}: " + ", ".join(f"{s}×{n}" for s, n in c.most_common()))
+    print("prebid render events: " + ", ".join(f"{k}×{v}" for k, v in reasons.most_common()))
 
 
 def main() -> int:
@@ -857,6 +1072,8 @@ def main() -> int:
             print(f"\n  {b}: bid {a['bid']}× (median cpm "
                   f"{sorted(a['cpms'])[len(a['cpms']) // 2]:.2f}) but won 0 — "
                   f"losing the auction, so more loads may eventually catch one.")
+
+    _print_autopsies(pages)
 
     # ── in-stream video ──────────────────────────────────────────────────
     # Not a GPT slot, so none of the tables above can contain it. onetag's
