@@ -156,6 +156,21 @@ display and video, by month. Both numbers come from that one report:
 | **total DV gross impressions – post-bid** | Monitored (gross) impressions for the month, Newsweek O&O |
 | **SIVT Rate** | Fraud/SIVT rate for the month (enter as a decimal: `0.0004` = 0.04%) |
 
+**Applying the Media Type filter in the DV UI.** DV Pinnacle → Publisher Suite →
+**Inventory Quality → Inventory**. Set the date picker to one month (e.g.
+7/1/2026 – 7/31/2026), then **Add Filters → Media Type**, tick **Display** only
+(leave Video and `null` unticked) and **Apply**. Read **Monitored Impressions**
+(→ DV post-bid impressions) and **Fraud/SIVT Impressions ÷ Monitored
+Impressions** (→ SIVT Rate; the same as 100% − the Fraud/SIVT Free Rate donut).
+Repeat with **Video**, then the next month. Check: July 2026 Display reads
+193.4M, the workbook's July display figure.
+
+> **Check the SIVT Rate scale before the next update.** For July 2026 (display +
+> video, unfiltered) the UI shows 836.5K Fraud/SIVT of 218.9M monitored, about
+> **0.38%** (Fraud/SIVT Free Rate 99.6%). The workbook's July SIVT Rate is
+> `0.0004` (0.04%) display and `0.0001` (0.01%) video — roughly 10× lower.
+> Confirm which figure the workbook is meant to hold before quoting SIVT to TAG.
+
 **Export the exact count. Don't read it off a UI tile.** The 2026 DV post-bid impressions column is
 rounded to the nearest 100k (370,000,000 / 316,400,000 / …), which is what a
 headline tile shows. That rounding moves the DV↔GAM discrepancy by up to ~0.03pp
