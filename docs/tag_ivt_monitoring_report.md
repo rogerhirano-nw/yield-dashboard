@@ -148,7 +148,8 @@ be rebuilt even if a saved report is changed, deleted or unshared.
 
 ## 2. DoubleVerify: post-bid impressions and SIVT
 
-From the DV Pinnacle UI, separately for display and video, by month:
+From the **Inventory Quality report** in the DV UI (Pinnacle), separately for
+display and video, by month. Both numbers come from that one report:
 
 | Workbook column | DV number |
 |---|---|
@@ -158,8 +159,8 @@ From the DV Pinnacle UI, separately for display and video, by month:
 **Export the exact count. Don't read it off a UI tile.** The 2026 DV post-bid impressions column is
 rounded to the nearest 100k (370,000,000 / 316,400,000 / …), which is what a
 headline tile shows. That rounding moves the DV↔GAM discrepancy by up to ~0.03pp
-a month. Use the Pinnacle report export (Standard report → Impressions +
-Fraud/SIVT by month, display and video as separate rows).
+a month. Export the Inventory Quality report (impressions + Fraud/SIVT by
+month, display and video as separate rows) instead.
 
 **Cross-check against the cache.** The daily DV IVT email already lands in the
 `dv_ivt` table (see `CLAUDE.md` → DoubleVerify IVT). Impression-weighted
