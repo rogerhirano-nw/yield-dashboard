@@ -50,6 +50,11 @@ month, Totals row at the bottom.
 | DV-GAM discrepancy | `1 − DV impressions / GAM total` | formula, don't overwrite |
 | SIVT Rate | DV's sophisticated invalid traffic rate, as a decimal | DV (step 2) |
 
+**Where the files live:** SharePoint, `yield › Documents › TAG › <year>`, one
+folder per year (2018–2026). The workbooks and that year's reports sit in the
+year folder; start a new folder each January. TAG folder:
+<https://newsweek0.sharepoint.com/:f:/r/sites/yield/Shared%20Documents/TAG?d=w6f5bf7a5ebcb486fb227e5800637b2be&csf=1&web=1&e=ocTR9G>.
+
 The order matters: **GAM → DV → GA4 → workbooks → deck.** Each step below says
 which cells it fills.
 
@@ -191,7 +196,7 @@ disagree by more than about 2×, find out why before you publish.
 | Workbook column (`Y<year>`) | Source |
 |---|---|
 | **Pageviews** | The saved GA4 exploration (below): **Year month** × **Platform**, metric **Views**, Platform = `web` |
-| **Prebid Reqs** | DV pre-bid page-level requests for the month (the pre-bid integration evaluates every page view before ad requests go out; see slide 7) |
+| **Prebid Reqs** | DV pre-bid page-level requests for the month, from the monthly CSV DoubleVerify drops in its shared Google Drive folder (below) |
 | **Discrepancy** | formula, already in the sheet |
 
 **GA4 source of record:** this saved exploration (account 131632414, property
@@ -205,9 +210,14 @@ shared team account first.
 Fill one row per month (`202610`, `202611`, …). Leave the Totals row alone; it
 is a `SUM`.
 
-> TODO, confirm and record here: the exact Pinnacle report and menu path for
-> pre-bid requests. Whoever runs Q4 should write it down so this step stops
-> depending on memory.
+**DV pre-bid source:** DoubleVerify automated this and drops a new CSV every
+month into a shared Google Drive folder:
+<https://drive.google.com/drive/folders/1JXnbW3dBa-KjEO_W-aWQXCzUdApxmtxt>.
+The folder is "TAG Certification [Client Shared Folder]" (shared with you, not in
+My Drive). Each file is `report_YYYY-MM.csv` with one row per day and two
+columns, `Day` and `Total`; the month's **Prebid Reqs** is the **sum of
+`Total`**. Verified 2026-10-21: the sums for Apr–Sep 2026 match the workbook to
+the request (e.g. Sep = 50,519,576).
 
 ## 4. Roll months into quarters
 
