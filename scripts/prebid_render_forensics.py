@@ -815,6 +815,15 @@ def main() -> int:
 
     renders = [r for p in pages for r in _renders(p)]
     (SHOTS / "renders.json").write_text(json.dumps(renders, indent=1))
+    # renders.json holds render records only, so the page-level capture — the
+    # frame interiors, the vendor network and console streams — used to live
+    # just long enough to be printed and then die with the process. A sweep
+    # costs ~40 minutes; it has to be re-analyzable without re-running.
+    (SHOTS / "pages.json").write_text(json.dumps([
+        {k: v for k, v in (p_ or {}).items()
+         if k in ("profile", "url", "consent", "consentClicked", "reqHosts",
+                  "netlog", "consoleLog", "frameDumps", "snaps", "hides")}
+        for p_ in pages], indent=1))
 
     print("\n" + "=" * 78)
     print("PREBID RENDER FORENSICS")
@@ -1046,7 +1055,13 @@ def main() -> int:
                     return True
         return False
 
-    groups = {"BLANK": [p_ for p_ in pages if _blanked(p_)],
+    # ALL comes first and is never gated on a target render. When the target
+    # never renders — the common case from a datacenter IP, where these
+    # bidders barely bid — the question becomes "did their payload get
+    # requested at all", and gating this section on a win suppressed exactly
+    # that answer on the first run.
+    groups = {"ALL": list(pages),
+              "BLANK": [p_ for p_ in pages if _blanked(p_)],
               "HEALTHY": [p_ for p_ in pages
                           if not _blanked(p_) and (p_.get("frameDumps") or [])]}
     for label, grp in groups.items():
@@ -1070,7 +1085,7 @@ def main() -> int:
         for k, n in con.most_common(12):
             print(f"      {n:3d}x {k}")
 
-    print(f"\nrenders.json + screenshots: {SHOTS}")
+    print(f"\nrenders.json + pages.json + screenshots: {SHOTS}")
     return 0
 
 
