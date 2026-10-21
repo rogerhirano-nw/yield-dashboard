@@ -1033,8 +1033,12 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
-- `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook (the
-  2026-08-03 depletion warning): what in this stack spends disk IO, how to
+- `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook. **Root cause
+  (2026-10-21): pg_stat_statements query-text bloat** — `to_sql`'s multi-row
+  INSERT batches left 464 MB of text in the view (DB is 89 MB), and Supabase's
+  per-minute metrics scrape spilled ~460 GB/day of temp files reading it. Sweep
+  appends now go through `refresh_cache._to_sql_append` (COPY). **Never add a
+  plain `df.to_sql` to the sweep.** Also covers (from the 2026-08-03 warning): what in this stack spends disk IO, how to
   measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,
   read-only pg_stat/pg_statio/pg_stat_statements report, optional
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),

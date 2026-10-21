@@ -4,6 +4,17 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-10-21 — Supabase Disk IO: sweep appends via COPY, not multi-row INSERT
+
+Second "depleting its Disk IO Budget" warning. Measured on prod: an 89 MB
+database with a 100% cache-hit ratio, but **33 TB of temp files in 72 days**
+(~460 GB/day). The cause was pg_stat_statements holding **464 MB of query
+text**: one ~250 KB entry per distinct `to_sql` INSERT batch size. Supabase's
+per-minute metrics scrape spilled to temp every time it read the view.
+`refresh_cache._to_sql_append` now bulk-loads through `COPY` (one constant
+statement per table), proven equivalent to the old path on a real Postgres.
+The view was reset on prod. Runbook: `docs/supabase_disk_io.md`.
+
 ## 2026-10-20 — TAG IVT monitoring report runbook
 
 `docs/tag_ivt_monitoring_report.md`: how to refresh the TAG CAF IVT deck and
@@ -29,6 +40,7 @@ which makes video Jan and Jul–Sep entry errors too (99 of 108 cells match).
 Display January Ad Exchange corrected to the full figure, 59,956,722 (it had been
 entered as Open Auction only); the guide's "Ad Exchange includes PA" card was
 removed at Roger's request.
+2026-10-21: the refresh is now monthly; the guide covers the yearly AAM review, names the reviewers and recipient, and drops IAS. Video post-bid is measured at 100% because DoubleVerify is GAM's Open Measurement Viewability Partner (replaces the old 1–5% sampled answer).
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
