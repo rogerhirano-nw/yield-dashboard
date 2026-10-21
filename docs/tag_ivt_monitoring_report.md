@@ -264,16 +264,26 @@ arithmetic):
 
 ## 5. Update the deck
 
-| Slide | What to change |
-|---|---|
-| 1 | Title year. |
-| 4 (GA4 vs DV pre-bid) | Add the new month's Pageviews / DV / Discrepancy, its quarter, and the **year row** (it is year-to-date, so it moves every month). Q4 placeholders read `0,0,0` / `0.0%` until filled. Check that each DV figure is inside its column group: Q2's DV number (119,051,343) sits in a loose text box outside the DV group and is easy to miss. Update the source footnote. |
-| 10 (SIVT by quarter) | One row per quarter; columns Overall / Display / Video. The bottom row is labelled **Q4**. If it's meant to be the full-year figure, relabel it **Full year** (or YTD), so the Q4 row isn't mistaken for a real quarter. As of the 2026 Q2 copy, the Q3 (0.01%) and bottom-row values were not 2026 numbers. Replace them from the step 4 table. |
-| 9 (Key changes) | Anything that changed traffic or measurement that month: replatforming, a new video player, a new verification vendor, a pre-bid threshold change. Q2 2026 pageviews fell by about half quarter over quarter, so the auditor will ask about it. |
-| 5–7 | Coverage text (DV pre/post-bid, GAM filtration). Change only if the setup changed. **We no longer use IAS**: the 2025/2026 copies still have an IAS slide and name it among the "three pathways". Remove it so these slides name only DV and GAM (two pathways). |
+The 2026 report (`NEWSWEEK_IVT_2026_MONITORING_REPORT.pptx`, 10 slides, on
+SharePoint) already has a row for every month: months not yet closed show `—`.
+Each month, replace the dashes for the new month and refresh the running totals.
+Every data slide's speaker notes say where each number comes from.
 
-Before sending it, check every percentage on slides 4 and 10 against the
-workbook, and confirm the source footnotes name the year.
+| Slide | What to change each month |
+|---|---|
+| 1 · Cover | **DATA THROUGH** → the latest closed month. |
+| 2 · Executive summary | Card 03's SIVT → YTD Overall SIVT (DV-GAM, sheet Quarters). |
+| 4 · GA4 vs DV pre-bid | The new month's row (DV-GA, sheet Y2026), its quarter row (Quarter discrepancy column) and the YTD row (Totals). Then the title's % (100% − YTD discrepancy), the subtitle's YTD figure, and "data through" in the footnote. |
+| 5 · DoubleVerify coverage | Pre-bid stat = 100% − YTD pre-bid discrepancy. Video post-bid stays 100% while DoubleVerify is the Open Measurement Viewability Partner in GAM; confirm the setting is still there. |
+| 8 · Key changes | Anything that moved traffic or measurement that month (a vendor, a player, a threshold, a traffic shift). |
+| 9 · SIVT | The new month, its quarter and YTD from DV-GAM sheet **Quarters** (By month / By quarter tables; already impression-weighted). "Data through" in the footnote. |
+
+Slides 3, 6, 7 and 10 change only if the setup or the contacts change. In
+January, start the next year's copy: change the year on slides 1 and 3, reset
+every month to `—`, and start new workbooks in the new year's SharePoint folder.
+
+Before sending it, check every percentage on slides 4 and 9 against the
+workbooks.
 
 ## The yearly AAM review
 
@@ -292,6 +302,7 @@ shared folder. The January 2026 list, so the next one is no surprise:
 - ads.txt: a screenshot of the update log and one sample update ticket.
 - Confirmation that the complaint resolution process hasn't changed, with an
   example if one happened that year.
+- Screenshots of the video Open Measurement set-up in GAM: **Admin › Companies › DoubleVerify** (type *Viewability provider*, vendor key `doubleverify.com-omid`, script URL `https://cdn.doubleverify.com/dvbm.js`) and the **Open Measurement Viewability Partner** field set to DoubleVerify. This is the evidence that video post-bid is measured at 100%.
 - ~~IAS post-impression screenshots~~: no longer applies, we stopped using IAS.
 
 Questions they ask, with last year's answers:
@@ -299,9 +310,9 @@ Questions they ask, with last year's answers:
 | They ask | Last year's answer |
 |---|---|
 | Material changes since the last review? | Name them, e.g. IAS dropped in 2026. |
-| What share of traffic does DV scan? | Display 100%; video 1–5% (sampled). |
+| What share of traffic does DV scan? | Display 100%. **Video 100%**: DoubleVerify is set as the **Open Measurement Viewability Partner** in GAM, so it measures every in-stream video impression (Roger, 2026-10-21). Earlier reviews recorded video as 1–5% sampled; call out the change. |
 | Which DV lists do you ingest pre-bid? | None. DV runs client-side on the page (Michael, Jan 2026). |
-| Traffic that can't be scanned? | Google AdX. DV's wrapper can't go on exchange tags, so post-bid covers ad-server traffic only. This is also most of the video DV↔GAM gap (13.3% YTD 2026). |
+| Traffic that can't be scanned? | Last review: Google AdX, because DV's wrapper can't go on exchange tags. Video is now covered through Open Measurement, so this applies to display only. |
 | Description of Methodology link? | https://advertising.newsweek.com/#about-section (the old newsweek.com/advertise link broke in Jan 2026). Check it works. |
 | Do you need a sellers.json? | No. Newsweek is a publisher, not an intermediary. Make sure every exchange we work with lists Newsweek in *its* sellers.json (AAM, Apr 2026). |
 | Who responds to fraud incidents? | The CTO, supported by the Director of Operations and the VP of Ad Ops. |
