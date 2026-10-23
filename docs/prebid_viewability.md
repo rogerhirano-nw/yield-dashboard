@@ -432,6 +432,69 @@ deficient, which is why the banner-focused DOM work found nothing wrong.
 Both sit around −3 to −7pp render with a similar amount of mix. Worth a look
 after the three above; not the same class of problem.
 
+### OneTag video, October: what the creative looks like (2026-10-23)
+
+October MTD (vid.newsweek, s2s, Oct 1–22): OneTag **51.8%** on 176k impressions
+(3.7% of video) vs **83.8–87.4%** for every other bidder; it costs the video
+line ~1.2pp (84.3% → 85.5% without it). It ran 46–57% every day, and it read
+the same on Magnite PBS in September and AY PBS (`pbs-us-east.ay.delivery`) now,
+so it isn't the server.
+
+Checked on our own pages, from a cloud IP:
+
+* **Auction latency is not it.** AY's `ext.responsetimemillis` on the video
+  imp put OneTag at 72–91ms, mid-pack; sparteo, insticator and smartadserver
+  run 2–4× slower and still read 85–87%. Any delay is after the win (wrapper
+  hops, VPAID boot, media download).
+* **We invite VPAID.** The video imp (AY stored request
+  `org_b8KsAzpb6oSnnv6qF.video_desktop`) sends `mimes` incl.
+  `application/javascript`, `api: [2, 7]` (VPAID 2 + OMID), `protocols`
+  2/3/5/6/7/8 (wrappers allowed), plcmt 2, autoplay-muted, 640×360, max 60s,
+  floor $5.40. Dropping `application/javascript` + api 2 (for OneTag, or as a
+  test for everyone) is a publisher-side lever that needs no answer from OneTag.
+* **"Not measured, not poorly performing" doesn't apply.** GAM's "% viewable"
+  is viewable ÷ *measurable*, so unmeasured impressions fall out of the
+  calculation instead of dragging it down, and in September OneTag was ~100%
+  measurable. For IMA in-stream, Active View is measured on the player, with
+  no creative macro involved.
+
+**`scripts/prebid_vast_audit.py`** captures every video bid's VAST from the
+`/openrtb2/auction` responses on real article pages (plus pbjs client-side
+video bids), follows each wrapper chain to the InLine ad, and tabulates per
+bidder: wrapper depth, chain fetch time, VPAID / VPAID-only, OMID
+verification vendors, mp4 bitrate and file size. OneTag gets a per-bid dump
+(chain hosts, creative id, adomain, every MediaFile). Losing bids count, since
+a bid's VAST is what it would have served. It never fetches Impression /
+tracking URLs. **Run it from a home connection:** from a datacenter IP, 20
+video auctions drew 0 bids, and a later run drew one ($0.37 yahooAds,
+VPAID-only, through the ~10% of traffic still on Magnite PBS). It also prints
+AY's per-bidder response time on the video imp, bid or no bid.
+
+    pip install playwright && playwright install chromium
+    LOADS=20 python scripts/prebid_vast_audit.py   # → prebid-vast-audit/report.txt
+
+**First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
+auctions, 38 video bids):**
+
+| bidder | bids | wrappers med/max | VPAID | VPAID-only | OMID | Oct viewable |
+|---|---:|---:|---:|---:|---:|---:|
+| insticator | 19 | 1 / 2 | 58% | 53% | 100% | 85.7% |
+| yahooAds | 8 | 0 / 1 | 100% | 88% | 88% | 84.2% |
+| rubicon | 3 | 1 / 2 | 0% | 0% | 100% | 85.0% |
+| pubmatic, openx, vidazoo | 1 each | 1 / 1 | mixed | 0% | mixed | 85–86% |
+| **onetag** | **0** (asked 28×) | — | — | — | — | **51.8%** |
+
+* **Latency is ruled out on real traffic too:** OneTag answered all 28
+  video auctions at a 72ms median. The slowest bidders (sparteo 308ms, vidazoo
+  253, medianet 251, insticator 242) all read 85–87% viewable.
+* **VPAID and 1–2 wrappers are normal here and don't sink viewability:**
+  yahooAds is 88% VPAID-only and insticator 53%, and both read ~85%. So
+  "OneTag serves VPAID/wrappers" would only explain the gap if OneTag's are
+  far worse than these. Their creatives have to be seen to say that.
+* **OneTag is selective:** asked every time, never bid. Catching its VAST
+  needs a much longer run, or AY pulling OneTag's winning responses from its
+  PBS logs (every bid passes through AY's server).
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take

@@ -4,6 +4,15 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-10-23 — OneTag video VAST audit (`scripts/prebid_vast_audit.py`)
+
+OneTag reads 51.8% viewable on vid.newsweek in October against 84–87% for every
+other bidder. Live checks on article pages ruled out auction latency (OneTag
+answers in 72–91ms on AY PBS) and showed our video request allows VPAID. The new
+script captures each video bid's VAST off real pages, unwraps it, and compares
+wrapper depth, VPAID, OMID and media weight per bidder. It has to run from a
+residential IP. Runbook: `docs/prebid_viewability.md`.
+
 ## 2026-10-21 — Supabase Disk IO: sweep appends via COPY, not multi-row INSERT
 
 Second "depleting its Disk IO Budget" warning. Measured on prod: an 89 MB
