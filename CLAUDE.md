@@ -1140,7 +1140,7 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   never graded against its own bad impressions), the two diagnostics
   (`scripts/prebid_viewability_audit.py` for the GAM Active View cut by
   hb_bidder × unit × device × size, `scripts/prebid_render_forensics.py` for
-  on-page DOM/GPT forensics on **article pages** — the homepage runs a
+  on-page DOM/GPT forensics on **article pages**, `scripts/prebid_vast_audit.py` for each video bidder's unwrapped VAST (wrapper depth, VPAID, OMID; run from a home IP, since a datacenter IP draws ~no bids) — the homepage runs a
   different slot set and none of these bidders is configured on it), and the
   decision rules for when the Mobkoi iframe mirror actually applies (a
   breakout floors at ~0%, so 40–56% is a different animal). **Ogury,
