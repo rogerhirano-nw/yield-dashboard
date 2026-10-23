@@ -106,3 +106,20 @@ def test_video_bids_from_auction_ignores_banner_imps():
     assert [(b["bidder"], b["pbs_ms"]) for b in bids] == [("onetag", 73), ("pubmatic", 4)]
     assert bids[1]["markup"] == "https://c/x"
     assert va.video_bids_from_auction({"imp": [{"id": "a", "banner": {}}]}, resp) == []
+
+
+def test_ima_targeting_reads_prebid_winner_from_cust_params():
+    from urllib.parse import quote
+    cust = "cat=nwus-politics&hb_bidder=onetag&hb_pb=6.00&hb_uuid=abc-123&pbs_ab=ay"
+    url = ("https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F22541732127%2Fvid.newsweek"
+           f"&output=xml_vast4&cust_params={quote(cust)}")
+    tg = va.ima_targeting(url)
+    assert tg == {"hb_bidder": "onetag", "hb_pb": "6.00", "hb_uuid": "abc-123"}
+    assert va.ima_targeting("https://x/gampad/ads?iu=vid") == {}
+
+
+def test_gam_served_prebid_only_when_cache_key_in_response():
+    tg = {"hb_bidder": "onetag", "hb_uuid": "abc-123"}
+    assert va.gam_served_prebid(tg, "<VAST><VASTAdTagURI>https://c/cache?uuid=abc-123</VASTAdTagURI></VAST>")
+    assert not va.gam_served_prebid(tg, "<VAST><Ad><InLine/></Ad></VAST>")
+    assert not va.gam_served_prebid({}, "abc-123")

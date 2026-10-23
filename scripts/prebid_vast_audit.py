@@ -32,6 +32,13 @@ all (0 bids in 20 auctions on 2026-10-23), so there is nothing to inspect.
     pip install playwright && playwright install chromium
     python scripts/prebid_vast_audit.py
     LOADS=20 PROFILES=desktop python scripts/prebid_vast_audit.py
+    UNTIL=win python scripts/prebid_vast_audit.py   # loop until OneTag wins
+
+UNTIL=win keeps loading fresh articles (LOADS per round, re-scraped each
+round) until a TARGET_BIDDER is the Prebid winner on the player's own GAM ad
+request, then unwraps the exact chain GAM served. UNTIL=bid stops at the
+first bid instead. MAX_MINUTES (default 360) caps it; Ctrl-C stops early and
+still writes the report.
 
 Env knobs: LOADS (default 12), PROFILES (mobile,desktop), ARTICLE_URLS,
 TARGET_BIDDERS (onetag), OUT_DIR (./prebid-vast-audit), SCROLL_STEPS,
@@ -51,7 +58,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -67,6 +74,10 @@ TARGET_BIDDERS = [b.strip().lower() for b in (os.environ.get("TARGET_BIDDERS") o
 OUT_DIR = Path(os.environ.get("OUT_DIR") or "prebid-vast-audit")
 SCROLL_STEPS = int(os.environ.get("SCROLL_STEPS") or "10")
 SCROLL_DWELL = float(os.environ.get("SCROLL_DWELL") or "1.5")
+# UNTIL=win keeps loading fresh articles until a TARGET_BIDDER wins the video
+# slot; UNTIL=bid stops at its first bid. Unset = exactly LOADS pages.
+UNTIL = (os.environ.get("UNTIL") or "").lower()
+MAX_MINUTES = float(os.environ.get("MAX_MINUTES") or "360")
 MAX_HOPS = 8
 FETCH_TIMEOUT = 8
 
@@ -230,6 +241,26 @@ def video_bids_from_auction(req: dict, resp: dict) -> list[dict]:
     return out
 
 
+def ima_targeting(url: str) -> dict:
+    """The Prebid key-values on the player's GAM video ad request.
+
+    `cust_params` is a URL-encoded query string inside the ad tag URL;
+    `hb_bidder` in it is the winner of the Prebid auction, and `hb_uuid` /
+    `hb_cache_id` is the cache key of the VAST that wins if GAM picks the
+    Prebid line item.
+    """
+    qs = parse_qs(urlparse(url).query)
+    cust = parse_qs((qs.get("cust_params") or [""])[0])
+    return {k: v[0] for k, v in cust.items() if k.startswith("hb_")}
+
+
+def gam_served_prebid(targeting: dict, gam_vast: str) -> bool:
+    """Did GAM serve the Prebid winner? Its VAST then points at the cached
+    bid, so the cache key appears in GAM's response."""
+    key = targeting.get("hb_uuid") or targeting.get("hb_cache_id")
+    return bool(key and gam_vast and key in gam_vast)
+
+
 # ── network ────────────────────────────────────────────────────────────────
 
 def _fetch(url: str) -> tuple[int, str, int]:
@@ -261,9 +292,22 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
     pg = ctx.new_page()
     pg.set_default_timeout(30_000)
     bids: list[dict] = []
-    stats = {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list)}
+    stats = {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list), "ima": []}
 
     def on_resp(r):
+        if "/gampad/ads" in r.url and "vid.newsweek" in r.url:
+            # The player's own ad request: who won Prebid, and what GAM served.
+            tg = ima_targeting(r.url)
+            try:
+                vast = r.text()
+            except Exception:
+                vast = ""
+            stats["ima"].append({"page": url, "profile": profile, "targeting": tg,
+                                 "winner": (tg.get("hb_bidder") or "").lower(),
+                                 "price": tg.get("hb_pb"),
+                                 "served_prebid": gam_served_prebid(tg, vast),
+                                 "gam_vast": vast})
+            return
         if not urlparse(r.url).path.endswith("/openrtb2/auction"):
             return
         try:
@@ -395,28 +439,92 @@ def report(bids: list[dict], latency: dict[str, list[int]]) -> str:
     return "\n".join(lines)
 
 
+def wins_report(ima: list[dict]) -> str:
+    lines = ["PREBID WINNERS ON THE PLAYER'S AD REQUEST (hb_bidder sent to GAM)"]
+    if not ima:
+        return lines[0] + "\n  no player ad requests seen"
+    won = Counter(w["winner"] or "(no prebid bid)" for w in ima)
+    served = Counter(w["winner"] for w in ima if w["served_prebid"])
+    for bidder, n in won.most_common():
+        lines.append(f"  {bidder:<18} won Prebid {n:>3}x   GAM served it {served.get(bidder, 0):>3}x")
+    for w in ima:
+        if w["winner"] not in TARGET_BIDDERS:
+            continue
+        c = w.get("chain") or {}
+        lines.append("")
+        lines.append(f"  {w['winner'].upper()} WIN  hb_pb ${w['price']}  {w['profile']}  "
+                     f"GAM served it: {'yes' if w['served_prebid'] else 'no (GAM picked another ad)'}")
+        lines.append(f"    page: {w['page']}")
+        if c:
+            lines.append("    served chain: " + " -> ".join(
+                f"{h['host']}[{h['kind']}" + (f" {h['ms']}ms" if h['ms'] else "") + "]"
+                for h in c["hops"]))
+            if c.get("result") == "inline":
+                inl = c["inline"]
+                ver = sorted({v for h in c["hops"] for v in h["verifications"]})
+                lines.append(f"    ad: {inl.get('ad_system') or '?'}  duration {inl.get('duration') or '?'}"
+                             f"  wrappers {c['depth']}  VPAID {'yes' if c['has_vpaid'] else 'no'}"
+                             f"  VPAID-only {'yes' if c['vpaid_only'] else 'no'}"
+                             f"  OMID {', '.join(ver) or 'none'}")
+                for m in inl["media"][:8]:
+                    lines.append(f"      {m['type'] or '?':<24}{m['api'] or '':<7}{m['w']}x{m['h']}"
+                                 f"  {m['bitrate'] or '?'}kbps")
+            else:
+                lines.append(f"    unresolved: {c.get('result')}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     bids: list[dict] = []
     latency: dict[str, list[int]] = defaultdict(list)
+    ima: list[dict] = []
     n_video_auctions = 0
+    n_loads = 0
+    t0 = time.monotonic()
+    caught = None
     with sync_playwright() as pw:
         browser = _launch(pw)
-        urls = _article_urls(browser, LOADS)
-        for i, url in enumerate(urls, 1):
-            for profile in PROFILES:
-                got, stats = _capture(browser, url, profile)
-                n_video_auctions += stats["video_auctions"]
-                for k, v in stats["latency"].items():
-                    latency[k].extend(v)
-                bids.extend(got)
-                n_t = sum(1 for b in got if b["bidder"] in TARGET_BIDDERS)
-                print(f"[{i}/{len(urls)}] {profile:<7} video auctions {stats['video_auctions']}  "
-                      f"video bids {len(got)} ({n_t} {'/'.join(TARGET_BIDDERS)})  {url}",
-                      flush=True)
-        browser.close()
+        try:
+            while caught is None:
+                # Fresh article links each round: new pages, new auctions.
+                urls = _article_urls(browser, LOADS)
+                for url in urls:
+                    for profile in PROFILES:
+                        got, stats = _capture(browser, url, profile)
+                        n_loads += 1
+                        n_video_auctions += stats["video_auctions"]
+                        for k, v in stats["latency"].items():
+                            latency[k].extend(v)
+                        bids.extend(got)
+                        ima.extend(stats["ima"])
+                        n_t = sum(1 for b in got if b["bidder"] in TARGET_BIDDERS)
+                        won = [w for w in stats["ima"] if w["winner"] in TARGET_BIDDERS]
+                        winners = ",".join(w["winner"] or "none" for w in stats["ima"]) or "-"
+                        mins = (time.monotonic() - t0) / 60
+                        print(f"[{n_loads} {mins:5.1f}m] {profile:<7} video bids {len(got)} "
+                              f"({n_t} {'/'.join(TARGET_BIDDERS)})  prebid winner {winners}  {url}",
+                              flush=True)
+                        if UNTIL == "bid" and n_t:
+                            caught = "bid"
+                        elif UNTIL == "win" and won:
+                            caught = "win"
+                        if caught or mins >= MAX_MINUTES:
+                            break
+                    if caught or (time.monotonic() - t0) / 60 >= MAX_MINUTES:
+                        break
+                if not UNTIL or (time.monotonic() - t0) / 60 >= MAX_MINUTES:
+                    break
+        except KeyboardInterrupt:
+            print("\n[stopped by you — writing what was captured]")
+        finally:
+            browser.close()
+    if UNTIL:
+        print(f"\n{'CAUGHT a ' + caught if caught else 'Did NOT catch a ' + UNTIL} for "
+              f"{'/'.join(TARGET_BIDDERS)} after {n_loads} page loads, "
+              f"{(time.monotonic() - t0) / 60:.0f} min.")
 
     print(f"\n{n_video_auctions} video auctions, {len(bids)} video bids. Unwrapping…")
     for b in bids:
@@ -432,10 +540,17 @@ def main() -> int:
         print("No video bids came back. From a datacenter/VPN IP bidders don't bid — run "
               "this from a home connection.")
 
-    text = report(bids, latency)
+    # A target bidder's win, unwrapped from GAM's own response: the exact
+    # chain the player loaded (GAM -> Prebid cache -> bidder's VAST -> ad).
+    for w in ima:
+        if w["winner"] in TARGET_BIDDERS and w["gam_vast"]:
+            w["chain"] = resolve_chain(w["gam_vast"], _fetch)
+
+    text = report(bids, latency) + "\n\n" + wins_report(ima)
     print("\n" + text)
     (OUT_DIR / "report.txt").write_text(text + "\n")
     (OUT_DIR / "bids.json").write_text(json.dumps(bids, indent=1, default=str))
+    (OUT_DIR / "wins.json").write_text(json.dumps(ima, indent=1, default=str))
     print(f"\nwrote {OUT_DIR / 'report.txt'} and {OUT_DIR / 'bids.json'}")
     return 0
 
