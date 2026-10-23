@@ -473,6 +473,28 @@ AY's per-bidder response time on the video imp, bid or no bid.
     pip install playwright && playwright install chromium
     LOADS=20 python scripts/prebid_vast_audit.py   # → prebid-vast-audit/report.txt
 
+**First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
+auctions, 38 video bids):**
+
+| bidder | bids | wrappers med/max | VPAID | VPAID-only | OMID | Oct viewable |
+|---|---:|---:|---:|---:|---:|---:|
+| insticator | 19 | 1 / 2 | 58% | 53% | 100% | 85.7% |
+| yahooAds | 8 | 0 / 1 | 100% | 88% | 88% | 84.2% |
+| rubicon | 3 | 1 / 2 | 0% | 0% | 100% | 85.0% |
+| pubmatic, openx, vidazoo | 1 each | 1 / 1 | mixed | 0% | mixed | 85–86% |
+| **onetag** | **0** (asked 28×) | — | — | — | — | **51.8%** |
+
+* **Latency is ruled out on real traffic too:** OneTag answered all 28
+  video auctions at a 72ms median. The slowest bidders (sparteo 308ms, vidazoo
+  253, medianet 251, insticator 242) all read 85–87% viewable.
+* **VPAID and 1–2 wrappers are normal here and don't sink viewability:**
+  yahooAds is 88% VPAID-only and insticator 53%, and both read ~85%. So
+  "OneTag serves VPAID/wrappers" would only explain the gap if OneTag's are
+  far worse than these. Their creatives have to be seen to say that.
+* **OneTag is selective:** asked every time, never bid. Catching its VAST
+  needs a much longer run, or AY pulling OneTag's winning responses from its
+  PBS logs (every bid passes through AY's server).
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take

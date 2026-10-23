@@ -362,8 +362,15 @@ def report(bids: list[dict], latency: dict[str, list[int]]) -> str:
         lines.append("")
         lines.append(f"{bidder.upper()} — EVERY BID")
         if not rows:
-            lines.append("  no video bids captured. More LOADS, or check you're on a "
-                         "residential connection.")
+            asked = len(latency.get(bidder) or [])
+            if asked:
+                # It answered every time (AY timed it) and still never bid:
+                # it is selective, so catching a bid needs many more loads.
+                lines.append(f"  asked in {asked} video auctions, bid 0 times. It is selective "
+                             "here; run more LOADS to catch one.")
+            else:
+                lines.append("  never asked and no bids: either it isn't configured on this "
+                             "video unit or this connection gets no demand (a datacenter/VPN IP).")
             continue
         for r in rows:
             c = r["chain"]
