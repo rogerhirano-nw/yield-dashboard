@@ -40,7 +40,8 @@ if envp.exists():
         k, _, v = line.partition("=")
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 from gam_client import GAMClient  # noqa: E402
 from googleads import ad_manager  # noqa: E402
 
