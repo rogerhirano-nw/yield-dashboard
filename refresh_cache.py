@@ -155,6 +155,41 @@ def _lockdown_table(conn, table: str) -> None:
         conn.execute(text(f"REVOKE ALL ON {ident} FROM {', '.join(roles)}"))
 
 
+_COPY_NULL = r"\N"
+
+
+def _pg_copy(pd_table, conn, keys, data_iter) -> None:
+    """`DataFrame.to_sql(method=...)` callable: bulk-load via COPY FROM STDIN.
+
+    The default executemany path sends multi-row `INSERT … VALUES ($1…$15000)`
+    batches, and pg_stat_statements keeps one ~250 KB text entry per distinct
+    batch size — 464 MB of query text against an 89 MB database by 2026-10.
+    Supabase's metrics exporter reads that view every minute and spilled
+    ~460 GB/day of temp files sorting it: the Disk IO Budget drain
+    (docs/supabase_disk_io.md). COPY is one constant statement per table."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    for row in data_iter:
+        writer.writerow([_COPY_NULL if v is None else v for v in row])
+    buf.seek(0)
+    cols = ", ".join(f'"{k}"' for k in keys)
+    target = (f'"{pd_table.schema}"."{pd_table.name}"' if pd_table.schema
+              else f'"{pd_table.name}"')
+    with conn.connection.cursor() as cur:
+        cur.copy_expert(
+            f"COPY {target} ({cols}) FROM STDIN WITH (FORMAT csv, NULL '\\N')",
+            buf)
+
+
+def _to_sql_append(df: pd.DataFrame, table: str, conn) -> None:
+    """Append df to table — COPY on Postgres, pandas' default elsewhere (SQLite)."""
+    method = _pg_copy if conn.dialect.name == "postgresql" else None
+    df.to_sql(table, conn, if_exists="append", index=False, method=method)
+
+
 def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
     """Write df to table using TRUNCATE when the schema is unchanged, falling
     back to DROP only when columns differ. TRUNCATE generates a single WAL
@@ -170,7 +205,7 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
             created = True
-    df.to_sql(table, conn, if_exists="append", index=False)
+    _to_sql_append(df, table, conn)
     if created:
         _lockdown_table(conn, table)
 
@@ -436,7 +471,7 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
                 # Lookup table with no date column — TRUNCATE is cheaper than
                 # DELETE for a full-table clear (single WAL record, no dead tuples).
                 conn.execute(text(f'TRUNCATE TABLE "{table}"'))
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
@@ -491,7 +526,7 @@ def refresh_gam() -> int:
                     text(f'DELETE FROM "{table}" WHERE report_start >= :cutoff'),
                     {"cutoff": cutoff},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
 
@@ -553,7 +588,7 @@ def refresh_gam_hourly() -> int:
                 text(f"DELETE FROM \"{table}\" WHERE date = :d AND line_item_id::text = ANY(:ids)"),
                 {"d": today.isoformat(), "ids": li_ids},
             )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
     logger.info("Wrote %d hourly rows to %s", len(df), table)
     return len(df)
 
@@ -605,7 +640,7 @@ def refresh_gam_weekly() -> int:
                 text(f"DELETE FROM \"{table}\" WHERE line_item_id::text = ANY(:ids) AND week_start >= :ws"),
                 {"ids": li_ids, "ws": (start - _td(days=start.weekday())).isoformat()},
             )
-        agg.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(agg, table, conn)
     logger.info("Wrote %d weekly rows to %s", len(agg), table)
     return len(agg)
 
@@ -739,7 +774,7 @@ def refresh_gam_lica() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_lica", conn, if_exists="append", index=False)
+        _to_sql_append(df, "gam_lica", conn)
     logger.info("Appended %d LICAs to gam_lica", len(df))
     return len(df)
 
@@ -787,7 +822,7 @@ def refresh_gam_creatives() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_creatives", conn, if_exists="append", index=False)
+        _to_sql_append(df, "gam_creatives", conn)
     logger.info("Appended %d rows to gam_creatives", len(df))
     return len(df)
 
@@ -1030,7 +1065,7 @@ def refresh_pubmatic() -> int:
                     text(f'DELETE FROM "{table}" WHERE date >= :cutoff'),
                     {"cutoff": cutoff},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -1273,7 +1308,7 @@ def _refresh_ttd_campaign(
                         text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
                         {"dates": dates},
                     )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
         if created:
             _lockdown_table(conn, table)
 
@@ -1365,7 +1400,7 @@ def refresh_opensincera_ecosystem() -> int:
                     text(f'DELETE FROM "{table}" WHERE date = :d'),
                     {"d": df["date"].iloc[0]},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 

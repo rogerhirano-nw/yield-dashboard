@@ -11,6 +11,64 @@ Supabase's guide: <https://supabase.com/docs/guides/troubleshooting/exhaust-disk
 Daily consumption graph: project → Settings → Infrastructure → Disk IO.
 Hourly: project → Reports → Database.
 
+## Root cause found (2026-10-21, second warning): pg_stat_statements text bloat
+
+The second "depleting its Disk IO Budget" email was measured directly through
+the claude.ai Supabase connector. **None of the suspects in the table below was
+the driver.** The numbers since the 2026-08-10 restart (72 days):
+
+| Signal | Value | Reading |
+|---|---|---|
+| Database size | **89 MB** | Fits in RAM many times over |
+| Cache-hit ratio | **100.00%** (8.6k blocks read vs 510M hit) | Table reads never touch disk |
+| `pg_stat_database.temp_bytes` | **33 TB** across 189,692 temp files | **≈ 460 GB/day of temp-file writes — this is the budget** |
+| `pg_stat_statements` query text | **464 MB** in 4,201 entries (3,266 over 10 KB, max 252 KB) | 5× the size of the database it describes |
+
+The text was the sweep's own writes: `DataFrame.to_sql` on SQLAlchemy 2.0 sends
+each append as multi-row `INSERT … VALUES ($1, …, $15000)` batches, and
+pg_stat_statements normalizes constants but keeps **one entry per distinct
+batch size**. The final batch's row count changes every run, so every sweep
+added new ~250 KB entries (`gam_campaigns` 1,257 entries / 281 MB,
+`dv_attention` 1,106 / 120 MB, `dv_ivt` 318 / 30 MB, …). Supabase's metrics
+exporter and the dashboard's Query Performance page read that view (the
+exporter about every minute), and each read sorted/hashed the 464 MB of text
+and spilled ~300-600 MB to temp files. That spill is invisible to
+pg_stat_statements itself (only ~3 GB of the 33 TB was attributed to tracked
+statements), which is why the per-statement report never pointed at it, and
+it grew every day with nothing in our stack reading it.
+
+**Fix:**
+1. `refresh_cache._to_sql_append` routes every sweep append through
+   `_pg_copy`, a `to_sql(method=…)` callable that bulk-loads with
+   `COPY … FROM STDIN (FORMAT csv, NULL '\N')`. That is one constant
+   statement per table, however many rows, so the view stays a few KB.
+   It is also fewer round trips and less parse/plan work than 1000-row INSERTs.
+   On SQLite (local/demo) it falls back to pandas' default. Equivalence was
+   proven on a real Postgres 16 (4,900 rows, every dtype the sweep writes, `''`
+   vs NULL, quotes/commas/newlines, `inf`, tz-aware timestamps, Int64 NA,
+   appending to an existing table): identical frames and column types.
+   `tests/test_pg_copy.py` pins the statement shape and the NULL encoding.
+2. `select pg_stat_statements_reset();` was run on prod (2026-10-21 12:55 UTC)
+   to drop the 464 MB already stored. The fix stops new bloat, but only a reset
+   removes what's there.
+
+**How to check it's still healthy** (SQL editor or the connector):
+
+```sql
+select count(*), pg_size_pretty(sum(length(query))::bigint) from pg_stat_statements;
+select pg_size_pretty(temp_bytes), temp_files from pg_stat_database where datname = current_database();
+```
+
+Query text should stay in the low MB, and `temp_bytes` should grow by
+megabytes a day, not hundreds of GB. If the text grows again, look for a new
+writer that isn't going through `_to_sql_append`, i.e. any `to_sql` or
+`executemany` with a varying row count (the one-off `scripts/seed_*.py` still
+use plain `to_sql`; that's fine for a run or two, but reset afterwards if one
+is used heavily).
+
+**Rule:** bulk writes to prod Postgres go through `_to_sql_append` (COPY).
+Never a plain `df.to_sql(...)` in the sweep.
+
 ## What in this stack touches the disk
 
 Everything below is per **day**, steady state:
@@ -77,7 +135,7 @@ and per statement, Postgres's own IO accounting. How to read it:
    cache-hit ratio and modest churn yet the budget still depletes, the
    floor is platform overhead and this is the only lever left.
 
-## Session note (2026-08-03)
+## Session note (2026-08-03, superseded by the root cause above)
 
 The warning email was triaged from a cloud session with no `DATABASE_URL`
 and the Supabase MCP connector unauthorized, so the measurement step
