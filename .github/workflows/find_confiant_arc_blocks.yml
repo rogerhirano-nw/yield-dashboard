@@ -1,0 +1,69 @@
+name: Find Confiant ARC blocks (one-off)
+
+# Read-only: lists the "GAM blocklist ·" summary emails the Confiant cron sent
+# from the agentmail inbox in a window, and the GAM Ad Review Center blocks
+# (Confiant ID -> GPT Ad Response ID) each one reports.
+# See scripts/find_confiant_arc_blocks.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: 'Window start (YYYY-MM-DD, inclusive)'
+        default: '2026-09-01'
+      end:
+        description: 'Window end (YYYY-MM-DD, exclusive)'
+        default: '2026-10-01'
+  push:
+    branches: [claude/new-session-p4dddg]
+    paths:
+      - 'scripts/find_confiant_arc_blocks.py'
+      - '.github/workflows/find_confiant_arc_blocks.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - run: pip install pandas
+
+      - name: Find ARC blocks
+        env:
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+        run: |
+          set -o pipefail
+          python scripts/find_confiant_arc_blocks.py \
+            --start "${{ inputs.start || '2026-09-01' }}" \
+            --end "${{ inputs.end || '2026-10-01' }}" \
+            --find "AAyH9eQtXoELI35XlvYCsjQuBEvsTmYx" 2>&1 | tee /tmp/output.txt
+
+      - name: Post output as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            echo "No open PR found for branch ${{ github.ref_name }}"; exit 0
+          fi
+          {
+            echo '### Confiant ARC blocks reported by the daily cron'
+            echo ''
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ''
+            echo '```'
+            head -c 60000 /tmp/output.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR" --body-file /tmp/comment.md
