@@ -9,12 +9,13 @@ tracker to accumulate enough history.
 
 Usage:
     export DATABASE_URL='...'   # or set in repo-root .env
-    python3 scripts/seed_pmp_last_bid_date.py                  # 90 days, all sources
+    python3 scripts/seed_pmp_last_bid_date.py                  # 90 days, pubmatic + gam
     python3 scripts/seed_pmp_last_bid_date.py --days=180       # wider window
     python3 scripts/seed_pmp_last_bid_date.py --sources=gam    # single source
     python3 scripts/seed_pmp_last_bid_date.py --dry-run        # print without writing
 
-Sources: pubmatic, magnite, gam  (comma-separated, default all three)
+Sources: pubmatic, magnite, gam  (comma-separated, default pubmatic,gam;
+magnite only with --days=1 — Magnite DV+ requires one-day API calls)
 
 The upsert is safe to re-run: last_bid_date only ever moves forward, so
 running with overlapping windows never regresses existing data.
@@ -248,8 +249,10 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--days",    type=int,  default=90,
                         help="How many days of history to pull (default 90, max ~180 for Pubmatic)")
-    parser.add_argument("--sources", type=str,  default="pubmatic,magnite,gam",
-                        help="Comma-separated sources to pull (default: pubmatic,magnite,gam)")
+    parser.add_argument("--sources", type=str,  default="pubmatic,gam",
+                        help="Comma-separated sources to pull (default: pubmatic,gam). "
+                             "magnite is only accepted with --days=1 — Magnite DV+ requires "
+                             "one-day API calls (2026-11-02)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print what would be written without touching the DB")
     args = parser.parse_args()
@@ -260,6 +263,13 @@ def main() -> int:
     unknown = sources - valid
     if unknown:
         raise SystemExit(f"Unknown sources: {unknown}. Valid: {valid}")
+    if "magnite" in sources and args.days != 1:
+        raise SystemExit(
+            "Magnite pulls must cover ONE day (Magnite DV+ request, 2026-11-02; "
+            "they will revoke API access otherwise). Use --days=1 for magnite, "
+            "or drop it from --sources — the daily sweep keeps pmp_last_bid_date "
+            "current for Magnite."
+        )
 
     yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
     start     = yesterday - timedelta(days=args.days - 1)
