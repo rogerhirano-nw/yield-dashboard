@@ -8,9 +8,9 @@ on:
         required: false
         default: "90"
       sources:
-        description: "Comma-separated sources: pubmatic,magnite,gam"
+        description: "Comma-separated sources: pubmatic,gam (magnite only with days=1 — Magnite requires one-day API calls)"
         required: false
-        default: "pubmatic,magnite"
+        default: "pubmatic"
 
 jobs:
   seed:
@@ -38,7 +38,7 @@ jobs:
           set -o pipefail
           python scripts/seed_pmp_last_bid_date.py \
             --days=${{ github.event.inputs.days || '90' }} \
-            --sources=${{ github.event.inputs.sources || 'pubmatic,magnite' }} \
+            --sources=${{ github.event.inputs.sources || 'pubmatic' }} \
             2>&1 | tee /tmp/seed_output.txt
 
       - name: Write job summary
@@ -47,7 +47,7 @@ jobs:
           echo "## seed_pmp_last_bid_date" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**days:** ${{ github.event.inputs.days || '90' }}  " >> $GITHUB_STEP_SUMMARY
-          echo "**sources:** ${{ github.event.inputs.sources || 'pubmatic,magnite' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**sources:** ${{ github.event.inputs.sources || 'pubmatic' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat /tmp/seed_output.txt >> $GITHUB_STEP_SUMMARY
