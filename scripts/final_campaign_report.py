@@ -212,14 +212,50 @@ def main() -> int:
     # mean per date first, then the mean of those daily means.
     att_daily: dict[str, float] = {}
     att_overall = None
+    att_source = None
+    ids = [str(li.get("id")) for li in lis]
+
+    # Preferred: the DV report emails themselves. The dv_attention table is
+    # TRUNCATE+replaced from the 2 latest emails on every sweep, so it only
+    # ever holds ~8 days — a final report for a flight that ended more than
+    # a week ago finds almost nothing there. Each email covers a rolling
+    # 7-day window, so ~1 email per flight day reaches back to the start.
+    am_key = os.environ.get("AGENTMAIL_API_KEY", "").strip()
+    am_inbox = os.environ.get("AGENTMAIL_INBOX_ID", "").strip()
+    if am_key and am_inbox:
+        try:
+            from dv_attention_client import pull_dv_attention
+            span_days = (end - start).days + 10
+            limit = int(os.environ.get("DV_EMAIL_LIMIT") or max(30, span_days))
+            dv = pull_dv_attention(am_key, am_inbox, limit=limit)
+            if not dv.empty:
+                dv = dv[dv["line_item_id"].astype(str).isin(ids)]
+                dv = dv.dropna(subset=["attention_index", "date"])
+            if not dv.empty:
+                dv["date"] = pd.to_datetime(dv["date"]).dt.strftime("%Y-%m-%d")
+                # overlapping windows: for each date keep only the newest email
+                # that carries it (emails come back newest first)
+                order = {m: i for i, m in enumerate(dict.fromkeys(dv["_email_message_id"]))}
+                dv["_ord"] = dv["_email_message_id"].map(order)
+                newest = dv.groupby("date")["_ord"].transform("min")
+                dv = dv[dv["_ord"] == newest]
+                dv = dv[(dv["date"] >= str(start)) & (dv["date"] <= str(end))]
+                d = dv.groupby("date")["attention_index"].mean().sort_index()
+                att_daily = {k: round(float(v), 1) for k, v in d.items()}
+                att_overall = round(float(d.mean()), 1) if len(d) else None
+                att_source = f"DV report emails ({len(order)} scanned)"
+            print(f"DV attention (emails, limit {limit}): {len(att_daily)} days, "
+                  f"index {att_overall}", file=sys.stderr)
+        except Exception as e:
+            print(f"DV attention from emails unavailable: {e}", file=sys.stderr)
+
     db_url = os.environ.get("DATABASE_URL", "").strip()
-    if db_url:
+    if db_url and not att_daily:
         try:
             import sqlalchemy
             if db_url.startswith("postgres://"):
                 db_url = "postgresql://" + db_url[len("postgres://"):]
             eng = sqlalchemy.create_engine(db_url)
-            ids = [str(li.get("id")) for li in lis]
             q = sqlalchemy.text(
                 "SELECT CAST(date AS TEXT) AS date, attention_index FROM dv_attention "
                 "WHERE line_item_id IN :ids AND attention_index IS NOT NULL"
@@ -231,6 +267,7 @@ def main() -> int:
                 d = dv.groupby("date")["attention_index"].mean().sort_index()
                 att_daily = {k: round(float(v), 1) for k, v in d.items()}
                 att_overall = round(float(d.mean()), 1)
+                att_source = "dv_attention table (rolling ~8 days)"
             print(f"DV attention: {len(dv)} rows, {len(att_daily)} days, "
                   f"index {att_overall}", file=sys.stderr)
         except Exception as e:  # DV is a nice-to-have; never fail the report
@@ -379,7 +416,7 @@ def main() -> int:
                   "po": order.get("poNumber")},
         "window": {"start": str(start), "end": str(end), "includes_today": end >= today},
         "totals": tot,
-        "dv_attention": {"overall": att_overall, "daily": att_daily},
+        "dv_attention": {"overall": att_overall, "daily": att_daily, "source": att_source},
         "line_items": li_rows,
         "by_day": by_day.to_dict("records") if not by_day.empty else [],
         "by_creative": by_cr.to_dict("records") if not by_cr.empty else [],

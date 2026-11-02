@@ -34,13 +34,15 @@ jobs:
           python-version: "3.11"
 
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary
+        run: pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary requests openpyxl
 
       - name: Run report
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           # push runs (no inputs) report on the order this tool was built for
           FINAL_REPORT_ORDER_ID: ${{ inputs.order || '4194246183' }}
           FINAL_REPORT_END_DATE: ${{ inputs.end_date }}
