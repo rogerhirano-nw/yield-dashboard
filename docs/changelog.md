@@ -4,6 +4,19 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-02 — Campaign final reports: GAM pull + Sky-format workbook (#420)
+
+`final_campaign_report.yml` → `scripts/final_campaign_report.py` pulls an
+order's final delivery (flight start → today ET) with Active View and DV
+attention. `scripts/build_final_report_xlsx.py` fills
+`templates/final_report_template.xlsx`, the AppleTv Sky F3 workbook with its
+data blanked, so every client workbook looks the same. First used for American
+Hospital Dubai (4194246183). Fixes found on the way: `dv_attention` only holds
+~8 days, so attention is now read from the DV emails (2 days → 43); the display
+CTR target is 0.10%, not the 0.30% in settings; the client logo sits on a
+transparent background; Excel's warning triangles are suppressed. Runbook:
+`docs/final_report.md`.
+
 ## 2026-11-02 — Magnite API calls cut to one day each
 
 Magnite DV+ (Terence Roney) flagged our reporting calls as querying 30+ days
