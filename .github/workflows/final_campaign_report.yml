@@ -1,0 +1,64 @@
+name: Final campaign report (any order)
+
+# Read-only end-of-campaign delivery report for a GAM order: goal vs
+# delivered, clicks/CTR, revenue, Active View, by day / creative / device /
+# country. Window = flight start → today (ET) unless end_date is given.
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: 'GAM order id'
+        required: true
+      end_date:
+        description: 'Report end date YYYY-MM-DD (blank = today, ET)'
+        required: false
+        default: ''
+  push:
+    branches: [claude/nifty-dijkstra-lhykyt]
+    paths:
+      - scripts/final_campaign_report.py
+      - .github/workflows/final_campaign_report.yml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads
+
+      - name: Run report
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          # push runs (no inputs) report on the order this tool was built for
+          FINAL_REPORT_ORDER_ID: ${{ inputs.order || '4194246183' }}
+          FINAL_REPORT_END_DATE: ${{ inputs.end_date }}
+        run: |
+          set -o pipefail
+          python scripts/final_campaign_report.py \
+            --markdown final_report.md --out final_report.json 2>&1 | tee /tmp/output.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-report
+          path: |
+            final_report.md
+            final_report.json
+          if-no-files-found: warn
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f final_report.md ]; then cat final_report.md >> "$GITHUB_STEP_SUMMARY"; fi
