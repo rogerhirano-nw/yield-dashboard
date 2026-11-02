@@ -151,9 +151,9 @@ totals don't move, and `revenue_daily_series_by_deal` already takes the last
 `DELETE WHERE date >= cutoff` must clear *yesterday's oldest row* so the fresh
 pull replaces the window cleanly; mismatch duplicates the non-deleted tail
 (a 14-day pull on the old shared 8-day cutoff accumulated 33 days / 276 dup
-rows in a Supabase sim). So `magnite_deal_daily` carries `window_days=14` +
-`retention_days=15` while `magnite_site_daily`/`magnite_dsp_daily` keep their
-`last_7` preset + default-8 retention, untouched. `gam_pmp_deals` is
+rows in a Supabase sim). **Magnite is exempt from this rule since 2026-11-02**
+— see *Magnite: one day per API call* below; its tables are built up from
+one-day pulls rather than re-pulled windows. `gam_pmp_deals` is
 `_safe_replace` (full TRUNCATE+append), so widening its window can't
 duplicate. The two raw SSP tabs (Magnite/Pubmatic) are date-picker windowed
 (default "Last 7 days"), so they just gain range. Verify any retention change
@@ -161,9 +161,36 @@ with a temp-table sim of N consecutive daily runs before it touches the sweep.
 
 `pmp_last_bid_date` is a **cumulative** tracking table (not a 7-day rolling window). Upserted at the end of every full sweep by `refresh_pmp_last_bid_date()`. Schema: `(ssp, deal_key, last_bid_date, last_seen_date, first_seen_date, updated_at)`. `deal_key` is `deal_meta_id` (Pubmatic), `deal_id` (Magnite), or `programmatic_deal_name` (GAM). Powers the "Stale deals" expander on the PMP tab. **`last_seen_date`** (added 2026-06) is the last day the deal appeared in ANY source row (`MAX(date)`, bid or not) — distinct from `last_bid_date` (`MAX(date WHERE bids>0)`). Both move forward monotonically via `GREATEST` in the upsert. The expander shows deals stale by `dl.stale_deal_mask` (no bids 90+ days) **and** `dl.recently_seen_mask` (still seen within `stale_seen_window_days`, default **7** — Roger 2026-06-17): a deal that stopped being reported (paused/removed) drops off, while a deal still in the source but not winning bids stays (actionable). This is why **paused deals used to linger forever** — the table never prunes and the old logic only knew bid recency; `last_seen_date` plus a short seen-window is the fix. **The seen-window is short on purpose** (7 days, a separate cutoff from the 90-day no-bid test): `gam_deal_bid_daily` retains ~7 days, so "seen in the last 7 days" ≈ "currently live in GAM," and a paused deal clears within ~a week. It was briefly the *same* 90-day cutoff — which let paused deals linger up to 3 months (the deal still showed because its frozen `last_seen_date` was <90 days old). Widen `stale_seen_window_days` if low-traffic live deals that skip days of requests drop off too eagerly. The source tables only retain ~7–30 days, so a true 90-day "not seen" window can't be computed from them directly — it has to be *tracked* over time (hence the column). `recently_seen_mask` no-ops while the column is NA/absent (old cached frames), so behaviour is unchanged until the refresh populates it. (Migration: existing rows seeded `last_seen_date = COALESCE(last_bid_date, first_seen_date)`, then bumped from current source — done in `refresh_pmp_last_bid_date`'s startup and run once against prod 2026-06-14.) GAM PD/PG deals can be archived directly via `GAMClient.archive_proposal_line_item(pli_id)` (SOAP `ProposalLineItemService`). Pubmatic and Magnite require manual action in their SSP UIs (no publisher-side archive API).
 
+**Magnite: one day per API call** (2026-11-02). Magnite DV+ (Terence Roney)
+flagged our reporting calls as querying 30+ days and gave a week to cut them to
+**one day per call**, or API access gets revoked. The call they logged
+(14:58:09 UTC that day) was `refresh_magnite_deal_metadata`'s **180-day**
+`deal,deal_id,date × bid_requests` pull for the deal-age proxy; the other
+reports were 7 / 14 / 30 days. Every Magnite report now sends
+`date_range="yesterday"` (`MAGNITE_DATE_RANGE`) and **merges** into its table:
+- `magnite_site_daily` / `magnite_dsp_daily` / `magnite_deal_daily` →
+  `_magnite_append_days`: delete the pulled date, append. The 7/14-day views
+  (incl. `dl.spend_momentum`'s week-vs-week) read the accumulated days — the
+  tables always kept history, they just no longer re-pull it. A same-day
+  re-run (the health check's sweep retry) replaces the day, no duplicates.
+  Schema drift **widens** (`_widen_table_to`) instead of DROPping, since a
+  drop would leave one day.
+- `magnite_deal_demand` (deal_id → demand type / revenue source lookup) →
+  `merge_lookup_rows`: re-seen deal_ids replace, others are kept until unseen
+  for 30 days — the old `last_30` coverage.
+- `magnite_deal_metadata` → `merge_deal_age`: cumulative first/last seen;
+  `days_seen` grows only when the day is new. Ages are no longer capped at 180d.
+
+**The cost: a day missed by every run that day is not re-pulled** —
+`_magnite_append_days` logs a WARNING naming the gap so the sweep alert email
+carries it. **Never re-widen a Magnite pull** (no `last_N` preset, no
+multi-day start/end); `refresh_one_report` raises if a config sets one, and
+`tests/test_magnite_one_day.py` pins every call to one day.
+`scripts/seed_pmp_last_bid_date.py` refuses Magnite unless `--days=1`.
+
 For one-off DV backfills (manually downloaded Pinnacle CSV), use `scripts/seed_dv_attention.py /path/to/file.csv`.
 
-For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `scripts/seed_pmp_last_bid_date.py` (default `--days=90`, `--sources=pubmatic,magnite,gam`). Safe to re-run — upsert never regresses `last_bid_date`. Supports `--dry-run` to preview without writing.
+For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `scripts/seed_pmp_last_bid_date.py` (default `--days=90`, `--sources=pubmatic,gam` — Magnite only with `--days=1`, see above). Safe to re-run — upsert never regresses `last_bid_date`. Supports `--dry-run` to preview without writing.
 
 ## Outbound daily digests
 

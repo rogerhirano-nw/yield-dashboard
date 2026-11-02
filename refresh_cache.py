@@ -200,7 +200,9 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
     if not created:
         existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
         if existing_cols == set(df.columns):
-            conn.execute(text(f'TRUNCATE TABLE "{table}"'))
+            # SQLite (local dev / tests) has no TRUNCATE.
+            verb = "TRUNCATE TABLE" if conn.dialect.name == "postgresql" else "DELETE FROM"
+            conn.execute(text(f'{verb} "{table}"'))
         else:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
@@ -349,6 +351,27 @@ def _ensure_indexes() -> None:
     return 0
 
 
+# ── Magnite: ONE DAY PER API CALL ────────────────────────────────────────────
+# Magnite DV+ (Terence Roney, 2026-11-02) asked that every reporting call cover
+# a single day — "historical data doesn't change once posted" — and threatened
+# to revoke API access otherwise. The trigger was refresh_magnite_deal_metadata's
+# 180-day pull (deal,deal_id,date × bid_requests, 05-06 → 11-01, logged by
+# Magnite at 2026-11-02 14:58:09 UTC); the other reports pulled 7/14/30 days.
+#
+# So every Magnite report now asks for `yesterday` only and MERGES into what
+# the table already holds — the multi-day views the dashboard needs are built
+# up across daily runs instead of being re-pulled each morning:
+#   - date-keyed tables  → `_magnite_append_days`: delete the pulled date(s),
+#     append. Idempotent, so a same-day health-check re-run is safe.
+#   - lookup tables      → `_magnite_merge_lookup`: replace the re-seen keys,
+#     keep the rest, expire keys not seen for N days.
+#   - deal-age metadata  → `merge_deal_age`: cumulative first/last seen.
+# **Never widen these back past one day** — and don't add a `last_N` preset or
+# a multi-day start/end to a new Magnite report. A day the sweep misses
+# entirely (every run failed) stays a gap; `_magnite_append_days` logs it as a
+# WARNING so the sweep alert email names it.
+MAGNITE_DATE_RANGE = "yesterday"
+
 # Tune these to match the dashboard's actual filter dimensions.
 # Don't grab every dim — the row count blows up fast and you'll hit the 500K cap.
 REPORTS = {
@@ -363,7 +386,6 @@ REPORTS = {
             "publisher_gross_revenue",
             "ecpm",
         ],
-        "date_range": "last_7",
     },
     "magnite_dsp_daily": {
         "dimensions": ["date", "partner", "site"],
@@ -375,10 +397,12 @@ REPORTS = {
             "publisher_gross_revenue",
             "win_rate",
         ],
-        "date_range": "last_7",
     },
     "magnite_deal_daily": {
-        "dimensions": ["date", "deal", "deal_id"],  # partner/ad_format not returned by API; derived from deal name in dashboard
+        # partner/ad_format not returned by API; derived from deal name in dashboard.
+        # The dashboard's 14-day week-vs-week momentum reads the accumulated
+        # daily rows — it no longer needs a 14-day pull.
+        "dimensions": ["date", "deal", "deal_id"],
         "metrics": [
             "bid_requests",
             "bid_responses",
@@ -389,67 +413,127 @@ REPORTS = {
             "ecpm",
             "win_rate",
         ],
-        # 14-day window powers the dashboard's week-vs-week spend momentum (the
-        # PMP summary windows itself back to 7 days). Explicit window via
-        # window_days; retention 15 = 14 + 1 keeps the replace duplicate-free.
-        # The other Magnite reports keep their last_7 preset + default-8
-        # retention, untouched by this report's wider window.
-        "window_days": 14,
-        "retention_days": 15,
     },
     # demand_type_ad_resp and revenue_source are "Demand Fields" — incompatible with auction
     # metrics (bid_requests, bid_responses, impressions). Pull separately with ad metrics only
     # and join to magnite_deal_daily in the dashboard.
     # No date dimension — this is a lookup table (deal_id → demand_type + revenue_source).
-    # last_30 maximises coverage: deals with zero impressions in the past 7 days still appear.
+    # It used to be a `last_30` pull for coverage of deals idle in the past week;
+    # now each day's deals are merged in and a deal_id is kept until it hasn't
+    # been seen for 30 days — the same coverage, one day per call. The two
+    # metrics are therefore the latest single day's, and nothing reads them.
     "magnite_deal_demand": {
         "dimensions": ["deal", "deal_id", "demand_type_ad_resp", "revenue_source"],
         "metrics": [
             "paid_impression",
             "publisher_gross_revenue",
         ],
-        "date_range": "last_30",
+        "lookup_key": "deal_id",
+        "lookup_keep_days": 30,
     },
     # Add Prebid-specific reports here once you've confirmed the column names
     # against the logged-in Prebid Analytics API docs, and set dataset="prebid".
 }
 
 
-def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
-    """Pull a single report and write it to its own table. Returns row count.
+def _norm_key(v):
+    """Comparable string form of an id that may round-trip as int, float or
+    text (a float64 column reads 123 as 123.0 — the #151 hazard)."""
+    if v is None or (isinstance(v, float) and pd.isna(v)) or v is pd.NA:
+        return None
+    s = str(v).strip()
+    return s[:-2] if s.endswith(".0") and s[:-2].lstrip("-").isdigit() else s
 
-    **Per-report retention.** Two optional, non-API config keys tune the date
-    window independently per report (popped before the API call):
-      - ``window_days``: pull an explicit N-day window via start/end instead of
-        a ``date_range`` preset (Magnite rejects bare YYYY-MM-DD, so the dates
-        are sent as ISO-8601 with timezone). Lets one report carry 14 days
-        without changing the others.
-      - ``retention_days``: the DELETE cutoff (default 8). The no-duplicate
-        invariant is ``retention_days == pull_window + 1`` — the DELETE must
-        clear yesterday's oldest row so the fresh pull replaces the window
-        cleanly. A 14-day pull therefore sets ``retention_days=15``. Widening
-        one report's window no longer risks duplicating rows in the others,
-        which keep the default 8 (7-day pull + 1)."""
+
+def _iso_day(series: pd.Series) -> pd.Series:
+    """YYYY-MM-DD strings (NaN where unparseable) from dates/strings/timestamps."""
+    return pd.to_datetime(series.astype("string").str[:10], errors="coerce").dt.strftime("%Y-%m-%d")
+
+
+def _magnite_append_days(conn, table: str, df: pd.DataFrame) -> None:
+    """Merge a date-keyed one-day pull: replace the date(s) it covers, append.
+
+    Re-running the same day deletes and rewrites only that day, so the
+    health check's same-day sweep re-run never duplicates rows. Older days are
+    left untouched (they always were — this table accumulates history).
+    Schema drift widens the table instead of dropping it: with a one-day pull
+    a DROP would throw away every accumulated day."""
+    if "date" not in df.columns:
+        raise ValueError(f"{table}: date-keyed Magnite report returned no 'date' column")
+    days = df["date"].dropna().astype(str)
+    if days.empty:
+        raise ValueError(f"{table}: report returned no dated rows")
+    lo, hi = days.min(), days.max()
+
+    created = table not in sa_inspect(conn).get_table_names()
+    if not created:
+        _widen_table_to(conn, table, df)
+        prev_max = conn.execute(text(f'SELECT MAX(date) FROM "{table}" WHERE date < :lo'),
+                                {"lo": lo}).scalar()
+        if prev_max is not None:
+            gap = (pd.Timestamp(str(lo)[:10]) - pd.Timestamp(str(prev_max)[:10])).days - 1
+            if gap > 0:
+                logger.warning(
+                    "%s: %d day(s) missing between %s and %s — Magnite pulls are "
+                    "one day per call, so a fully-missed day is not re-pulled",
+                    table, gap, str(prev_max)[:10], str(lo)[:10])
+        conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :lo AND date <= :hi'),
+                     {"lo": lo, "hi": hi})
+    _to_sql_append(df, table, conn)
+    if created:
+        _lockdown_table(conn, table)
+
+
+def merge_lookup_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str,
+                      keep_days: int, now: datetime) -> pd.DataFrame:
+    """Fresh rows replace any existing rows with the same key; untouched keys
+    are kept until their `_pulled_at` is older than *keep_days*."""
+    if existing is None or existing.empty:
+        return new.reset_index(drop=True)
+    seen = set(new[key].map(_norm_key))
+    old = existing[~existing[key].map(_norm_key).isin(seen)]
+    if "_pulled_at" in old.columns:
+        cutoff = (now - timedelta(days=keep_days)).isoformat()
+        pulled = old["_pulled_at"].astype("string")
+        old = old[pulled.isna() | (pulled >= cutoff)]
+    out = pd.concat([new, old], ignore_index=True)
+    return _restore_int_columns(out)
+
+
+def _restore_int_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Float columns holding only whole numbers (an integer column read back
+    from the DB with a NULL in it) → nullable Int64, so COPY writes "5", not
+    "5.0", into a bigint column."""
+    df = df.copy()
+    for c in df.columns:
+        s = df[c]
+        if pd.api.types.is_float_dtype(s) and s.notna().any():
+            vals = s.dropna()
+            if (vals == vals.round()).all() and vals.abs().max() < 2**53:
+                df[c] = s.astype("Int64")
+    return df
+
+
+def _magnite_merge_lookup(conn, table: str, df: pd.DataFrame, key: str, keep_days: int) -> None:
+    existing = pd.DataFrame()
+    if table in sa_inspect(conn).get_table_names():
+        existing = pd.read_sql(text(f'SELECT * FROM "{table}"'), conn)
+    merged = merge_lookup_rows(existing, df, key, keep_days, datetime.now(timezone.utc))
+    _safe_replace(merged, table, conn)
+
+
+def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
+    """Pull ONE day (yesterday) of a Magnite report and merge it into its table.
+    Returns the number of rows pulled. See the MAGNITE_DATE_RANGE note above."""
     logger.info("Refreshing %s", table)
     cfg = dict(config)  # copy — we pop non-API keys, leave the caller's dict intact
-    retention_days = cfg.pop("retention_days", 8)
-    window_days    = cfg.pop("window_days", None)
+    lookup_key = cfg.pop("lookup_key", None)
+    keep_days  = cfg.pop("lookup_keep_days", 30)
+    for k in ("date_range", "start", "end"):
+        if k in cfg:
+            raise ValueError(f"{table}: Magnite reports are pinned to one day — drop '{k}'")
 
-    if window_days is not None:
-        # Explicit window via start/end (Magnite requires ISO-8601 + tz, not
-        # bare dates). date_range must be None when start/end are set.
-        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-        start     = yesterday - timedelta(days=window_days - 1)
-        cfg.pop("date_range", None)
-        df = client.run_report(
-            date_range=None,
-            start=f"{start.isoformat()}T00:00:00Z",
-            end=f"{yesterday.isoformat()}T23:59:59Z",
-            **cfg,
-        )
-    else:
-        df = client.run_report(**cfg)
-
+    df = client.run_report(date_range=MAGNITE_DATE_RANGE, **cfg)
     if df.empty:
         logger.warning("%s came back empty — nothing to write", table)
         return 0
@@ -457,21 +541,10 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        existing_tables = sa_inspect(conn).get_table_names()
-        if table in existing_tables:
-            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
-            new_cols = set(df.columns)
-            if existing_cols != new_cols:
-                logger.info("Schema change detected for %s — dropping and recreating", table)
-                conn.execute(text(f'DROP TABLE "{table}"'))
-            elif "date" in df.columns:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%d")
-                conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
-            else:
-                # Lookup table with no date column — TRUNCATE is cheaper than
-                # DELETE for a full-table clear (single WAL record, no dead tuples).
-                conn.execute(text(f'TRUNCATE TABLE "{table}"'))
-        _to_sql_append(df, table, conn)
+        if lookup_key:
+            _magnite_merge_lookup(conn, table, df, lookup_key, keep_days)
+        else:
+            _magnite_append_days(conn, table, df)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
@@ -843,45 +916,93 @@ def refresh_magnite() -> int:
     return total
 
 
-def refresh_magnite_deal_metadata() -> int:
-    """Pull a 180-day Magnite deal-keyed report to determine each deal's
-    earliest appearance. Used by weekly_report.py as an age proxy since
-    Magnite's reports API doesn't expose a deal creation_date dimension.
+def merge_deal_age(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """Fold one day's per-deal (first_seen, last_seen, days_seen) into the
+    cumulative deal-age table.
 
+    first_seen only moves back, last_seen only moves forward, and days_seen
+    grows by the new day's count only when that day is newer than anything
+    already recorded — so a same-day re-run (the health check's sweep retry)
+    never double-counts. Keys are (deal, deal_id); deal_id is compared in
+    normalized string form so an int/float/text round-trip can't split a deal.
+    """
+    cols = ["deal", "deal_id", "first_seen", "last_seen", "days_seen"]
+
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        df = df[[c for c in cols if c in df.columns]].copy()
+        df["deal"] = df["deal"].astype("string").fillna("")
+        df["deal_id"] = df["deal_id"].map(_norm_key).astype("string").fillna("")
+        df["first_seen"] = _iso_day(df["first_seen"])
+        df["last_seen"] = _iso_day(df["last_seen"])
+        df["days_seen"] = pd.to_numeric(df.get("days_seen", 0), errors="coerce").fillna(0).astype(int)
+        return df.groupby(["deal", "deal_id"], as_index=False).agg(
+            first_seen=("first_seen", "min"),
+            last_seen=("last_seen", "max"),
+            days_seen=("days_seen", "max"),
+        )
+
+    new = _prep(new)
+    if existing is None or existing.empty:
+        out = new
+    else:
+        old = _prep(existing)
+        m = old.merge(new, on=["deal", "deal_id"], how="outer", suffixes=("_old", "_new"))
+        out = m[["deal", "deal_id"]].copy()
+        out["first_seen"] = m[["first_seen_old", "first_seen_new"]].min(axis=1)
+        out["last_seen"] = m[["last_seen_old", "last_seen_new"]].max(axis=1)
+        newer = m["last_seen_old"].isna() | (m["last_seen_new"] > m["last_seen_old"])
+        out["days_seen"] = (
+            m["days_seen_old"].fillna(0)
+            + m["days_seen_new"].fillna(0).where(newer & m["last_seen_new"].notna(), 0)
+        ).astype(int)
+    # Write back the "no value" sentinels as NULLs, like the API returned them.
+    out = out.replace({"deal": {"": None}, "deal_id": {"": None}})
+    return out.sort_values(["first_seen", "deal"], na_position="last").reset_index(drop=True)
+
+
+def refresh_magnite_deal_metadata() -> int:
+    """Maintain each Magnite deal's earliest/latest appearance — the deal-age
+    proxy deal_health reads (`MIN(first_seen)`), since Magnite's reports API
+    doesn't expose a deal creation_date dimension.
+
+    Pulls ONE day (yesterday) and folds it into the cumulative table via
+    `merge_deal_age`. This was a 180-day pull every morning until Magnite
+    flagged it on 2026-11-02 (see the MAGNITE_DATE_RANGE note). The table
+    already held 180 days of first_seen history, so ages stay correct, and
+    because it's now cumulative a deal's age is no longer capped at 180 days.
     Conservative — only underestimates true age, never overestimates."""
-    logger.info("Refreshing magnite_deal_metadata (180-day age proxy)")
+    logger.info("Refreshing magnite_deal_metadata (deal-age proxy, 1-day merge)")
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
     account_id = os.environ["MAGNITE_PUBLISHER_ID"]
     client = MagniteClient(api_key=api_key, api_secret=api_secret, account_id=account_id)
 
-    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-    start     = yesterday - timedelta(days=179)
-
-    # Magnite rejects bare YYYY-MM-DD; requires ISO-8601 with timezone, e.g.
-        # "yyyy-MM-dd'T'HH:mm:ssZ". Send midnight UTC for start and end-of-day UTC for end.
     df = client.run_report(
         dimensions=["deal", "deal_id", "date"],
         metrics=["bid_requests"],
-        start=f"{start.isoformat()}T00:00:00Z",
-        end=f"{yesterday.isoformat()}T23:59:59Z",
-        date_range=None,
+        date_range=MAGNITE_DATE_RANGE,
     )
     if df.empty:
         logger.warning("Magnite metadata report came back empty — nothing to write")
         return 0
 
-    agg = df.groupby(["deal", "deal_id"], dropna=False).agg(
+    day = df.groupby(["deal", "deal_id"], dropna=False).agg(
         first_seen=("date", "min"),
         last_seen=("date", "max"),
         days_seen=("date", "nunique"),
     ).reset_index()
-    agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
+    table = "magnite_deal_metadata"
     with _engine().begin() as conn:
-        _safe_replace(agg, "magnite_deal_metadata", conn)
-    logger.info("Wrote %d Magnite deals to magnite_deal_metadata", len(agg))
-    return len(agg)
+        existing = pd.DataFrame()
+        if table in sa_inspect(conn).get_table_names():
+            existing = pd.read_sql(text(f'SELECT * FROM "{table}"'), conn)
+        merged = merge_deal_age(existing, day)
+        merged["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+        _safe_replace(merged, table, conn)
+    logger.info("Merged %d Magnite deals from yesterday into %s (%d total)",
+                len(day), table, len(merged))
+    return len(day)
 
 
 def refresh_pubmatic_deal_metadata() -> int:

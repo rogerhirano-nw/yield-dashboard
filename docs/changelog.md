@@ -17,6 +17,19 @@ CTR target is 0.10%, not the 0.30% in settings; the client logo sits on a
 transparent background; Excel's warning triangles are suppressed. Runbook:
 `docs/final_report.md`.
 
+## 2026-11-02 — Magnite API calls cut to one day each
+
+Magnite DV+ (Terence Roney) flagged our reporting calls as querying 30+ days
+and asked for one-day calls within a week, or API access would be revoked. The
+call they logged (2026-11-02 14:58:09 UTC) was the daily **180-day**
+deal-age pull (`refresh_magnite_deal_metadata`); the other Magnite reports
+pulled 7 / 14 / 30 days. Every Magnite report now pulls `yesterday` only and
+merges into its table: date-keyed tables replace the pulled day, the demand
+lookup keeps deal_ids for 30 days, and the deal-age table is cumulative.
+Verified against a Postgres 16 table set up like prod: a same-day re-run left
+no duplicate rows and history was kept. `seed_pmp_last_bid_date.py` refuses
+multi-day Magnite pulls. Detail: CLAUDE.md, "Magnite: one day per API call".
+
 ## 2026-10-21 — Supabase Disk IO: sweep appends via COPY, not multi-row INSERT
 
 Second "depleting its Disk IO Budget" warning. Measured on prod: an 89 MB
