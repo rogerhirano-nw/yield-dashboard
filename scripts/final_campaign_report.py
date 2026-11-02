@@ -207,6 +207,35 @@ def main() -> int:
     by_dev = rep(["DEVICE_CATEGORY_NAME"])
     by_geo = rep(["COUNTRY_NAME"])
 
+    # ── DoubleVerify Attention (optional — needs DATABASE_URL) ────────────
+    # Same aggregation as the dashboard (dl.attention_current_and_prior):
+    # mean per date first, then the mean of those daily means.
+    att_daily: dict[str, float] = {}
+    att_overall = None
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+    if db_url:
+        try:
+            import sqlalchemy
+            if db_url.startswith("postgres://"):
+                db_url = "postgresql://" + db_url[len("postgres://"):]
+            eng = sqlalchemy.create_engine(db_url)
+            ids = [str(li.get("id")) for li in lis]
+            q = sqlalchemy.text(
+                "SELECT CAST(date AS TEXT) AS date, attention_index FROM dv_attention "
+                "WHERE line_item_id IN :ids AND attention_index IS NOT NULL"
+            ).bindparams(sqlalchemy.bindparam("ids", expanding=True))
+            with eng.connect() as conn:
+                dv = pd.read_sql(q, conn, params={"ids": ids})
+            if not dv.empty:
+                dv["date"] = dv["date"].str[:10]
+                d = dv.groupby("date")["attention_index"].mean().sort_index()
+                att_daily = {k: round(float(v), 1) for k, v in d.items()}
+                att_overall = round(float(d.mean()), 1)
+            print(f"DV attention: {len(dv)} rows, {len(att_daily)} days, "
+                  f"index {att_overall}", file=sys.stderr)
+        except Exception as e:  # DV is a nice-to-have; never fail the report
+            print(f"DV attention unavailable: {e}", file=sys.stderr)
+
     # ── assemble ──────────────────────────────────────────────────────────
     li_rows = []
     deliv = {}
@@ -280,6 +309,13 @@ def main() -> int:
           _fmt_pct(pct(tot["av_measurable"], tot["av_eligible"])),
           _fmt_pct(pct(tot["av_viewable"], tot["av_measurable"]))]]))
     md.append("")
+    if att_overall is not None:
+        md.append(f"DoubleVerify Attention index: **{att_overall:.0f}** "
+                  f"(100 = DV baseline; mean of {len(att_daily)} daily readings, "
+                  f"{min(att_daily)} → {max(att_daily)}).")
+    else:
+        md.append("DoubleVerify Attention: not available for this report.")
+    md.append("")
     md.append("## By line item")
     md.append("")
     md.append(_md_table(
@@ -343,6 +379,7 @@ def main() -> int:
                   "po": order.get("poNumber")},
         "window": {"start": str(start), "end": str(end), "includes_today": end >= today},
         "totals": tot,
+        "dv_attention": {"overall": att_overall, "daily": att_daily},
         "line_items": li_rows,
         "by_day": by_day.to_dict("records") if not by_day.empty else [],
         "by_creative": by_cr.to_dict("records") if not by_cr.empty else [],
