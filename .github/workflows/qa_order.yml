@@ -37,4 +37,4 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
           IN_ORDER: ${{ inputs.order }}
-        run: python scripts/qa_order.py "${IN_ORDER:-$PUSH_ORDER}"
+        run: python -u scripts/qa_order.py "${IN_ORDER:-$PUSH_ORDER}"

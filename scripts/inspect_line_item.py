@@ -74,10 +74,11 @@ def _kv_names(client, custom):
     ids = ",".join(str(k) for k in keys)
     for k in _q(ct, "getCustomTargetingKeysByStatement", f"id IN ({ids})"):
         kn[k.id] = k.name
-    for k in keys:
-        for v in _q(ct, "getCustomTargetingValuesByStatement", f"customTargetingKeyId = {k}"):
-            if v.id in vals:
-                vn[v.id] = v.name
+    vl = sorted(vals)
+    for i in range(0, len(vl), 400):
+        ids = ",".join(str(v) for v in vl[i:i + 400])
+        for v in _q(ct, "getCustomTargetingValuesByStatement", f"id IN ({ids})"):
+            vn[v.id] = v.name
     return kn, vn
 
 

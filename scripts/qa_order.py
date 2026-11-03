@@ -21,6 +21,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("order", type=int)
     ap.add_argument("--created", default=datetime.now(ZoneInfo("America/New_York")).date().isoformat())
+    ap.add_argument("--all", action="store_true", help="full dump of every line, not just new ones")
     a = ap.parse_args()
     client = _client()
     o_svc = client.GetService("OrderService", version=V)
@@ -39,9 +40,12 @@ def main() -> int:
     for li in lis:
         c = _dt(getattr(li, "creationDateTime", None))
         print(f"{'*' if c.startswith(a.created) else ' '} {li.id} [{li.status}] created {c}  {li.name}")
+    sys.stdout.flush()
     for li in lis:
-        print("\n")
-        inspect(li.id, client)
+        if a.all or _dt(getattr(li, "creationDateTime", None)).startswith(a.created):
+            print("\n")
+            inspect(li.id, client)
+            sys.stdout.flush()
     return 0
 
 
