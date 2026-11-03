@@ -18,7 +18,7 @@ on:
 
 env:
   PUSH_ORDER: "4236300211"
-  # Extra qa_order.py args for push runs, e.g. "--all" or "--created 2026-11-03".
+  # Extra qa_order.py args for push runs (e.g. "--all", "--created YYYY-MM-DD").
   QA_ARGS: "--created 2026-11-03"
 
 permissions:
