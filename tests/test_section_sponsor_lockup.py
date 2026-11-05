@@ -20,7 +20,10 @@ def test_snippet_file_cfg_parses_and_carries_macros():
     # clicks through GAM's click macro.
     assert cfg["logo"] == "%%VIEW_URL_UNESC%%%%FILE:PNG1%%"
     assert cfg["href"] == "%%CLICK_URL_UNESC%%%%DEST_URL%%"
-    assert "CategoryHubHeader" in cfg["host"]
+    # The guard keys on structure, not the component name: the 2026-11 QA
+    # build minified "CategoryHubHeader-module-scss-module__ocqZJG__container"
+    # to "ocqZJG_container", and a name-only guard hid the lockup everywhere.
+    assert 'header [class*="descriptionContainer"]' in cfg["host"]
     assert ssl.SENTINEL in html
 
 

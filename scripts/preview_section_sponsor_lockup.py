@@ -48,28 +48,29 @@ PLACEHOLDER_LOGO = "data:image/svg+xml;base64," + base64.b64encode(
 ).decode()
 
 # Replica of the live CategoryHub header (qa.next.newsweek.com/ai-politics,
-# 2026-09-25): flex column, centered; the dek container is a flex column with
+# 2026-09-25; class names as minified by the 2026-11 build, e.g.
+# ocqZJG_container): flex column, centered; the dek container is a flex column with
 # a 32px gap (24px on mobile) whose second child is the oop1 slot.
 MOCK_PAGE = """<!doctype html><html><head><meta name="viewport" content="width=device-width">
 <style>
 body{margin:0;background:#fefcf6;font-family:Georgia,serif;color:#1a1a1a}
-.CategoryHubHeader-module-scss-module__ocqZJG__container{display:flex;flex-direction:column;align-items:center;gap:12px;margin:92px 240px 0}
+.ocqZJG_container{display:flex;flex-direction:column;align-items:center;gap:12px;margin:92px 240px 0}
 h1{font:600 64px/1.15 Georgia,serif;margin:0}
-.CategoryHubHeader-module-scss-module__ocqZJG__descriptionContainer{display:flex;flex-direction:column;gap:32px;max-width:533px}
-.CategoryHubHeader-module-scss-module__ocqZJG__description{margin:0;text-align:center;font-size:16.5px;line-height:1.6;color:#57534a}
+.ocqZJG_descriptionContainer{display:flex;flex-direction:column;gap:32px;max-width:533px}
+.ocqZJG_description{margin:0;text-align:center;font-size:16.5px;line-height:1.6;color:#57534a}
 main{margin:40px 240px;height:300px;background:#ece6d8}
-@media(max-width:1024px){.CategoryHubHeader-module-scss-module__ocqZJG__container{margin:92px 0 0}h1{font-size:56px}main{margin:40px 16px}}
-@media(max-width:640px){h1{font-size:48px}.CategoryHubHeader-module-scss-module__ocqZJG__descriptionContainer{gap:24px}.CategoryHubHeader-module-scss-module__ocqZJG__description{padding:0 16px}}
+@media(max-width:1024px){.ocqZJG_container{margin:92px 0 0}h1{font-size:56px}main{margin:40px 16px}}
+@media(max-width:640px){h1{font-size:48px}.ocqZJG_descriptionContainer{gap:24px}.ocqZJG_description{padding:0 16px}}
 .offtemplate{margin:40px auto;max-width:533px}
 </style></head><body>
-<header class="CategoryHubHeader-module-scss-module__ocqZJG__container">
+<header class="ocqZJG_container">
 <svg width="48" height="48" viewBox="0 0 40 40"><rect width="40" height="40" fill="#E91D0C"/></svg>
 <h1 class="text-display-semibold-md">AI Politics</h1>
-<div class="CategoryHubHeader-module-scss-module__ocqZJG__descriptionContainer">
-<p class="text-body-regular-md CategoryHubHeader-module-scss-module__ocqZJG__description">AI Politics covers how artificial intelligence is shaping government, elections and policy debates, including regulation, campaign use and national security implications.</p>
+<div class="ocqZJG_descriptionContainer">
+<p class="text-body-regular-md ocqZJG_description">AI Politics covers how artificial intelligence is shaping government, elections and policy debates, including regulation, campaign use and national security implications.</p>
 <div id="dfp-ad-oop1" class="dfp-tag-wrapper"><div id="google_ads_iframe_/22541732127/newsweek/oop1_0__container__" style="border:0pt none"><iframe id="google_ads_iframe_/22541732127/newsweek/oop1_0" width="1" height="1" frameborder="0" scrolling="no" style="border:0;vertical-align:bottom"></iframe></div></div>
 </div></header>
-<main class="CategoryPage-module-scss-module__6INaaq__content"></main>
+<main class="_6INaaq_content"></main>
 <div class="offtemplate"><div id="dfp-ad-oop2" class="dfp-tag-wrapper"><div><iframe id="offtemplate_frame" width="1" height="1" frameborder="0" style="border:0"></iframe></div></div></div>
 </body></html>"""
 
@@ -97,8 +98,8 @@ MEASURE_JS = """() => {
   const slot = document.getElementById('dfp-ad-oop1');
   const f = slot && slot.querySelector('iframe');
   const a = f && f.contentDocument && f.contentDocument.getElementById('nw-ssl');
-  const dek = document.querySelector('[class*="CategoryHubHeader"][class*="__description"]:not([class*="Container"])');
-  const hdr = document.querySelector('header[class*="CategoryHubHeader"]');
+  const dek = document.querySelector('header [class*="descriptionContainer"] > p');
+  const hdr = document.querySelector('header [class*="descriptionContainer"]') && document.querySelector('header [class*="descriptionContainer"]').closest('header');
   const off = document.getElementById('dfp-ad-oop2');
   let lockup = null;
   if (a && f) {

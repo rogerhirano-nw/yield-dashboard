@@ -29,7 +29,7 @@
     "sponsor": document.querySelector('#nw-ssl .ssl-logo').alt,
     "logo": "%%VIEW_URL_UNESC%%[%Logo%]",
     "href": "%%CLICK_URL_UNESC%%[%ClickThroughURL%]",
-    "host": "[class*=\"CategoryHubHeader\"]",
+    "host": "header [class*=\"descriptionContainer\"], [class*=\"CategoryHubHeader\"]",
     "pixels": "[%ImpressionPixels%]".split(/\s+/).filter(Boolean)
   }/*CFG*/;
   var a = document.getElementById('nw-ssl');
