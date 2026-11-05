@@ -20,6 +20,10 @@ on:
         description: 'Bidders to dump in full detail'
         required: false
         default: 'smilewanted,oms,onetag,ogury'
+      autopsy_slot:
+        description: 'Autopsy target-bidder wins only on slot ids containing this (e.g. sticky); blank = all'
+        required: false
+        default: ''
       article_urls:
         description: 'Comma-separated article URLs (blank = scrape fresh ones off the homepage)'
         required: false
@@ -51,6 +55,7 @@ jobs:
           PROFILES: ${{ inputs.profiles }}
           TARGET_BIDDERS: ${{ inputs.target_bidders }}
           ARTICLE_URLS: ${{ inputs.article_urls }}
+          AUTOPSY_SLOT: ${{ inputs.autopsy_slot }}
           SHOTS_DIR: /tmp/prebid-forensics
         run: |
           set -o pipefail

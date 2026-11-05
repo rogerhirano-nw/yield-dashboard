@@ -402,6 +402,66 @@ cross two keys). Aug 24 – Sep 22, advertisers 5724335726 + 5713671547:
 | inarticle4 | 694,305 | 32.2% | 73.3% | 68.8% |
 | inarticle5–10 | 1,295,467 | 24–32% | 72–74% | 71–73% |
 
+### SmileWanted: in-banner video paused (2026-10-20)
+
+**Action taken: we asked SmileWanted to pause all of its in-banner video
+(IBV) demand** on Newsweek. IBV is the leading explanation for a deficit that
+is uniform across every unit: a video player served into a display slot
+through the Prebid universal creative. The "outstream hypothesis not
+supported" call above was weaker than it read — it rested on the size cut,
+and GAM books every SmileWanted impression as `1x1`, so size can neither
+confirm nor rule out video. A per-unit-uniform ~38pp render gap is what you
+would expect if a share of every unit's fills were IBV that sits below the
+fold, waits on a player, or collapses when it has no fill.
+
+How to tell whether the pause fixed it — the pause *is* the experiment, so
+read it as a before/after on the same cut, not a new investigation:
+
+* Wait for **7+ full days** after SmileWanted confirms the pause (GAM reporting
+  is complete for yesterday; a shorter window is noisy on the in-article
+  units). Dispatch `prebid_source_viewability.yml` with `days` covering only
+  post-pause days, and compare per unit against the Aug 24 – Sep 22 table
+  above (sticky 53.7%, inarticle1 52.0%, inarticle2 34.2%, …).
+* Faster read, any time: `prebid_bidder_daily_viewability.yml`
+  (`scripts/prebid_bidder_daily_viewability.py`) prints SmileWanted's
+  viewable% **per day** against peers re-weighted to that day's ad-unit mix,
+  then before vs after a split — `pause_date` if given (first day after the
+  pause), else the day that best separates the gap series (a suggestion to
+  check against when SmileWanted actually switched it off). A pause that took
+  shows as a step in the gap, and usually in volume too.
+* **Gap closes to within ~5pp of PBJS peers on every unit** → IBV was the
+  cause. Keep it paused, or let it back only on a placement where it can
+  measure, and say so in this doc.
+* **Gap unchanged** → IBV wasn't it (or the pause didn't take — check that
+  SmileWanted's volume and eCPM moved at all; a pause with no volume change
+  means it never happened). Back to the open question, with EU-egress on-page
+  forensics as the next step.
+* **Volume drops sharply with it** → the remaining banner demand is the
+  number to quote; weigh SmileWanted's lost revenue ($5.00 eCPM, ~$23k per
+  three weeks before the pause) against the ~2pp it was costing the whole
+  Prebid banner rate.
+
+### Result: the pause took on 2026-10-08, and the gap more than halved
+
+First run of `prebid_bidder_daily_viewability.yml` (60 days to 2026-10-19,
+auto split). The daily gap sits at −30 to −41pp through 10-07 and steps to
+**−21pp on 10-08**, then −10 to −17pp every day after. The auto-split picked
+10-09; 10-08 is the first changed day (likely a mid-day switch-off).
+
+| | imps/day | rev/day | eCPM | viewable | peers (mix-adj) | gap |
+|---|---:|---:|---:|---:|---:|---:|
+| before (49 days) | 311k | $1,485 | $4.77 | **42.8%** | 78.6% | −35.8pp |
+| after (11 days) | 312k | $1,369 | $4.38 | **65.0%** | 79.2% | **−14.2pp** |
+
+* **Volume held** (+0%/day) and revenue/day fell ~8%. SmileWanted backfilled
+  the IBV with other demand instead of losing it, so the pause cost little.
+* **Every in-article unit from 2 to 10 rose ~+30pp**, to 60–64%, and sticky
+  rose to 77.7% (+23pp). That confirms IBV as the main driver.
+* **It is not fully closed.** A ~14pp gap remains: in-article units at 60–64%
+  vs ~73% peers, sticky 77.7% vs 92.4%.
+* **inarticle1 got worse** (50.1% → 45.6%, gap −4.6pp), the one unit that
+  bucked the trend. It is the unit to raise with SmileWanted next.
+
 ### Ogury: confirmed sticky-only, exactly as the DOM forensics said
 
 | Ad unit | Imps | ogury | peers |
@@ -416,6 +476,40 @@ comes from sticky, which is 58% of Ogury's volume. Production over 21 days
 and 1.69M impressions confirms the blank-render mechanism found on page —
 and gives a quotable number (43.0% vs a 91.8% peer rate on the same unit)
 that does not depend on any sampling rate.
+
+### Ogury sticky by device and OS (2026-10-21): a mobile-only defect that worsens with newer OSes
+
+`prebid_bidder_segment_viewability.yml` (Oct 10–20, sticky only, every row
+graded against the other bidders in the same segment; measurable is 100%
+throughout):
+
+| Device | Ogury imps | Ogury viewable | Other bidders | Gap |
+|---|---:|---:|---:|---:|
+| Smartphone | 415,088 (94%) | **34.4%** | 92.7% | −58.4pp |
+| Tablet | 16,644 | 46.3% | 94.9% | −48.6pp |
+| **Desktop** | 9,130 | **95.7%** | 94.2% | **+1.5pp** |
+
+**On desktop Ogury's sticky is healthy;** the defect is mobile and tablet
+only, and smartphones carry 97% of the shortfall.
+
+By OS version the rate falls steadily as the OS gets newer, on both
+platforms, while other bidders hold 90–97% on every version:
+
+* **Android:** 11 → 73.6%, 12 → 63.5%, 13 → 61.1%, 14 → 61.8%, 15 → 53.2%,
+  16 → 45.6%, 17 → 30.9%.
+* **iOS:** 18.7 → 35.6%, 26.2–26.6 → 25–28%, 27 → 19.6%.
+
+iOS 26.6 alone is 42% of the shortfall. A creative that fails more often on
+every newer OS release points at something the newer mobile browsers
+restrict and Ogury's sticky creative depends on, rather than at our page.
+Candidates are storage or cookie partitioning, autoplay rules, or throttling
+of off-screen or fixed-position frames. That is a hypothesis for Ogury to
+confirm, not something this cut proves. GAM refused `BROWSER_NAME` and
+`DEVICE_MODEL_NAME` crossed with the hb_bidder custom dimension, so the
+browser split isn't available.
+
+**Consequence for the fix:** take Ogury off sticky on **mobile and tablet
+only**. Desktop sticky is fine and can stay.
 
 ### OneTag: video-only
 
