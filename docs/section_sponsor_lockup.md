@@ -47,8 +47,16 @@ because it rendered outside its iframe. Clicks go through
 `%%CLICK_URL_UNESC%%%%DEST_URL%%`.
 
 - **Scope guard:** it renders only when its iframe sits inside
-  `[class*="CategoryHubHeader"]`. Anywhere else the slot collapses and the
-  logo is never requested.
+  `header [class*="descriptionContainer"]` (or, for older builds,
+  `[class*="CategoryHubHeader"]`). Anywhere else the slot collapses and the
+  logo is never requested. **Key the guard on structure, not the component
+  name.** On 2026-11-05 the QA build started minifying CSS-module classes:
+  `CategoryHubHeader-module-scss-module__ocqZJG__container` became
+  `ocqZJG_container`. The name-only guard then matched nothing, so the
+  creative hid its own slot. GAM was still serving the right line and
+  creative, so nothing in GAM looked wrong. The local part of the class
+  (`descriptionContainer`) survives minification, but the hash prefix may not,
+  so don't key on `ocqZJG` either.
 - **Impressions:** the logo loads through `%%VIEW_URL_UNESC%%`, so the
   out-of-page impression counts when the logo actually loads. A guarded
   (off-template) render never counts.
