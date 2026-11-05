@@ -1089,7 +1089,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   injection. So Active View measures the real ad, unlike the article logo's
   carrier hack. It copies the page's Noto Sans `@font-face`
   (`optional`→`swap`, or the iframe paints Arial) and self-guards to
-  `[class*="CategoryHubHeader"]`. Setup:
+  `header [class*="descriptionContainer"]` (old `[class*="CategoryHubHeader"]`
+  kept as a fallback). **Guard on page structure, never on the component name**:
+  on 2026-11-05 the QA build minified the CSS-module classes
+  (`CategoryHubHeader-module-scss-module__ocqZJG__container` → `ocqZJG_container`),
+  and the name-only guard made the creative hide its own slot while GAM still
+  served it. The template (12589844) needs a UI re-paste after any snippet change,
+  because the API can't edit templates. Its Kia creative 138614849560 has been
+  deactivated on LI 7439607552 until that re-paste. Setup:
   `scripts/setup_section_sponsor_lockup.py` / `setup_section_sponsor_lockup.yml`
   (dry run lists competing oop1 LIs; the creative is UI-made "Out of page",
   then `--creative-id` pushes the snippet). Check:
