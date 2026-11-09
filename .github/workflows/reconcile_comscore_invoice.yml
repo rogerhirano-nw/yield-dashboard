@@ -17,6 +17,7 @@ on:
       - 'scripts/reconcile_comscore_invoice.py'
       - 'scripts/invoices/*.json'
       - 'scripts/probe_order_delivery.py'
+      - 'scripts/reconcile_comscore_creatives.py'
       - '.github/workflows/reconcile_comscore_invoice.yml'
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install minimal deps
-        run: pip install google-ads-admanager google-auth pandas
+        run: pip install google-ads-admanager google-auth pandas googleads
       - name: Reconcile
         env:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
@@ -47,3 +48,13 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
         run: python scripts/probe_order_delivery.py 2026-03-01 2026-11-08 4112397745 4144745465
+      - name: Creative-level check
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          INVOICE: ${{ inputs.invoice || 'scripts/invoices/CINV-CUS-143077.json' }}
+        run: |
+          set -o pipefail
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/reconcile_comscore_creatives.py --invoice "$INVOICE" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
