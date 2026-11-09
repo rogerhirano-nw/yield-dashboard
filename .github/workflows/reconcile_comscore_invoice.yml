@@ -1,0 +1,43 @@
+name: Reconcile Comscore CCR invoice
+
+# Pulls GAM delivery for the orders on a Comscore CCR invoice and compares it
+# to the billed impressions. Read-only against GAM. Output is in the run's
+# step summary and log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      invoice:
+        description: 'Invoice spec path'
+        required: true
+        default: 'scripts/invoices/CINV-CUS-143077.json'
+  push:
+    branches: [claude/loving-goldberg-55fq9q]
+    paths:
+      - 'scripts/reconcile_comscore_invoice.py'
+      - 'scripts/invoices/*.json'
+      - '.github/workflows/reconcile_comscore_invoice.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas
+      - name: Reconcile
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          INVOICE: ${{ inputs.invoice || 'scripts/invoices/CINV-CUS-143077.json' }}
+        run: |
+          set -o pipefail
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/reconcile_comscore_invoice.py --invoice "$INVOICE" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
