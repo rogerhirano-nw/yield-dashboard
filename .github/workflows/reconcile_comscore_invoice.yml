@@ -18,6 +18,7 @@ on:
       - 'scripts/invoices/*.json'
       - 'scripts/probe_order_delivery.py'
       - 'scripts/reconcile_comscore_creatives.py'
+      - 'scripts/probe_creatives.py'
       - '.github/workflows/reconcile_comscore_invoice.yml'
 
 permissions:
@@ -58,3 +59,8 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           python scripts/reconcile_comscore_creatives.py --invoice "$INVOICE" | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Probe uninspectable creatives
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: python scripts/probe_creatives.py 740431483 740662039 740894917 -- 7322575369 7298658235 7381354074
