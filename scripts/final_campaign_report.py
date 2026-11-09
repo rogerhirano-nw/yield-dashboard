@@ -117,12 +117,12 @@ def _num(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rates(df: pd.DataFrame) -> pd.DataFrame:
-    imp = df["impressions"].replace(0, pd.NA)
+    imp = df["impressions"].replace(0, float("nan"))
     df["ctr_%"] = (100 * df["clicks"] / imp).astype(float).round(2)
     df["measurable_%"] = (100 * df["av_measurable"]
-                          / df["av_eligible"].replace(0, pd.NA)).astype(float).round(1)
+                          / df["av_eligible"].replace(0, float("nan"))).astype(float).round(1)
     df["viewable_%"] = (100 * df["av_viewable"]
-                        / df["av_measurable"].replace(0, pd.NA)).astype(float).round(1)
+                        / df["av_measurable"].replace(0, float("nan"))).astype(float).round(1)
     return df
 
 
