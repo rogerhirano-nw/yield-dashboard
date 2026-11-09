@@ -16,6 +16,9 @@ Each creative is classed as
   UNTAGGED  nothing found (e.g. a plain image creative)
   OPAQUE    third-party VAST redirect / custom tag whose content GAM can't see —
             the agency's own wrapper may still fire Comscore
+  UNKNOWN   not returned by CreativeService (video creatives with 740… ids,
+            DV360-served PG creatives) — can't be inspected from here
+Comscore's count should land between "tagged" and "tagged + opaque + unknown".
 and the per-order sums are compared to Comscore's billed impressions.
 
 Usage:
@@ -97,7 +100,7 @@ def main() -> int:
 
     print(f"Invoice {inv['invoice']} · {start} → {end} · creative-level\n")
     hdr = (f"{'Order':<11} {'Comscore':>11} {'GAM tagged':>11} {'Δ':>7} "
-           f"{'+opaque':>11} {'Δ':>7} {'untagged':>10} {'GAM all':>11}")
+           f"{'+uninspectable':>14} {'Δ':>7} {'untagged':>10} {'GAM all':>11}")
     print(hdr); print("-" * len(hdr))
 
     def pct(a, b):
@@ -107,17 +110,18 @@ def main() -> int:
     for oid, cs in billed.items():
         o = df[df["order_id"] == oid]
         s = o.groupby("status")["ad_server_impressions"].sum()
-        t, op = int(s.get("TAGGED", 0)), int(s.get("OPAQUE", 0))
-        u = int(s.get("UNTAGGED", 0) + s.get("UNKNOWN", 0))
+        t = int(s.get("TAGGED", 0))
+        op = int(s.get("OPAQUE", 0) + s.get("UNKNOWN", 0))
+        u = int(s.get("UNTAGGED", 0))
         a = int(o["ad_server_impressions"].sum())
         for key, v in zip("cs t to u a".split(), (cs, t, t + op, u, a)):
             T[key] += v
-        print(f"{oid:<11} {cs:>11,} {t:>11,} {pct(cs, t):>7} {t + op:>11,} {pct(cs, t + op):>7} "
+        print(f"{oid:<11} {cs:>11,} {t:>11,} {pct(cs, t):>7} {t + op:>14,} {pct(cs, t + op):>7} "
               f"{u:>10,} {a:>11,}")
     print("-" * len(hdr))
-    print(f"{'TOTAL':<11} {T['cs']:>11,} {T['t']:>11,} {pct(T['cs'], T['t']):>7} {T['to']:>11,} "
+    print(f"{'TOTAL':<11} {T['cs']:>11,} {T['t']:>11,} {pct(T['cs'], T['t']):>7} {T['to']:>14,} "
           f"{pct(T['cs'], T['to']):>7} {T['u']:>10,} {T['a']:>11,}")
-    print("\nΔ = (Comscore − GAM) / GAM. '+opaque' adds third-party tags whose content GAM can't inspect.")
+    print("\nΔ = (Comscore − GAM) / GAM. '+uninspectable' adds creatives whose content GAM can't show (opaque 3P tags, video/DV360).")
 
     print("\nPer creative (August, by order → line item):")
     for oid in billed:
