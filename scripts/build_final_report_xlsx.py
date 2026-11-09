@@ -180,9 +180,82 @@ def _drop_measurement(wb, note=MEASUREMENT_NOTE) -> None:
     b[f"B{nrow}"] = note
 
 
+def _add_revenue(wb, d: dict) -> None:
+    """Add a REVENUE column/tile in the template's own styling, in the first
+    free column of each table: Summary tile + line-item table, Daily, and every
+    Breakdown section. Revenue is GAM ad-server revenue — for programmatic
+    guaranteed deals that is net of Google's AdX fee (Nocturne: $16 CPM gross
+    $40,001.90 → $36,001.71 in GAM)."""
+    from openpyxl.utils import get_column_letter as L
+
+    def first_free(ws, row, start=2, stop=11):
+        for c in range(start, stop):
+            if ws.cell(row=row, column=c).value is None:
+                return c
+        return stop
+
+    def clone(ws, src_col, dst_col, rows):
+        for r in rows:
+            ws.cell(row=r, column=dst_col)._style = copy(ws.cell(row=r, column=src_col)._style)
+
+    money = '"$"#,##0;-"$"#,##0;"–"'
+    money2 = '"$"#,##0.00;-"$"#,##0.00;"–"'
+    s = wb["Summary"]
+    # line-item table first (the tile's formula points at its total)
+    c = first_free(s, 27)
+    clone(s, 6, c, (27, 28, 29))                       # copy the CLICKS column look
+    s.cell(row=27, column=c, value="REVENUE")
+    s.cell(row=28, column=c, value=d["totals"]["revenue"]).number_format = money2
+    s.cell(row=29, column=c, value=f"=SUM({L(c)}28:{L(c)}28)").number_format = money2
+    t = first_free(s, 8)
+    clone(s, 4, t, (8, 9))                             # copy the CLICKS tile look
+    s.cell(row=8, column=t, value="REVENUE")
+    s.cell(row=9, column=t, value=f"={L(c)}29").number_format = money
+
+    w = wb["Daily delivery"]
+    last = max(r for r in range(9, w.max_row + 1) if w[f"B{r}"].value == "Total")
+    c = first_free(w, 8)
+    clone(w, 4, c, range(8, last + 1))
+    w.cell(row=8, column=c, value="REVENUE")
+    rev = {x["date"]: x["revenue"] for x in d["by_day"]}
+    for r in range(9, last):
+        w.cell(row=r, column=c, value=rev.get(w[f"B{r}"].value, 0)).number_format = money2
+    w.cell(row=last, column=c, value=f"=SUM({L(c)}9:{L(c)}{last - 1})").number_format = money2
+
+    b = wb["Breakdown"]
+    lookup = {}
+    for key, col in (("by_creative", "rendered_creative_size"), ("by_device", "device_category_name"),
+                     ("by_country", "country_name")):
+        for x in d.get(key) or []:
+            lookup[(key, str(x[col]))] = x["revenue"]
+    section, first = None, None
+    for r in range(8, b.max_row + 1):
+        v = b[f"B{r}"].value
+        if v in ("By creative size", "By device", "By country"):
+            section = {"By creative size": "by_creative", "By device": "by_device",
+                       "By country": "by_country"}[v]
+        elif v == "SEGMENT":
+            c, first = first_free(b, r), r + 1
+            clone(b, 4, c, (r,))
+            b.cell(row=r, column=c, value="REVENUE")
+        elif v == "Total" and first:
+            clone(b, 4, c, (r,))
+            b.cell(row=r, column=c, value=f"=SUM({L(c)}{first}:{L(c)}{r - 1})").number_format = money2
+            first = None
+        elif first and v is not None:
+            clone(b, 4, c, (r,))
+            if str(v).startswith("Other ("):
+                named = {str(b[f"B{k}"].value) for k in range(first, r)}
+                val = sum(x["revenue"] for x in (d.get("by_country") or []) if x["country_name"] not in named)
+            else:
+                val = lookup.get((section, str(v)), 0)
+            b.cell(row=r, column=c, value=val).number_format = money2
+
+
 def build(d: dict, out: str, *, name, advertiser, campaign, seller, flight,
           line_label, ctr_target=0.001, logo=None, template=TEMPLATE,
-          delivery_note=None, daily_note=None, omit_measurement=False) -> None:
+          delivery_note=None, daily_note=None, omit_measurement=False,
+          revenue=False) -> None:
     wb = load_workbook(template)
     by_day = sorted(d["by_day"], key=lambda x: x["date"])
     att = (d.get("dv_attention") or {}).get("daily") or {}
@@ -316,6 +389,8 @@ def build(d: dict, out: str, *, name, advertiser, campaign, seller, flight,
 
     if omit_measurement:
         _drop_measurement(wb)
+    if revenue:
+        _add_revenue(wb, d)
 
     # ── client logo, top right of the Summary header ──────────────────
     if logo:
@@ -345,6 +420,9 @@ def main() -> int:
     ap.add_argument("--delivery-note", help="replaces 'by the flight's end' in the delivery highlight "
                     "(e.g. 'the extension delivered the final impressions on 2 Nov')")
     ap.add_argument("--daily-note", help="sentence appended to the Daily delivery footnote")
+    ap.add_argument("--revenue", action="store_true",
+                    help="add GAM revenue (tile, line-item, daily and breakdown columns); leave "
+                         "it off for $0-rate lines")
     ap.add_argument("--omit-measurement", action="store_true",
                     help="leave viewability + attention out (formats that render outside the "
                          "measured ad frame, e.g. interstitials reading ~0%%); adds a note why")
@@ -353,7 +431,7 @@ def main() -> int:
           campaign=a.campaign, seller=a.seller, flight=a.flight, line_label=a.line_label,
           ctr_target=a.ctr_target, logo=a.logo, template=a.template,
           delivery_note=a.delivery_note, daily_note=a.daily_note,
-          omit_measurement=a.omit_measurement)
+          omit_measurement=a.omit_measurement, revenue=a.revenue)
     print(f"wrote {a.out}")
     return 0
 

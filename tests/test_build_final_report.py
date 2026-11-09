@@ -12,7 +12,7 @@ DAYS = [("2026-09-14", 400_000, 400), ("2026-09-15", 350_000, 350), ("2026-09-16
 
 
 def _row(imp, clk, **k):
-    return {"impressions": imp, "clicks": clk, "av_eligible": imp,
+    return {"impressions": imp, "clicks": clk, "revenue": imp * 0.0144, "av_eligible": imp,
             "av_measurable": imp, "av_viewable": round(imp * 0.75), **k}
 
 
@@ -84,3 +84,18 @@ def test_near_full_delivery_reads_in_full(tmp_path):
     build(rep, str(out), name="x", advertiser="x", campaign="x", seller="x",
           flight="x", line_label="x")
     assert load_workbook(out)["Summary"]["F33"].value == "Delivered in full"
+
+
+def test_revenue_columns_in_template_style(tmp_path):
+    out = tmp_path / "r.xlsx"
+    build(REPORT, str(out), name="x", advertiser="x", campaign="x", seller="x",
+          flight="x", line_label="x", omit_measurement=True, revenue=True)
+    wb = load_workbook(out)
+    s = wb["Summary"]
+    assert s["F8"].value == "REVENUE" and s["F9"].value == "=H29"   # tile -> line-item total
+    assert s["H27"].value == "REVENUE" and s["H29"].value == "=SUM(H28:H28)"
+    assert s["H28"].value == REPORT["totals"]["revenue"]            # unrounded, so totals tie
+    d = wb["Daily delivery"]
+    assert d["F8"].value == "REVENUE" and d["F12"].value == "=SUM(F9:F11)"
+    b = wb["Breakdown"]
+    assert [c.value for c in b["F"] if c.value == "REVENUE"] == ["REVENUE"] * 3

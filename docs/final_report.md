@@ -81,6 +81,11 @@ design a new one; fill the template.
 - **Delivery within 0.5% of goal reads "Delivered in full"** (Sky was 24
   short of 1,562,500; Nocturne 31 short of 2,500,150).
 - **Interstitial CTR target is 0.30%** (`--ctr-target 0.003`), display 0.10%.
+- **Revenue goes in when the line has a rate** (`--revenue`; Roger asked for
+  it on Nocturne). It is GAM ad-server revenue, which on a programmatic
+  guaranteed deal is **net of Google's 10% AdX fee** — Nocturne $36,001.71 vs
+  $40,001.90 gross at the $16 CPM; the doc's metric note says so. Values stay
+  unrounded so every table's total ties to the cent.
 - **Revenue is left out** when the line's rate in GAM is $0 (AHD was).
 - **`[nw]` advertisers** (AHD runs under `[nw] Investment-Reports`) are
   excluded from the dashboard's Direct table, so the report has to come from
