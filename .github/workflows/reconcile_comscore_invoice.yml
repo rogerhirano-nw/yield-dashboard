@@ -16,6 +16,7 @@ on:
     paths:
       - 'scripts/reconcile_comscore_invoice.py'
       - 'scripts/invoices/*.json'
+      - 'scripts/probe_order_delivery.py'
       - '.github/workflows/reconcile_comscore_invoice.yml'
 
 permissions:
@@ -41,3 +42,8 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           python scripts/reconcile_comscore_invoice.py --invoice "$INVOICE" | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Probe order flights
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+        run: python scripts/probe_order_delivery.py 2026-03-01 2026-11-08 4112397745 4144745465
