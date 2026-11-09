@@ -115,9 +115,74 @@ def suppress_excel_flags(path: str) -> None:
     shutil.move(tmp, path)
 
 
+MEASUREMENT_NOTE = ("Viewability and attention are not reported for this campaign: the "
+                    "interstitial renders outside the ad frame that Google Ad Manager Active View "
+                    "and DoubleVerify measure, so both read near zero however the ad was seen.")
+
+
+def _drop_measurement(wb, note=MEASUREMENT_NOTE) -> None:
+    """Remove viewability + attention from every sheet, keeping the Sky look.
+
+    For formats that render outside the GPT iframe (interstitial takeovers,
+    breakouts) Active View and DV read ~0% however the ad was seen — Nocturne
+    (2026-11) had 51 viewable of 2.5M with a 7.4% CTR. Roger's call: leave both
+    out of the client version and say why in one line."""
+    def paper(ws, cells, ref):
+        st = copy(ws[ref]._style)
+        for c in cells:
+            cell = ws[c]
+            if cell.__class__.__name__ != "MergedCell":
+                cell.value = None
+            cell._style = copy(st)
+
+    def unmerge(ws, rng):
+        if rng in {str(m) for m in ws.merged_cells.ranges}:
+            ws.unmerge_cells(rng)
+
+    s = wb["Summary"]
+    # KPI tiles: keep Impressions / % of goal / Clicks / CTR (B-E)
+    paper(s, [f"{c}{r}" for c in "FG" for r in (8, 9)], "A8")
+    # highlights: delivery, CTR, device, then the measurement note
+    s["B13"], s["B14"], s["B15"], s["B16"] = s["B15"].value, s["B16"].value, f"•  {note}", None
+    # line-item table: drop VIEWABILITY / ATTENTION columns
+    paper(s, [f"{c}{r}" for c in "HI" for r in (27, 28, 29)], "A27")
+    # benchmarks: Delivery, CTR; drop viewability + attention rows
+    for c in "BCDEF":
+        s[f"{c}34"]._style = copy(s[f"{c}35"]._style)  # CTR's % format, not viewability's
+        s[f"{c}34"] = s[f"{c}35"].value
+    for r in (35, 36):
+        unmerge(s, f"F{r}:I{r}")
+        paper(s, [f"{c}{r}" for c in "BCDEFGHI"], "A35")
+        s.row_dimensions[r].height = None
+    s["C24"] = "GAM ad server"
+    s["B38"] = ((s["B38"].value or "").replace("Delivery, clicks and viewability", "Delivery and clicks")
+                .replace(" and Active View", ""))
+    s["B39"] = note
+    # About the metrics: CTR only
+    s["B43"], s["C43"] = s["B45"].value, s["C45"].value
+    s.row_dimensions[43].height = s.row_dimensions[45].height
+    for r in (44, 45):
+        unmerge(s, f"C{r}:I{r}")
+        paper(s, [f"{c}{r}" for c in "BCDEFGHI"], "A44")
+        s.row_dimensions[r].height = None
+
+    w = wb["Daily delivery"]
+    last = max(r for r in range(9, w.max_row + 1) if w[f"B{r}"].value == "Total")
+    paper(w, [f"{c}{r}" for c in "FGHI" for r in range(8, last + 1)], "A8")
+    w[f"B{last + 2}"] = note
+
+    b = wb["Breakdown"]
+    rows = [r for r in range(8, b.max_row + 1)
+            if b[f"B{r}"].value == "SEGMENT" or (b[f"C{r}"].value is not None and r > 9)]
+    paper(b, [f"{c}{r}" for c in "FGH" for r in rows], "A8")
+    nrow = max(r for r in range(8, b.max_row + 1)
+               if isinstance(b[f"B{r}"].value, str) and b[f"B{r}"].value.startswith("Attention is not"))
+    b[f"B{nrow}"] = note
+
+
 def build(d: dict, out: str, *, name, advertiser, campaign, seller, flight,
           line_label, ctr_target=0.001, logo=None, template=TEMPLATE,
-          delivery_note=None, daily_note=None) -> None:
+          delivery_note=None, daily_note=None, omit_measurement=False) -> None:
     wb = load_workbook(template)
     by_day = sorted(d["by_day"], key=lambda x: x["date"])
     att = (d.get("dv_attention") or {}).get("daily") or {}
@@ -160,7 +225,8 @@ def build(d: dict, out: str, *, name, advertiser, campaign, seller, flight,
     s["I28"] = s["I29"] = att_all
     s["C33"], s["C34"], s["C35"], s["C36"] = tot["impressions"] / goal, vw, ctr, att_all
     s["D35"] = ctr_target
-    s["F33"] = "Delivered in full" if tot["impressions"] >= goal else "Under-delivered"
+    # within 0.5% of goal reads as full delivery (Sky: 24 short of 1,562,500 = "Delivered in full")
+    s["F33"] = "Delivered in full" if tot["impressions"] >= goal * 0.995 else "Under-delivered"
     s["F34"] = f"{'Above' if vw >= 0.7 else 'Below'} the 70% Newsweek target"
     s["F35"] = f"{'Met' if ctr >= ctr_target else 'Below'} the {ctr_t} Newsweek target"
     s["F36"] = (f"{att_all - 100:+.0f}% vs DV's 100 baseline" if att_all is not None else "Not reported")
@@ -248,6 +314,9 @@ def build(d: dict, out: str, *, name, advertiser, campaign, seller, flight,
     b[f"B{r - 1}"] = ("Attention is not broken out by size, device or country: DoubleVerify's "
                       "attention report is split by date and line item only.")
 
+    if omit_measurement:
+        _drop_measurement(wb)
+
     # ── client logo, top right of the Summary header ──────────────────
     if logo:
         from openpyxl.drawing.image import Image as XLImage
@@ -276,11 +345,15 @@ def main() -> int:
     ap.add_argument("--delivery-note", help="replaces 'by the flight's end' in the delivery highlight "
                     "(e.g. 'the extension delivered the final impressions on 2 Nov')")
     ap.add_argument("--daily-note", help="sentence appended to the Daily delivery footnote")
+    ap.add_argument("--omit-measurement", action="store_true",
+                    help="leave viewability + attention out (formats that render outside the "
+                         "measured ad frame, e.g. interstitials reading ~0%%); adds a note why")
     a = ap.parse_args()
     build(json.load(open(a.report_json)), a.out, name=a.name, advertiser=a.advertiser,
           campaign=a.campaign, seller=a.seller, flight=a.flight, line_label=a.line_label,
           ctr_target=a.ctr_target, logo=a.logo, template=a.template,
-          delivery_note=a.delivery_note, daily_note=a.daily_note)
+          delivery_note=a.delivery_note, daily_note=a.daily_note,
+          omit_measurement=a.omit_measurement)
     print(f"wrote {a.out}")
     return 0
 

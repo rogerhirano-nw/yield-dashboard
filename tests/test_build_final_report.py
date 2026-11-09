@@ -59,3 +59,28 @@ def test_build_fills_template(tmp_path):
     titles = [c.value for c in b["B"] if c.value in ("By creative size", "By device", "By country")]
     assert titles == ["By creative size", "By device", "By country"]
     assert len(s._images) == 1                       # Newsweek wordmark (no client logo given)
+
+
+def test_omit_measurement_drops_viewability_and_attention(tmp_path):
+    out = tmp_path / "r.xlsx"
+    build(REPORT, str(out), name="N — Q127", advertiser="N", campaign="Q127",
+          seller="Ivy Lee", flight="30 Oct – 8 Nov", line_label="Interstitial",
+          ctr_target=0.003, omit_measurement=True)
+    wb = load_workbook(out)
+    s = wb["Summary"]
+    assert s["F8"].value is None and s["G8"].value is None      # no VIEWABILITY/ATTENTION tiles
+    assert s["H27"].value is None and s["I27"].value is None
+    assert s["B34"].value == "CTR" and s["D34"].value == 0.003
+    assert s["D34"].number_format == s["D35"].number_format or "0.00%" in s["D34"].number_format
+    assert "not reported" in s["B39"].value
+    texts = [str(c.value) for ws in wb for row in ws.iter_rows() for c in row if c.value]
+    assert not any(t in ("VIEWABILITY", "ATTENTION", "VIEWABLE IMPR.", "MEASURABLE IMPR.") for t in texts)
+    assert wb["Daily delivery"]["F8"].value is None
+
+
+def test_near_full_delivery_reads_in_full(tmp_path):
+    out = tmp_path / "r.xlsx"
+    rep = {**REPORT, "totals": {**REPORT["totals"], "goal": 1_000_030}}  # 23 short
+    build(rep, str(out), name="x", advertiser="x", campaign="x", seller="x",
+          flight="x", line_label="x")
+    assert load_workbook(out)["Summary"]["F33"].value == "Delivered in full"

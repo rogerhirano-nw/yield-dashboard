@@ -70,6 +70,17 @@ design a new one; fill the template.
   "Inconsistent Formula" and the GAM order id (text on purpose) trips "Number
   stored as text". The builder writes `<ignoredErrors>` into every sheet as its
   last step.
+- **Interstitials can read ~0% viewable.** AppleTv Nocturne (4224978217,
+  2026-11) delivered 2.5M with a 7.38% CTR but Active View counted 51
+  viewable impressions and DV attention read ~2: the unit renders outside the
+  GPT iframe both vendors measure (Sky showed the same on its first two days).
+  Roger's call: **drop viewability and attention from the client version** —
+  `--omit-measurement` removes both from every sheet and adds a one-line
+  note; the doc does the same. Spot it by a healthy CTR beside a near-zero
+  viewable count.
+- **Delivery within 0.5% of goal reads "Delivered in full"** (Sky was 24
+  short of 1,562,500; Nocturne 31 short of 2,500,150).
+- **Interstitial CTR target is 0.30%** (`--ctr-target 0.003`), display 0.10%.
 - **Revenue is left out** when the line's rate in GAM is $0 (AHD was).
 - **`[nw]` advertisers** (AHD runs under `[nw] Investment-Reports`) are
   excluded from the dashboard's Direct table, so the report has to come from
@@ -83,4 +94,5 @@ design a new one; fill the template.
 | Campaign | Order | Doc | Workbook | Notes |
 | --- | --- | --- | --- | --- |
 | AppleTv Sky Program — FY26 Flight3 | 4203010941 | [Doc](https://claude.ai/artifact/2ADoKs48n13sG5SBnSkqeQ) | `AppleTV_Sky_Program_F3_final_report.xlsx` | The template; interstitial, CTR target 0.30% |
+| AppleTv Nocturne — Q127 | 4224978217 | [Doc](https://claude.ai/artifact/8Y8aVmHSBriMosUuqqnnhB) | `AppleTv Nocturne Q127 final report.xlsx` | 2,500,119 / 2,500,150, CTR 7.38%; viewability + attention omitted (51 viewable of 2.5M) |
 | American Hospital Dubai — Interview, AI Health Summit 2026 | 4194246183 | [Doc](https://claude.ai/artifact/SJtPVsg3b19VchHAtZAocS) | `American Hospital Dubai AI Health Summit final report.xlsx` | 1,000,007 / 1,000,000; extended to 2 Nov; attention 134 over 43 days; CTR 0.10% vs 0.10% |
