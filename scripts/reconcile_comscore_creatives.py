@@ -16,8 +16,8 @@ Each creative is classed as
   UNTAGGED  nothing found (e.g. a plain image creative)
   OPAQUE    third-party VAST redirect / custom tag whose content GAM can't see —
             the agency's own wrapper may still fire Comscore
-  UNKNOWN   not returned by CreativeService (video creatives with 740… ids,
-            DV360-served PG creatives) — can't be inspected from here
+  UNKNOWN   id not found as a creative or a creative set
+Video lines report a creative-set id (740…), resolved via CreativeSetService.
 Comscore's count should land between "tagged" and "tagged + opaque + unknown".
 and the per-order sums are compared to Comscore's billed impressions.
 
@@ -95,6 +95,31 @@ def main() -> int:
             ctype = type(c).__name__ if not hasattr(c, "_xsd_type") else c._xsd_type.name
             blob = json.dumps(serialize_object(c), default=str)
             info[str(c.id)] = (ctype, classify(ctype, blob))
+    # Video lines report a CREATIVE SET id (master video + companions), not a
+    # creative id, so CreativeService returns nothing for it. Resolve the set
+    # and judge it by its member creatives: the Comscore pixel rides the
+    # master's START tracking URL.
+    missing = [i for i in ids if i not in info]
+    if missing:
+        set_svc = client.GetService("CreativeSetService", version=V)
+        members: dict[str, list[str]] = {}
+        for k in range(0, len(missing), 200):
+            sb = ad_manager.StatementBuilder(version=V).Where(
+                f"id IN ({','.join(missing[k:k + 200])})").Limit(500)
+            for cs in getattr(set_svc.getCreativeSetsByStatement(sb.ToStatement()), "results", []) or []:
+                members[str(cs.id)] = [str(cs.masterCreativeId)] + [str(x) for x in (cs.companionCreativeIds or [])]
+        need = sorted({m for v in members.values() for m in v} - set(info))
+        for k in range(0, len(need), 200):
+            sb = ad_manager.StatementBuilder(version=V).Where(f"id IN ({','.join(need[k:k + 200])})").Limit(500)
+            for c in getattr(svc.getCreativesByStatement(sb.ToStatement()), "results", []) or []:
+                ctype = type(c).__name__ if not hasattr(c, "_xsd_type") else c._xsd_type.name
+                info[str(c.id)] = (ctype, classify(ctype, json.dumps(serialize_object(c), default=str)))
+        for sid, mem in members.items():
+            st = [info[m][1] for m in mem if m in info]
+            best = next((x for x in ("TAGGED", "OPAQUE", "UNTAGGED") if x in st), "UNKNOWN")
+            master = info.get(mem[0], ("?",))[0]
+            info[sid] = (f"CreativeSet/{master}", best)
+
     df["ctype"] = df["creative_id"].map(lambda i: info.get(i, ("?", "UNKNOWN"))[0])
     df["status"] = df["creative_id"].map(lambda i: info.get(i, ("?", "UNKNOWN"))[1])
 
