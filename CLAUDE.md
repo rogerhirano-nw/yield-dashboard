@@ -1249,6 +1249,17 @@ removed, the script refuses to write if one reappears, and a test pins it.
 Keep Pillow installed wherever the script runs, or openpyxl silently drops the
 Comscore logos.
 
+**Checking a Comscore CCR invoice against GAM**: transcribe the invoice into
+`scripts/invoices/<invoice#>.json` and run `reconcile_comscore_invoice.yml`
+(push to the branch or dispatch). It compares Comscore's billed impressions per
+campaign ID (= GAM order id; the pixel's `c3=%ebuy!` macro) with GAM
+`AD_SERVER_IMPRESSIONS` for the month, both on all lines and excluding the
+Apple News / newsletter lines Comscore doesn't tag; the tagged figure is the
+fair comparison. **Match on the ID, not the campaign name**: on CINV-CUS-143077
+(Aug 2026) Comscore's names for two IDs belonged to other campaigns.
+`scripts/probe_order_delivery.py` shows an order's flight and monthly delivery
+when an ID bills for a month GAM shows nothing.
+
 ## Creating a Direct order from a signed IO
 `scripts/setup_io_order.py` + one spec per IO under `scripts/orders/<IO#>.json`
 (first used for **SO01190**, OMD / Apple TV+ "Way of the Warrior Kid", 2026-09-23
