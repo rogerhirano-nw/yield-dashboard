@@ -40,6 +40,21 @@ request, then unwraps the exact chain GAM served. UNTIL=bid stops at the
 first bid instead. MAX_MINUTES (default 360) caps it; Ctrl-C stops early and
 still writes the report.
 
+More-real modes (bidders often skip a visitor they can't identify, and the
+default mode starts every page with a blank profile):
+
+    # one persistent real-Chrome profile: cookies, ID syncs and consent build
+    # up across pages and runs; one tab, each article referred from the last
+    PROFILE_DIR=~/nw-chrome-profile LOADS=20 python scripts/prebid_vast_audit.py
+
+    # you browse by hand, the script only listens (nothing automated):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+        --remote-debugging-port=9222 --user-data-dir="$HOME/nw-chrome-profile"
+    ATTACH=9222 python scripts/prebid_vast_audit.py     # Ctrl-C when done
+
+Chrome refuses remote debugging on your everyday profile, hence the separate
+--user-data-dir; pointing both modes at the same folder lets one warm the other.
+
 Env knobs: LOADS (default 12), PROFILES (mobile,desktop), ARTICLE_URLS,
 TARGET_BIDDERS (onetag), OUT_DIR (./prebid-vast-audit), SCROLL_STEPS,
 SCROLL_DWELL, HEADFUL=1, BROWSER_CHANNEL=chrome (your installed Chrome; with
@@ -53,6 +68,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import random
 import re
 import statistics
 import sys
@@ -70,8 +86,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Browser launch, article scraping and device profiles are shared with the
 # on-page render forensics so both tools load pages the same way.
 from prebid_render_forensics import (  # noqa: E402
-    BROWSER_CHANNEL, DESKTOP_UA, PROFILE_CFG, _article_urls, _launch,
+    _ARTICLE_RE, BROWSER_CHANNEL, CHROME_PATH, DESKTOP_UA, HOME_URL, PROFILE_CFG,
+    _article_urls, _current_proxy, _launch,
 )
+
+# More-real modes (default is a fresh throwaway profile per page load):
+#   PROFILE_DIR=~/nw-chrome-profile  one persistent Chrome profile for every
+#       page and run, so cookies, ID syncs and consent build up like a real
+#       reader's; pages are read in one tab, each referred from the last.
+#   ATTACH=9222  attach to a Chrome you started yourself and just listen while
+#       you browse Newsweek by hand. Nothing is automated.
+PROFILE_DIR = os.path.expanduser(os.environ.get("PROFILE_DIR") or "")
+ATTACH = os.environ.get("ATTACH") or ""
 
 
 def _context_cfg(profile: str) -> dict:
@@ -328,15 +354,14 @@ def _head_size(url: str) -> int:
 
 # ── browser ────────────────────────────────────────────────────────────────
 
-def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
-    ctx = browser.new_context(**_context_cfg(profile))
-    ctx.add_init_script(INIT_JS)
-    pg = ctx.new_page()
-    pg.set_default_timeout(30_000)
-    bids: list[dict] = []
-    stats = {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list), "ima": [],
-             "auction_log": []}
+def _new_stats() -> dict:
+    return {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list), "ima": [],
+            "auction_log": []}
 
+
+def _handler(stats: dict, bids: list, profile: str, page_url):
+    """Response listener shared by every mode. `page_url(response)` names the
+    page the request came from (fixed per load, or read live when attached)."""
     def on_resp(r):
         if "/gampad/ads" in r.url and "vid.newsweek" in r.url:
             # The player's own ad request: who won Prebid, and what GAM served.
@@ -345,7 +370,7 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
                 vast = r.text()
             except Exception:
                 vast = ""
-            stats["ima"].append({"page": url, "profile": profile, "targeting": tg,
+            stats["ima"].append({"page": page_url(r), "profile": profile, "targeting": tg,
                                  "winner": (tg.get("hb_bidder") or "").lower(),
                                  "price": tg.get("hb_pb"),
                                  "served_prebid": gam_served_prebid(tg, vast),
@@ -358,6 +383,7 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
             resp = r.json()
         except Exception:
             return
+        url = page_url(r)
         stats["auctions"] += 1
         found = video_bids_from_auction(req, resp)
         if any("video" in i for i in req.get("imp") or []):
@@ -383,8 +409,26 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
             b.update(page=url, profile=profile, source="s2s",
                      endpoint=urlparse(r.url).netloc)
         bids.extend(found)
+    return on_resp
 
-    pg.on("response", on_resp)
+
+def _client_bids(pg, url: str, profile: str) -> list[dict]:
+    return [{"bidder": (b.get("bidder") or "?").lower(), "price": b.get("cpm"),
+             "crid": b.get("crid"), "adomain": b.get("adomain") or [],
+             "markup": b.get("vastXml") or b.get("vastUrl") or "",
+             "pbs_ms": None, "page": url, "profile": profile,
+             "source": "client", "endpoint": "pbjs"}
+            for b in pg.evaluate("() => window.__nwv || []")]
+
+
+def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
+    ctx = browser.new_context(**_context_cfg(profile))
+    ctx.add_init_script(INIT_JS)
+    pg = ctx.new_page()
+    pg.set_default_timeout(30_000)
+    bids: list[dict] = []
+    stats = _new_stats()
+    pg.on("response", _handler(stats, bids, profile, lambda _r: url))
     try:
         pg.goto(url, wait_until="domcontentloaded", timeout=60_000)
         time.sleep(5)
@@ -393,17 +437,134 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
             pg.mouse.wheel(0, step)
             time.sleep(SCROLL_DWELL)
         time.sleep(3)
-        for b in pg.evaluate("() => window.__nwv || []"):
-            bids.append({"bidder": (b.get("bidder") or "?").lower(), "price": b.get("cpm"),
-                         "crid": b.get("crid"), "adomain": b.get("adomain") or [],
-                         "markup": b.get("vastXml") or b.get("vastUrl") or "",
-                         "pbs_ms": None, "page": url, "profile": profile,
-                         "source": "client", "endpoint": "pbjs"})
+        bids.extend(_client_bids(pg, url, profile))
     except Exception as exc:
         print(f"[warn] {profile} {url}: {exc}")
     finally:
         ctx.close()
     return bids, stats
+
+
+def _loads_fresh(pw):
+    """Default mode: a throwaway profile per page load."""
+    browser = _launch(pw)
+    try:
+        while True:
+            # Fresh article links each round: new pages, new auctions.
+            for url in _article_urls(browser, LOADS):
+                for profile in PROFILES:
+                    got, stats = _capture(browser, url, profile)
+                    yield got, stats, url, profile
+            if not UNTIL:
+                return
+    finally:
+        browser.close()
+
+
+def _accept_consent(pg) -> None:
+    for btn in pg.query_selector_all("button")[:40]:
+        try:
+            if (btn.inner_text() or "").strip().lower() in (
+                    "accept all", "accept", "i agree", "agree", "allow all"):
+                btn.click(timeout=2000)
+                return
+        except Exception:
+            pass
+
+
+def _read_like_a_person(pg) -> None:
+    """Uneven scroll steps and pauses, with the pointer moving now and then."""
+    for _ in range(SCROLL_STEPS):
+        if random.random() < 0.3:
+            pg.mouse.move(random.randint(200, 900), random.randint(150, 700), steps=8)
+        pg.mouse.wheel(0, random.randint(250, 650))
+        pg.wait_for_timeout(int(1000 * random.uniform(SCROLL_DWELL * 0.6, SCROLL_DWELL * 2.0)))
+
+
+def _loads_persistent(pw):
+    """PROFILE_DIR mode: one real Chrome profile that keeps its cookies, ID
+    syncs and consent across pages and runs; one tab, each article reached
+    from the page before it."""
+    # Visible window by default (HEADFUL=0 only for a display-less sandbox).
+    kw = {"headless": os.environ.get("HEADFUL") == "0", "no_viewport": True,
+          # Drop the automation banner/flag Playwright adds by default.
+          "ignore_default_args": ["--enable-automation"],
+          "args": ["--disable-blink-features=AutomationControlled"]}
+    if BROWSER_CHANNEL or not CHROME_PATH:
+        kw["channel"] = BROWSER_CHANNEL or "chrome"
+    else:
+        kw["executable_path"] = CHROME_PATH
+    proxy = _current_proxy()
+    if proxy:   # only in a proxied sandbox; never set on a home connection
+        kw["proxy"] = {"server": proxy}
+        kw["args"].append("--ssl-version-max=tls1.2")
+    ctx = pw.chromium.launch_persistent_context(PROFILE_DIR, **kw)
+    ctx.add_init_script(INIT_JS)
+    pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+    pg.set_default_timeout(30_000)
+    try:
+        while True:
+            pg.goto(HOME_URL, wait_until="domcontentloaded", timeout=60_000)
+            pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
+            _accept_consent(pg)
+            hrefs = pg.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
+            urls = list(dict.fromkeys(h for h in hrefs if _ARTICLE_RE.match(h)))
+            random.shuffle(urls)
+            referer = HOME_URL
+            for url in urls[:LOADS]:
+                bids: list[dict] = []
+                stats = _new_stats()
+                h = _handler(stats, bids, "real-chrome", lambda _r, u=url: u)
+                pg.on("response", h)
+                try:
+                    pg.goto(url, referer=referer, wait_until="domcontentloaded", timeout=60_000)
+                    pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
+                    _read_like_a_person(pg)
+                    bids.extend(_client_bids(pg, url, "real-chrome"))
+                except Exception as exc:
+                    print(f"[warn] {url}: {exc}")
+                finally:
+                    pg.remove_listener("response", h)
+                referer = url
+                yield bids, stats, url, "real-chrome"
+            if not UNTIL:
+                return
+    finally:
+        ctx.close()
+
+
+def _loads_attached(pw):
+    """ATTACH mode: listen to a Chrome you are using by hand. Yields once a
+    minute with whatever your browsing produced."""
+    endpoint = ATTACH if ATTACH.startswith("http") else f"http://localhost:{ATTACH}"
+    browser = pw.chromium.connect_over_cdp(endpoint)
+    ctx = browser.contexts[0]
+    ctx.add_init_script(INIT_JS)   # takes effect from your next page load
+    print(f"[attached to {endpoint}] Browse Newsweek articles normally in that window. "
+          "Ctrl-C here when you're done.", flush=True)
+
+    def page_url(r):
+        try:
+            return r.frame.page.url
+        except Exception:
+            return "?"
+    try:
+        while True:
+            bids: list[dict] = []
+            stats = _new_stats()
+            h = _handler(stats, bids, "you", page_url)
+            ctx.on("response", h)
+            end = time.monotonic() + 60
+            while time.monotonic() < end:
+                open_pages = [p for p in ctx.pages if not p.is_closed()]
+                if open_pages:
+                    open_pages[0].wait_for_timeout(1000)   # lets events through
+                else:
+                    time.sleep(1)
+            ctx.remove_listener("response", h)
+            yield bids, stats, "(your browsing, last minute)", "you"
+    finally:
+        browser.close()   # disconnects; your Chrome keeps running
 
 
 # ── report ─────────────────────────────────────────────────────────────────
@@ -556,42 +717,34 @@ def main() -> int:
     t0 = time.monotonic()
     caught = None
     with sync_playwright() as pw:
-        browser = _launch(pw)
+        loads = (_loads_attached(pw) if ATTACH else
+                 _loads_persistent(pw) if PROFILE_DIR else _loads_fresh(pw))
         try:
-            while caught is None:
-                # Fresh article links each round: new pages, new auctions.
-                urls = _article_urls(browser, LOADS)
-                for url in urls:
-                    for profile in PROFILES:
-                        got, stats = _capture(browser, url, profile)
-                        n_loads += 1
-                        n_video_auctions += stats["video_auctions"]
-                        for k, v in stats["latency"].items():
-                            latency[k].extend(v)
-                        bids.extend(got)
-                        ima.extend(stats["ima"])
-                        auction_log.extend(stats["auction_log"])
-                        n_t = sum(1 for b in got if b["bidder"] in TARGET_BIDDERS)
-                        won = [w for w in stats["ima"] if w["winner"] in TARGET_BIDDERS]
-                        winners = ",".join(w["winner"] or "none" for w in stats["ima"]) or "-"
-                        mins = (time.monotonic() - t0) / 60
-                        print(f"[{n_loads} {mins:5.1f}m] {profile:<7} video bids {len(got)} "
-                              f"({n_t} {'/'.join(TARGET_BIDDERS)})  prebid winner {winners}  {url}",
-                              flush=True)
-                        if UNTIL == "bid" and n_t:
-                            caught = "bid"
-                        elif UNTIL == "win" and won:
-                            caught = "win"
-                        if caught or mins >= MAX_MINUTES:
-                            break
-                    if caught or (time.monotonic() - t0) / 60 >= MAX_MINUTES:
-                        break
-                if not UNTIL or (time.monotonic() - t0) / 60 >= MAX_MINUTES:
+            for got, stats, url, profile in loads:
+                n_loads += 1
+                n_video_auctions += stats["video_auctions"]
+                for k, v in stats["latency"].items():
+                    latency[k].extend(v)
+                bids.extend(got)
+                ima.extend(stats["ima"])
+                auction_log.extend(stats["auction_log"])
+                n_t = sum(1 for b in got if b["bidder"] in TARGET_BIDDERS)
+                won = [w for w in stats["ima"] if w["winner"] in TARGET_BIDDERS]
+                winners = ",".join(w["winner"] or "none" for w in stats["ima"]) or "-"
+                mins = (time.monotonic() - t0) / 60
+                print(f"[{n_loads} {mins:5.1f}m] {profile:<7} video bids {len(got)} "
+                      f"({n_t} {'/'.join(TARGET_BIDDERS)})  prebid winner {winners}  {url}",
+                      flush=True)
+                if UNTIL == "bid" and n_t:
+                    caught = "bid"
+                elif UNTIL == "win" and won:
+                    caught = "win"
+                if caught or (time.monotonic() - t0) / 60 >= MAX_MINUTES:
                     break
         except KeyboardInterrupt:
             print("\n[stopped by you — writing what was captured]")
         finally:
-            browser.close()
+            loads.close()
     if UNTIL:
         print(f"\n{'CAUGHT a ' + caught if caught else 'Did NOT catch a ' + UNTIL} for "
               f"{'/'.join(TARGET_BIDDERS)} after {n_loads} page loads, "

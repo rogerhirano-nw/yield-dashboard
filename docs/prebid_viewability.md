@@ -479,6 +479,17 @@ ORTB **request id**, the bidder's response time, whether it bid, and any PBS
 error or `seatnonbid` code. That's the file to send an SSP that asks for page
 URLs, timestamps or request IDs, so it can find the exact auctions in its logs.
 
+**Make the visitor look real, not just the IP.** The default mode starts every
+page with a blank profile (no cookies, no ID syncs, direct traffic), and
+bidders often skip a user they can't identify, which may be why OneTag never
+bid. Two more-real modes:
+`PROFILE_DIR=~/nw-chrome-profile` reuses one real-Chrome profile across pages
+and runs, with the automation flag off, one tab, and articles chained by
+referrer. `ATTACH=9222` attaches to a Chrome you launched with
+`--remote-debugging-port=9222 --user-data-dir=~/nw-chrome-profile` and only
+listens while you browse by hand. Chrome 136+ refuses remote debugging on the
+default profile, hence the separate folder.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 
