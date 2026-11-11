@@ -112,6 +112,9 @@ MOBILE = os.environ.get("MOBILE") == "1"
 # HAR=path.har reads a network recording instead of loading pages: e.g. Safari
 # Web Inspector attached to your iPhone while you browse Newsweek by hand.
 HAR = os.path.expanduser(os.environ.get("HAR") or "")
+# SECTION=life: the driven modes read only articles listed on that section's
+# page (/life, then /life?page=2, … when they run out).
+SECTION = (os.environ.get("SECTION") or "").strip().strip("/").lower()
 
 
 def _context_cfg(profile: str) -> dict:
@@ -568,18 +571,43 @@ def _read_like_a_person(pg, touch: bool = False) -> None:
         pg.wait_for_timeout(int(1000 * random.uniform(SCROLL_DWELL * 0.6, SCROLL_DWELL * 2.0)))
 
 
+def _article_links(pg) -> list[str]:
+    hrefs = pg.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
+    return list(dict.fromkeys(h for h in hrefs if _ARTICLE_RE.match(h)))
+
+
 def _read_articles(pg, profile: str, touch: bool = False):
-    """Homepage, then LOADS articles in one tab, each referred from the last.
-    Yields per article; repeats while UNTIL is set."""
+    """Homepage (or the SECTION listing), then LOADS articles in one tab, each
+    referred from the last. Without SECTION, links are topped up from every
+    article read (related stories), since a mobile homepage lists only a
+    handful; with SECTION they come from the listing's next pages instead,
+    because related stories leave the section. Yields per article; repeats
+    while UNTIL is set."""
     while True:
-        pg.goto(HOME_URL, wait_until="domcontentloaded", timeout=60_000)
+        start = f"{HOME_URL.rstrip('/')}/{SECTION}" if SECTION else HOME_URL
+        listing_page = 1
+        pg.goto(start, wait_until="domcontentloaded", timeout=60_000)
         pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
         _accept_consent(pg)
-        hrefs = pg.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
-        urls = list(dict.fromkeys(h for h in hrefs if _ARTICLE_RE.match(h)))
-        random.shuffle(urls)
-        referer = HOME_URL
-        for url in urls[:LOADS]:
+        queue = _article_links(pg)
+        random.shuffle(queue)
+        seen: set[str] = set()
+        referer = start
+        read = 0
+        while read < LOADS:
+            if not queue and SECTION and listing_page < 10:
+                listing_page += 1
+                pg.goto(f"{start}?page={listing_page}", wait_until="domcontentloaded", timeout=60_000)
+                pg.wait_for_timeout(int(1000 * random.uniform(3, 6)))
+                queue = [u for u in _article_links(pg) if u not in seen]
+                random.shuffle(queue)
+                referer = pg.url
+            if not queue:
+                break
+            url = queue.pop(0)
+            if url in seen:
+                continue
+            seen.add(url)
             bids: list[dict] = []
             stats = _new_stats()
             h = _handler(stats, bids, profile, lambda _r, u=url: u)
@@ -589,11 +617,17 @@ def _read_articles(pg, profile: str, touch: bool = False):
                 pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
                 _read_like_a_person(pg, touch)
                 bids.extend(_client_bids(pg, url, profile))
+                if not SECTION:
+                    fresh = [u for u in _article_links(pg) if u not in seen and u not in queue]
+                    random.shuffle(fresh)
+                    queue.extend(fresh)
             except Exception as exc:
                 print(f"[warn] {url}: {exc}")
+                continue
             finally:
                 pg.remove_listener("response", h)
             referer = url
+            read += 1
             yield bids, stats, url, profile
         if not UNTIL:
             return
