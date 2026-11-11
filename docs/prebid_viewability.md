@@ -500,6 +500,12 @@ this is the realistic device. **An emulator is itself an invalid-traffic signal*
 user sync returning an empty ID, says little about real users. Prefer a real
 Android phone over USB (same commands) when one is available.
 
+`scripts/android_emulator_audit.sh` does the emulator path end to end on a Mac:
+JDK 17 if missing, Android command-line tools (no Android Studio needed), the
+Google Play API 35 image, a Pixel AVD, boot, Chrome opened past its first-run
+screens (debug-app command-line flags), `adb forward`, then the audit with
+`ATTACH=9222 DRIVE=1`. Re-runs skip what's installed.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 
