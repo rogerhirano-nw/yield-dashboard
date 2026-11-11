@@ -495,6 +495,42 @@ auctions, 38 video bids):**
   needs a much longer run, or AY pulling OneTag's winning responses from its
   PBS logs (every bid passes through AY's server).
 
+### OneTag video: it's the 60-second (VPAID) slice (2026-11-11)
+
+OneTag's reply (Dylan Steinfeld, 2026-11-10) said that its responses flagged
+VPAID log a duration equal to the request's **maximum** (60s on vid.newsweek),
+not the creative's real length. AY's `yield_analytics` report carries the
+declared VAST duration per impression (`ad_duration_bucket`, from the IMA SDK),
+and that turned out to be the missing cut:
+
+* **40% of OneTag's vid.newsweek impressions declare exactly 60.0s** (Oct 1–22;
+  40.6% on Oct 30–Nov 5). For every other Prebid bidder it is **3.8%**.
+* **Day by day, OneTag's 60s share and its GAM viewability move together at
+  r = −0.97** (22 days; −0.96 without the partial last day). Fitting
+  `viewable = a·(1−share) + b·share` gives **a ≈ 83%** for OneTag's non-60s
+  impressions (peers: 84–87%) and **b ≈ 5%** for the 60s slice. The fit is
+  within 1.5pp of GAM on every day. This is a daily-mix inference, not a
+  per-impression measurement: GAM rejects `VIDEO_AD_DURATION` alongside Active
+  View metrics (CONSTRAINTS_INCOMPATIBILITY), so the two can't be crossed in one
+  report.
+* The 60s slice behaves unlike any real ad: **99.4% first-quartile rate**
+  against 71.7% for other bidders' genuine 60s ads and 89% for OneTag's own 15s
+  ads. That is what a VPAID unit reporting progress on its own clock looks like,
+  whether or not anything is on screen.
+* GAM, Oct 30–Nov 5, vid.newsweek (custom dimension `hb_bidder`, advertiser
+  5724335726): OneTag **99.7% measurable, 51.3% viewable** vs 84.6% for all
+  other bidders. Low on every device (desktop 50.3%, smartphone 51.8%, tablet
+  46.0%), so it isn't device mix. "Not measured" is ruled out.
+* GAM shows **no Prebid video on any unit but `vid.newsweek`** that week, so
+  OneTag's second sample ("Newsweek_VideoSlot", VAST 3.0, VPAID-only request)
+  isn't from our GAM video unit.
+
+**The fix to test is narrow: keep OneTag's VPAID / 60s responses off
+vid.newsweek, for OneTag only.** A site-wide 30s cap would also cut other
+bidders' real 60s ads, but those are only 3.8% of their volume. If the fit
+holds, OneTag goes to ~83% and the video line gains ~1.2pp. It costs ~40% of
+OneTag's video volume (~1.5% of Prebid video impressions).
+
 ## How to read the results (decision rules)
 
 1. **`render_gap` near zero, `mix_gap` strongly negative** → placement. Take
