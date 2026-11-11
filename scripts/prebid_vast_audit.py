@@ -42,7 +42,9 @@ still writes the report.
 
 Env knobs: LOADS (default 12), PROFILES (mobile,desktop), ARTICLE_URLS,
 TARGET_BIDDERS (onetag), OUT_DIR (./prebid-vast-audit), SCROLL_STEPS,
-SCROLL_DWELL, HEADFUL=1, BROWSER_CHANNEL=chrome. Writes report.txt and
+SCROLL_DWELL, HEADFUL=1, BROWSER_CHANNEL=chrome (your installed Chrome; with
+it, use PROFILES=desktop, since mobile emulates an iPhone UA that real Chrome
+contradicts). Writes report.txt and
 bids.json (every bid with its full chain) to OUT_DIR.
 """
 
@@ -68,8 +70,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Browser launch, article scraping and device profiles are shared with the
 # on-page render forensics so both tools load pages the same way.
 from prebid_render_forensics import (  # noqa: E402
-    DESKTOP_UA, PROFILE_CFG, _article_urls, _launch,
+    BROWSER_CHANNEL, DESKTOP_UA, PROFILE_CFG, _article_urls, _launch,
 )
+
+
+def _context_cfg(profile: str) -> dict:
+    """The device profile to load pages with. Under a real installed browser
+    (BROWSER_CHANNEL=chrome) the desktop profile keeps the browser's own
+    user agent: the fixed Chrome/127 string would contradict the real
+    version Chrome sends in its Sec-CH-UA headers, a classic bot signal."""
+    cfg = dict(PROFILE_CFG[profile])
+    if BROWSER_CHANNEL and profile == "desktop":
+        cfg.pop("user_agent", None)
+    return cfg
 
 LOADS = int(os.environ.get("LOADS") or "12")
 PROFILES = [p.strip() for p in (os.environ.get("PROFILES") or "mobile,desktop").split(",") if p.strip()]
@@ -316,7 +329,7 @@ def _head_size(url: str) -> int:
 # ── browser ────────────────────────────────────────────────────────────────
 
 def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
-    ctx = browser.new_context(**PROFILE_CFG[profile])
+    ctx = browser.new_context(**_context_cfg(profile))
     ctx.add_init_script(INIT_JS)
     pg = ctx.new_page()
     pg.set_default_timeout(30_000)
