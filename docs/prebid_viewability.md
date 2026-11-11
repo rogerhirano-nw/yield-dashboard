@@ -506,6 +506,12 @@ Google Play API 35 image, a Pixel AVD, boot, Chrome opened past its first-run
 screens (debug-app command-line flags), `adb forward`, then the audit with
 `ATTACH=9222 DRIVE=1`. Re-runs skip what's installed.
 
+`PROFILE_DIR=… MOBILE=1` is the quick mobile option: the persistent Chrome
+presents as a Pixel 7 (screen, touch, Android user agent) and scrolls like a
+touch browser. It's detectable as desktop Chrome underneath, but it drew video
+bids even from a datacenter IP (3 bids, imds winning, 2026-11-11), where
+desktop runs drew essentially none.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 

@@ -101,6 +101,10 @@ ATTACH = os.environ.get("ATTACH") or ""
 # With ATTACH, DRIVE=1 has the script read articles in the attached browser
 # instead of you (e.g. Chrome in an Android emulator or phone via adb).
 DRIVE = os.environ.get("DRIVE") == "1"
+# With PROFILE_DIR, MOBILE=1 makes that Chrome present as an Android phone
+# (Pixel 7 screen, touch, Android Chrome user agent). Desktop Chrome
+# underneath is still detectable; a real phone via ATTACH is the honest test.
+MOBILE = os.environ.get("MOBILE") == "1"
 
 
 def _context_cfg(profile: str) -> dict:
@@ -538,12 +542,17 @@ def _loads_persistent(pw):
     if proxy:   # only in a proxied sandbox; never set on a home connection
         kw["proxy"] = {"server": proxy}
         kw["args"].append("--ssl-version-max=tls1.2")
+    if MOBILE:
+        dev = {k: v for k, v in pw.devices["Pixel 7"].items() if k != "default_browser_type"}
+        kw.pop("no_viewport", None)
+        kw.update(dev)
     ctx = pw.chromium.launch_persistent_context(PROFILE_DIR, **kw)
     ctx.add_init_script(INIT_JS)
     pg = ctx.pages[0] if ctx.pages else ctx.new_page()
     pg.set_default_timeout(30_000)
     try:
-        yield from _read_articles(pg, "real-chrome")
+        yield from _read_articles(pg, "chrome-as-pixel" if MOBILE else "real-chrome",
+                                  touch=MOBILE)
     finally:
         ctx.close()
 
