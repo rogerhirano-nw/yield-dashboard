@@ -512,6 +512,18 @@ touch browser. It's detectable as desktop Chrome underneath, but it drew video
 bids even from a datacenter IP (3 bids, imds winning, 2026-11-11), where
 desktop runs drew essentially none.
 
+**iPhone (the cleanest test: a real person on a real phone).** Turn on Web
+Inspector on the iPhone (Settings → Apps → Safari → Advanced) and in the Mac's
+Safari (Settings → Advanced → Show features for web developers), connect the
+phone by cable, open a Newsweek article on it, then on the Mac Develop → the
+iPhone → that page. In the Network tab tick Preserve Log, browse articles by
+hand in that same tab, then Export to a `.har` file.
+`HAR=that.har python scripts/prebid_vast_audit.py` replays it through the same
+listener: auctions.csv with request ids, OneTag bids unwrapped, Prebid winners
+on the player's GAM requests. Nothing is automated, so no synthetic ad
+traffic. Every automated mode above loads real ads on our own pages, so keep
+those runs small.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 

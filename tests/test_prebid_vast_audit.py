@@ -140,3 +140,37 @@ def test_auction_record_reports_ask_bid_error_and_nonbid():
                                  "ext": {"responsetimemillis": {"onetag": 80}}}, "onetag")
     assert r2["bid"] and r2["bid_price"] == 6.5 and r2["errors"] == ""
     assert not va.auction_record(req, {}, "onetag")["asked"]
+
+
+def test_har_entries_keeps_auctions_and_player_requests_with_their_page():
+    import json
+    from urllib.parse import quote
+    page = "https://www.newsweek.com/some-article-12345678"
+    req = {"id": "r1", "site": {"page": page}, "imp": [{"id": "video", "video": {}}]}
+    resp = {"seatbid": [{"seat": "onetag", "bid": [{"impid": "video", "price": 6.0, "adm": INLINE}]}],
+            "ext": {"responsetimemillis": {"onetag": 70}}}
+    har = {"log": {"entries": [
+        {"startedDateTime": "2026-11-12T01:02:03.000Z",
+         "request": {"url": "https://pbs-us-east.ay.delivery/openrtb2/auction",
+                     "postData": {"text": json.dumps(req)}, "headers": []},
+         "response": {"content": {"text": json.dumps(resp)}}},
+        {"startedDateTime": "2026-11-12T01:02:04.000Z",
+         "request": {"url": "https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F1%2Fvid.newsweek"
+                            f"&url={quote(page)}&cust_params={quote('hb_bidder=onetag&hb_uuid=u1')}",
+                     "headers": []},
+         "response": {"content": {"text": "<VAST>cache?uuid=u1</VAST>"}}},
+        {"startedDateTime": "2026-11-12T01:02:05.000Z",
+         "request": {"url": "https://cdn.example/app.js", "headers": []},
+         "response": {"content": {"text": ""}}},
+    ]}}
+    rs = va.har_entries(har)
+    assert len(rs) == 2 and all(r.page == page for r in rs)
+    assert rs[0].when.isoformat() == "2026-11-12T01:02:03+00:00"
+    stats, bids = va._new_stats(), []
+    h = va._handler(stats, bids, "iphone", lambda r: r.page)
+    for r in rs:
+        h(r)
+    assert [b["bidder"] for b in bids] == ["onetag"]
+    assert stats["auction_log"][0]["request_id"] == "r1"
+    assert stats["auction_log"][0]["time_utc"] == "2026-11-12T01:02:03+00:00"
+    assert stats["ima"][0]["winner"] == "onetag" and stats["ima"][0]["served_prebid"]

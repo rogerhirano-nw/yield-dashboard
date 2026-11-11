@@ -55,6 +55,10 @@ default mode starts every page with a blank profile):
 Chrome refuses remote debugging on your everyday profile, hence the separate
 --user-data-dir; pointing both modes at the same folder lets one warm the other.
 
+    # your iPhone: browse in Safari while the Mac's Safari Web Inspector
+    # records the Network tab, export it as HAR, then:
+    HAR=~/Downloads/newsweek.har python scripts/prebid_vast_audit.py
+
 Env knobs: LOADS (default 12), PROFILES (mobile,desktop), ARTICLE_URLS,
 TARGET_BIDDERS (onetag), OUT_DIR (./prebid-vast-audit), SCROLL_STEPS,
 SCROLL_DWELL, HEADFUL=1, BROWSER_CHANNEL=chrome (your installed Chrome; with
@@ -105,6 +109,9 @@ DRIVE = os.environ.get("DRIVE") == "1"
 # (Pixel 7 screen, touch, Android Chrome user agent). Desktop Chrome
 # underneath is still detectable; a real phone via ATTACH is the honest test.
 MOBILE = os.environ.get("MOBILE") == "1"
+# HAR=path.har reads a network recording instead of loading pages: e.g. Safari
+# Web Inspector attached to your iPhone while you browse Newsweek by hand.
+HAR = os.path.expanduser(os.environ.get("HAR") or "")
 
 
 def _context_cfg(profile: str) -> dict:
@@ -400,7 +407,7 @@ def _handler(stats: dict, bids: list, profile: str, page_url):
             for bidder, ms in ((resp.get("ext") or {}).get("responsetimemillis") or {}).items():
                 if bidder != "cache":   # PBS's own cache write, not a bidder
                     stats["latency"][bidder.lower()].append(ms)
-            now = datetime.now(timezone.utc)
+            now = getattr(r, "when", None) or datetime.now(timezone.utc)
             for target in TARGET_BIDDERS:
                 rec = auction_record(req, resp, target)
                 if not rec["asked"]:
@@ -450,6 +457,73 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
     finally:
         ctx.close()
     return bids, stats
+
+
+class _HarResponse:
+    """Just enough of a Playwright response for _handler, built from a HAR
+    entry (a recording made by a browser's network inspector)."""
+
+    class _Req:
+        def __init__(self, post_data):
+            self.post_data = post_data
+
+    def __init__(self, entry: dict):
+        import base64
+        self.url = entry["request"]["url"]
+        self.request = self._Req((entry["request"].get("postData") or {}).get("text") or "")
+        content = (entry.get("response") or {}).get("content") or {}
+        body = content.get("text") or ""
+        if content.get("encoding") == "base64" and body:
+            body = base64.b64decode(body).decode("utf-8", "replace")
+        self._body = body
+        try:
+            self.when = datetime.fromisoformat(entry["startedDateTime"].replace("Z", "+00:00"))
+        except Exception:
+            self.when = None
+        # The page it came from: an ORTB request names it in site.page; the
+        # player's GAM ad tag carries it as its `url` parameter.
+        try:
+            self.page = (json.loads(self.request.post_data or "{}").get("site") or {}).get("page")
+        except Exception:
+            self.page = None
+        if not self.page and "/gampad/ads" in self.url:
+            self.page = (parse_qs(urlparse(self.url).query).get("url") or [None])[0]
+        self.page = self.page or next((h["value"] for h in entry["request"].get("headers") or []
+                                       if h.get("name", "").lower() == "referer"), "?")
+
+    def text(self) -> str:
+        return self._body
+
+    def json(self):
+        return json.loads(self._body)
+
+
+def har_entries(har: dict) -> list:
+    """The entries _handler acts on: Prebid Server auctions and the player's
+    GAM video ad requests. Everything else in a recording is ignored."""
+    keep = []
+    for e in (har.get("log") or {}).get("entries") or []:
+        url = (e.get("request") or {}).get("url") or ""
+        if (urlparse(url).path.endswith("/openrtb2/auction")
+                or ("/gampad/ads" in url and "vid.newsweek" in url)):
+            keep.append(_HarResponse(e))
+    return keep
+
+
+def _loads_har(_pw):
+    """HAR mode: replay a recording through the same listener, one 'load' per
+    page the recording visited."""
+    resps = har_entries(json.loads(Path(HAR).read_text()))
+    by_page: dict[str, list] = {}
+    for r in resps:
+        by_page.setdefault(r.page, []).append(r)
+    for page, rs in by_page.items():
+        bids: list[dict] = []
+        stats = _new_stats()
+        h = _handler(stats, bids, "iphone", lambda r: r.page)
+        for r in rs:
+            h(r)
+        yield bids, stats, page, "iphone"
 
 
 def _loads_fresh(pw):
@@ -757,7 +831,8 @@ def main() -> int:
     t0 = time.monotonic()
     caught = None
     with sync_playwright() as pw:
-        loads = (_loads_attached(pw) if ATTACH else
+        loads = (_loads_har(pw) if HAR else
+                 _loads_attached(pw) if ATTACH else
                  _loads_persistent(pw) if PROFILE_DIR else _loads_fresh(pw))
         try:
             for got, stats, url, profile in loads:
