@@ -892,8 +892,14 @@ def main() -> int:
                     break
         except KeyboardInterrupt:
             print("\n[stopped by you — writing what was captured]")
+        except Exception as exc:
+            # e.g. the phone locked or Chrome closed the tab: keep what we have.
+            print(f"\n[stopped: {str(exc).splitlines()[0]} — writing what was captured]")
         finally:
-            loads.close()
+            try:
+                loads.close()
+            except Exception:
+                pass
     if UNTIL:
         print(f"\n{'CAUGHT a ' + caught if caught else 'Did NOT catch a ' + UNTIL} for "
               f"{'/'.join(TARGET_BIDDERS)} after {n_loads} page loads, "
