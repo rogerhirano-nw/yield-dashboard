@@ -473,6 +473,12 @@ AY's per-bidder response time on the video imp, bid or no bid.
     pip install playwright && playwright install chromium
     LOADS=20 python scripts/prebid_vast_audit.py   # → prebid-vast-audit/report.txt
 
+Every video auction the target bidder is asked into is also written to
+`auctions.csv`: time (UTC and Eastern), page URL, device profile, PBS host, the
+ORTB **request id**, the bidder's response time, whether it bid, and any PBS
+error or `seatnonbid` code. That's the file to send an SSP that asks for page
+URLs, timestamps or request IDs, so it can find the exact auctions in its logs.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 

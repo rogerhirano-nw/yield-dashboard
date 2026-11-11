@@ -48,6 +48,7 @@ bids.json (every bid with its full chain) to OUT_DIR.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -57,6 +58,8 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -241,6 +244,32 @@ def video_bids_from_auction(req: dict, resp: dict) -> list[dict]:
     return out
 
 
+def auction_record(req: dict, resp: dict, bidder: str) -> dict:
+    """What one video auction did for `bidder`, in the terms an SSP can look
+    up in its own logs: the ORTB request id, whether the bidder was asked
+    (PBS times every bidder it calls), how fast it answered, whether it bid,
+    and any error or no-bid reason PBS passed back."""
+    ext = resp.get("ext") or {}
+    video_imps = [i.get("id") for i in req.get("imp") or [] if "video" in i]
+    rtm = {k.lower(): v for k, v in (ext.get("responsetimemillis") or {}).items()}
+    bids = [b for sb in resp.get("seatbid") or [] if (sb.get("seat") or "").lower() == bidder
+            for b in sb.get("bid") or [] if b.get("impid") in video_imps]
+    errors = [e.get("message") or str(e.get("code"))
+              for k, v in (ext.get("errors") or {}).items() if k.lower() == bidder for e in v or []]
+    # PBS "seatnonbid" carries a numeric reason per imp when it's enabled.
+    nonbid = [str(n.get("statuscode")) for sn in ext.get("seatnonbid") or []
+              if (sn.get("seat") or "").lower() == bidder for n in sn.get("nonbid") or []]
+    return {"request_id": req.get("id") or "",
+            "imp_ids": ",".join(str(i) for i in video_imps),
+            "tmax_ms": req.get("tmax"),
+            "asked": bidder in rtm,
+            "response_ms": rtm.get(bidder),
+            "bid": bool(bids),
+            "bid_price": max((b.get("price") or 0) for b in bids) if bids else None,
+            "errors": "; ".join(errors),
+            "nonbid_codes": ",".join(nonbid)}
+
+
 def ima_targeting(url: str) -> dict:
     """The Prebid key-values on the player's GAM video ad request.
 
@@ -292,7 +321,8 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
     pg = ctx.new_page()
     pg.set_default_timeout(30_000)
     bids: list[dict] = []
-    stats = {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list), "ima": []}
+    stats = {"auctions": 0, "video_auctions": 0, "latency": defaultdict(list), "ima": [],
+             "auction_log": []}
 
     def on_resp(r):
         if "/gampad/ads" in r.url and "vid.newsweek" in r.url:
@@ -324,6 +354,18 @@ def _capture(browser, url: str, profile: str) -> tuple[list[dict], dict]:
             for bidder, ms in ((resp.get("ext") or {}).get("responsetimemillis") or {}).items():
                 if bidder != "cache":   # PBS's own cache write, not a bidder
                     stats["latency"][bidder.lower()].append(ms)
+            now = datetime.now(timezone.utc)
+            for target in TARGET_BIDDERS:
+                rec = auction_record(req, resp, target)
+                if not rec["asked"]:
+                    # e.g. a single-bidder adapter's own /openrtb2/auction
+                    # endpoint: not an auction this bidder could look up.
+                    continue
+                stats["auction_log"].append({
+                    "time_utc": now.isoformat(timespec="seconds"),
+                    "time_et": now.astimezone(ZoneInfo("America/New_York")).isoformat(timespec="seconds"),
+                    "page": url, "profile": profile, "endpoint": urlparse(r.url).netloc,
+                    "bidder": target, **rec})
         for b in found:
             b.update(page=url, profile=profile, source="s2s",
                      endpoint=urlparse(r.url).netloc)
@@ -439,6 +481,20 @@ def report(bids: list[dict], latency: dict[str, list[int]]) -> str:
     return "\n".join(lines)
 
 
+def auctions_report(log: list[dict]) -> str:
+    lines = ["VIDEO AUCTIONS PER TARGET BIDDER (full list with request ids: auctions.csv)"]
+    for bidder in TARGET_BIDDERS:
+        rows = [r for r in log if r["bidder"] == bidder]
+        if not rows:
+            continue
+        lines.append(f"  {bidder}: asked in {len(rows)} video auctions, bid in {sum(r['bid'] for r in rows)}, "
+                     f"errors in {sum(bool(r['errors']) for r in rows)}, "
+                     f"no-bid reasons given in {sum(bool(r['nonbid_codes']) for r in rows)}")
+        if rows:
+            lines.append(f"  window: {rows[0]['time_et']} → {rows[-1]['time_et']} (Eastern)")
+    return "\n".join(lines)
+
+
 def wins_report(ima: list[dict]) -> str:
     lines = ["PREBID WINNERS ON THE PLAYER'S AD REQUEST (hb_bidder sent to GAM)"]
     if not ima:
@@ -481,6 +537,7 @@ def main() -> int:
     bids: list[dict] = []
     latency: dict[str, list[int]] = defaultdict(list)
     ima: list[dict] = []
+    auction_log: list[dict] = []
     n_video_auctions = 0
     n_loads = 0
     t0 = time.monotonic()
@@ -500,6 +557,7 @@ def main() -> int:
                             latency[k].extend(v)
                         bids.extend(got)
                         ima.extend(stats["ima"])
+                        auction_log.extend(stats["auction_log"])
                         n_t = sum(1 for b in got if b["bidder"] in TARGET_BIDDERS)
                         won = [w for w in stats["ima"] if w["winner"] in TARGET_BIDDERS]
                         winners = ",".join(w["winner"] or "none" for w in stats["ima"]) or "-"
@@ -546,11 +604,19 @@ def main() -> int:
         if w["winner"] in TARGET_BIDDERS and w["gam_vast"]:
             w["chain"] = resolve_chain(w["gam_vast"], _fetch)
 
-    text = report(bids, latency) + "\n\n" + wins_report(ima)
+    text = report(bids, latency) + "\n\n" + wins_report(ima) + "\n\n" + auctions_report(auction_log)
     print("\n" + text)
     (OUT_DIR / "report.txt").write_text(text + "\n")
     (OUT_DIR / "bids.json").write_text(json.dumps(bids, indent=1, default=str))
     (OUT_DIR / "wins.json").write_text(json.dumps(ima, indent=1, default=str))
+    if auction_log:
+        # One row per video auction per target bidder: what to send the SSP
+        # so it can find these exact auctions in its own logs.
+        with open(OUT_DIR / "auctions.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(auction_log[0]))
+            w.writeheader()
+            w.writerows(auction_log)
+        print(f"wrote {OUT_DIR / 'auctions.csv'} ({len(auction_log)} rows)")
     print(f"\nwrote {OUT_DIR / 'report.txt'} and {OUT_DIR / 'bids.json'}")
     return 0
 

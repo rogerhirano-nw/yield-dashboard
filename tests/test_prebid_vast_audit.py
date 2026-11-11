@@ -123,3 +123,20 @@ def test_gam_served_prebid_only_when_cache_key_in_response():
     assert va.gam_served_prebid(tg, "<VAST><VASTAdTagURI>https://c/cache?uuid=abc-123</VASTAdTagURI></VAST>")
     assert not va.gam_served_prebid(tg, "<VAST><Ad><InLine/></Ad></VAST>")
     assert not va.gam_served_prebid({}, "abc-123")
+
+
+def test_auction_record_reports_ask_bid_error_and_nonbid():
+    req = {"id": "req-1", "tmax": 1500, "imp": [{"id": "video", "video": {}}, {"id": "s", "banner": {}}]}
+    resp = {"seatbid": [{"seat": "onetag", "bid": [{"impid": "s", "price": 2.0}]}],
+            "ext": {"responsetimemillis": {"onetag": 72, "pubmatic": 4},
+                    "errors": {"onetag": [{"code": 1, "message": "timeout"}]},
+                    "seatnonbid": [{"seat": "onetag", "nonbid": [{"impid": "video", "statuscode": 0}]}]}}
+    r = va.auction_record(req, resp, "onetag")
+    assert r["request_id"] == "req-1" and r["imp_ids"] == "video" and r["tmax_ms"] == 1500
+    assert r["asked"] and r["response_ms"] == 72
+    assert not r["bid"] and r["bid_price"] is None   # its bid was on the banner imp
+    assert r["errors"] == "timeout" and r["nonbid_codes"] == "0"
+    r2 = va.auction_record(req, {"seatbid": [{"seat": "OneTag", "bid": [{"impid": "video", "price": 6.5}]}],
+                                 "ext": {"responsetimemillis": {"onetag": 80}}}, "onetag")
+    assert r2["bid"] and r2["bid_price"] == 6.5 and r2["errors"] == ""
+    assert not va.auction_record(req, {}, "onetag")["asked"]
