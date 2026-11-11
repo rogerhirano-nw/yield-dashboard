@@ -98,6 +98,9 @@ from prebid_render_forensics import (  # noqa: E402
 #       you browse Newsweek by hand. Nothing is automated.
 PROFILE_DIR = os.path.expanduser(os.environ.get("PROFILE_DIR") or "")
 ATTACH = os.environ.get("ATTACH") or ""
+# With ATTACH, DRIVE=1 has the script read articles in the attached browser
+# instead of you (e.g. Chrome in an Android emulator or phone via adb).
+DRIVE = os.environ.get("DRIVE") == "1"
 
 
 def _context_cfg(profile: str) -> dict:
@@ -472,13 +475,50 @@ def _accept_consent(pg) -> None:
             pass
 
 
-def _read_like_a_person(pg) -> None:
-    """Uneven scroll steps and pauses, with the pointer moving now and then."""
+def _read_like_a_person(pg, touch: bool = False) -> None:
+    """Uneven scroll steps and pauses. On desktop the pointer moves now and
+    then; on a touch browser (Android Chrome) mouse-wheel events don't reliably
+    scroll, so it scrolls the page itself."""
     for _ in range(SCROLL_STEPS):
-        if random.random() < 0.3:
-            pg.mouse.move(random.randint(200, 900), random.randint(150, 700), steps=8)
-        pg.mouse.wheel(0, random.randint(250, 650))
+        dy = random.randint(250, 650)
+        if touch:
+            pg.evaluate(f"window.scrollBy({{top: {dy}, behavior: 'smooth'}})")
+        else:
+            if random.random() < 0.3:
+                pg.mouse.move(random.randint(200, 900), random.randint(150, 700), steps=8)
+            pg.mouse.wheel(0, dy)
         pg.wait_for_timeout(int(1000 * random.uniform(SCROLL_DWELL * 0.6, SCROLL_DWELL * 2.0)))
+
+
+def _read_articles(pg, profile: str, touch: bool = False):
+    """Homepage, then LOADS articles in one tab, each referred from the last.
+    Yields per article; repeats while UNTIL is set."""
+    while True:
+        pg.goto(HOME_URL, wait_until="domcontentloaded", timeout=60_000)
+        pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
+        _accept_consent(pg)
+        hrefs = pg.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
+        urls = list(dict.fromkeys(h for h in hrefs if _ARTICLE_RE.match(h)))
+        random.shuffle(urls)
+        referer = HOME_URL
+        for url in urls[:LOADS]:
+            bids: list[dict] = []
+            stats = _new_stats()
+            h = _handler(stats, bids, profile, lambda _r, u=url: u)
+            pg.on("response", h)
+            try:
+                pg.goto(url, referer=referer, wait_until="domcontentloaded", timeout=60_000)
+                pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
+                _read_like_a_person(pg, touch)
+                bids.extend(_client_bids(pg, url, profile))
+            except Exception as exc:
+                print(f"[warn] {url}: {exc}")
+            finally:
+                pg.remove_listener("response", h)
+            referer = url
+            yield bids, stats, url, profile
+        if not UNTIL:
+            return
 
 
 def _loads_persistent(pw):
@@ -503,32 +543,7 @@ def _loads_persistent(pw):
     pg = ctx.pages[0] if ctx.pages else ctx.new_page()
     pg.set_default_timeout(30_000)
     try:
-        while True:
-            pg.goto(HOME_URL, wait_until="domcontentloaded", timeout=60_000)
-            pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
-            _accept_consent(pg)
-            hrefs = pg.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
-            urls = list(dict.fromkeys(h for h in hrefs if _ARTICLE_RE.match(h)))
-            random.shuffle(urls)
-            referer = HOME_URL
-            for url in urls[:LOADS]:
-                bids: list[dict] = []
-                stats = _new_stats()
-                h = _handler(stats, bids, "real-chrome", lambda _r, u=url: u)
-                pg.on("response", h)
-                try:
-                    pg.goto(url, referer=referer, wait_until="domcontentloaded", timeout=60_000)
-                    pg.wait_for_timeout(int(1000 * random.uniform(4, 8)))
-                    _read_like_a_person(pg)
-                    bids.extend(_client_bids(pg, url, "real-chrome"))
-                except Exception as exc:
-                    print(f"[warn] {url}: {exc}")
-                finally:
-                    pg.remove_listener("response", h)
-                referer = url
-                yield bids, stats, url, "real-chrome"
-            if not UNTIL:
-                return
+        yield from _read_articles(pg, "real-chrome")
     finally:
         ctx.close()
 
@@ -540,6 +555,22 @@ def _loads_attached(pw):
     browser = pw.chromium.connect_over_cdp(endpoint)
     ctx = browser.contexts[0]
     ctx.add_init_script(INIT_JS)   # takes effect from your next page load
+    ua = ""
+    try:
+        ua = browser.contexts[0].pages[0].evaluate("navigator.userAgent")
+    except Exception:
+        pass
+    touch = "Android" in ua
+    label = "android" if touch else "you"
+    if DRIVE:
+        print(f"[attached to {endpoint}] driving it through {LOADS} articles ({ua[:80]})", flush=True)
+        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+        pg.set_default_timeout(30_000)
+        try:
+            yield from _read_articles(pg, label, touch)
+        finally:
+            browser.close()   # disconnects; the browser keeps running
+        return
     print(f"[attached to {endpoint}] Browse Newsweek articles normally in that window. "
           "Ctrl-C here when you're done.", flush=True)
 
@@ -552,7 +583,7 @@ def _loads_attached(pw):
         while True:
             bids: list[dict] = []
             stats = _new_stats()
-            h = _handler(stats, bids, "you", page_url)
+            h = _handler(stats, bids, label, page_url)
             ctx.on("response", h)
             end = time.monotonic() + 60
             while time.monotonic() < end:
@@ -562,7 +593,7 @@ def _loads_attached(pw):
                 else:
                     time.sleep(1)
             ctx.remove_listener("response", h)
-            yield bids, stats, "(your browsing, last minute)", "you"
+            yield bids, stats, "(your browsing, last minute)", label
     finally:
         browser.close()   # disconnects; your Chrome keeps running
 

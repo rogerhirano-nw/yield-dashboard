@@ -490,6 +490,16 @@ referrer. `ATTACH=9222` attaches to a Chrome you launched with
 listens while you browse by hand. Chrome 136+ refuses remote debugging on the
 default profile, hence the separate folder.
 
+**Android (emulator or phone).** Chrome on Android exposes the same debugging
+socket over adb: `adb forward tcp:9222 localabstract:chrome_devtools_remote`,
+then `ATTACH=9222` (you browse) or `ATTACH=9222 DRIVE=1` (the script reads
+`LOADS` articles in that Chrome, scrolling with page script since touch Chrome
+ignores mouse-wheel events). ~80% of OneTag's video wins are on smartphones, so
+this is the realistic device. **An emulator is itself an invalid-traffic signal**
+(MRC lists emulators under SIVT), so a bidder declining to bid on one, or its
+user sync returning an empty ID, says little about real users. Prefer a real
+Android phone over USB (same commands) when one is available.
+
 **First home-connection run (2026-10-23, Roger's Mac, LOADS=20, 84 video
 auctions, 38 video bids):**
 
