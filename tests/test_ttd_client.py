@@ -317,3 +317,30 @@ def test_needle_match_is_case_insensitive(monkeypatch):
     fake = _FakeInbox({"filtered": [hit]})
     monkeypatch.setattr(t, "_api_get", fake)
     assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
+
+
+def test_pull_reads_a_report_attachment_when_the_body_has_no_link(monkeypatch):
+    """2026-11-12: Outlook was down, so the export was re-sent from Gmail as an
+    .xlsx ATTACHMENT with no TTD link in the body. The pull must parse it."""
+    import pandas as pd
+
+    msg = {"id": "m1", "thread_id": "th1", "subject": "Chumba",
+           "sent_at": "2026-11-12T22:29:00Z",
+           "attachments": [{"id": "att1", "filename": "Chumba_report.xlsx"}]}
+    monkeypatch.setattr(t, "list_ttd_messages", lambda *a, **k: [msg])
+    monkeypatch.setattr(t, "get_message_detail", lambda *a, **k: {"text": "see attached"})
+    fetched = {}
+
+    def fake_fetch(api_key, inbox_id, thread_id, att_id):
+        fetched["args"] = (thread_id, att_id)
+        return b"xlsx-bytes"
+
+    monkeypatch.setattr(t, "_fetch_attachment", fake_fetch)
+    monkeypatch.setattr(t, "parse_ttd_csv",
+                        lambda content, **k: pd.DataFrame({"date": ["2026-11-11"]}))
+
+    df, meta = t.pull_ttd("k", "inbox", subject_needle="Chumba")
+
+    assert len(df) == 1
+    assert fetched["args"] == ("th1", "att1")
+    assert meta["message_id"] == "m1"

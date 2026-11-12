@@ -565,6 +565,58 @@ def parse_ttd_csv(
     return df
 
 
+def _fetch_attachment(api_key: str, inbox_id: str, thread_id: str, attachment_id: str) -> bytes:
+    """Download one attachment (same endpoint the DV clients use): the threads
+    attachment call returns JSON with a pre-signed CDN `download_url`."""
+    meta = _api_get(
+        f"/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}",
+        api_key=api_key,
+    )
+    dl = (meta.get("download_url") or meta.get("url")) if isinstance(meta, dict) else None
+    if not dl:
+        raise RuntimeError("no download_url in attachment response")
+    with urllib.request.urlopen(urllib.request.Request(dl), timeout=60) as r:
+        return r.read()
+
+
+def _report_from_attachment(
+    api_key: str,
+    inbox_id: str,
+    msg: dict,
+    detail: dict,
+    *,
+    primary_conv_col: str | Sequence[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Parse the first .xlsx/.csv attachment of *msg* as a TTD report."""
+    atts = msg.get("attachments") or detail.get("attachments") or []
+    thread_id = str(msg.get("thread_id") or detail.get("thread_id") or "").strip()
+    msg_id = msg.get("id") or msg.get("message_id") or ""
+    for att in atts:
+        fn = (att.get("filename") or att.get("name") or "").lower()
+        att_id = att.get("id") or att.get("attachment_id") or ""
+        if not fn.endswith((".xlsx", ".csv")) or not att_id or not thread_id:
+            continue
+        exec_id = f"attachment-{str(att_id)[:16]}"
+        try:
+            content = _fetch_attachment(api_key, inbox_id, thread_id, att_id)
+            df = parse_ttd_csv(content, execution_id=exec_id,
+                               primary_conv_col=primary_conv_col)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TTD report attachment %s on msg %s failed: %s",
+                           fn, msg_id, exc)
+            continue
+        logger.info("Parsed %d rows from TTD report attachment %s (msg %s)",
+                    len(df), fn, msg_id)
+        return df, {
+            "message_id":   msg_id,
+            "subject":      msg.get("subject") or "",
+            "received_at":  _msg_ts(msg),
+            "execution_id": exec_id,
+            "download_url": None,
+        }
+    return pd.DataFrame(), {}
+
+
 def pull_ttd(
     api_key: str,
     inbox_id: str,
@@ -621,9 +673,17 @@ def pull_ttd(
 
         url = extract_ttd_download_url(body)
         if not url:
+            # No link: a report mailed by hand carries the export as an
+            # ATTACHMENT instead (2026-11-12 — Outlook was down, so the TTD
+            # link couldn't be opened and the file was re-sent from Gmail).
+            att_df, att_meta = _report_from_attachment(
+                api_key, inbox_id, m, detail, primary_conv_col=primary_conv_col,
+            )
+            if not att_df.empty:
+                return att_df, att_meta
             logger.warning(
                 "TTD notification message %s has no recognizable download URL "
-                "(subject: %r) — skipping",
+                "or report attachment (subject: %r) — skipping",
                 msg_id, subj,
             )
             continue
