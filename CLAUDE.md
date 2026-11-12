@@ -859,7 +859,7 @@ Rules that survive any future restyle:
      **The two cards STACK full-width** (2026-06-23 — was `st.columns(2)`
      side-by-side until the slim-monitor redesign; the `.nw-ttd-wrap .nw-na` rule
      still lifts the shared `.nw-na` 760px cap so each fills the width). **Each is
-     graded against a CPA goal** (`ttd_cpa_goal` setting, default **$150**, editable
+     graded against a CPA goal** (`ttd_cpa_goal` setting, default **$50** — matches the seller-comms CPA report to Ivy, Roger 2026-11-12; was $150 — editable
      in Settings → Direct): the slim row's goal pill + the scorecard CPA hero show
      a `✓ under` (green) / `✗ over` (red) verdict via
      `dl.cpa_goal_delta`, and `_ttd_trend_svg` draws a dashed reference line at the
