@@ -232,6 +232,32 @@ def _messages_from(raw) -> list[dict]:
     return raw or []
 
 
+# A listing returns one page of at most `limit` messages.  Reading only that
+# page silently caps the window: on 2026-11-12 every scan came back with exactly
+# 100 Chumba matches (= the limit) and never surfaced the fresh report that had
+# been mailed in that day, while the pull kept loading the 11-05 forward.
+# Follow `next_page_token` so the newest-first sort sees every match.
+_MAX_PAGES = 20
+
+
+def _list_all_pages(path: str, *, api_key: str, label: str = "") -> list[dict]:
+    raw = _api_get(path, api_key=api_key)
+    messages = list(_messages_from(raw))
+    pages = 1
+    while isinstance(raw, dict) and raw.get("next_page_token") and pages < _MAX_PAGES:
+        token = urllib.parse.quote(str(raw["next_page_token"]), safe="")
+        raw = _api_get(f"{path}&page_token={token}", api_key=api_key)
+        messages.extend(_messages_from(raw))
+        pages += 1
+    if pages > 1:
+        logger.info("agentmail: %s listing read %d page(s), %d message(s)",
+                    label, pages, len(messages))
+    if isinstance(raw, dict) and raw.get("next_page_token"):
+        logger.warning("agentmail: %s listing stopped at %d pages with more remaining",
+                       label, _MAX_PAGES)
+    return messages
+
+
 def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> None:
     """Log the subjects of TTD-sent mail that did NOT match the needle.
 
@@ -287,7 +313,7 @@ def list_ttd_messages(
         seen: list[dict] = []
         for path, label in chain:
             try:
-                messages = _messages_from(_api_get(path, api_key=api_key))
+                messages = _list_all_pages(path, api_key=api_key, label=label)
             except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
                 logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
                 continue

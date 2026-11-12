@@ -286,3 +286,25 @@ def test_a_manual_forward_in_unauthenticated_is_seen_alongside_older_matches(mon
 
     assert {m["id"] for m in out} == {"old", "new"}  # merged, deduped
     assert max(out, key=t._msg_ts)["id"] == "new"
+
+
+def test_scan_follows_next_page_token(monkeypatch):
+    """2026-11-12: a full first page (== limit) hid the fresh report on page 2."""
+    old = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report"),
+           "id": "old", "sent_at": "2026-11-05T09:54:28Z"}
+    new = {**_msg("Chumba report through 11-11", sender="someone@gmail.com"),
+           "id": "new", "sent_at": "2026-11-12T22:27:00Z"}
+    calls = []
+
+    def paged(path, *, api_key, raw=False):
+        calls.append(path)
+        if "page_token=p2" in path:
+            return {"messages": [new]}
+        return {"messages": [old], "next_page_token": "p2"}
+
+    monkeypatch.setattr(t, "_api_get", paged)
+
+    out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
+
+    assert max(out, key=t._msg_ts)["id"] == "new"
+    assert any("page_token=p2" in c for c in calls)
