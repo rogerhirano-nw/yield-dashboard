@@ -121,6 +121,17 @@ keeps its RLS grants — the daily DROP+recreate is what re-opened RLS on
 SQLite sim seeded with the old schema: 2 old rows + 499 new = 501 rows over
 20 union columns, August values intact.
 
+**When the report can't reach the inbox** (2026-11-12: three hand-sent
+Chumba reports never arrived at agentmail; nothing landed after 15:20 UTC),
+load the downloaded export directly: `python refresh_cache.py
+--mode=ttd-chumba --file=<path.xlsx>` from a machine whose `.env` has
+`DATABASE_URL`. Same parser and same date-merge as the inbox pull, so re-runs
+are idempotent. The inbox scan itself now pages through every match (it used to
+stop at 100), always checks the unauthenticated folder (hand-forwards land
+there), matches the needle case-insensitively, reads an attached `.xlsx`/`.csv`
+when the body has no TTD link, and logs the newest inbox arrivals as
+(time, sender domain, has-needle) — never subjects, the logs are public.
+
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
 **How DV metrics join to the dashboard** (Attention / SIVT / GIVT). Two

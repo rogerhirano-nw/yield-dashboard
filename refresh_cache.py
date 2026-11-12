@@ -36,7 +36,7 @@ from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
-from ttd_client import pull_ttd, CHUMBA_SUBJECT_NEEDLE
+from ttd_client import pull_ttd, parse_ttd_csv, CHUMBA_SUBJECT_NEEDLE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -1371,6 +1371,7 @@ def _refresh_ttd_campaign(
     subject_needle: str,
     table: str,
     primary_conv_col: str | Sequence[str] | None = None,
+    report_file: str | None = None,
 ) -> int:
     """Poll newsweek@agentmail.to for a TTD report whose subject contains
     *subject_needle*, download the XLSX/CSV, and upsert into *table*.
@@ -1384,21 +1385,36 @@ def _refresh_ttd_campaign(
     `primary_conv_col` — forwarded to `pull_ttd`/`parse_ttd_csv`; sets the
     single authoritative conversion KPI column for this campaign.
     """
-    logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
-    api_key  = os.environ.get("AGENTMAIL_API_KEY")
-    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
-        logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
-            "skipping TTD report refresh (%s)", table,
-        )
-        return 0
+    if report_file:
+        # Load a downloaded TTD export straight from disk, skipping the inbox
+        # (2026-11-12: the report couldn't be delivered to agentmail).  Same
+        # parser and the same merge below, so the result is identical to a pull.
+        logger.info("Loading TTD report from file: table=%s file=%s", table, report_file)
+        with open(report_file, "rb") as fh:
+            content = fh.read()
+        exec_id = f"file-{os.path.basename(report_file)}"
+        df = parse_ttd_csv(content, execution_id=exec_id,
+                           primary_conv_col=primary_conv_col)
+        meta = {"execution_id": exec_id}
+        logger.info("Parsed %d rows from %s (%s to %s)", len(df), report_file,
+                    df["date"].min() if "date" in df else None,
+                    df["date"].max() if "date" in df else None)
+    else:
+        logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
+        api_key  = os.environ.get("AGENTMAIL_API_KEY")
+        inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+        if not api_key or not inbox_id:
+            logger.warning(
+                "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+                "skipping TTD report refresh (%s)", table,
+            )
+            return 0
 
-    df, meta = pull_ttd(
-        api_key, inbox_id,
-        subject_needle=subject_needle,
-        primary_conv_col=primary_conv_col,
-    )
+        df, meta = pull_ttd(
+            api_key, inbox_id,
+            subject_needle=subject_needle,
+            primary_conv_col=primary_conv_col,
+        )
     if df.empty:
         logger.warning(
             "No TTD report found for %s (exec_id=%s)", table, meta.get("execution_id")
@@ -1449,7 +1465,7 @@ def _refresh_ttd_campaign(
 # (below) still uses, and the pattern for the next TTD-reported flight.
 
 
-def refresh_ttd_chumba() -> int:
+def refresh_ttd_chumba(report_file: str | None = None) -> int:
     """Poll for VGW Chumba Casino TTD report and upsert into ttd_chumba."""
     # Chumba KPI = ONE pixel under ONE attribution model, never a sum.
     #
@@ -1470,6 +1486,7 @@ def refresh_ttd_chumba() -> int:
             "IdentityAllianceWithHousehold - Total Click + View Conversions",
             "01 - Total Click + View Conversions",
         ),
+        report_file=report_file,
     )
 
 
@@ -1644,9 +1661,15 @@ def main() -> None:
     _load_dotenv()
 
     mode = "all"
+    report_file = None
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
+        elif arg.startswith("--file="):
+            report_file = os.path.expanduser(arg.split("=", 1)[1].strip())
+    if report_file and mode != "ttd-chumba":
+        logger.error("--file= is only supported with --mode=ttd-chumba")
+        raise SystemExit(2)
 
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
@@ -1675,7 +1698,9 @@ def main() -> None:
         return
 
     if mode == "ttd-chumba":
-        _run_with_alert("ttd-chumba", [refresh_ttd_chumba])
+        def refresh_ttd_chumba_cli() -> int:
+            return refresh_ttd_chumba(report_file)
+        _run_with_alert("ttd-chumba", [refresh_ttd_chumba_cli])
         return
 
     if mode == "opensincera":
