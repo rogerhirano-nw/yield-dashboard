@@ -274,34 +274,60 @@ def list_ttd_messages(
 
     Falls back to an unfiltered scan if the filtered call yields nothing (the
     filter is an optimization, never a hard dependency — `subject_needle` is
-    re-checked client-side either way), and then to the unauthenticated folder,
-    where forwarded reports land when the sender isn't whitelisted.
+    re-checked client-side either way).  The unauthenticated folder, where
+    forwarded reports land when the sender isn't whitelisted, is ALWAYS scanned
+    too and merged in — see the comment below.
     """
     subject_enc = urllib.parse.quote(subject_needle, safe="")
     base = f"/inboxes/{inbox_id}/messages?limit={limit}"
+    unauth = f"{base}&include_unauthenticated=true"
 
-    scanned: list[dict] = []
-    for path, label in (
+    def _scan(chain) -> tuple[list[dict], list[dict]]:
+        """First listing in *chain* that yields a needle match wins."""
+        seen: list[dict] = []
+        for path, label in chain:
+            try:
+                messages = _messages_from(_api_get(path, api_key=api_key))
+            except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
+                logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
+                continue
+            seen = messages or seen
+            matches = [m for m in messages
+                       if subject_needle in (m.get("subject") or "").strip()]
+            logger.info(
+                "agentmail: %s scan of %d message(s); %d match needle %r",
+                label, len(messages), len(matches), subject_needle,
+            )
+            if matches:
+                return matches, seen
+        return [], seen
+
+    # The unauthenticated folder is scanned EVERY time, not only as a last
+    # resort: a report forwarded by hand lands there, and the authenticated
+    # listing always holds older matches (the daily automated forwards), so a
+    # "fallback only" scan never looked — the 2026-11-12 manual forward of the
+    # fresh Chumba report sat unseen through three refreshes.  Both sets are
+    # merged and the caller picks the newest by timestamp.
+    auth_matches, auth_seen = _scan((
         (f"{base}&subject={subject_enc}", "subject-filtered"),
         (base, "unfiltered"),
-        (f"{base}&include_unauthenticated=true", "unauthenticated"),
-    ):
-        try:
-            messages = _messages_from(_api_get(path, api_key=api_key))
-        except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
-            logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
-            continue
-        scanned = messages or scanned
-        matches = [m for m in messages
-                   if subject_needle in (m.get("subject") or "").strip()]
-        logger.info(
-            "agentmail: %s scan of %d message(s); %d match needle %r",
-            label, len(messages), len(matches), subject_needle,
-        )
-        if matches:
-            return matches
+    ))
+    unauth_matches, unauth_seen = _scan((
+        (f"{unauth}&subject={subject_enc}", "unauthenticated subject-filtered"),
+        (unauth, "unauthenticated"),
+    ))
 
-    _log_unmatched_ttd_senders(scanned, subject_needle)
+    merged: list[dict] = []
+    ids: set = set()
+    for m in auth_matches + unauth_matches:
+        key = m.get("id") or m.get("message_id") or id(m)
+        if key not in ids:
+            ids.add(key)
+            merged.append(m)
+    if merged:
+        return merged
+
+    _log_unmatched_ttd_senders(unauth_seen or auth_seen, subject_needle)
     return []
 
 

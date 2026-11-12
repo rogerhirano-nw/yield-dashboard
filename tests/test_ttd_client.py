@@ -195,7 +195,12 @@ def test_scan_uses_the_server_side_subject_filter_first(monkeypatch):
 
     assert out == [hit]
     assert "subject=Chumba" in fake.paths[0]
-    assert len(fake.paths) == 1  # no unfiltered fallback needed
+    # no unfiltered fallback on the authenticated side...
+    assert not any("subject=" not in p and "include_unauthenticated" not in p
+                   for p in fake.paths)
+    # ...but the unauthenticated folder is always asked, filtered first
+    assert "include_unauthenticated=true" in fake.paths[1]
+    assert "subject=Chumba" in fake.paths[1]
 
 
 def test_scan_falls_back_to_unfiltered_then_unauthenticated(monkeypatch):
@@ -261,4 +266,23 @@ def test_a_failing_listing_does_not_abort_the_scan(monkeypatch):
     monkeypatch.setattr(t, "_api_get", flaky)
 
     assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
-    assert calls["n"] == 2
+    assert calls["n"] == 3  # filtered (fails), unfiltered, unauthenticated
+
+
+def test_a_manual_forward_in_unauthenticated_is_seen_alongside_older_matches(monkeypatch):
+    """2026-11-12: a hand-forwarded fresh report lands in the unauthenticated
+    folder while the authenticated listing still holds older daily forwards.
+    The old fallback-only scan never looked there; both must be returned so
+    the caller's newest-first sort can pick the fresh one."""
+    old = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report"),
+           "id": "old", "sent_at": "2026-11-05T09:54:28Z"}
+    new = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report",
+                  sender="someone@newsweek.com"),
+           "id": "new", "sent_at": "2026-11-12T18:27:00Z"}
+    fake = _FakeInbox({"filtered": [old], "unauthenticated": [new, old]})
+    monkeypatch.setattr(t, "_api_get", fake)
+
+    out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
+
+    assert {m["id"] for m in out} == {"old", "new"}  # merged, deduped
+    assert max(out, key=t._msg_ts)["id"] == "new"
