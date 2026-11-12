@@ -6,6 +6,11 @@ name: Refresh TTD (Chumba)
 # (Luckyland retired 2026-07-27 — campaign ended, --mode=ttd removed.)
 on:
   workflow_dispatch:
+    inputs:
+      thread_id:
+        description: 'agentmail thread id to load the report from directly (optional)'
+        required: false
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -29,6 +34,7 @@ jobs:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          TTD_THREAD_ID:      ${{ inputs.thread_id }}
 
       - name: Check DB (row counts + date ranges)
         run: |
