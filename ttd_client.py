@@ -272,7 +272,7 @@ def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> Non
         (m.get("subject") or "").strip()
         for m in messages
         if TTD_SENDER_DOMAIN in str(m.get("from") or m.get("sender") or "").lower()
-        and subject_needle not in (m.get("subject") or "")
+        and subject_needle.lower() not in (m.get("subject") or "").lower()
     })
     if others:
         logger.warning(
@@ -319,7 +319,7 @@ def list_ttd_messages(
                 continue
             seen = messages or seen
             matches = [m for m in messages
-                       if subject_needle in (m.get("subject") or "").strip()]
+                       if subject_needle.lower() in (m.get("subject") or "").lower()]
             logger.info(
                 "agentmail: %s scan of %d message(s); %d match needle %r",
                 label, len(messages), len(matches), subject_needle,
@@ -342,6 +342,23 @@ def list_ttd_messages(
         (f"{unauth}&subject={subject_enc}", "unauthenticated subject-filtered"),
         (unauth, "unauthenticated"),
     ))
+
+    # Arrival diagnostic: the newest messages in the whole inbox, as
+    # (time, sender DOMAIN, needle-in-subject).  Subjects and full addresses are
+    # never logged — the Actions logs are public.  This is what tells "the
+    # report was never delivered" apart from "it arrived under a subject we
+    # don't match" (2026-11-12: three hand-sent reports never surfaced).
+    try:
+        recent = _messages_from(_api_get(f"{unauth}", api_key=api_key))
+        recent = sorted(recent, key=_msg_ts, reverse=True)[:8]
+        logger.info("agentmail: newest inbox messages (time, sender domain, has needle): %r", [
+            (_msg_ts(m),
+             str(m.get("from") or m.get("sender") or "").rsplit("@", 1)[-1].strip(" >\"'").lower(),
+             subject_needle.lower() in (m.get("subject") or "").lower())
+            for m in recent
+        ])
+    except Exception as exc:  # noqa: BLE001 — diagnostic only
+        logger.warning("agentmail: arrival diagnostic failed (%s)", exc)
 
     merged: list[dict] = []
     ids: set = set()

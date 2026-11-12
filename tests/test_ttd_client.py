@@ -212,8 +212,9 @@ def test_scan_falls_back_to_unfiltered_then_unauthenticated(monkeypatch):
     out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
 
     assert out == [hit]
-    assert len(fake.paths) == 3
-    assert "include_unauthenticated=true" in fake.paths[-1]
+    # filtered, unfiltered, unauthenticated (match), + the arrival diagnostic
+    assert len(fake.paths) == 4
+    assert "include_unauthenticated=true" in fake.paths[2]
 
 
 def test_scan_rechecks_the_needle_client_side(monkeypatch):
@@ -266,7 +267,8 @@ def test_a_failing_listing_does_not_abort_the_scan(monkeypatch):
     monkeypatch.setattr(t, "_api_get", flaky)
 
     assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
-    assert calls["n"] == 3  # filtered (fails), unfiltered, unauthenticated
+    # filtered (fails), unfiltered, unauthenticated, arrival diagnostic
+    assert calls["n"] == 4
 
 
 def test_a_manual_forward_in_unauthenticated_is_seen_alongside_older_matches(monkeypatch):
@@ -308,3 +310,10 @@ def test_scan_follows_next_page_token(monkeypatch):
 
     assert max(out, key=t._msg_ts)["id"] == "new"
     assert any("page_token=p2" in c for c in calls)
+
+
+def test_needle_match_is_case_insensitive(monkeypatch):
+    hit = _msg("chumba report through 11-11", sender="someone@gmail.com")
+    fake = _FakeInbox({"filtered": [hit]})
+    monkeypatch.setattr(t, "_api_get", fake)
+    assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
