@@ -212,8 +212,8 @@ def test_scan_falls_back_to_unfiltered_then_unauthenticated(monkeypatch):
     out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
 
     assert out == [hit]
-    # filtered, unfiltered, unauthenticated (match), + the arrival diagnostic
-    assert len(fake.paths) == 4
+    # filtered, unfiltered, unauthenticated (match), all-folders, + diagnostic
+    assert len(fake.paths) == 5
     assert "include_unauthenticated=true" in fake.paths[2]
 
 
@@ -267,8 +267,8 @@ def test_a_failing_listing_does_not_abort_the_scan(monkeypatch):
     monkeypatch.setattr(t, "_api_get", flaky)
 
     assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
-    # filtered (fails), unfiltered, unauthenticated, arrival diagnostic
-    assert calls["n"] == 4
+    # filtered (fails), unfiltered, unauthenticated, all-folders, diagnostic
+    assert calls["n"] == 5
 
 
 def test_a_manual_forward_in_unauthenticated_is_seen_alongside_older_matches(monkeypatch):
@@ -344,3 +344,29 @@ def test_pull_reads_a_report_attachment_when_the_body_has_no_link(monkeypatch):
     assert len(df) == 1
     assert fetched["args"] == ("th1", "att1")
     assert meta["message_id"] == "m1"
+
+
+def test_pinned_thread_is_fetched_first(monkeypatch):
+    """TTD_THREAD_ID reaches a report no listing returns (2026-11-12)."""
+    import pandas as pd
+    monkeypatch.setenv("TTD_THREAD_ID", "th-pinned")
+    calls = []
+
+    def api(path, *, api_key, raw=False):
+        calls.append(path)
+        if "/threads/th-pinned" in path and "/attachments/" not in path:
+            return {"messages": [{"message_id": "<m@x>", "subject": "Chumba",
+                                  "timestamp": "2026-11-12T22:29:00Z",
+                                  "attachments": [{"attachment_id": "a1",
+                                                   "filename": "Chumba.xlsx"}]}]}
+        return {"messages": []}
+
+    monkeypatch.setattr(t, "_api_get", api)
+    monkeypatch.setattr(t, "get_message_detail", lambda *a, **k: {"text": ""})
+    monkeypatch.setattr(t, "_fetch_attachment", lambda *a: b"x")
+    monkeypatch.setattr(t, "parse_ttd_csv",
+                        lambda content, **k: pd.DataFrame({"date": ["2026-11-11"]}))
+
+    df, meta = t.pull_ttd("k", "inbox", subject_needle="Chumba")
+
+    assert len(df) == 1 and meta["message_id"] == "<m@x>"

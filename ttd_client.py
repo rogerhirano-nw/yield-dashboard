@@ -29,6 +29,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import re
 import urllib.error
 import urllib.parse
@@ -342,6 +343,13 @@ def list_ttd_messages(
         (f"{unauth}&subject={subject_enc}", "unauthenticated subject-filtered"),
         (unauth, "unauthenticated"),
     ))
+    # The console's "All" view also covers spam/blocked mail.  An API that
+    # rejects these flags just fails this listing (logged, non-fatal).
+    allf = f"{unauth}&include_spam=true&include_blocked=true"
+    all_matches, _ = _scan((
+        (f"{allf}&subject={subject_enc}", "all-folders subject-filtered"),
+    ))
+    unauth_matches = unauth_matches + all_matches
 
     # Arrival diagnostic: the newest messages in the whole inbox, as
     # (time, sender DOMAIN, needle-in-subject).  Subjects and full addresses are
@@ -634,6 +642,24 @@ def pull_ttd(
     `primary_conv_col` is forwarded to `parse_ttd_csv` — see its docstring.
     """
     messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
+    # A thread pinned by id (TTD_THREAD_ID) is fetched directly: on 2026-11-12
+    # a hand-sent report showed in the console's "All" view but in no listing
+    # the API returned, so the only way to reach it was by its thread id.
+    pinned = os.environ.get("TTD_THREAD_ID", "").strip()
+    if pinned:
+        try:
+            th = _api_get(f"/inboxes/{inbox_id}/threads/{urllib.parse.quote(pinned, safe='')}",
+                          api_key=api_key)
+            tmsgs = _messages_from(th)
+            for tm in tmsgs:
+                tm.setdefault("thread_id", pinned)
+            logger.info("agentmail: pinned thread %s has %d message(s), attachments=%r",
+                        pinned, len(tmsgs),
+                        [a.get("filename") for tm in tmsgs for a in (tm.get("attachments") or [])])
+            # Put the pinned thread's messages first, newest first.
+            messages = sorted(tmsgs, key=_msg_ts, reverse=True) + list(messages or [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("agentmail: pinned thread %s fetch failed: %s", pinned, exc)
     if not messages:
         return pd.DataFrame(), {}
 
