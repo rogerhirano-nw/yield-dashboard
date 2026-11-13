@@ -4,6 +4,35 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-13 — Magnite deal ages backfilled (no Magnite deals in deal health)
+
+Every row of `magnite_deal_metadata` had `first_seen = 2026-10-01`, including
+deals bidding since May, so every Magnite deal was ~43 days old and the weekly
+deal-health email's 90-day age cutoff dropped **all** of them. Not a #421
+regression: the 11-01 and 11-02 runs of the old "180-day" pull already wrote
+102 deals at 10-01 — Magnite returned only ~1 month of the 05-06 → 11-01
+range, without an error — and #421's cumulative merge then carried that
+forward. #421's note that the table "already held 180 days" was wrong.
+
+Fixed in prod (one-off, run 2026-11-13; 101 of 102 rows moved, mostly to
+2026-05-26, the tracker's own floor, so those ages are still lower bounds):
+
+```sql
+WITH t AS (
+  SELECT deal_key, MIN(first_seen_date)::date AS tfs
+  FROM pmp_last_bid_date
+  WHERE ssp ILIKE 'magnite' AND first_seen_date IS NOT NULL
+  GROUP BY 1)
+UPDATE magnite_deal_metadata m
+SET first_seen = to_char(t.tfs, 'YYYY-MM-DD')
+FROM t
+WHERE t.deal_key = m.deal_id AND t.tfs < m.first_seen::date;
+```
+
+Rollback (every row was 10-01 before): `UPDATE magnite_deal_metadata SET
+first_seen = '2026-10-01';`. Result: `deal_health.load_deals()` now returns
+17 Magnite zero-bid deals (0 before). No Magnite API call was needed.
+
 ## 2026-11-13 — GAM's own pacing for the cap-tracker card
 
 The seller-comms tracker card showed **169.3%** pacing on AppleTv 7472702553's
