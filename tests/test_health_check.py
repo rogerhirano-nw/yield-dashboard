@@ -105,3 +105,20 @@ def test_rls_hygiene_fails_and_lists_each_offender_reason():
     assert "ttd_luckyland (RLS off)" in r.detail
     assert "dv_ivt (anon/authenticated grant)" in r.detail
     assert "gam_creatives (RLS off, anon/authenticated grant)" in r.detail
+
+
+def test_rls_check_skips_on_plain_postgres():
+    """Azure Postgres has no anon/authenticated roles; the RLS check must pass
+    (not crash on has_table_privilege of a missing role)."""
+    import health_check as hc
+
+    class _Res:
+        def __init__(self, v): self.v = v
+        def scalar(self): return self.v
+        def all(self): raise AssertionError("offender query must not run off Supabase")
+
+    class _Conn:
+        def execute(self, stmt): return _Res(0)
+
+    r = hc._check_rls_hygiene(_Conn())
+    assert r.ok and "not Supabase" in r.detail

@@ -1060,6 +1060,12 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/azure_db_migration.md` — **moving the cache DB from Supabase to Azure
+  Database for PostgreSQL** (handoff to Newsweek ownership, 2026-11). Switch is
+  one `DATABASE_URL`; one-off copy via `migrate_db_to_azure.yml` (pg_dump →
+  pg_restore + `scripts/compare_db_rowcounts.py`). Off Supabase (no
+  `anon`/`authenticated` roles) the health check's RLS row passes as
+  "not Supabase" instead of erroring.
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook. **Root cause
   (2026-10-21): pg_stat_statements query-text bloat** — `to_sql`'s multi-row
   INSERT batches left 464 MB of text in the view (DB is 89 MB), and Supabase's
