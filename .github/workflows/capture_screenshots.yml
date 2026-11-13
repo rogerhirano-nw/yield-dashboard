@@ -14,6 +14,12 @@ on:
         required: false
         type: boolean
         default: false
+      mode:
+        description: 'article (scroll to the slot), takeover (homepage takeover, shot as it loads), or video (pre-roll in the article player)'
+        required: false
+        type: choice
+        options: [article, takeover, video]
+        default: article
 
 permissions:
   contents: read
@@ -42,6 +48,7 @@ jobs:
           CAPTURE_ARTICLE_URL: ${{ inputs.article_url }}
           CAPTURE_OUT_DIR: /tmp/shots
           CAPTURE_NO_GATE: ${{ inputs.no_gate && '1' || '0' }}
+          CAPTURE_MODE: ${{ inputs.mode }}
         run: |
           set -o pipefail
           python scripts/capture_screenshots.py 2>&1 | tee /tmp/output.txt

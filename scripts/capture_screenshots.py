@@ -73,13 +73,83 @@ VIEWPORTS = [
     ("mobile", 390, 844, True),
 ]
 
+MOBILE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+             "Mobile/15E148 Safari/604.1")
+
+# Sizes that only serve in the fixed footer slot `dfp-ad-sticky`, per viewport.
+# No in-article slot accepts them (desktop inarticle = 300x250/970x250, mobile
+# = 300x250/336x280), so the generic "first google_ads_iframe" fallback shoots a
+# house ad in an in-article well instead (seen 2026-11-13, NewDayUSA). Mobile's
+# sticky takes 300x50/320x50, desktop's takes 728x90; a sticky size on the other
+# viewport has no slot at all and is skipped.
+STICKY_SIZES = {
+    "mobile": {(320, 50), (300, 50)},
+    "desktop": {(728, 90)},
+}
+
+STICKY_STATE_JS = """
+() => {
+  const d = document.getElementById('dfp-ad-sticky');
+  if (!d) return {present: false};
+  return {present: true,
+          iframes: [...d.querySelectorAll('iframe')].map(f => {
+            const r = f.getBoundingClientRect();
+            return {w: f.width, h: f.height, rw: Math.round(r.width),
+                    rh: Math.round(r.height), top: Math.round(r.top)};
+          })};
+}
+"""
+
+STICKY_REFRESH_JS = """
+() => {
+  try {
+    const s = googletag.pubads().getSlots()
+      .find(x => x.getSlotElementId() === 'dfp-ad-sticky');
+    if (!s) return false;
+    googletag.pubads().refresh([s]);
+    return true;
+  } catch (e) { return String(e); }
+}
+"""
+
+
+def _wait_for_sticky(page, cw: int, ch: int, timeout_ms: int = 20_000):
+    """Poll the sticky slot for an iframe of the creative's size.
+
+    Returns (element_or_None, last_state). Refreshes the sticky slot once,
+    halfway through, in case the slot was requested before the scroll walk
+    made it eligible — the preview cookie rides along on the refresh.
+    """
+    sel = f'#dfp-ad-sticky iframe[width="{cw}"][height="{ch}"]'
+    waited, refreshed, state = 0, False, None
+    while waited < timeout_ms:
+        el = page.query_selector(sel)
+        if el:
+            box = el.bounding_box()
+            if box and box["height"] > 0:
+                return el, page.evaluate(STICKY_STATE_JS)
+        if not refreshed and waited >= timeout_ms // 2:
+            page.evaluate(STICKY_REFRESH_JS)
+            refreshed = True
+        page.wait_for_timeout(1000)
+        waited += 1000
+    state = page.evaluate(STICKY_STATE_JS)
+    return None, state
+
 # The consent overlay, and anything else that sits over the page. Hidden, never
 # clicked — hiding is not consenting.
 HIDE_OVERLAYS_JS = """
 () => {
   const sels = ['#ketch-consent-banner', '[class*="ketch"]', '[id*="ketch"]',
                 '[class*="consent"]', '[id*="onetrust"]', '[class*="onetrust"]',
-                '[aria-label*="Privacy"]', '[class*="privacy-choices"]'];
+                '[aria-label*="Privacy"]', '[class*="privacy-choices"]',
+                // the "Membership · Upgrade today" paywall drawer
+                '[class*="paywallDrawer"]',
+                // Google One Tap ("Sign in to newsweek.com with Google") —
+                // shows on a phone UA and sits right over the sticky footer.
+                '#credential_picker_container',
+                'iframe[src*="accounts.google.com/gsi"]'];
   let n = 0;
   for (const s of sels) {
     for (const el of document.querySelectorAll(s)) {
@@ -157,6 +227,74 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
     return True, detail + "  [passes both tests]"
 
 
+VIDEO_STATE_JS = """
+() => {
+  const pl = document.querySelector('mux-player, #nw-video-player, video');
+  const ima = [...document.querySelectorAll('iframe')]
+    .filter(f => /imasdk|googlesyndication|doubleclick/.test(f.src || '')).length;
+  const v = document.querySelector('video');
+  return {player: !!pl, ima_iframes: ima,
+          playing: v ? !v.paused : null, t: v ? Math.round(v.currentTime) : null};
+}
+"""
+
+
+def _frame_and_record(out: Path, tag: str, page, is_mobile: bool, shots: list):
+    ctx_path = out / f"{tag}_context.png"
+    page.screenshot(path=str(ctx_path), full_page=False)
+    shots.append(ctx_path.name)
+    try:
+        from frame_device_shot import frame as _device_frame
+        from PIL import Image as _Image
+        framed = out / f"{tag}_context_framed.png"
+        _device_frame(_Image.open(ctx_path),
+                      "phone" if is_mobile else "laptop").save(framed)
+        shots.append(framed.name)
+    except Exception as e:
+        print(f"     device frame skipped: {e}")
+
+
+def _special_shots(page, args, out: Path, cid, meta, vname, is_mobile, shots):
+    """Takeover and video modes: no slot to find, so shoot by time instead.
+
+    A homepage takeover (Centerstage) renders in the parent document at the
+    top of the page as it loads and hands back to the page on scroll, so the
+    article mode's scroll walk walks straight past it. A pre-roll plays in the
+    article's video player, which is not a GPT slot at all. Both get two
+    frames a few seconds apart, since either can animate in.
+    """
+    base = f"{args.line_item}_{cid}_{meta['w']}x{meta['h']}_{vname}"
+    if args.mode == "video":
+        pl = page.query_selector('mux-player, #nw-video-player, video')
+        if not pl:
+            for y in range(0, 8000, 500):
+                page.evaluate(f"window.scrollTo(0, {y})")
+                page.wait_for_timeout(300)
+                pl = page.query_selector('mux-player, #nw-video-player, video')
+                if pl:
+                    break
+        if not pl:
+            print(f"  !! {base}: no video player on the page")
+            return
+        pl.scroll_into_view_if_needed()
+        # Start it muted the way a reader's tap would, without clicking the
+        # player (a click could land on the ad and count as a click-through).
+        page.evaluate("() => { const p = document.querySelector('mux-player') "
+                      "|| document.querySelector('video'); if (p) { p.muted = true; "
+                      "const r = p.play && p.play(); if (r && r.catch) r.catch(() => {}); } }")
+        page.wait_for_timeout(6000)
+    else:
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(1500)
+    for i, wait in enumerate((0, 6000)):
+        page.wait_for_timeout(wait)
+        page.evaluate(HIDE_OVERLAYS_JS)
+        tag = base + ("" if i == 0 else "_t2")
+        _frame_and_record(out, tag, page, is_mobile, shots)
+        state = page.evaluate(VIDEO_STATE_JS) if args.mode == "video" else ""
+        print(f"  shot {tag}: {args.mode} mode {state}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--line-item", default=os.environ.get("CAPTURE_LINE_ITEM"))
@@ -165,6 +303,13 @@ def main() -> int:
     ap.add_argument("--no-gate", action="store_true",
                     default=os.environ.get("CAPTURE_NO_GATE") == "1",
                     help="shoot even if the page fails the vertical/brand-safety tests")
+    ap.add_argument("--mode", choices=("article", "takeover", "video"),
+                    default=os.environ.get("CAPTURE_MODE") or "article",
+                    help="article: scroll to the slot (default). takeover: shoot "
+                         "the page as it loads, no scrolling, for homepage "
+                         "takeovers that render at the top and break out of "
+                         "their iframe. video: scroll to the article's video "
+                         "player and shoot the pre-roll.")
     args = ap.parse_args()
     if not args.line_item or not args.article_url:
         ap.error("--line-item and --article-url are required")
@@ -230,7 +375,8 @@ def main() -> int:
 
     shots, skipped = [], []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--disable-dev-shm-usage"])
+        browser = pw.chromium.launch(args=["--disable-dev-shm-usage",
+                                              "--autoplay-policy=no-user-gesture-required"])
         gated_ok = None
 
         for cid, meta in creatives.items():
@@ -238,10 +384,17 @@ def main() -> int:
             for vname, vw, vh, is_mobile in VIEWPORTS:
                 # A creative wider than the viewport cannot fill the slot; GAM
                 # serves house inventory instead. Don't waste a shot on it.
-                if cw and cw > vw - 48:
+                if args.mode != "video" and cw and cw > vw - 48:
                     skipped.append(
                         f"{meta['name']} ({cw}x{meta['h']}) on {vname} "
                         f"({vw}px) — too wide, would serve a house ad")
+                    continue
+                size = (cw, meta["h"])
+                sticky = size in STICKY_SIZES.get(vname, set())
+                if not sticky and any(size in s for s in STICKY_SIZES.values()):
+                    skipped.append(
+                        f"{meta['name']} ({cw}x{meta['h']}) on {vname} — only "
+                        f"the other viewport's sticky footer takes this size")
                     continue
 
                 try:
@@ -255,6 +408,11 @@ def main() -> int:
                     viewport={"width": vw, "height": vh},
                     device_scale_factor=2,
                     is_mobile=is_mobile, has_touch=is_mobile,
+                    # The site picks its slot config by UA, not viewport: with
+                    # headless Chrome's desktop UA the 390px "phone" never
+                    # requests the mobile sticky (300x50/320x50), so a
+                    # sticky-only creative has nowhere to serve.
+                    **({"user_agent": MOBILE_UA} if is_mobile else {}),
                 )
                 page = ctx.new_page()
                 try:
@@ -272,6 +430,11 @@ def main() -> int:
 
                     hidden = page.evaluate(HIDE_OVERLAYS_JS)
 
+                    if args.mode in ("takeover", "video"):
+                        _special_shots(page, args, out, cid, meta, vname,
+                                       is_mobile, shots)
+                        continue
+
                     # Lazy slots only exist once scrolled near — walk the page.
                     for y in range(0, 6000, 600):
                         page.evaluate(f"window.scrollTo(0, {y})")
@@ -284,13 +447,21 @@ def main() -> int:
                     # page, and a selector LIST returns whichever comes first in
                     # document order — not the one we asked for — so the sized
                     # match has to be its own query, tried first.
-                    frame = page.query_selector(
-                        f'iframe[id^="google_ads_iframe"][width="{cw}"]')
-                    exact = frame is not None
-                    if frame is None:
+                    if sticky:
+                        # Fixed footer: never scroll to it, and never fall back
+                        # to an in-article iframe — that's a different slot.
+                        frame, sstate = _wait_for_sticky(page, cw, meta["h"])
+                        exact = frame is not None
+                        page.evaluate(HIDE_OVERLAYS_JS)
+                        print(f"     sticky slot: {sstate}")
+                    else:
                         frame = page.query_selector(
-                            'iframe[id^="google_ads_iframe"]')
-                    if frame:
+                            f'iframe[id^="google_ads_iframe"][width="{cw}"]')
+                        exact = frame is not None
+                        if frame is None:
+                            frame = page.query_selector(
+                                'iframe[id^="google_ads_iframe"]')
+                    if frame and not sticky:
                         frame.scroll_into_view_if_needed()
                         page.wait_for_timeout(1200)
                         page.evaluate(HIDE_OVERLAYS_JS)
@@ -308,6 +479,7 @@ def main() -> int:
                     if frame:
                         target = frame
                         wrapper = page.query_selector(
+                            '#dfp-ad-sticky' if sticky else
                             '[id^="dfp-ad-inarticle"], [id^="dfp-ad-"]')
                         if wrapper:
                             wbox, fbox = wrapper.bounding_box(), frame.bounding_box()
@@ -337,6 +509,10 @@ def main() -> int:
                     except Exception as e:
                         print(f"     device frame skipped: {e}")
 
+                    if sticky and not exact:
+                        print(f"     WARNING: the {cw}x{meta['h']} creative never "
+                              f"rendered in the sticky footer \u2014 this shot "
+                              f"does not show it; don't use it")
                     if frame and not exact:
                         print(f"     WARNING: no {cw}-wide ad iframe on the "
                               f"page; shot the first slot found, which may be "

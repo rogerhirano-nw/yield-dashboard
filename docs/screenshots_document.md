@@ -185,6 +185,31 @@ the conventions below). Run it by hand on any shot:
 `python scripts/frame_device_shot.py shot.png` (it picks the device from the
 shot's orientation; `--device phone|laptop` overrides).
 
+**Sticky-footer sizes** (NewDayUSA, 13 Nov 2026). No in-article slot takes
+320x50, 300x50 or 728x90: they serve only in the fixed footer `dfp-ad-sticky`
+— 300x50/320x50 on a phone, 728x90 on desktop. The script shoots each of those
+on its own viewport only, waits for an iframe of the creative's size in
+`#dfp-ad-sticky` (refreshing the slot once), and prints a WARNING instead of
+falling back to an in-article well when it never renders. Two things it took to
+get there: the phone viewport sends an **iPhone user agent** (the site picks its
+slot config by UA, and with headless Chrome's desktop UA the mobile sticky is
+never requested), and the **Google One Tap** sign-in prompt that UA brings up is
+hidden like the consent panel, since it sits on top of the sticky.
+
+**Takeovers and pre-roll need a mode** (`-f mode=…`). A homepage takeover
+(Centerstage) renders at the top of the page as it loads and breaks out of its
+iframe, so the default article mode's scroll walk shoots past it: use
+`mode=takeover` on `https://www.newsweek.com/` (with `no_gate=true` — the
+homepage has no category to match). Pre-roll plays in the article's Mux player,
+not a GPT slot: use `mode=video` on an article with a player. Both take two
+frames 6s apart; keep the one that shows the creative. On 13 Nov 2026 the
+desktop pre-roll played and the mobile one did not start (the player stayed on
+the editorial video), so check the log's `playing` flag before trusting a frame.
+
+When one deck spans several pages (different line items shot on different
+articles, a homepage takeover), give each shot its own `page_url` in the spec so
+its footer names the page it was actually taken on.
+
 `preview_mobkoi_dom.yml` is NOT the tool for this — it is mobile-only DOM
 forensics, so a 970x250 falls through to a Newsweek house ad and the "proof"
 shows the wrong advertiser.

@@ -19,7 +19,9 @@ and the capture artifacts (`capture_screenshots.yml`):
       "shots": [
         {"size": "970x250", "device": "Desktop", "title": "Billboard in the article body",
          "file": "shots/7440274079_138612841039_970x250_desktop_context.png",
-         "alt": "Elevance Health 970x250 billboard in a Newsweek Health article"}
+         "alt": "Elevance Health 970x250 billboard in a Newsweek Health article",
+         "page_url": "newsweek.com/...",   # optional, overrides the deck-wide page_url
+         "captured": "..."}                # optional, overrides the deck-wide capture time
       ]
     }
 
@@ -160,7 +162,7 @@ def build(spec: dict, base: Path, out: Path) -> None:
                                    Inches(py + pad + (bh - h) / 2),
                                    Inches(w), Inches(h))
         pic._element.nvPicPr.cNvPr.set("descr", sh.get("alt", ""))
-        _footer(s, f"{spec['page_url']} · {spec['captured']} · {sh['size']} · "
+        _footer(s, f"{sh.get('page_url', spec['page_url'])} · {sh.get('captured', spec['captured'])} · {sh['size']} · "
                    f"{i}/{len(shots)}")
 
     # Closing slide: who sold it, so whoever opens the deck knows whose
