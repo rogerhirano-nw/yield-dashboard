@@ -73,6 +73,66 @@ VIEWPORTS = [
     ("mobile", 390, 844, True),
 ]
 
+# Sizes that only serve in the fixed footer slot `dfp-ad-sticky`, per viewport.
+# No in-article slot accepts them (desktop inarticle = 300x250/970x250, mobile
+# = 300x250/336x280), so the generic "first google_ads_iframe" fallback shoots a
+# house ad in an in-article well instead (seen 2026-11-13, NewDayUSA). Mobile's
+# sticky takes 300x50/320x50, desktop's takes 728x90; a sticky size on the other
+# viewport has no slot at all and is skipped.
+STICKY_SIZES = {
+    "mobile": {(320, 50), (300, 50)},
+    "desktop": {(728, 90)},
+}
+
+STICKY_STATE_JS = """
+() => {
+  const d = document.getElementById('dfp-ad-sticky');
+  if (!d) return {present: false};
+  return {present: true,
+          iframes: [...d.querySelectorAll('iframe')].map(f => {
+            const r = f.getBoundingClientRect();
+            return {w: f.width, h: f.height, rw: Math.round(r.width),
+                    rh: Math.round(r.height), top: Math.round(r.top)};
+          })};
+}
+"""
+
+STICKY_REFRESH_JS = """
+() => {
+  try {
+    const s = googletag.pubads().getSlots()
+      .find(x => x.getSlotElementId() === 'dfp-ad-sticky');
+    if (!s) return false;
+    googletag.pubads().refresh([s]);
+    return true;
+  } catch (e) { return String(e); }
+}
+"""
+
+
+def _wait_for_sticky(page, cw: int, ch: int, timeout_ms: int = 20_000):
+    """Poll the sticky slot for an iframe of the creative's size.
+
+    Returns (element_or_None, last_state). Refreshes the sticky slot once,
+    halfway through, in case the slot was requested before the scroll walk
+    made it eligible — the preview cookie rides along on the refresh.
+    """
+    sel = f'#dfp-ad-sticky iframe[width="{cw}"][height="{ch}"]'
+    waited, refreshed, state = 0, False, None
+    while waited < timeout_ms:
+        el = page.query_selector(sel)
+        if el:
+            box = el.bounding_box()
+            if box and box["height"] > 0:
+                return el, page.evaluate(STICKY_STATE_JS)
+        if not refreshed and waited >= timeout_ms // 2:
+            page.evaluate(STICKY_REFRESH_JS)
+            refreshed = True
+        page.wait_for_timeout(1000)
+        waited += 1000
+    state = page.evaluate(STICKY_STATE_JS)
+    return None, state
+
 # The consent overlay, and anything else that sits over the page. Hidden, never
 # clicked — hiding is not consenting.
 HIDE_OVERLAYS_JS = """
@@ -243,6 +303,13 @@ def main() -> int:
                         f"{meta['name']} ({cw}x{meta['h']}) on {vname} "
                         f"({vw}px) — too wide, would serve a house ad")
                     continue
+                size = (cw, meta["h"])
+                sticky = size in STICKY_SIZES.get(vname, set())
+                if not sticky and any(size in s for s in STICKY_SIZES.values()):
+                    skipped.append(
+                        f"{meta['name']} ({cw}x{meta['h']}) on {vname} — only "
+                        f"the other viewport's sticky footer takes this size")
+                    continue
 
                 try:
                     url = lica_svc.getPreviewUrl(
@@ -284,13 +351,21 @@ def main() -> int:
                     # page, and a selector LIST returns whichever comes first in
                     # document order — not the one we asked for — so the sized
                     # match has to be its own query, tried first.
-                    frame = page.query_selector(
-                        f'iframe[id^="google_ads_iframe"][width="{cw}"]')
-                    exact = frame is not None
-                    if frame is None:
+                    if sticky:
+                        # Fixed footer: never scroll to it, and never fall back
+                        # to an in-article iframe — that's a different slot.
+                        frame, sstate = _wait_for_sticky(page, cw, meta["h"])
+                        exact = frame is not None
+                        page.evaluate(HIDE_OVERLAYS_JS)
+                        print(f"     sticky slot: {sstate}")
+                    else:
                         frame = page.query_selector(
-                            'iframe[id^="google_ads_iframe"]')
-                    if frame:
+                            f'iframe[id^="google_ads_iframe"][width="{cw}"]')
+                        exact = frame is not None
+                        if frame is None:
+                            frame = page.query_selector(
+                                'iframe[id^="google_ads_iframe"]')
+                    if frame and not sticky:
                         frame.scroll_into_view_if_needed()
                         page.wait_for_timeout(1200)
                         page.evaluate(HIDE_OVERLAYS_JS)
@@ -308,6 +383,7 @@ def main() -> int:
                     if frame:
                         target = frame
                         wrapper = page.query_selector(
+                            '#dfp-ad-sticky' if sticky else
                             '[id^="dfp-ad-inarticle"], [id^="dfp-ad-"]')
                         if wrapper:
                             wbox, fbox = wrapper.bounding_box(), frame.bounding_box()
@@ -337,6 +413,10 @@ def main() -> int:
                     except Exception as e:
                         print(f"     device frame skipped: {e}")
 
+                    if sticky and not exact:
+                        print(f"     WARNING: the {cw}x{meta['h']} creative never "
+                              f"rendered in the sticky footer \u2014 this shot "
+                              f"does not show it; don't use it")
                     if frame and not exact:
                         print(f"     WARNING: no {cw}-wide ad iframe on the "
                               f"page; shot the first slot found, which may be "
