@@ -73,6 +73,10 @@ VIEWPORTS = [
     ("mobile", 390, 844, True),
 ]
 
+MOBILE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+             "Mobile/15E148 Safari/604.1")
+
 # Sizes that only serve in the fixed footer slot `dfp-ad-sticky`, per viewport.
 # No in-article slot accepts them (desktop inarticle = 300x250/970x250, mobile
 # = 300x250/336x280), so the generic "first google_ads_iframe" fallback shoots a
@@ -322,6 +326,11 @@ def main() -> int:
                     viewport={"width": vw, "height": vh},
                     device_scale_factor=2,
                     is_mobile=is_mobile, has_touch=is_mobile,
+                    # The site picks its slot config by UA, not viewport: with
+                    # headless Chrome's desktop UA the 390px "phone" never
+                    # requests the mobile sticky (300x50/320x50), so a
+                    # sticky-only creative has nowhere to serve.
+                    **({"user_agent": MOBILE_UA} if is_mobile else {}),
                 )
                 page = ctx.new_page()
                 try:
