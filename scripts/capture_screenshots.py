@@ -144,6 +144,8 @@ HIDE_OVERLAYS_JS = """
   const sels = ['#ketch-consent-banner', '[class*="ketch"]', '[id*="ketch"]',
                 '[class*="consent"]', '[id*="onetrust"]', '[class*="onetrust"]',
                 '[aria-label*="Privacy"]', '[class*="privacy-choices"]',
+                // the "Membership · Upgrade today" paywall drawer
+                '[class*="paywallDrawer"]',
                 // Google One Tap ("Sign in to newsweek.com with Google") —
                 // shows on a phone UA and sits right over the sticky footer.
                 '#credential_picker_container',
@@ -225,6 +227,74 @@ def gate_page(page, slugs: list[str], no_gate: bool) -> tuple[bool, str]:
     return True, detail + "  [passes both tests]"
 
 
+VIDEO_STATE_JS = """
+() => {
+  const pl = document.querySelector('mux-player, #nw-video-player, video');
+  const ima = [...document.querySelectorAll('iframe')]
+    .filter(f => /imasdk|googlesyndication|doubleclick/.test(f.src || '')).length;
+  const v = document.querySelector('video');
+  return {player: !!pl, ima_iframes: ima,
+          playing: v ? !v.paused : null, t: v ? Math.round(v.currentTime) : null};
+}
+"""
+
+
+def _frame_and_record(out: Path, tag: str, page, is_mobile: bool, shots: list):
+    ctx_path = out / f"{tag}_context.png"
+    page.screenshot(path=str(ctx_path), full_page=False)
+    shots.append(ctx_path.name)
+    try:
+        from frame_device_shot import frame as _device_frame
+        from PIL import Image as _Image
+        framed = out / f"{tag}_context_framed.png"
+        _device_frame(_Image.open(ctx_path),
+                      "phone" if is_mobile else "laptop").save(framed)
+        shots.append(framed.name)
+    except Exception as e:
+        print(f"     device frame skipped: {e}")
+
+
+def _special_shots(page, args, out: Path, cid, meta, vname, is_mobile, shots):
+    """Takeover and video modes: no slot to find, so shoot by time instead.
+
+    A homepage takeover (Centerstage) renders in the parent document at the
+    top of the page as it loads and hands back to the page on scroll, so the
+    article mode's scroll walk walks straight past it. A pre-roll plays in the
+    article's video player, which is not a GPT slot at all. Both get two
+    frames a few seconds apart, since either can animate in.
+    """
+    base = f"{args.line_item}_{cid}_{meta['w']}x{meta['h']}_{vname}"
+    if args.mode == "video":
+        pl = page.query_selector('mux-player, #nw-video-player, video')
+        if not pl:
+            for y in range(0, 8000, 500):
+                page.evaluate(f"window.scrollTo(0, {y})")
+                page.wait_for_timeout(300)
+                pl = page.query_selector('mux-player, #nw-video-player, video')
+                if pl:
+                    break
+        if not pl:
+            print(f"  !! {base}: no video player on the page")
+            return
+        pl.scroll_into_view_if_needed()
+        # Start it muted the way a reader's tap would, without clicking the
+        # player (a click could land on the ad and count as a click-through).
+        page.evaluate("() => { const p = document.querySelector('mux-player') "
+                      "|| document.querySelector('video'); if (p) { p.muted = true; "
+                      "const r = p.play && p.play(); if (r && r.catch) r.catch(() => {}); } }")
+        page.wait_for_timeout(6000)
+    else:
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(1500)
+    for i, wait in enumerate((0, 6000)):
+        page.wait_for_timeout(wait)
+        page.evaluate(HIDE_OVERLAYS_JS)
+        tag = base + ("" if i == 0 else "_t2")
+        _frame_and_record(out, tag, page, is_mobile, shots)
+        state = page.evaluate(VIDEO_STATE_JS) if args.mode == "video" else ""
+        print(f"  shot {tag}: {args.mode} mode {state}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--line-item", default=os.environ.get("CAPTURE_LINE_ITEM"))
@@ -233,6 +303,13 @@ def main() -> int:
     ap.add_argument("--no-gate", action="store_true",
                     default=os.environ.get("CAPTURE_NO_GATE") == "1",
                     help="shoot even if the page fails the vertical/brand-safety tests")
+    ap.add_argument("--mode", choices=("article", "takeover", "video"),
+                    default=os.environ.get("CAPTURE_MODE") or "article",
+                    help="article: scroll to the slot (default). takeover: shoot "
+                         "the page as it loads, no scrolling, for homepage "
+                         "takeovers that render at the top and break out of "
+                         "their iframe. video: scroll to the article's video "
+                         "player and shoot the pre-roll.")
     args = ap.parse_args()
     if not args.line_item or not args.article_url:
         ap.error("--line-item and --article-url are required")
@@ -298,7 +375,8 @@ def main() -> int:
 
     shots, skipped = [], []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--disable-dev-shm-usage"])
+        browser = pw.chromium.launch(args=["--disable-dev-shm-usage",
+                                              "--autoplay-policy=no-user-gesture-required"])
         gated_ok = None
 
         for cid, meta in creatives.items():
@@ -306,7 +384,7 @@ def main() -> int:
             for vname, vw, vh, is_mobile in VIEWPORTS:
                 # A creative wider than the viewport cannot fill the slot; GAM
                 # serves house inventory instead. Don't waste a shot on it.
-                if cw and cw > vw - 48:
+                if args.mode != "video" and cw and cw > vw - 48:
                     skipped.append(
                         f"{meta['name']} ({cw}x{meta['h']}) on {vname} "
                         f"({vw}px) — too wide, would serve a house ad")
@@ -351,6 +429,11 @@ def main() -> int:
                             return 2
 
                     hidden = page.evaluate(HIDE_OVERLAYS_JS)
+
+                    if args.mode in ("takeover", "video"):
+                        _special_shots(page, args, out, cid, meta, vname,
+                                       is_mobile, shots)
+                        continue
 
                     # Lazy slots only exist once scrolled near — walk the page.
                     for y in range(0, 6000, 600):
