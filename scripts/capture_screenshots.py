@@ -143,7 +143,11 @@ HIDE_OVERLAYS_JS = """
 () => {
   const sels = ['#ketch-consent-banner', '[class*="ketch"]', '[id*="ketch"]',
                 '[class*="consent"]', '[id*="onetrust"]', '[class*="onetrust"]',
-                '[aria-label*="Privacy"]', '[class*="privacy-choices"]'];
+                '[aria-label*="Privacy"]', '[class*="privacy-choices"]',
+                // Google One Tap ("Sign in to newsweek.com with Google") —
+                // shows on a phone UA and sits right over the sticky footer.
+                '#credential_picker_container',
+                'iframe[src*="accounts.google.com/gsi"]'];
   let n = 0;
   for (const s of sels) {
     for (const el of document.querySelectorAll(s)) {
