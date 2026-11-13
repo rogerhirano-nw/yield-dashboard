@@ -1060,6 +1060,15 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/reporting_mailbox.md` — **moving all report mail off agentmail onto
+  Newsweek's M365 shared mailbox reporting@newsweek.com** (`graph_mail.py`,
+  Microsoft Graph, app-only). Opt-in: every DV/TTD reader and every sender
+  (health check, sweep alert, Confiant) uses Graph only when `GRAPH_MAILBOX` +
+  app creds are set, else the agentmail code runs unchanged; deleting
+  `GRAPH_MAILBOX` rolls back. Part of the handoff to Newsweek ownership
+  (Roger leaving, 2026-11). The runbook has the IT request (Mail.Read +
+  Mail.Send scoped to reporting@ by an Application Access Policy), the secrets,
+  vendor re-pointing, and the cutover check.
 - `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook. **Root cause
   (2026-10-21): pg_stat_statements query-text bloat** — `to_sql`'s multi-row
   INSERT batches left 464 MB of text in the view (DB is 89 MB), and Supabase's

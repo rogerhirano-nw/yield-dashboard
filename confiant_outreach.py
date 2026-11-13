@@ -280,6 +280,11 @@ def _send_email(
     recipient: str,
     cc: list[str] | None = None,
 ) -> None:
+    import graph_mail
+    if graph_mail.enabled():
+        graph_mail.send_mail(_split_recipients(recipient), subject, html=html, cc=cc or None)
+        return
+
     from agentmail import AgentMail
 
     api_key = os.environ.get("AGENTMAIL_API_KEY")

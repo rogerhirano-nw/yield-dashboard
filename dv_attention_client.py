@@ -269,7 +269,14 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
     all matched emails, plus an `_email_message_id` column for downstream dedup.
 
     Empty DataFrame if no matches or all fetches failed.
+
+    When graph_mail is configured (GRAPH_MAILBOX = reporting@newsweek.com),
+    reads the Microsoft 365 mailbox instead and api_key/inbox_id are unused.
     """
+    import graph_mail
+    if graph_mail.enabled():
+        return _pull_via_graph(limit)
+
     matches = list_dv_attention_messages(api_key, inbox_id, limit=limit)
     if not matches:
         return pd.DataFrame()
@@ -324,6 +331,38 @@ def pull_dv_attention(api_key: str, inbox_id: str, *, limit: int = 30) -> pd.Dat
             except Exception as e:
                 logger.exception("Failed to process %s from msg %s: %s", fn, dedup_id, e)
 
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def _pull_via_graph(limit: int) -> pd.DataFrame:
+    """Same as pull_dv_attention, but reading the Microsoft 365 shared mailbox."""
+    import graph_mail
+
+    frames = []
+    for m in graph_mail.list_messages(DV_SUBJECT, limit=limit):
+        dedup_id = (m.get("message_id") or m["id"]).lstrip("<").rstrip(">")
+        try:
+            attachments = graph_mail.list_attachments(m["id"])
+        except Exception as e:
+            logger.warning("Couldn't list attachments for %s: %s", dedup_id, e)
+            continue
+        for att in attachments:
+            fn = att["name"]
+            if fn.lower().endswith(".csv"):
+                parser = parse_dv_csv
+            elif fn.lower().endswith(".xlsx"):
+                parser = parse_dv_xlsx
+            else:
+                continue
+            try:
+                df = parser(graph_mail.attachment_bytes(m["id"], att["id"]))
+                df["_email_message_id"] = dedup_id
+                logger.info("Parsed %d rows from %s (msg %s, Graph)", len(df), fn, dedup_id)
+                frames.append(df)
+            except Exception as e:
+                logger.exception("Failed to process %s from msg %s: %s", fn, dedup_id, e)
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)

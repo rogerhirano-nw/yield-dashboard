@@ -412,6 +412,11 @@ def build_html(
 def _send(html: str, subject: str, to: list[str], cc: list[str]) -> None:
     """Send via agentmail using the same SDK call confiant_blocklist.py uses
     for its post-run summary."""
+    import graph_mail
+    if graph_mail.enabled():
+        graph_mail.send_mail(to, subject, html=html, cc=cc or None)
+        return
+
     from agentmail import AgentMail  # local import — heavy dep
 
     api_key = os.environ.get("AGENTMAIL_API_KEY")
