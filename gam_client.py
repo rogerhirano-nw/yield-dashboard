@@ -126,6 +126,22 @@ def _ts_to_date(ts) -> Optional[str]:
         return None
 
 
+def gam_progress_pct(expected, actual) -> Optional[float]:
+    """GAM UI "Progress" = actual ÷ expected delivery percentage, × 100.
+
+    None when either side is missing or expected is ≤ 0 (nothing expected yet,
+    so there's no meaningful ratio)."""
+    try:
+        if expected is None or actual is None:
+            return None
+        e, a = float(expected), float(actual)
+        if e <= 0:
+            return None
+        return a / e * 100.0
+    except (TypeError, ValueError):
+        return None
+
+
 def _soap_date_to_iso(d) -> Optional[str]:
     """GAM SOAP DateTime values are zeep objects whose repr looks like a dict
     but behave like attribute-bearing objects: `d.date.year/month/day`. Some
@@ -943,6 +959,53 @@ class GAMClient:
             return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
         except Exception:
             logger.exception("get_preferred_deals (SOAP) failed")
+            return pd.DataFrame(columns=_cols)
+
+    def get_delivery_indicators(self, line_item_ids: list[str]) -> pd.DataFrame:
+        """GAM's own pacing for the given line items, via SOAP LineItemService.
+
+        `LineItem.deliveryIndicator` carries `expectedDeliveryPercentage` (how far
+        along GAM expects the line to be right now) and `actualDeliveryPercentage`
+        (how far along it is). Their ratio is the "Progress" figure in the GAM UI.
+        Our own straight-line pacing (delivered / goal ÷ fraction of flight
+        elapsed) can disagree with it by a lot intraday — e.g. 169% vs GAM's 124%
+        on AppleTv 7472702553's launch day (2026-11-13) — so consumers that show a
+        seller "pacing" should prefer this. v1 REST has no equivalent field.
+
+        Returns line_item_id, expected_delivery_pct, actual_delivery_pct,
+        gam_progress_pct (None when GAM reports no indicator, e.g. sponsorships or
+        a line with no expected delivery yet).
+        """
+        _cols = ["line_item_id", "expected_delivery_pct", "actual_delivery_pct", "gam_progress_pct"]
+        ids = [str(int(str(i).strip())) for i in line_item_ids if str(i).strip().isdigit()]
+        if not ids:
+            return pd.DataFrame(columns=_cols)
+        try:
+            client = self._get_soap_client()
+            from googleads import ad_manager  # type: ignore
+            svc = client.GetService("LineItemService", version=self._SOAP_API_VERSION)
+            sb = ad_manager.StatementBuilder(version=self._SOAP_API_VERSION)
+            sb.Where(f"id IN ({', '.join(ids)})")
+            sb.Limit(500)
+            resp = _soap_retry(
+                lambda: svc.getLineItemsByStatement(sb.ToStatement()),
+                "getLineItemsByStatement(deliveryIndicator)",
+            )
+            rows = []
+            for li in getattr(resp, "results", None) or []:
+                di = getattr(li, "deliveryIndicator", None)
+                exp = getattr(di, "expectedDeliveryPercentage", None) if di is not None else None
+                act = getattr(di, "actualDeliveryPercentage", None) if di is not None else None
+                rows.append({
+                    "line_item_id": str(getattr(li, "id", "")),
+                    "expected_delivery_pct": float(exp) if exp is not None else None,
+                    "actual_delivery_pct": float(act) if act is not None else None,
+                    "gam_progress_pct": gam_progress_pct(exp, act),
+                })
+            logger.info("GAM delivery indicators (SOAP): %d of %d LIs", len(rows), len(ids))
+            return pd.DataFrame(rows, columns=_cols) if rows else pd.DataFrame(columns=_cols)
+        except Exception:
+            logger.exception("get_delivery_indicators (SOAP) failed")
             return pd.DataFrame(columns=_cols)
 
     def archive_proposal_line_item(self, pli_id: str, raise_on_error: bool = False) -> bool:

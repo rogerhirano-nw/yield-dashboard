@@ -666,6 +666,35 @@ def refresh_gam_hourly() -> int:
     return len(df)
 
 
+def refresh_gam_delivery_indicator() -> int:
+    """Snapshot GAM's own pacing (LineItem.deliveryIndicator) for the cap-tracked LIs.
+
+    Same LI set as refresh_gam_hourly (GAM_HOURLY_LINE_ITEMS) and run on the same
+    intraday cadence, so seller-comms' tracker card can show GAM's "Progress"
+    figure instead of recomputing pacing itself (its straight-line launch-day
+    estimate read 169% on a line GAM showed at 124%, 2026-11-13).
+
+    Writes gam_li_delivery_indicator — one row per LI, replaced on every run
+    (line_item_id, expected_delivery_pct, actual_delivery_pct, gam_progress_pct,
+    pulled_at). A failed or empty pull leaves the previous snapshot in place.
+    """
+    import os
+    li_ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    if not li_ids:
+        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping delivery-indicator refresh")
+        return 0
+    df = GAMClient().get_delivery_indicators(li_ids)
+    if df.empty:
+        logger.info("No delivery indicators returned — keeping previous snapshot")
+        return 0
+    df["pulled_at"] = datetime.now(timezone.utc).isoformat()
+    table = "gam_li_delivery_indicator"
+    with _engine().begin() as conn:
+        _safe_replace(df, table, conn)
+    logger.info("Wrote %d delivery indicators to %s", len(df), table)
+    return len(df)
+
+
 def refresh_gam_weekly() -> int:
     """Pull ~5 weeks of daily GAM delivery for cap-tracked LIs, bucket by week.
 
@@ -1667,7 +1696,7 @@ def main() -> None:
         return
 
     if mode == "gam_hourly":
-        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_weekly])
+        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_delivery_indicator, refresh_gam_weekly])
         return
 
     if mode == "dv":
@@ -1705,6 +1734,7 @@ def main() -> None:
         _run_with_alert("gam", [
             refresh_gam,
             refresh_gam_hourly,
+            refresh_gam_delivery_indicator,
             refresh_gam_weekly,
             refresh_gam_pmp_deals,
             refresh_gam_deal_bids,
@@ -1733,6 +1763,7 @@ def main() -> None:
         refresh_magnite_deal_metadata,
         refresh_gam,
         refresh_gam_hourly,
+        refresh_gam_delivery_indicator,
         refresh_gam_weekly,
         refresh_gam_pmp_deals,
         refresh_gam_deal_bids,

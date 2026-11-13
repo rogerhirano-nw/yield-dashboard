@@ -4,6 +4,21 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-13 — GAM's own pacing for the cap-tracker card
+
+The seller-comms tracker card showed **169.3%** pacing on AppleTv 7472702553's
+launch day while GAM's UI showed **124%**: seller-comms estimated launch-day
+pacing straight-line by the clock (today's imps ÷ goal/day × hours elapsed),
+and GAM weights its expectation differently. `refresh_gam_delivery_indicator`
+(run with `--mode=gam_hourly`, plus the `gam` and `all` sweeps) now snapshots
+SOAP `LineItem.deliveryIndicator` for the `GAM_HOURLY_LINE_ITEMS` set into
+**`gam_li_delivery_indicator`** (`expected_delivery_pct`, `actual_delivery_pct`,
+`gam_progress_pct` = actual ÷ expected × 100, the GAM UI "Progress" figure;
+`gam_client.gam_progress_pct`, tests in `tests/test_gam_progress.py`). The table
+is replaced each run via `_safe_replace`, so it is born RLS-locked. v1 REST has
+no equivalent field. seller-comms prefers it over its own estimate when the
+snapshot is under 6h old.
+
 ## 2026-11-02 — Magnite API calls cut to one day each
 
 Magnite DV+ (Terence Roney) flagged our reporting calls as querying 30+ days
