@@ -196,6 +196,16 @@ slot config by UA, and with headless Chrome's desktop UA the mobile sticky is
 never requested), and the **Google One Tap** sign-in prompt that UA brings up is
 hidden like the consent panel, since it sits on top of the sticky.
 
+**Takeovers and pre-roll need a mode** (`-f mode=…`). A homepage takeover
+(Centerstage) renders at the top of the page as it loads and breaks out of its
+iframe, so the default article mode's scroll walk shoots past it: use
+`mode=takeover` on `https://www.newsweek.com/` (with `no_gate=true` — the
+homepage has no category to match). Pre-roll plays in the article's Mux player,
+not a GPT slot: use `mode=video` on an article with a player. Both take two
+frames 6s apart; keep the one that shows the creative. On 13 Nov 2026 the
+desktop pre-roll played and the mobile one did not start (the player stayed on
+the editorial video), so check the log's `playing` flag before trusting a frame.
+
 When one deck spans several pages (different line items shot on different
 articles, a homepage takeover), give each shot its own `page_url` in the spec so
 its footer names the page it was actually taken on.
