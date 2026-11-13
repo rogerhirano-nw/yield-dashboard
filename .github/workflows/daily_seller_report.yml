@@ -44,6 +44,11 @@ jobs:
           DATABASE_URL:           ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           ADOPS_EMAIL:            ${{ secrets.ADOPS_EMAIL }}
           DRY_RUN_TO:             ${{ secrets.DRY_RUN_TO || 'roger.hirano@newsweek.com' }}
           TEAMS_CHANNEL_EMAIL:    ${{ secrets.TEAMS_CHANNEL_EMAIL }}

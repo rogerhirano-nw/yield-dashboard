@@ -824,8 +824,9 @@ def _send_email(summary: RunSummary) -> None:
     summary_to = os.environ.get("CONFIANT_REPORT_TO_EMAIL") or os.environ.get("REPORT_TO_EMAIL")
     alert_to   = os.environ.get("CONFIANT_ALERT_TO_EMAIL")
 
-    if not (api_key and inbox_id):
-        print("Skipping email — AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set",
+    import graph_mail
+    if not (api_key and inbox_id) and not graph_mail.enabled():
+        print("Skipping email — neither GRAPH_MAILBOX nor AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID set",
               file=sys.stderr)
         return
 
@@ -855,12 +856,15 @@ def _send_email(summary: RunSummary) -> None:
         subject = f"GAM blocklist · no new URLs — {date_str}"
     else:
         subject = f"GAM blocklist · {n} new URL{'s' if n != 1 else ''} blocked — {date_str}"
-    AgentMail(api_key=api_key).inboxes.messages.send(
-        inbox_id,
-        to=recipient,
-        subject=subject,
-        html=_build_email_html(summary),
-    )
+    if graph_mail.enabled():
+        graph_mail.send_mail(recipient, subject, html=_build_email_html(summary))
+    else:
+        AgentMail(api_key=api_key).inboxes.messages.send(
+            inbox_id,
+            to=recipient,
+            subject=subject,
+            html=_build_email_html(summary),
+        )
     print(f"{'Failure alert' if is_failure else 'Summary'} email sent to {recipient}")
 
 

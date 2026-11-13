@@ -88,6 +88,11 @@ jobs:
           DATABASE_URL:                ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:           ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:          ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           HEALTH_DIGEST_TO:            ${{ vars.HEALTH_DIGEST_TO }}
           HEALTH_DIGEST_ONLY_FAILURES: ${{ vars.HEALTH_DIGEST_ONLY_FAILURES }}
           HEALTH_AUTO_REMEDIATE:       ${{ inputs.remediate == false && '0' || '1' }}

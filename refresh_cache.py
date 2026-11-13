@@ -37,6 +37,7 @@ from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
 from ttd_client import pull_ttd, CHUMBA_SUBJECT_NEEDLE
+import graph_mail
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -1237,9 +1238,9 @@ def refresh_dv_attention() -> int:
     logger.info("Refreshing dv_attention (DoubleVerify Attention metrics)")
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
+    if not (api_key and inbox_id) and not graph_mail.enabled():
         logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "Neither GRAPH_MAILBOX (reporting@) nor AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID set — "
             "skipping DV Attention refresh"
         )
         return 0
@@ -1291,9 +1292,9 @@ def refresh_dv_ivt() -> int:
     logger.info("Refreshing dv_ivt (DoubleVerify IVT classification rows)")
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
+    if not (api_key and inbox_id) and not graph_mail.enabled():
         logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "Neither GRAPH_MAILBOX (reporting@) nor AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID set — "
             "skipping DV IVT refresh"
         )
         return 0
@@ -1416,9 +1417,9 @@ def _refresh_ttd_campaign(
     logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
+    if not (api_key and inbox_id) and not graph_mail.enabled():
         logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+            "Neither GRAPH_MAILBOX (reporting@) nor AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID set — "
             "skipping TTD report refresh (%s)", table,
         )
         return 0
@@ -1644,7 +1645,7 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
     to_addr  = os.environ.get("REFRESH_ALERT_TO")
-    if not (api_key and inbox_id and to_addr):
+    if not to_addr or not ((api_key and inbox_id) or graph_mail.enabled()):
         return
 
     today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1655,6 +1656,13 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
         + "\n".join(lines)
         + f"\n\n{total_rows:,} rows written total.\n"
     )
+    if graph_mail.enabled():
+        try:
+            graph_mail.send_mail([to_addr], subject, text=body)
+            logger.info("Sweep alert sent to %s (Graph)", to_addr)
+        except Exception:
+            logger.exception("Failed to send sweep alert")
+        return
     payload = {"to": [to_addr], "subject": subject, "text": body}
     req = urllib.request.Request(
         f"https://api.agentmail.to/v0/inboxes/{inbox_id}/messages/send",

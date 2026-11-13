@@ -512,7 +512,12 @@ def pull_ttd(
 
     `primary_conv_col` is forwarded to `parse_ttd_csv` — see its docstring.
     """
-    messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
+    import graph_mail
+    use_graph = graph_mail.enabled()  # reporting@newsweek.com instead of agentmail
+    if use_graph:
+        messages = graph_mail.list_messages(subject_needle, limit=100)
+    else:
+        messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
     if not messages:
         return pd.DataFrame(), {}
 
@@ -539,16 +544,18 @@ def pull_ttd(
 
         # Fetch full message to get the body (list response may be truncated)
         try:
-            detail = get_message_detail(api_key, inbox_id, msg_id)
+            if use_graph:
+                body = graph_mail.message_text(msg_id)
+            else:
+                detail = get_message_detail(api_key, inbox_id, msg_id)
+                body = detail.get("text") or detail.get("body") or ""
+                if not body:
+                    # Fall back to HTML body, strip tags
+                    html = detail.get("html") or ""
+                    body = re.sub(r"<[^>]+>", " ", html)
         except Exception as exc:
             logger.warning("Could not fetch TTD message detail %s: %s", msg_id, exc)
             continue
-
-        body = detail.get("text") or detail.get("body") or ""
-        if not body:
-            # Fall back to HTML body, strip tags
-            html = detail.get("html") or ""
-            body = re.sub(r"<[^>]+>", " ", html)
 
         url = extract_ttd_download_url(body)
         if not url:

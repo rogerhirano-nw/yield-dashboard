@@ -31,6 +31,11 @@ jobs:
           MAGNITE_PUBLISHER_ID: ${{ secrets.MAGNITE_PUBLISHER_ID }}
           AGENTMAIL_API_KEY:    ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:   ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:     ${{ vars.REFRESH_ALERT_TO }}
 
   gam:
@@ -50,6 +55,11 @@ jobs:
           GAM_HOURLY_LINE_ITEMS:    ${{ vars.GAM_HOURLY_LINE_ITEMS }}
           AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
 
   gam-lica:
@@ -68,6 +78,11 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
 
   pubmatic:
@@ -91,6 +106,11 @@ jobs:
           PUBMATIC_PASSWORD:      ${{ secrets.PUBMATIC_PASSWORD }}
           AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:       ${{ vars.REFRESH_ALERT_TO }}
 
   dv:
@@ -107,6 +127,11 @@ jobs:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
 
   opensincera:
@@ -124,6 +149,11 @@ jobs:
           OPENSINCERA_TOKEN: ${{ secrets.OPENSINCERA_TOKEN }}
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:  ${{ vars.REFRESH_ALERT_TO }}
 
   ttd:
@@ -141,6 +171,11 @@ jobs:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
 
   post-sweep:
@@ -159,4 +194,9 @@ jobs:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # Microsoft 365 shared mailbox (reporting@newsweek.com). Empty = keep agentmail.
+          GRAPH_MAILBOX: ${{ secrets.GRAPH_MAILBOX }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}

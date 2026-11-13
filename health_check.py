@@ -627,11 +627,16 @@ def main(argv: list[str]) -> int:
         to = [a.strip() for a in
               (os.environ.get("HEALTH_DIGEST_TO") or DEFAULT_RECIPIENT).split(",")
               if a.strip()]
-        resp = send_via_agentmail(
-            os.environ["AGENTMAIL_API_KEY"], os.environ["AGENTMAIL_INBOX_ID"],
-            to, subject, body,
-        )
-        logger.info("Sent to %s: %s", to, resp.get("message_id") or resp)
+        import graph_mail
+        if graph_mail.enabled():
+            graph_mail.send_mail(to, subject, text=body)
+            logger.info("Sent to %s via %s (Graph)", to, graph_mail.mailbox())
+        else:
+            resp = send_via_agentmail(
+                os.environ["AGENTMAIL_API_KEY"], os.environ["AGENTMAIL_INBOX_ID"],
+                to, subject, body,
+            )
+            logger.info("Sent to %s: %s", to, resp.get("message_id") or resp)
 
     return 0 if all_ok else 1
 
