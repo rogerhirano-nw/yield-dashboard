@@ -996,10 +996,16 @@ def refresh_magnite_deal_metadata() -> int:
 
     Pulls ONE day (yesterday) and folds it into the cumulative table via
     `merge_deal_age`. This was a 180-day pull every morning until Magnite
-    flagged it on 2026-11-02 (see the MAGNITE_DATE_RANGE note). The table
-    already held 180 days of first_seen history, so ages stay correct, and
-    because it's now cumulative a deal's age is no longer capped at 180 days.
-    Conservative — only underestimates true age, never overestimates."""
+    flagged it on 2026-11-02 (see the MAGNITE_DATE_RANGE note). Because it's
+    now cumulative, a deal's age is no longer capped by the pull window.
+
+    The 180-day pull never actually returned 180 days: Magnite answered the
+    05-06 → 11-01 request with data from 10-01 only (about a month back, no
+    error), so every deal's first_seen was 10-01 and no Magnite deal could
+    reach deal_health's 90-day age cutoff. Fixed in prod 2026-11-13 by moving
+    first_seen back to `pmp_last_bid_date.first_seen_date` (floor 2026-05-26) —
+    see docs/changelog.md. Conservative — only underestimates true age, never
+    overestimates."""
     logger.info("Refreshing magnite_deal_metadata (deal-age proxy, 1-day merge)")
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]

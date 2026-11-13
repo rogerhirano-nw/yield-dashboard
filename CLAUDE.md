@@ -179,7 +179,16 @@ reports were 7 / 14 / 30 days. Every Magnite report now sends
   `merge_lookup_rows`: re-seen deal_ids replace, others are kept until unseen
   for 30 days — the old `last_30` coverage.
 - `magnite_deal_metadata` → `merge_deal_age`: cumulative first/last seen;
-  `days_seen` grows only when the day is new. Ages are no longer capped at 180d.
+  `days_seen` grows only when the day is new. Ages are no longer capped by the
+  pull window. **The old "180-day" pull only ever returned ~1 month** —
+  Magnite answered 05-06 → 11-01 with data from 10-01 on, silently — so the
+  table started out with every `first_seen` = 10-01 and no Magnite deal could
+  pass deal_health's 90-day age cutoff. Backfilled 2026-11-13 from
+  `pmp_last_bid_date.first_seen_date` (one-off SQL in `docs/changelog.md`;
+  `merge_deal_age` only moves first_seen back, so the daily merge keeps it).
+  **Don't trust a Magnite date range you didn't check against the returned
+  `MIN(date)`** — and with one-day pulls, a lost first_seen can't be re-pulled;
+  `pmp_last_bid_date` is the backup.
 
 **The cost: a day missed by every run that day is not re-pulled** —
 `_magnite_append_days` logs a WARNING naming the gap so the sweep alert email
