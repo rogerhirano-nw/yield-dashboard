@@ -80,7 +80,6 @@ JOBS = [
     # dispatched weekly_report.yml was RETIRED 2026-11-16 along with the
     # workflow. Delete it on cron-job.org too: this script only creates and
     # updates jobs, it never deletes them.)
-    },
     {
         "repo":     "rogerhirano-nw/apple-news",
         "title":    "apple-news daily report (daily 10 AM ET)",
