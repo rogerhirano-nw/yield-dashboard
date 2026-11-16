@@ -76,18 +76,10 @@ JOBS = [
             "wdays":   [-1],
         },
     },
-    {
-        "repo":     "rogerhirano-nw/yield-dashboard",
-        "title":    "yield-dashboard weekly seller report (Wed 9 AM ET)",
-        "workflow": "weekly_report.yml",
-        "schedule": {
-            "timezone": "America/New_York",
-            "hours":   [9],
-            "minutes": [0],
-            "mdays":   [-1],
-            "months":  [-1],
-            "wdays":   [3],    # Wednesday only (Sun=0..Sat=6)
-        },
+    # (The "yield-dashboard weekly seller report (Wed 9 AM ET)" job that
+    # dispatched weekly_report.yml was RETIRED 2026-11-16 along with the
+    # workflow. Delete it on cron-job.org too: this script only creates and
+    # updates jobs, it never deletes them.)
     },
     {
         "repo":     "rogerhirano-nw/apple-news",

@@ -58,5 +58,5 @@ If you suspect a credential has leaked, see [SECURITY.md](SECURITY.md).
 
 `refresh.yml` runs daily at 09:00 UTC and pulls yesterday's data into the
 Supabase cache (which holds the last 7 days, not lifetime).
-`weekly_report.yml` runs Mondays at 13:00 UTC. Both can be triggered manually
-via `gh workflow run`.
+It can also be triggered manually via `gh workflow run`. (`weekly_report.yml`,
+the weekly deal health email, was retired on 2026-11-16.)
