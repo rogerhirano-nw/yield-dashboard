@@ -197,6 +197,7 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 | Digest | Script | Workflow | Recipients (var) | Subject |
 |---|---|---|---|---|
 | ~~Betting CPA (Spinfinite, IO1109)~~ **RETIRED** | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
+| ~~Weekly deal health (zero-bid PMP/PG deals)~~ **RETIRED** | `python -m deal_health` | ~~`.github/workflows/weekly_report.yml`~~ (deleted) | was hard-coded in the workflow (am@, adops@, revops@ + 3 sellers) | `Weekly Deal Health — <date>` |
 | Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
 
 The health check runs after the sweep and verifies prod data invariants: DV
@@ -264,6 +265,20 @@ script, workflow, and `docs/betting_cpa.md` are kept as the reference
 pattern for the next CPA-sold flight (outbound send, sub_id join
 contract, segment test design). The data health check intentionally does
 not cover `betting_conversions`.
+
+**Weekly deal health email is retired** (Roger, 2026-11-16). It mailed the
+sales team every Wednesday at 09:00 ET (cron-job.org → `weekly_report.yml`) a
+list of PMP/PG deals that had bid requests but no bids. The workflow is
+**deleted**, not just disabled, so a stray cron-job.org dispatch gets a 404
+and can't send anything. The `deal_health/` package and its tests are kept as
+the pattern for an Outlook-safe HTML email. **If it is ever revived, fix the
+window first**: its SQL (`deal_health/data.py`) has **no date filter**, and
+`magnite_deal_daily` / `pubmatic_deals` hold scattered days back to May (plus
+Magnite now accumulates one day per pull, so it never stops growing). So "no
+bids in the last 7 days" really meant "no bids on any day still in the
+cache", which inflated request counts and missed deals that bid long ago but
+have since gone dark. The `*_deal_metadata` refreshes it used to run weekly
+are still part of the daily sweep (they feed nothing else today).
 
 Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
 

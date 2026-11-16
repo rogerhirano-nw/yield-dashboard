@@ -4,6 +4,17 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-16 — Weekly deal health email retired
+
+Roger retired the Wednesday "Weekly Deal Health" email (zero-bid PMP/PG deals,
+sent to the sales team). `weekly_report.yml` is deleted and its cron-job.org
+entry is removed from `scripts/setup_cronjob_org.py`. The live cron-job.org job
+has to be deleted by hand; until then its dispatch 404s harmlessly. The
+`deal_health/` package is kept. We found it had a gap, so it was never fixed:
+its "last 7 days" SQL had no date filter and was really reading every day left
+in the Magnite/Pubmatic cache (back to May). Detail: CLAUDE.md, "Outbound daily
+digests".
+
 ## 2026-11-13 — GAM's own pacing for the cap-tracker card
 
 The seller-comms tracker card showed **169.3%** pacing on AppleTv 7472702553's
