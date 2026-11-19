@@ -1,0 +1,35 @@
+name: Chumba CPA preview — fetch export (encrypted)
+
+# One-off, read-only: fetches the newest TTD Chumba export from AgentMail and
+# uploads it ENCRYPTED to a key held off-repo. Sends nothing. Only runs on
+# pushes to this preview branch.
+on:
+  push:
+    branches: [claude/project-thread-0ea2t8]
+    paths: [.github/workflows/chumba_cpa_preview_fetch.yml, scripts/fetch_ttd_export_encrypted.py]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -q -r requirements.txt
+      - run: python scripts/fetch_ttd_export_encrypted.py scripts/preview_keys/chumba_cpa_preview_pub.pem out
+        env:
+          AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chumba-export-encrypted
+          path: |
+            out/export.xlsx.enc
+            out/k.bin.enc
+            out/received.txt
+          retention-days: 1
