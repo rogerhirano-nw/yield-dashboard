@@ -45,7 +45,17 @@ design a new one; fill the template.
    **Daily delivery** (paragraph + table, **newest day first**, with an
    Attention column) · **About the metrics** (Attention index, Viewability,
    CTR) · source line. Tables, not charts: the Sky doc has none.
-4. Add a row to *Instances*.
+4. Add a row to *Instances*, and add the report to the **Final Reports hub**
+   (https://claude.ai/artifact/TfbwUgbAPwsduwPYh4g9gy) with an `ArtifactData`
+   `set` on collection `reports`, doc id = the GAM order id. Fields:
+   `campaign, advertiser, order_id, flight_start, flight_end` (YYYY-MM-DD),
+   `seller, goal, delivered, clicks, ctr, ctr_target` (fractions),
+   `viewability, attention, attention_note` (leave out when omitted),
+   `revenue, revenue_note` (leave out for $0-rate lines), `doc_url` (https),
+   `workbook_name`, `workbook_url` (https, optional), `note`, `reported_on`.
+   Only the owner and editors can write the hub; everyone it's shared with reads
+   it. Artifacts can't serve .xlsx files, so a workbook shows as a link only once
+   it has an https home (e.g. Drive): set `workbook_url` then.
 
 ## Rules learned (American Hospital Dubai, 2026-11-02)
 
