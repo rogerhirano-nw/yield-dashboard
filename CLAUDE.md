@@ -1098,22 +1098,22 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
 - `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
-  pipeline. Three jobs that all read/write the same `state.sqlite`:
+  pipeline. Two jobs that read/write the same `state.sqlite` (a third, the
+  weekly email, is retired):
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
        pulls Confiant API, pushes per-creative Security-flagged Google
        domains to GAM Protection 28044902 ("Everything") via Playwright.
        Post-run summary email goes to `revops@newsweek.com` via agentmail.
-    2. **Weekly RevOps digest** (`confiant_blocklist_weekly_report.py`,
-       launchd Mon 09:00 ET) — rolls up the past 7 days of pushes,
-       branded layout (KPI tiles, per-day bar chart, issue-type cards),
-       emails RevOps. Layout matches the publisher brand-safety style.
+    2. ~~Weekly RevOps digest~~ **RETIRED** (Roger, 2026-11-24) — script and
+       plist deleted. The installed launchd job on the Mac has to be removed
+       by hand; commands in the doc.
     3. **HRAP seed + SSP forward**
        (`confiant_blocklist_seed_hraps.py` + `confiant_hrap_forward.py`,
        run manually when Confiant ships a periodic notice). HRAP list
        persisted at `data/confiant_hraps.json`; seeder pushes new entries
        to the same Protection in batches of 30; forwarder creates one
        Outlook draft per SSP partner via Microsoft Graph.
-  All four scripts auto-load `~/code/yield-dashboard/.env` via the same
+  The scripts auto-load `~/code/yield-dashboard/.env` via the same
   `_load_dotenv()` helper. **Plist EnvironmentVariables dict must NOT
   redeclare keys as empty `<string></string>`** — `os.environ.setdefault`
   treats them as "already set" and the script silently skips. The first

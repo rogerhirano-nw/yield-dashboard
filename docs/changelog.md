@@ -4,6 +4,15 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-24 — Weekly GAM blocklist email retired
+
+Roger retired the weekly "GAM Blocklist — Weekly Summary" email.
+`confiant_blocklist_weekly_report.py` and its launchd plist are deleted; the
+installed job on the Mac still has to be removed by hand (`launchctl disable` +
+`bootout`). It sent even with nothing to report, and "0 this week" could not be
+told apart from a broken daily job. The daily blocklist job is unchanged.
+Detail: `docs/confiant_blocklist.md`, "Weekly RevOps summary".
+
 ## 2026-11-16 — Weekly deal health email retired
 
 Roger retired the Wednesday "Weekly Deal Health" email (zero-bid PMP/PG deals,

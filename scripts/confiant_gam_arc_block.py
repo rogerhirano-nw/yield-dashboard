@@ -31,7 +31,7 @@ Things this script has learned the hard way:
 - Every successful block lands in `state.sqlite` as
   `gam-arc:<gpt_ad_response_id>` with
   `issue_type = "Manual block in GAM ARC — Confiant ID xxxxx → GPT ..."`
-  so it surfaces in the weekly RevOps digest under its own bucket.
+  so it stays distinguishable from URL-based Protection pushes.
 
 Usage:
 
