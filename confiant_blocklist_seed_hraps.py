@@ -10,8 +10,8 @@ The script is **idempotent**: it diffs against the same `blocked_domains`
 table the daily cron writes to and only pushes the delta. Safe to run on
 every update or even daily.
 
-Issue type column is set to `HRAP — <platform name>` so the weekly digest
-distinguishes platform-blocks from per-creative blocks.
+Issue type column is set to `HRAP — <platform name>` so
+`state.sqlite` distinguishes platform-blocks from per-creative blocks.
 
 Typical usage:
 
