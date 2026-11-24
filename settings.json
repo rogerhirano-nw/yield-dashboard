@@ -332,55 +332,5 @@
         "Revenue": "ad_server_cpm_and_cpc_revenue"
       }
     }
-  ],
-  "confiant_outreach": {
-    "_comment": "SSP outreach: weekly email to each SSP's policy/AM contact listing creatives Confiant flagged on their demand. Fill in ssp_contacts with real addresses; SSPs not in this map get skipped (logged with count). publisher_name + cc_emails are mandatory.",
-    "publisher_name": "Newsweek",
-    "cc_emails": [
-      "confiant-alerts@newsweek.com"
-    ],
-    "min_flagged_impressions_for_outreach": 5,
-    "ssp_contacts": {
-      "AdaptMX": "shaun.myers@adaptmx.com",
-      "Amazon": "ldurica@amazon.com",
-      "Amazon TAM": "ldurica@amazon.com",
-      "Criteo": "support-cgrid@criteo.com",
-      "Equativ": "pkankaria@equativ.com",
-      "Google": "REPLACE_ME_google_policy@example.com",
-      "Google Video": "REPLACE_ME_google_video_policy@example.com",
-      "GumGum": "liz.lazarow@gumgum.com",
-      "IMDS": "cmika@advertising.com",
-      "InMobi": "megha.modi@inmobi.com, pinakin.mehtha@inmobi.com, phil.tse@inmobi.com, network-quality@inmobi.com, christina.franciosi@inmobi.com",
-      "Index Exchange": "d.mistry@indexexchange.com, ix.square@indexexchange.com, michael.meghory@indexexchange.com",
-      "Insticator": "joe.cohen@cool.co, igor.svoroba@insticator.com, zahid.khan@cool.co",
-      "Magnite": "newsweekdv@magnite.com",
-      "Media.net": "bhamti.s@media.net, newsweektam@media.net, matt.w@media.net",
-      "Minute Media": "ragul@minutemedia.com, matan.raz@minutemedia.com",
-      "Nativo": "mmacvittie@life360.com, r.silva@life360.com",
-      "OMS": "maayanb@onlinemediasolutions.com",
-      "Ogury": "dana.thomas@ogury.co",
-      "OpenWeb": "emilio.gutierrez@openweb.com",
-      "OpenX": "kip.nairin@openx.com, emily.glavin@openx.com, mackenzie.hewitt@openx.com, pawel.meus@openx.com, lee.dolson@openx.com",
-      "Ozone": "marielva@ozoneproject.com, publishersupport@ozoneproject.com",
-      "PubMatic": "newsweek@pubmatic.com",
-      "Seedtag": "ziadrasheed@seedtag.com",
-      "Sharethrough": "pkankaria@equativ.com",
-      "Smile Wanted": "ikrame@smilewanted.com, david@smilewanted.com",
-      "Sovrn": "kmyers@sovrn.com",
-      "Sparteo": "y.alawaye.ext@sparteo.com, l.dussart@sparteo.com, support@meetscale.com, j.strutt@sparteo.com",
-      "Start.io": "adi.degani@start.io, michael.zaslansky@start.io, clientsolutions@start.io, saptarshi.mukherjee@start.io",
-      "Teads": "vivica.michel@teads.com",
-      "The Trade Desk": "Nicole.Fitzsimmons@thetradedesk.com, jacklyn.izzo@thetradedesk.com",
-      "TripleLift": "mhoney@triplelift.com",
-      "Undertone": "madeleineh@perion.com, nhernandez@perion.com, jcarfora@perion.com",
-      "Vidazoo": "madeleineh@perion.com, nhernandez@perion.com, jcarfora@perion.com",
-      "Xandr": "michaeltrinh@microsoft.com",
-      "Yahoo": "robin.wilson@yahooinc.com",
-      "YieldMo": "ameyveci@yieldmo.com",
-      "Zeta Global": "Tristen Fabricant <tfabricant@zetaglobal.com>"
-    },
-    "ssp_publisher_ids": {
-      "InMobi": "6fe52bf582154348b15330b31f73e373"
-    }
-  }
+  ]
 }

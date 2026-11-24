@@ -26,13 +26,6 @@ fast dashboard read. No source is queried at render time.
 - `dashboard.py` — Streamlit dashboard reading from the cache. Deployed to Streamlit Cloud from `main`. Skinned to the Newsweek design system (light "Paper" theme; tokens in the style block, spec in `docs/design_handoff/` — see CLAUDE.md "Dashboard design system").
 - `static/fonts/` — drop-in dir for the licensed Newsweek font binaries (Benton Modern Display + Franklin Gothic); fallbacks (Georgia / Helvetica) apply while empty. See `static/fonts/README.md`.
 
-### Brand-safety pipeline (Confiant → GAM + SSPs) — see `docs/confiant_blocklist.md`
-
-- `confiant_client.py` / `confiant_blocklist.py` — daily Playwright cron (launchd 04:00 ET) that pulls Confiant's per-creative Security flags and pushes Google-flagged domains to GAM Protection 28044902.
-- `confiant_blocklist_seed_hraps.py` — manual idempotent seeder for Confiant's "High Risk Ad Platforms" list (`data/confiant_hraps.json`). Pushes in batches of 30; strips `*.` wildcard prefix; records each platform under `issue_type = "HRAP — <name>"`.
-- `confiant_hrap_forward.py` — manual one-shot that creates one Outlook draft per SSP partner via Microsoft Graph, forwarding the HRAP notice. Reuses the same token cache as the per-SSP weekly outreach.
-- `confiant_outreach.py` / `confiant_outreach_drafts.py` — weekly per-SSP Confiant outreach. Subject `<SSP>//<Publisher> — N flagged creatives on <publisher>.com (past 7 days)`, CC always `revops@newsweek.com`. Contacts in `settings.json -> ssp_contacts` accept either bare email or RFC 5322 display form (`"Tristen Fabricant <tfabricant@zetaglobal.com>"`). Per-SSP publisher IDs live at `settings.json -> ssp_publisher_ids` and surface in the email body.
-
 ## Quickstart
 
 ```bash

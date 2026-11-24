@@ -4,6 +4,32 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-24 — Confiant pipeline retired
+
+Roger retired the Confiant integration. Deleted: `confiant_client.py` (the API
+client) and everything built on it — `confiant_blocklist.py` (daily 04:00 ET
+push of flagged domains to GAM Protection 28044902), `gam_blocklist_ui.py` (its
+Playwright driver), `gam_arc.py` + `scripts/confiant_gam_arc_block.py` (Ad
+Review Center blocks), `auto_fix.py`, `confiant_outreach.py` /
+`confiant_outreach_drafts.py` (per-SSP outreach drafts),
+`confiant_blocklist_seed_hraps.py` / `confiant_hrap_forward.py` +
+`data/confiant_hraps.json`, the launchd plist, `docs/confiant_blocklist.md`,
+the `confiant_outreach` block in `settings.json`, and the `msal` / `anthropic`
+requirements (no other users). Domains already in the Protection stay blocked;
+nothing adds new ones. Nothing in the sweep, dashboard or health check used it.
+
+Still to do by hand on the Mac (plain `launchctl unload` reloads at login):
+
+```bash
+launchctl disable gui/$(id -u)/com.newsweek.confiant-blocklist
+launchctl bootout gui/$(id -u)/com.newsweek.confiant-blocklist
+rm ~/Library/LaunchAgents/com.newsweek.confiant-blocklist.plist
+rm -rf ~/.confiant-blocklist ~/.confiant-outreach
+```
+
+Then drop `CONFIANT_API_KEY` from `~/code/yield-dashboard/.env` and revoke the
+key in Confiant.
+
 ## 2026-11-24 — Weekly GAM blocklist email retired
 
 Roger retired the weekly "GAM Blocklist — Weekly Summary" email.

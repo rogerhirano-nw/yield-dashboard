@@ -9,8 +9,8 @@ name: Daily data health check
 # (= 05:00 ET, cron-job.org → refresh.yml).
 #
 # Trigger of record: launchd on Roger's Mac
-# (~/Library/LaunchAgents/com.newsweek.yield-health-check.plist, same
-# host as the Confiant jobs) dispatching via the locally-authenticated
+# (~/Library/LaunchAgents/com.newsweek.yield-health-check.plist)
+# dispatching via the locally-authenticated
 # gh CLI — no tokens stored anywhere new. Two fires daily, pinned to ET
 # like the sweep itself:
 #   05:45 ET  morning verdict (45 min behind the sweep; catches and

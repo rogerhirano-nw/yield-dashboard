@@ -253,8 +253,7 @@ the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It is
 triggered by **launchd on Roger's Mac**
-(`~/Library/LaunchAgents/com.newsweek.yield-health-check.plist`, same
-host as the Confiant jobs) firing `gh workflow run health_check.yml` at
+(`~/Library/LaunchAgents/com.newsweek.yield-health-check.plist`) firing `gh workflow run health_check.yml` at
 05:45 + 09:45 ET (ET-pinned like the sweep; `RunAtLoad` catches boots
 after missed fires, and redundant fires are free thanks to the
 run-history gate). GitHub-native cron drifts hours late and
@@ -1097,35 +1096,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
-- `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
-  pipeline. Two jobs that read/write the same `state.sqlite` (a third, the
-  weekly email, is retired):
-    1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
-       pulls Confiant API, pushes per-creative Security-flagged Google
-       domains to GAM Protection 28044902 ("Everything") via Playwright.
-       Post-run summary email goes to `revops@newsweek.com` via agentmail.
-    2. ~~Weekly RevOps digest~~ **RETIRED** (Roger, 2026-11-24) — script and
-       plist deleted. The installed launchd job on the Mac has to be removed
-       by hand; commands in the doc.
-    3. **HRAP seed + SSP forward**
-       (`confiant_blocklist_seed_hraps.py` + `confiant_hrap_forward.py`,
-       run manually when Confiant ships a periodic notice). HRAP list
-       persisted at `data/confiant_hraps.json`; seeder pushes new entries
-       to the same Protection in batches of 30; forwarder creates one
-       Outlook draft per SSP partner via Microsoft Graph.
-  The scripts auto-load `~/code/yield-dashboard/.env` via the same
-  `_load_dotenv()` helper. **Plist EnvironmentVariables dict must NOT
-  redeclare keys as empty `<string></string>`** — `os.environ.setdefault`
-  treats them as "already set" and the script silently skips. The first
-  ~10 daily blocklist runs lost their summary email to exactly that bug;
-  see `docs/confiant_blocklist.md` for the full debrief.
-- `docs/confiant_outreach.md` (lives next to it) — weekly per-SSP
-  Confiant outreach emails. Microsoft Graph drafts via
-  `confiant_outreach_drafts.py`. Subject `<SSP>//<Publisher> — N flagged
-  creatives on <publisher>.com (past 7 days)`. CC always
-  `revops@newsweek.com` (settings.json). Per-SSP enhancements:
-  `ssp_publisher_ids` (surfaces our pub-id in the body); contacts accept
-  RFC 5322 display names (`"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
+- ~~Confiant brand-safety pipeline~~ **RETIRED** (Roger, 2026-11-24). The
+  Confiant API client and everything built on it are deleted: the daily
+  04:00 ET blocklist push to GAM Protection 28044902, the per-SSP outreach
+  drafts, the HRAP seeder/forwarder, the Ad Review Center blocker, and the
+  LLM auto-fix. Domains already pushed stay blocked in GAM; nothing adds
+  new ones. The installed launchd job on the Mac and its `~/.confiant-*`
+  state dirs have to be removed by hand (commands in `docs/changelog.md`).
+  The code is in git history before this change if it's ever needed again.
 - `docs/article_sponsor_logo.md` — "Presented by <logo>" strip at the right
   of the article breadcrumb row, served from GAM through the out-of-page
   unit `oop1` (first paint; engineering ships the client-rendered container
