@@ -614,25 +614,55 @@ def refresh_gam() -> int:
     return len(df)
 
 
+
+def _tracked_line_items() -> "list[str]":
+    """The cap-tracked LI ids for the hourly / weekly / delivery-indicator pulls.
+
+    Primary source: the tracked_line_items table in the shared cache, written
+    hourly by seller-comms from its settings.json — the single source of truth
+    for tracked LIs (see seller-comms CLAUDE.md "Single source of truth").
+    Adding a campaign there now reaches this feed with no variable edit.
+
+    Falls back to the legacy GAM_HOURLY_LINE_ITEMS env var when the table is
+    missing or empty (deploy order doesn't matter; local runs still work).
+    """
+    import os
+    try:
+        with _engine().connect() as conn:
+            if "tracked_line_items" in sa_inspect(conn).get_table_names():
+                rows = conn.execute(
+                    text("SELECT line_item_id FROM tracked_line_items ORDER BY line_item_id")
+                ).fetchall()
+                ids = [str(r[0]).strip() for r in rows if str(r[0]).strip()]
+                if ids:
+                    logger.info("Tracked LIs from tracked_line_items table (%d): %s", len(ids), ids)
+                    return ids
+                logger.info("tracked_line_items table is empty — falling back to GAM_HOURLY_LINE_ITEMS")
+    except Exception:
+        logger.exception("tracked_line_items read failed — falling back to GAM_HOURLY_LINE_ITEMS")
+    ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    if ids:
+        logger.info("Tracked LIs from GAM_HOURLY_LINE_ITEMS env var (%d): %s", len(ids), ids)
+    return ids
+
+
 def refresh_gam_hourly() -> int:
     """Pull today's hourly GAM delivery for line items with weekly budget caps.
 
-    Line item IDs are read from the GAM_HOURLY_LINE_ITEMS environment variable
-    (comma-separated string). Only those IDs are queried and stored. Skips
-    silently if the variable is unset.
+    Line item IDs come from _tracked_line_items (the tracked_line_items table
+    in the shared cache, written by seller-comms; legacy fallback: the
+    GAM_HOURLY_LINE_ITEMS env var). Only those IDs are queried and stored.
+    Skips silently when neither source has ids.
 
     Writes to gam_campaigns_hourly (date, hour, line_item_id, ad_server_impressions,
     ad_server_clicks, pulled_at). Upserts by deleting today's rows for these LIs
     then re-inserting so re-runs throughout the day always reflect the latest
     intraday delivery.
     """
-    import os
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping hourly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping hourly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     # Use ET date to match what the cap digest queries — the 7:30 PM ET refresh
     # runs at 23:30 UTC (still May 29 ET) and must write the same date the
     # 8 PM cap digest (= 00:00 UTC = May 30 UTC) will query.
@@ -678,10 +708,9 @@ def refresh_gam_delivery_indicator() -> int:
     (line_item_id, expected_delivery_pct, actual_delivery_pct, gam_progress_pct,
     pulled_at). A failed or empty pull leaves the previous snapshot in place.
     """
-    import os
-    li_ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    li_ids = _tracked_line_items()
     if not li_ids:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping delivery-indicator refresh")
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping delivery-indicator refresh")
         return 0
     df = GAMClient().get_delivery_indicators(li_ids)
     if df.empty:
@@ -706,14 +735,11 @@ def refresh_gam_weekly() -> int:
 
     Skips silently when GAM_HOURLY_LINE_ITEMS is unset.
     """
-    import os
     from datetime import timedelta as _td
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping weekly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping weekly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     from zoneinfo import ZoneInfo
     today = datetime.now(tz=ZoneInfo("America/New_York")).date()
     start = today - _td(days=35)
