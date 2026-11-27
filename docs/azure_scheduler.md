@@ -36,11 +36,10 @@ Logic Apps can't do `frequency: Hour` with a fixed minute, so the hourly jobs ar
 ## The GitHub token — the one thing still tied to a person
 The token is a fine-grained PAT ("azure-logic-apps-scheduler", Actions:
 read & write on yield-dashboard / seller-comms / apple-news), created
-2026-11-27 under **Roger's** GitHub account, **expires 2026-12-27 23:30 UTC**
-(GitHub's 30-day default). After that every scheduled job silently stops
-starting — the health check's 18:00 UTC GitHub-native cron is the only thing
-that would still run and flag the stale data. It also stops working when
-Roger's GitHub access goes away. When the repos move to the
+2026-11-27 under **Roger's** GitHub account, limited to those three repos,
+**no expiration date**. It stops working when Roger's GitHub access goes away
+— after that every scheduled job silently stops starting, and only the health
+check's 18:00 UTC GitHub-native cron would still run and flag the stale data. When the repos move to the
 Newsweek GitHub org:
 
 1. Redeploy with the new owner (URLs include it; a POST to the old URL won't
