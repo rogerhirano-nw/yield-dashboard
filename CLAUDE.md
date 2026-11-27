@@ -1005,8 +1005,8 @@ they're most fixable — **widen `landing_window_days` to 14 to catch them
 early** (flags ~10). `impressions_1d` is yesterday's delivery; a 7-day
 average would be steadier if pacing is spiky.
 
-## Dashboard deploy (Azure App Service; Streamlit Cloud being retired)
-**Production is Azure App Service since 2026-11-27** — https://nw-adops-yield-dashboard.azurewebsites.net, behind Newsweek's Entra login, deployed from `main` by `.github/workflows/deploy_dashboard_azure.yml`. Runbook: `docs/azure_dashboard.md`. The old Streamlit Community Cloud app (`newsweek.streamlit.app`, Roger's personal account) still auto-deploys from `main` until it is deleted; everything below about "Cloud" applies to both hosts (both run UTC, both cache with `st.cache_data`).
+## Dashboard deploy (Azure App Service)
+**Production is Azure App Service since 2026-11-27** — https://nw-adops-yield-dashboard.azurewebsites.net, behind Newsweek's Entra login, deployed from `main` by `.github/workflows/deploy_dashboard_azure.yml`. Runbook: `docs/azure_dashboard.md`. The old Streamlit Community Cloud app (`newsweek.streamlit.app`, Roger's personal account) was **deleted 2026-11-27**; notes below that say "Cloud" now apply to App Service (also UTC, same `st.cache_data` caching).
 
 **Streamlit Cloud history:** production deployed from `main` (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
