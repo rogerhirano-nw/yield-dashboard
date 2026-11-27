@@ -16,7 +16,23 @@ against Postgres, so the switch is **one connection string** (`DATABASE_URL`).
 - `scripts/db_disk_io_report.py` reads `pg_stat_statements`; enable that
   extension on Azure (server parameter `azure.extensions`) if you want it.
 
-## 1. Server (Newsweek IT / Azure admin)
+## 1. Server — **created 2026-11-27**
+- **`nw-adops-yield-db.postgres.database.azure.com`**, database `yield`, admin
+  `yieldadmin`, PostgreSQL 17.11, Burstable B1ms, 32 GiB, **Central US**.
+- Resource group `rg-adops-supermetrics-prod`, subscription "SoftCoice CSP -
+  Newsweek Azure" (`26f8da52-…`). Roger has Contributor on the group.
+- Region: **East US is closed to new Postgres servers on this subscription**
+  ("Provisioning is restricted in this region" — needs a Microsoft support
+  request to lift); East US 2 lists B1ms but rejected it at create
+  (`SkuNotAvailable`). Central US worked. (The aborted East US 2 attempt still
+  reserves the name `nw-adops-yield-pg`, hence `-db`.)
+- Firewall: one rule `AllowAll_…` 0.0.0.0–255.255.255.255; SSL is enforced.
+- Admin password: generated on Roger's Mac, never printed; stored in the
+  GitHub secret `AZURE_DATABASE_URL` and Roger's macOS Keychain
+  (`security find-generic-password -s azure-yield-pg -w`). Reset it from the
+  portal (server → Reset password) if the Keychain copy is gone.
+
+Original spec, for re-creating it elsewhere:
 - Azure Database for PostgreSQL **Flexible Server**, **PostgreSQL 17**.
 - Size: **Burstable B1ms** (1 vCore, 2 GiB) + **32 GiB** storage is plenty
   for an ~89 MB database; roughly the price of the current Supabase plan.
