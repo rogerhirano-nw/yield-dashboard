@@ -252,16 +252,12 @@ sweep re-runs/day — anything still failing after that needs a human, and
 the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It is
-triggered by **launchd on Roger's Mac**
-(`~/Library/LaunchAgents/com.newsweek.yield-health-check.plist`, same
-host as the Confiant jobs) firing `gh workflow run health_check.yml` at
-05:45 + 09:45 ET (ET-pinned like the sweep; `RunAtLoad` catches boots
-after missed fires, and redundant fires are free thanks to the
-run-history gate). GitHub-native cron drifts hours late and
-auto-disables after 60 days of repo inactivity, so it is not the
-trigger of record; cron-job.org (`workflow_dispatch` + PAT, like
-`refresh.yml`) is the alternative if the Mac dependency becomes a
-problem. One `schedule:` cron remains (18:00 UTC) as a **dead-man
+triggered by **Azure Logic App `la-sched-yield-health-check`** at
+05:45 + 09:45 ET (since 2026-11-27; see `docs/azure_scheduler.md` — it
+replaced the launchd job on Roger's Mac, `com.newsweek.yield-health-check`;
+redundant fires are free thanks to the run-history gate). GitHub-native cron
+drifts hours late and auto-disables after 60 days of repo inactivity, so it
+is not the trigger of record. One `schedule:` cron remains (18:00 UTC) as a **dead-man
 fallback**: quiet when an earlier run already sent today's verdict, but
 if the Mac is off all day or gh auth breaks it becomes the first run of
 the day and the verdict still goes out — late, which is the tell. The
@@ -291,7 +287,7 @@ cache", which inflated request counts and missed deals that bid long ago but
 have since gone dark. The `*_deal_metadata` refreshes it used to run weekly
 are still part of the daily sweep (they feed nothing else today).
 
-Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
+Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally via `workflow_dispatch` by the Azure Logic Apps scheduler (`docs/azure_scheduler.md`; was cron-job.org until 2026-11-27) (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
 
 ## Dashboard ad-format taxonomy
 **Seven canonical formats** (owner-defined by Roger, 2026-06-12; PRs
@@ -1088,6 +1084,11 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/azure_scheduler.md` — **every timed job** (daily sweep, hourly GAM refresh,
+  health check, seller-comms tracker/reports, apple-news reports) is started by
+  an Azure Logic App per schedule (`la-sched-*`, `infra/scheduler/scheduler.json`)
+  calling GitHub's workflow-dispatch API with a token from Key Vault
+  `nw-adops-sched-kv`. Replaced cron-job.org 2026-11-27.
 - `docs/azure_dashboard.md` — the dashboard on **Azure App Service** (URL, plan in East US 2
   because Central US has no App Service quota, Entra login, publish-profile deploys, rotation).
 - `docs/azure_db_migration.md` — **moving the cache DB from Supabase to Azure
