@@ -1,0 +1,86 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Replaces cron-job.org: one Consumption Logic App per schedule. Each reads the GitHub token from Key Vault (managed identity) and calls the workflow_dispatch API. Runbook: docs/azure_scheduler.md"
+  },
+  "parameters": {
+    "githubOwner": { "type": "string", "defaultValue": "rogerhirano-nw", "metadata": { "description": "GitHub owner/org of the repos. Change this (and redeploy) when the repos move to the Newsweek org." } },
+    "keyVaultName": { "type": "string", "defaultValue": "nw-adops-sched-kv" },
+    "secretName": { "type": "string", "defaultValue": "github-dispatch-token" },
+    "state": { "type": "string", "defaultValue": "Disabled", "allowedValues": ["Enabled", "Disabled"] },
+    "location": { "type": "string", "defaultValue": "[resourceGroup().location]" },
+    "jobs": {
+      "type": "array",
+      "defaultValue": [
+        { "name": "yield-refresh-all",        "repo": "yield-dashboard", "workflow": "refresh.yml",             "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [5],    "minutes": [0]  } } },
+        { "name": "yield-refresh-direct",     "repo": "yield-dashboard", "workflow": "refresh_direct.yml",      "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23], "minutes": [45] } } },
+        { "name": "yield-health-check",       "repo": "yield-dashboard", "workflow": "health_check.yml",        "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [5, 9], "minutes": [45] } } },
+        { "name": "seller-cap-digest",        "repo": "seller-comms",    "workflow": "cap_digest.yml",          "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23], "minutes": [0] } } },
+        { "name": "seller-daily-report",      "repo": "seller-comms",    "workflow": "daily_seller_report.yml", "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [8],    "minutes": [0]  } } },
+        { "name": "seller-ttd-cpa",           "repo": "seller-comms",    "workflow": "ttd_cpa_report.yml",      "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [8],    "minutes": [0]  } } },
+        { "name": "seller-weekly-deal-health","repo": "seller-comms",    "workflow": "weekly_report.yml",       "recurrence": { "frequency": "Week",  "interval": 1, "schedule": { "weekDays": ["Monday"], "hours": [9], "minutes": [0] } } },
+        { "name": "applenews-daily",          "repo": "apple-news",      "workflow": "daily-report.yml",        "recurrence": { "frequency": "Day",   "interval": 1, "schedule": { "hours": [10],   "minutes": [0]  } } },
+        { "name": "applenews-monthly",        "repo": "apple-news",      "workflow": "monthly-report.yml",      "recurrence": { "frequency": "Month", "interval": 1, "schedule": { "monthDays": [3], "hours": [10], "minutes": [0] } } }
+      ]
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[concat('la-sched-', parameters('jobs')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "identity": { "type": "SystemAssigned" },
+      "tags": { "purpose": "github-workflow-scheduler", "repo": "[parameters('jobs')[copyIndex()].repo]", "workflow": "[parameters('jobs')[copyIndex()].workflow]" },
+      "copy": { "name": "jobsLoop", "count": "[length(parameters('jobs'))]" },
+      "properties": {
+        "state": "[parameters('state')]",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "triggers": {
+            "Schedule": {
+              "type": "Recurrence",
+              "recurrence": "[union(parameters('jobs')[copyIndex()].recurrence, createObject('timeZone', 'Eastern Standard Time', 'startTime', '2026-11-27T00:00:00'))]"
+            }
+          },
+          "actions": {
+            "Get_GitHub_token": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "[concat('https://', parameters('keyVaultName'), '.vault.azure.net/secrets/', parameters('secretName'), '?api-version=7.4')]",
+                "authentication": { "type": "ManagedServiceIdentity", "audience": "https://vault.azure.net" }
+              },
+              "runtimeConfiguration": { "secureData": { "properties": ["outputs"] } }
+            },
+            "Dispatch_workflow": {
+              "type": "Http",
+              "runAfter": { "Get_GitHub_token": ["Succeeded"] },
+              "inputs": {
+                "method": "POST",
+                "uri": "[concat('https://api.github.com/repos/', parameters('githubOwner'), '/', parameters('jobs')[copyIndex()].repo, '/actions/workflows/', parameters('jobs')[copyIndex()].workflow, '/dispatches')]",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_GitHub_token')?['value']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "newsweek-adops-azure-scheduler"
+                },
+                "body": { "ref": "main" }
+              },
+              "runtimeConfiguration": { "secureData": { "properties": ["inputs"] } }
+            }
+          },
+          "outputs": {}
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "principalIds": {
+      "type": "array",
+      "copy": { "count": "[length(parameters('jobs'))]", "input": "[reference(resourceId('Microsoft.Logic/workflows', concat('la-sched-', parameters('jobs')[copyIndex()].name)), '2019-05-01', 'full').identity.principalId]" }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 name: Refresh cache
 
-# Triggered by cron-job.org at 05:00 America/New_York via workflow_dispatch.
+# Triggered at 05:00 America/New_York via workflow_dispatch by the Azure Logic
+# App la-sched-yield-refresh-all (docs/azure_scheduler.md; was cron-job.org).
 # Six source jobs run in parallel; post-sweep runs after the three jobs whose
 # tables feed pmp_last_bid_date (magnite, gam, pubmatic).
 #

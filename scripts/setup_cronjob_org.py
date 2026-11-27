@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """
+OBSOLETE since 2026-11-27 — cron-job.org was replaced by Azure Logic Apps
+(infra/scheduler/scheduler.json, docs/azure_scheduler.md). Kept as reference.
+
 One-shot: provision the cron-job.org jobs that trigger this repo's
 scheduled GitHub Actions workflows.
 

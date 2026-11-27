@@ -89,7 +89,7 @@ AGENTMAIL_BASE = "https://api.agentmail.to/v0"
 DEFAULT_RECIPIENT = "roger.hirano@newsweek.com"
 
 JOIN_RATE_THRESHOLD_PCT = 90.0
-SWEEP_MAX_AGE_HOURS = 26  # daily cadence + slack for cron-job.org jitter
+SWEEP_MAX_AGE_HOURS = 26  # daily cadence + slack for scheduler jitter
 
 # (check name, table, date-ish column, max age in days).
 # Same-day sources write yesterday's date on every successful sweep, so

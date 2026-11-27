@@ -58,8 +58,13 @@ Original spec, for re-creating it elsewhere:
 ## 3. Cut over (same day as the copy)
 Point every `DATABASE_URL` at the Azure string:
 1. GitHub repo secret `DATABASE_URL`.
-2. Streamlit Cloud → app → Settings → Secrets → `DATABASE_URL`.
-3. The `.env` on the Mac that runs the Confiant jobs, if it uses the DB.
+2. **`rogerhirano-nw/seller-comms` repo secret `DATABASE_URL`** — it reads the
+   same cache (Ivy's hourly tracker, seller/weekly reports, Teams cards) and
+   keeps its own copy of the secret. **Missed on 2026-11-27:** the tracker kept
+   reading Supabase, frozen at the 12:45 ET copy, for ~5 h until it was fixed.
+3. Streamlit Cloud → app → Settings → Secrets → `DATABASE_URL`; App Service →
+   app setting `DATABASE_URL` (`docs/azure_dashboard.md`).
+4. The `.env` on the Mac that runs the Confiant jobs, if it uses the DB.
 Then dispatch `refresh.yml` and `health_check.yml` — all green — and open
 the dashboard. Rows written to Supabase between the copy and the cutover are
 not carried over; the next daily sweep re-pulls those windows anyway.
