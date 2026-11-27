@@ -1,0 +1,56 @@
+# One-off: copy the Supabase cache into Azure Database for PostgreSQL.
+#
+# Reads DATABASE_URL (Supabase, today's prod) and writes AZURE_DATABASE_URL
+# (the new server). Supabase is only READ. On the Azure side the public
+# schema's tables are replaced (pg_restore --clean), so run it against an
+# empty / not-yet-live server — never after the cutover.
+# Ends with a per-table row-count comparison; the run fails on any mismatch.
+# Runbook: docs/azure_db_migration.md
+name: Migrate DB to Azure (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "copy" to replace the public schema on AZURE_DATABASE_URL'
+        required: true
+
+jobs:
+  migrate:
+    if: github.event.inputs.confirm == 'copy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_URL: ${{ secrets.DATABASE_URL }}
+      TARGET_URL: ${{ secrets.AZURE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install Postgres 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Check secrets
+        run: |
+          test -n "$SOURCE_URL" || { echo "DATABASE_URL secret missing"; exit 1; }
+          test -n "$TARGET_URL" || { echo "AZURE_DATABASE_URL secret missing"; exit 1; }
+      - name: Dump Supabase public schema (read-only)
+        # Normalise SQLAlchemy-style URLs (postgresql+psycopg2://) for libpq.
+        run: |
+          SRC="${SOURCE_URL/postgresql+psycopg2:/postgresql:}"
+          /usr/lib/postgresql/17/bin/pg_dump "$SRC" --schema=public \
+            --no-owner --no-privileges --format=custom --file=cache.dump
+          ls -lh cache.dump
+      - name: Restore into Azure
+        run: |
+          DST="${TARGET_URL/postgresql+psycopg2:/postgresql:}"
+          /usr/lib/postgresql/17/bin/pg_restore --dbname="$DST" --schema=public \
+            --no-owner --no-privileges --clean --if-exists --exit-on-error cache.dump
+      - name: Compare row counts
+        run: |
+          pip install -q "sqlalchemy<2.1" psycopg2-binary
+          python scripts/compare_db_rowcounts.py "$SOURCE_URL" "$TARGET_URL"

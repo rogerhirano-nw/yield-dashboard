@@ -281,7 +281,21 @@ def _eval_rls_hygiene(offenders: list[tuple[str, bool, bool]],
         + "; ".join(bits) + " (run docs/supabase_rls_lockdown.sql)")
 
 
+def _has_supabase_roles(conn) -> bool:
+    """True on Supabase. Plain Postgres (e.g. Azure Database for PostgreSQL)
+    has no anon/authenticated roles and no REST API to lock down — and
+    has_table_privilege() errors on a missing role, so the RLS check must
+    not run there."""
+    n = conn.execute(text(
+        "SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated')"
+    )).scalar()
+    return n == 2
+
+
 def _check_rls_hygiene(conn) -> CheckResult:
+    if not _has_supabase_roles(conn):
+        return CheckResult(RLS_CHECK_NAME, True,
+                           "not Supabase (no anon/authenticated roles) — no REST API to lock down")
     rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
     return _eval_rls_hygiene(
         [(r.table_name, r.rls_off, r.has_grants) for r in rows])
@@ -405,6 +419,8 @@ def remediate_rls() -> tuple[bool, str]:
             connect_args={"connect_timeout": 10},
         )
         with engine.begin() as conn:
+            if not _has_supabase_roles(conn):
+                return True, "RLS hygiene: not Supabase, nothing to fix"
             rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
             if not rows:
                 return True, "RLS hygiene: nothing to fix"
