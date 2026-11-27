@@ -12,7 +12,7 @@ Newsweek's Azure subscription, behind Newsweek's Microsoft login.
 | Plan | `nw-adops-yield-plan`, **B1**, ~$13/mo, **East US 2** |
 | Resource group | `rg-adops-supermetrics-prod` (sub "SoftCoice CSP - Newsweek Azure") |
 | Database | `nw-adops-yield-db` (Central US) — see `docs/azure_db_migration.md` |
-| Login | Entra (App Service auth, classic). App registration `nw-adops-yield-dashboard`, appId `515ccd55-c974-45a8-87cf-aa37d4c726c9`; client secret expires ~2028-11 |
+| Login | Entra via App Service auth **v2** (issuer `login.microsoftonline.com/<tenant>/v2.0`). App registration `nw-adops-yield-dashboard`, appId `515ccd55-c974-45a8-87cf-aa37d4c726c9`; secret in app setting `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`, expires ~2028-11 |
 
 **Why East US 2:** the subscription has **zero App Service quota in Central US**
 (B1/S1/P0v3/F1 all refused). Cross-region to the DB adds ~25 ms per query,
@@ -57,6 +57,22 @@ after that it's cached for 2h.
   after resetting it in the portal (Overview → Download/Reset publish profile),
   then `gh secret set AZURE_WEBAPP_PUBLISH_PROFILE`.
 - **Login secret** (expires ~2028-11): `az ad app credential reset --id 515ccd55-…`
-  then `az webapp auth-classic update … --aad-client-secret <new>`.
+  and put the new value in app setting `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`.
+
+## Login gotchas (2026-11-27)
+- It was first set up with **classic (v1) auth** (`az webapp auth-classic`):
+  sign-in at Microsoft succeeded but `/.auth/login/aad/callback` failed with an
+  empty-body error (Chrome shows its own error page). Upgraded to v2
+  (`az webapp auth config-version upgrade` + `az webapp auth microsoft update
+  --issuer …/v2.0`). Don't go back to classic.
+- **Auth config changes only apply after a full restart** — for minutes the app
+  kept redirecting to the old `login.windows.net/…/oauth2/authorize` (v1)
+  endpoint. Confirm with `curl -s -o /dev/null -H 'Accept: text/html' -w '%{redirect_url}' <url>`:
+  it must point at `…/oauth2/v2.0/authorize`.
+- Each user sees a one-time **"Permissions requested"** (openid/profile/email)
+  screen. If someone gets "Need admin approval", ask IT to grant tenant-wide admin
+  consent on the enterprise app.
+- Unauthenticated requests get **302** (browsers) or **401** (curl/API); errors
+  from the auth layer have empty bodies.
 - **DB password**: update both the `DATABASE_URL` app setting here and the
   GitHub secret.
