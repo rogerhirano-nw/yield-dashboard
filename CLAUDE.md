@@ -1107,7 +1107,10 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
   and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
   conversion, compute upgrade).
-- `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
+- `docs/confiant_blocklist.md` — **RETIRED 2026-11-27** (Roger: "Confiant jobs should be all
+  canceled", ahead of his departure). The launchd jobs on Roger's laptop are unloaded and
+  nothing else schedules them; the scripts stay as reference only — don't re-schedule
+  them without an owner at Newsweek. Was: Confiant -> GAM Protection brand-safety
   pipeline. Two jobs that read/write the same `state.sqlite` (a third, the
   weekly email, is retired):
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —

@@ -1,3 +1,7 @@
+> **RETIRED 2026-11-27.** All Confiant jobs (daily blocklist push, weekly RevOps digest,
+> HRAP seed/forward, outreach drafts) were canceled when Roger left Newsweek. Nothing
+> schedules them anymore; the scripts are kept for reference only.
+
 # Confiant -> GAM blocklist
 
 Weekly job: pull Confiant's `issue_type_by_domain` report via their REST API,
