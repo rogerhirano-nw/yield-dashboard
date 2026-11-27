@@ -1009,8 +1009,10 @@ they're most fixable — **widen `landing_window_days` to 14 to catch them
 early** (flags ~10). `impressions_1d` is yesterday's delivery; a 7-day
 average would be steadier if pacing is spiky.
 
-## Streamlit Cloud deploy
-**Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
+## Dashboard deploy (Azure App Service; Streamlit Cloud being retired)
+**Production is Azure App Service since 2026-11-27** — https://nw-adops-yield-dashboard.azurewebsites.net, behind Newsweek's Entra login, deployed from `main` by `.github/workflows/deploy_dashboard_azure.yml`. Runbook: `docs/azure_dashboard.md`. The old Streamlit Community Cloud app (`newsweek.streamlit.app`, Roger's personal account) still auto-deploys from `main` until it is deleted; everything below about "Cloud" applies to both hosts (both run UTC, both cache with `st.cache_data`).
+
+**Streamlit Cloud history:** production deployed from `main` (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
 **The Cloud runtime is UTC — the dashboard's "today" must be Eastern.**
 Streamlit Cloud's container clock is UTC, so a bare `date.today()` /
@@ -1086,6 +1088,8 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/azure_dashboard.md` — the dashboard on **Azure App Service** (URL, plan in East US 2
+  because Central US has no App Service quota, Entra login, publish-profile deploys, rotation).
 - `docs/azure_db_migration.md` — **moving the cache DB from Supabase to Azure
   Database for PostgreSQL** (handoff to Newsweek ownership, 2026-11). Switch is
   one `DATABASE_URL`; one-off copy via `migrate_db_to_azure.yml` (pg_dump →
