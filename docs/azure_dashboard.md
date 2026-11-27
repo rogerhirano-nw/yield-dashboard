@@ -58,6 +58,8 @@ after that it's cached for 2h.
   then `gh secret set AZURE_WEBAPP_PUBLISH_PROFILE`.
 - **Login secret** (expires ~2028-11): `az ad app credential reset --id 515ccd55-…`
   and put the new value in app setting `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`.
+- **DB password**: update both the `DATABASE_URL` app setting here and the
+  GitHub secret.
 
 ## Login gotchas (2026-11-27)
 - It was first set up with **classic (v1) auth** (`az webapp auth-classic`):
@@ -74,5 +76,3 @@ after that it's cached for 2h.
   consent on the enterprise app.
 - Unauthenticated requests get **302** (browsers) or **401** (curl/API); errors
   from the auth layer have empty bodies.
-- **DB password**: update both the `DATABASE_URL` app setting here and the
-  GitHub secret.
