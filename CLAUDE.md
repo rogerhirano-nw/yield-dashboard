@@ -1073,6 +1073,14 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/final_report.md` — **campaign final reports** (doc + client Excel
+  workbook). The house format is the AppleTv Sky Program F3 report: fill
+  `templates/final_report_template.xlsx` with `scripts/build_final_report_xlsx.py`
+  from the `final_campaign_report.yml` artifact, and mirror the Sky doc's
+  sections. Don't design a new layout. Display CTR target is 0.10% (Roger,
+  2026-11-02). DV attention comes from the DV emails, because `dv_attention` only
+  holds ~8 days. The client logo goes on a transparent background, top right of
+  the Summary page.
 - `docs/azure_scheduler.md` — **every timed job** (daily sweep, hourly GAM refresh,
   health check, seller-comms tracker/reports, apple-news reports) is started by
   an Azure Logic App per schedule (`la-sched-*`, `infra/scheduler/scheduler.json`)
