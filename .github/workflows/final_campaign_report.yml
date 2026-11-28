@@ -26,7 +26,7 @@ on:
       omit_measurement: { description: 'Leave viewability + attention out (interstitials reading ~0%)', required: false, type: boolean, default: false }
       revenue: { description: 'Add GAM revenue (off for $0-rate lines)', required: false, type: boolean, default: false }
   push:
-    branches: [claude/nifty-dijkstra-lhykyt, claude/tools-tab]
+    branches: [claude/nifty-dijkstra-lhykyt]
     paths:
       - scripts/final_campaign_report.py
       - scripts/final_report_workbook.py
