@@ -32,7 +32,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TAG_YEAR: ${{ inputs.year }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python scripts/build_tag_ivt_deck.py --out out | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          python scripts/build_tag_ivt_deck.py --out out | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remind adops@ about missing months
         if: ${{ success() && inputs.remind }}
         env:
