@@ -1,0 +1,63 @@
+name: TAG IVT deck (monthly)
+run-name: "TAG IVT deck · ${{ inputs.year || 'this year' }}"
+
+# Monthly (Azure Logic App la-sched-yield-tag-ivt, the 4th at 09:00 ET — DV
+# needs ~3 days after month end) and on demand from the dashboard's Tools →
+# TAG IVT tab. Rebuilds the TAG IVT Monitoring Report deck from the monthly
+# numbers in Postgres tag_ivt_months, stores it in campaign_reports (kind
+# 'tag') for the dashboard, attaches the GAM columns CSV, and emails adops@
+# when a closed month still has no DV / GA4 numbers. Runbook:
+# docs/tag_ivt_monitoring_report.md.
+on:
+  workflow_dispatch:
+    inputs:
+      year: { description: 'Report year (blank = this year; January builds last year)', required: false, default: '' }
+      remind: { description: 'Email adops@ about months still missing their DV / GA4 numbers', required: false, type: boolean, default: true }
+
+permissions:
+  contents: read
+
+jobs:
+  deck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.11" }
+      - run: pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary python-pptx requests
+      - name: Build deck
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TAG_YEAR: ${{ inputs.year }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/build_tag_ivt_deck.py --out out | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Remind adops@ about missing months
+        if: ${{ success() && inputs.remind }}
+        env:
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import json, adops_mail
+          miss = json.load(open("out/missing.json"))
+          if not miss:
+              print("all closed months have their numbers"); raise SystemExit
+          text = ("The TAG IVT deck was rebuilt, but these months still need their numbers "
+                  "before they show in it:\n\n" + "\n".join(f"- {m}" for m in miss) +
+                  "\n\nFor each month: GA4 web pageviews, DoubleVerify pre-bid requests, and DV "
+                  "post-bid SIVT for display and video (DV Inventory Quality tiles). Enter them in "
+                  "the dashboard: https://adops.azurewebsites.net/?view=tools → TAG IVT → Monthly numbers, "
+                  "then press Rebuild deck.\n\nRunbook: docs/tag_ivt_monitoring_report.md")
+          if adops_mail.configured():
+              adops_mail.send(["adops@newsweek.com"], "TAG IVT deck — numbers needed for " + ", ".join(miss), text)
+              print("reminder sent")
+          else:
+              print("MAIL_WEBHOOK_URL not set; reminder not sent:\n" + text)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tag-ivt-deck
+          path: out/
+          if-no-files-found: warn

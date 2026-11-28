@@ -216,7 +216,10 @@ def _runs(workflow: str, key: str, wanted: tuple[str, ...]) -> None:
     try:
         runs = _recent_runs(workflow)
     except Exception as e:  # noqa: BLE001
-        st.error(f"Couldn't read the runs from GitHub: {e}")
+        if "404" in str(e):  # workflow not on main yet
+            st.caption("No runs yet.")
+        else:
+            st.error(f"Couldn't read the runs from GitHub: {e}")
         return
     if not runs:
         st.caption("No runs yet.")
@@ -352,26 +355,129 @@ def _screenshots(engine) -> None:
 
 
 # ── TAG IVT ──────────────────────────────────────────────────────────────
-def _tag_ivt() -> None:
-    st.markdown("GAM columns for the monthly **TAG IVT Monitoring Report** (the DV-GAM "
-                "impressions and SIVT workbook): display and video totals by month, "
-                "using the 2026 workbooks' definitions. The DoubleVerify and GA4 "
-                "numbers stay manual. Runbook: `docs/tag_ivt_monitoring_report.md`.")
+TAG_DECK_WF = "tag_ivt_monthly.yml"
+_TAG_FIELDS = [("ga4_pageviews", "GA4 pageviews"), ("dv_prebid", "DV pre-bid requests"),
+               ("sivt_display", "SIVT display %"), ("sivt_video", "SIVT video %"),
+               ("sivt_overall", "SIVT overall % (optional)"),
+               ("dv_display_imps", "DV display impressions (optional)"),
+               ("dv_video_imps", "DV video impressions (optional)")]
+_PCT = {"sivt_display", "sivt_video", "sivt_overall"}
+
+
+def _tag_months(engine, year: int) -> pd.DataFrame:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+    import build_tag_ivt_deck as bt  # the table + its seed live with the deck builder
+    with engine.begin() as c:
+        bt.ensure_table(c)
+        df = pd.read_sql(sa.text("SELECT * FROM tag_ivt_months WHERE month BETWEEN :a AND :b"),
+                         c, params={"a": date(year, 1, 1), "b": date(year, 12, 1)})
+    df["m"] = pd.to_datetime(df["month"]).dt.month if not df.empty else []
+    rows = []
+    for m in range(1, 13):
+        hit = df[df["m"] == m] if not df.empty else df
+        r = hit.iloc[0].to_dict() if len(hit) else {}
+        row = {"Month": date(year, m, 1).strftime("%b %Y")}
+        for k, label in _TAG_FIELDS:
+            v = r.get(k)
+            v = None if v is None or pd.isna(v) else v
+            row[label] = (round(float(v) * 100, 4) if k in _PCT and v is not None else
+                          (int(v) if v is not None else None))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _save_tag_months(engine, year: int, edited: pd.DataFrame) -> int:
+    cols = [k for k, _ in _TAG_FIELDS]
+    n = 0
+    with engine.begin() as c:
+        for i, r in edited.reset_index(drop=True).iterrows():
+            vals = {}
+            for k, label in _TAG_FIELDS:
+                v = r.get(label)
+                v = None if v is None or pd.isna(v) else float(v)
+                vals[k] = (v / 100 if k in _PCT else int(v)) if v is not None else None
+            if all(v is None for v in vals.values()):
+                continue
+            vals["month"] = date(year, i + 1, 1)
+            c.execute(sa.text(
+                f"INSERT INTO tag_ivt_months (month, {', '.join(cols)}) VALUES "
+                f"(:month, {', '.join(':' + x for x in cols)}) ON CONFLICT (month) DO UPDATE SET "
+                + ", ".join(f"{x}=EXCLUDED.{x}" for x in cols) + ", updated_at=CURRENT_TIMESTAMP"), vals)
+            n += 1
+    return n
+
+
+def _tag_ivt(engine) -> None:
+    st.markdown("The **TAG IVT Monitoring Report** deck for TAG Certified Against Fraud "
+                "rebuilds itself on the **4th of each month** (DoubleVerify needs about 3 "
+                "days after the month closes). Its numbers come from GA4 and DoubleVerify, "
+                "neither of which this system can read, so type each month's four "
+                "numbers below. If a closed month is still missing, adops@ gets a "
+                "reminder. Runbook: `docs/tag_ivt_monitoring_report.md`.")
     today = datetime.now(_ET).date()
-    last_closed = (today.replace(day=1) - timedelta(days=1))
-    with st.form("tag_form"):
-        c1, c2 = st.columns(2)
-        start = c1.text_input("From month", value=f"{today.year}-01", help="YYYY-MM")
-        end = c2.text_input("To month", value=f"{last_closed:%Y-%m}",
-                            help="YYYY-MM · default: the last closed month")
-        go = st.form_submit_button("Pull GAM columns", type="primary")
-    if go:
-        import re as _re
-        if not (_re.fullmatch(r"\d{4}-\d{2}", start) and _re.fullmatch(r"\d{4}-\d{2}", end)):
-            st.error("Months are YYYY-MM, e.g. 2026-01.")
-        else:
-            _dispatch(TAG_WF, {"start": start, "end": end}, "TAG IVT pull")
-    _runs(TAG_WF, "tag", (".csv",))
+    year = st.selectbox("Year", list(range(today.year, 2025, -1)),
+                        index=0 if today.month > 1 else 1, key="tag_year")
+
+    # the latest deck for the year
+    try:
+        with engine.connect() as c:
+            d = c.execute(sa.text("SELECT id, file_name, note, created_at FROM campaign_reports "
+                                  "WHERE kind='tag' AND order_id=:y AND status='ok'"),
+                          {"y": str(year)}).first()
+    except Exception:  # noqa: BLE001
+        d = None
+    if d:
+        c1, c2 = st.columns([3, 2])
+        c1.markdown(f"**Latest deck** · built {pd.Timestamp(d.created_at):%-d %b %Y}  \n"
+                    f"<span style='color:#57564f;font-size:12px'>{d.note or ''}</span>",
+                    unsafe_allow_html=True)
+        got = st.session_state.get(f"tag_deck_{d.id}")
+        if got is None and c2.button("Get deck", key=f"tag_get_{d.id}"):
+            got = st.session_state[f"tag_deck_{d.id}"] = _file(engine, d.id)
+        if got:
+            c2.download_button(f"⬇ {got[0]}", got[1], file_name=got[0], key=f"tag_dl_{d.id}")
+    else:
+        st.info(f"No {year} deck built yet. Press Rebuild deck below.")
+
+    st.markdown("##### Monthly numbers")
+    st.caption("SIVT as a percentage (0.04 = 0.04%). DV figures come from the Inventory "
+               "Quality tiles; GA4 is web pageviews. The optional columns improve the "
+               "weighting — without DV impressions, overall SIVT is weighted by GAM's "
+               "gross count.")
+    try:
+        base = _tag_months(engine, year)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Couldn't read the monthly numbers: {e}")
+        return
+    edited = st.data_editor(base, key=f"tag_editor_{year}", hide_index=True,
+                            disabled=["Month"], use_container_width=True,
+                            column_config={label: st.column_config.NumberColumn(
+                                label, format="%.2f" if k in _PCT else "%d", min_value=0)
+                                for k, label in _TAG_FIELDS})
+    b1, b2 = st.columns(2)
+    if b1.button("Save numbers", type="primary", key="tag_save"):
+        n = _save_tag_months(engine, year, edited)
+        st.success(f"Saved {n} month(s). Press Rebuild deck to update the deck.")
+    if b2.button("Rebuild deck", key="tag_rebuild"):
+        _dispatch(TAG_DECK_WF, {"year": year, "remind": False}, "deck rebuild")
+    _runs(TAG_DECK_WF, "tagdeck", (".pptx", ".csv"))
+
+    with st.expander("GAM columns only (for the DV-GAM workbook)"):
+        last_closed = (today.replace(day=1) - timedelta(days=1))
+        with st.form("tag_form"):
+            c1, c2 = st.columns(2)
+            start = c1.text_input("From month", value=f"{today.year}-01", help="YYYY-MM")
+            end = c2.text_input("To month", value=f"{last_closed:%Y-%m}", help="YYYY-MM")
+            go = st.form_submit_button("Pull GAM columns")
+        if go:
+            import re as _re
+            if not (_re.fullmatch(r"\d{4}-\d{2}", start) and _re.fullmatch(r"\d{4}-\d{2}", end)):
+                st.error("Months are YYYY-MM, e.g. 2026-01.")
+            else:
+                _dispatch(TAG_WF, {"start": start, "end": end}, "TAG IVT pull")
+        _runs(TAG_WF, "tag", (".csv",))
 
 
 def render(settings: dict, engine=None) -> None:
@@ -381,7 +487,7 @@ def render(settings: dict, engine=None) -> None:
         _name_builder(settings)
     eng = engine() if callable(engine) else engine
     for tab, fn in ((t2, lambda: _final_report(eng)), (t3, lambda: _screenshots(eng)),
-                    (t4, _tag_ivt)):
+                    (t4, lambda: _tag_ivt(eng))):
         with tab:
             if not gha.configured():
                 st.info("This needs the GitHub token (app setting GITHUB_DISPATCH_TOKEN, "

@@ -1114,8 +1114,12 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are read-only against GAM; anyone who can sign in to the dashboard can start
   them. `st.tabs` renders all three tabs each rerun, so the run lists are
   cached 20s (`_recent_runs`) — keep it, or every keystroke in the name builder
-  costs three GitHub calls. A fourth tab, **TAG IVT**, dispatches
-  `tag_ivt_gam_pull.yml` for a month range and serves its CSV.
+  costs three GitHub calls. A fourth tab, **TAG IVT**, holds the monthly
+  GA4 / DV numbers (`tag_ivt_months`, edited in a table) and serves the deck
+  that `tag_ivt_monthly.yml` → `scripts/build_tag_ivt_deck.py` rebuilds on the
+  4th of each month from `templates/tag_ivt_deck_template.pptx` (and emails
+  adops@ about closed months still missing numbers; GA4 and DV have no API
+  here). See `docs/tag_ivt_monitoring_report.md`.
 - `docs/final_report.md` — **campaign final reports** (doc + client Excel
   workbook). The house format is the AppleTv Sky Program F3 report: fill
   `templates/final_report_template.xlsx` with `scripts/build_final_report_xlsx.py`

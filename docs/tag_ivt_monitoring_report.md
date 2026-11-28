@@ -65,6 +65,33 @@ folder per year (2018–2026). The workbooks and that year's reports sit in the
 year folder; start a new folder each January. TAG folder:
 <https://newsweek0.sharepoint.com/:f:/r/sites/yield/Shared%20Documents/TAG?d=w6f5bf7a5ebcb486fb227e5800637b2be&csf=1&web=1&e=ocTR9G>.
 
+## The deck now rebuilds itself (since 2026-11-28)
+
+`tag_ivt_monthly.yml` → `scripts/build_tag_ivt_deck.py` runs on the **4th of
+each month at 09:00 ET** (Logic App `la-sched-yield-tag-ivt`). It fills
+`templates/tag_ivt_deck_template.pptx` (the 2026 deck as sent, data through
+September) — slide 4's pre-bid tables, slide 9's SIVT tables, the cover's
+"DATA THROUGH …", slide 2's YTD SIVT, slide 5's % screened and the footnotes —
+and stores the result for download in the dashboard (**Tools → TAG IVT**,
+Postgres `campaign_reports`, kind `tag`). Nothing else on the slides changes;
+edit narrative slides (e.g. 8, "Key changes") in the template.
+
+**What still has to be typed in:** per month, GA4 web pageviews, DV pre-bid
+requests, and DV post-bid SIVT for display and video. Neither GA4 nor DV's
+Inventory Quality tiles have an API this system can reach. Enter them in the
+dashboard's **Monthly numbers** table (Postgres `tag_ivt_months`; Jan–Sep 2026
+are seeded from the deck as sent) and press **Rebuild deck**. If a month closed
+3+ days ago is still empty, the monthly run emails adops@ which months are
+missing. Overall / quarterly / YTD SIVT is weighted by DV post-bid impressions
+when entered (optional columns), else by GAM's gross count per ad unit —
+close enough that a 2-decimal rate doesn't move; an entered *SIVT overall*
+(DV's own figure) wins for that month, which is how Jan–Sep keep the values
+already sent. Each January the deck for the new year starts from the same
+template with the year swapped and empty tables.
+
+The workbooks (DV-GA, DV-GAM) are still updated by hand from the steps below;
+the GAM columns pull is on the same tab ("GAM columns only").
+
 The order matters: **GAM → DV → GA4 → workbooks → deck.** Each step below says
 which cells it fills.
 
