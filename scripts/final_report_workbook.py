@@ -32,7 +32,17 @@ import dashboard_logic as dl  # noqa: E402
 
 
 def _words(tok: str) -> str:
-    return tok.replace("-", " ").strip()
+    return " ".join(tok.replace("-", " ").split())
+
+
+def convention_name(report: dict) -> str:
+    """The first name that follows the 14-field standard: the order's, else its
+    first line item's. The report JSON's order name can be just the id (the
+    REST order lookup doesn't always return a name), and line items carry the
+    same convention."""
+    names = [(report.get("order") or {}).get("name") or ""]
+    names += [li.get("name") or "" for li in report.get("line_items") or []]
+    return next((n for n in names if len(n.split("_")) >= 14), names[0])
 
 
 def _d(s: str):
@@ -47,7 +57,7 @@ def _fmt(d: date) -> str:
 
 
 def derive(report: dict, ae_names: dict) -> dict:
-    name = (report.get("order") or {}).get("name") or ""
+    name = convention_name(report)
     tok = name.split("_")
     adv = _words(tok[7]) if len(tok) > 8 else (report.get("order") or {}).get("advertiser", "")
     camp = _words(tok[8]) if len(tok) > 8 else name
