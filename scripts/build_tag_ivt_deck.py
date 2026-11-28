@@ -290,6 +290,16 @@ def main() -> int:
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
     e = engine()
+    # DV pre-bid comes from DV's shared Drive folder when the service account can read it
+    drive_note = ""
+    try:
+        import dv_prebid_drive as dpd
+        for line in dpd.apply(e, dpd.fetch()):
+            print("  DV Drive:", line)
+    except Exception as ex:  # noqa: BLE001 — never block the deck on Drive
+        drive_note = f"DV pre-bid wasn't read from DV's Drive folder ({ex}); type it in."
+        print("  DV Drive:", drive_note)
+    (out / "drive.txt").write_text(drive_note)
     rows = load_rows(e, a.year)
     done = [m for m in rows if complete(rows[m])]
     weights = {}
