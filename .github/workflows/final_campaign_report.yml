@@ -1,0 +1,94 @@
+name: Final campaign report (any order)
+
+# Read-only end-of-campaign delivery report for a GAM order: goal vs
+# delivered, clicks/CTR, revenue, Active View, by day / creative / device /
+# country. Window = flight start → today (ET) unless end_date is given.
+run-name: "Final report · order ${{ inputs.order || 'default' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: 'GAM order id'
+        required: true
+      end_date:
+        description: 'Report end date YYYY-MM-DD (blank = today, ET)'
+        required: false
+        default: ''
+      # Workbook overrides — blank = derived from the order name (SOP 1.3
+      # tokens, ae_names) by scripts/final_report_workbook.py.
+      advertiser: { description: 'Workbook: advertiser (blank = order-name token 7)', required: false, default: '' }
+      campaign: { description: 'Workbook: campaign (blank = order-name token 8)', required: false, default: '' }
+      seller: { description: 'Workbook: seller full name (blank = from the AE token)', required: false, default: '' }
+      flight: { description: 'Workbook: flight text (blank = line start → end)', required: false, default: '' }
+      line_label: { description: 'Workbook: line label, e.g. Display · 300x250', required: false, default: '' }
+      ctr_target: { description: 'Workbook: CTR target in % (blank = 0.10, interstitial 0.30)', required: false, default: '' }
+      omit_measurement: { description: 'Leave viewability + attention out (interstitials reading ~0%)', required: false, type: boolean, default: false }
+      revenue: { description: 'Add GAM revenue (off for $0-rate lines)', required: false, type: boolean, default: false }
+  push:
+    branches: [claude/nifty-dijkstra-lhykyt]
+    paths:
+      - scripts/final_campaign_report.py
+      - scripts/final_report_workbook.py
+      - .github/workflows/final_campaign_report.yml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary requests openpyxl pillow
+
+      - name: Run report
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          # push runs (no inputs) report on the order this tool was built for
+          FINAL_REPORT_ORDER_ID: ${{ inputs.order || '4194246183' }}
+          FINAL_REPORT_END_DATE: ${{ inputs.end_date }}
+        run: |
+          set -o pipefail
+          python scripts/final_campaign_report.py \
+            --markdown final_report.md --out final_report.json 2>&1 | tee /tmp/output.txt
+
+      - name: Build client workbook
+        if: success()
+        env:
+          FR_ADVERTISER: ${{ inputs.advertiser }}
+          FR_CAMPAIGN: ${{ inputs.campaign }}
+          FR_SELLER: ${{ inputs.seller }}
+          FR_FLIGHT: ${{ inputs.flight }}
+          FR_LINE_LABEL: ${{ inputs.line_label }}
+          FR_CTR_TARGET: ${{ inputs.ctr_target }}
+          FR_OMIT_MEASUREMENT: ${{ inputs.omit_measurement }}
+          FR_REVENUE: ${{ inputs.revenue }}
+        run: python scripts/final_report_workbook.py final_report.json workbook
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-report
+          path: |
+            final_report.md
+            final_report.json
+            workbook/*.xlsx
+          if-no-files-found: warn
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f final_report.md ]; then cat final_report.md >> "$GITHUB_STEP_SUMMARY"; fi

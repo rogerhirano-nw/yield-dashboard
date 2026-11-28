@@ -1,0 +1,14 @@
+{
+  "invoice": "CINV-CUS-143077",
+  "vendor": "comScore CCR",
+  "period_start": "2026-08-01",
+  "period_end": "2026-08-31",
+  "cpm": 0.10,
+  "lines": [
+    {"order_id": "4008150927", "impressions": 10149008, "amount": 1014.90},
+    {"order_id": "4112397745", "impressions": 1561355,  "amount": 156.14},
+    {"order_id": "4144745465", "impressions": 1098592,  "amount": 109.86},
+    {"order_id": "4053871160", "impressions": 3149094,  "amount": 314.91},
+    {"order_id": "4057788230", "impressions": 307675,   "amount": 30.77}
+  ]
+}

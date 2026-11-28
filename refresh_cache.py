@@ -36,7 +36,7 @@ from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
-from ttd_client import pull_ttd, CHUMBA_SUBJECT_NEEDLE
+from ttd_client import pull_ttd, parse_ttd_csv, CHUMBA_SUBJECT_NEEDLE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -129,32 +129,6 @@ def _engine() -> sqlalchemy.Engine:
     return _ENGINE
 
 
-def _lockdown_table(conn, table: str) -> None:
-    """Enable RLS + revoke anon/authenticated on a just-created public table
-    (the end-state of docs/supabase_rls_lockdown.sql).
-
-    On Supabase, a freshly created table is REST-reachable: RLS is off and
-    nothing auto-enables it, so every create — first deploy OR a
-    schema-change DROP+recreate — silently re-opens the PostgREST surface
-    until the daily health check catches it. Worse, the recreate case
-    ping-ponged with the health check's in-place RLS fix (2026-07-27:
-    ttd_luckyland dropped on every sweep by a TTD report-schema change,
-    undoing each remediation). Locking down at creation, in the same
-    transaction as the write, closes the gap entirely.
-
-    No-op off Postgres (local SQLite) and when the Supabase REST roles
-    don't exist (plain Postgres)."""
-    if conn.dialect.name != "postgresql":
-        return
-    ident = 'public."' + table.replace('"', '""') + '"'
-    conn.execute(text(f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
-    roles = [r for (r,) in conn.execute(text(
-        "SELECT rolname FROM pg_roles "
-        "WHERE rolname IN ('anon', 'authenticated')"))]
-    if roles:
-        conn.execute(text(f"REVOKE ALL ON {ident} FROM {', '.join(roles)}"))
-
-
 _COPY_NULL = r"\N"
 
 
@@ -166,7 +140,7 @@ def _pg_copy(pd_table, conn, keys, data_iter) -> None:
     batch size — 464 MB of query text against an 89 MB database by 2026-10.
     Supabase's metrics exporter reads that view every minute and spilled
     ~460 GB/day of temp files sorting it: the Disk IO Budget drain
-    (docs/supabase_disk_io.md). COPY is one constant statement per table."""
+    (the 2026-10 pg_stat_statements bloat on the old Supabase DB). COPY is one constant statement per table."""
     import csv
     import io
 
@@ -208,8 +182,6 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
             conn.execute(text(f'DROP TABLE "{table}"'))
             created = True
     _to_sql_append(df, table, conn)
-    if created:
-        _lockdown_table(conn, table)
 
 
 # (table, index_name, column_expression)
@@ -480,8 +452,6 @@ def _magnite_append_days(conn, table: str, df: pd.DataFrame) -> None:
         conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :lo AND date <= :hi'),
                      {"lo": lo, "hi": hi})
     _to_sql_append(df, table, conn)
-    if created:
-        _lockdown_table(conn, table)
 
 
 def merge_lookup_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str,
@@ -614,25 +584,55 @@ def refresh_gam() -> int:
     return len(df)
 
 
+
+def _tracked_line_items() -> "list[str]":
+    """The cap-tracked LI ids for the hourly / weekly / delivery-indicator pulls.
+
+    Primary source: the tracked_line_items table in the shared cache, written
+    hourly by seller-comms from its settings.json — the single source of truth
+    for tracked LIs (see seller-comms CLAUDE.md "Single source of truth").
+    Adding a campaign there now reaches this feed with no variable edit.
+
+    Falls back to the legacy GAM_HOURLY_LINE_ITEMS env var when the table is
+    missing or empty (deploy order doesn't matter; local runs still work).
+    """
+    import os
+    try:
+        with _engine().connect() as conn:
+            if "tracked_line_items" in sa_inspect(conn).get_table_names():
+                rows = conn.execute(
+                    text("SELECT line_item_id FROM tracked_line_items ORDER BY line_item_id")
+                ).fetchall()
+                ids = [str(r[0]).strip() for r in rows if str(r[0]).strip()]
+                if ids:
+                    logger.info("Tracked LIs from tracked_line_items table (%d): %s", len(ids), ids)
+                    return ids
+                logger.info("tracked_line_items table is empty — falling back to GAM_HOURLY_LINE_ITEMS")
+    except Exception:
+        logger.exception("tracked_line_items read failed — falling back to GAM_HOURLY_LINE_ITEMS")
+    ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    if ids:
+        logger.info("Tracked LIs from GAM_HOURLY_LINE_ITEMS env var (%d): %s", len(ids), ids)
+    return ids
+
+
 def refresh_gam_hourly() -> int:
     """Pull today's hourly GAM delivery for line items with weekly budget caps.
 
-    Line item IDs are read from the GAM_HOURLY_LINE_ITEMS environment variable
-    (comma-separated string). Only those IDs are queried and stored. Skips
-    silently if the variable is unset.
+    Line item IDs come from _tracked_line_items (the tracked_line_items table
+    in the shared cache, written by seller-comms; legacy fallback: the
+    GAM_HOURLY_LINE_ITEMS env var). Only those IDs are queried and stored.
+    Skips silently when neither source has ids.
 
     Writes to gam_campaigns_hourly (date, hour, line_item_id, ad_server_impressions,
     ad_server_clicks, pulled_at). Upserts by deleting today's rows for these LIs
     then re-inserting so re-runs throughout the day always reflect the latest
     intraday delivery.
     """
-    import os
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping hourly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping hourly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     # Use ET date to match what the cap digest queries — the 7:30 PM ET refresh
     # runs at 23:30 UTC (still May 29 ET) and must write the same date the
     # 8 PM cap digest (= 00:00 UTC = May 30 UTC) will query.
@@ -678,10 +678,9 @@ def refresh_gam_delivery_indicator() -> int:
     (line_item_id, expected_delivery_pct, actual_delivery_pct, gam_progress_pct,
     pulled_at). A failed or empty pull leaves the previous snapshot in place.
     """
-    import os
-    li_ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    li_ids = _tracked_line_items()
     if not li_ids:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping delivery-indicator refresh")
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping delivery-indicator refresh")
         return 0
     df = GAMClient().get_delivery_indicators(li_ids)
     if df.empty:
@@ -706,14 +705,11 @@ def refresh_gam_weekly() -> int:
 
     Skips silently when GAM_HOURLY_LINE_ITEMS is unset.
     """
-    import os
     from datetime import timedelta as _td
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping weekly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping weekly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     from zoneinfo import ZoneInfo
     today = datetime.now(tz=ZoneInfo("America/New_York")).date()
     start = today - _td(days=35)
@@ -1406,6 +1402,7 @@ def _refresh_ttd_campaign(
     subject_needle: str,
     table: str,
     primary_conv_col: str | Sequence[str] | None = None,
+    report_file: str | None = None,
 ) -> int:
     """Poll newsweek@agentmail.to for a TTD report whose subject contains
     *subject_needle*, download the XLSX/CSV, and upsert into *table*.
@@ -1419,21 +1416,36 @@ def _refresh_ttd_campaign(
     `primary_conv_col` — forwarded to `pull_ttd`/`parse_ttd_csv`; sets the
     single authoritative conversion KPI column for this campaign.
     """
-    logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
-    api_key  = os.environ.get("AGENTMAIL_API_KEY")
-    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
-        logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
-            "skipping TTD report refresh (%s)", table,
-        )
-        return 0
+    if report_file:
+        # Load a downloaded TTD export straight from disk, skipping the inbox
+        # (2026-11-12: the report couldn't be delivered to agentmail).  Same
+        # parser and the same merge below, so the result is identical to a pull.
+        logger.info("Loading TTD report from file: table=%s file=%s", table, report_file)
+        with open(report_file, "rb") as fh:
+            content = fh.read()
+        exec_id = f"file-{os.path.basename(report_file)}"
+        df = parse_ttd_csv(content, execution_id=exec_id,
+                           primary_conv_col=primary_conv_col)
+        meta = {"execution_id": exec_id}
+        logger.info("Parsed %d rows from %s (%s to %s)", len(df), report_file,
+                    df["date"].min() if "date" in df else None,
+                    df["date"].max() if "date" in df else None)
+    else:
+        logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
+        api_key  = os.environ.get("AGENTMAIL_API_KEY")
+        inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+        if not api_key or not inbox_id:
+            logger.warning(
+                "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+                "skipping TTD report refresh (%s)", table,
+            )
+            return 0
 
-    df, meta = pull_ttd(
-        api_key, inbox_id,
-        subject_needle=subject_needle,
-        primary_conv_col=primary_conv_col,
-    )
+        df, meta = pull_ttd(
+            api_key, inbox_id,
+            subject_needle=subject_needle,
+            primary_conv_col=primary_conv_col,
+        )
     if df.empty:
         logger.warning(
             "No TTD report found for %s (exec_id=%s)", table, meta.get("execution_id")
@@ -1465,8 +1477,6 @@ def _refresh_ttd_campaign(
                         {"dates": dates},
                     )
         _to_sql_append(df, table, conn)
-        if created:
-            _lockdown_table(conn, table)
 
     logger.info(
         "Wrote %d rows to %s (exec_id=%s, %d dates)",
@@ -1484,7 +1494,7 @@ def _refresh_ttd_campaign(
 # (below) still uses, and the pattern for the next TTD-reported flight.
 
 
-def refresh_ttd_chumba() -> int:
+def refresh_ttd_chumba(report_file: str | None = None) -> int:
     """Poll for VGW Chumba Casino TTD report and upsert into ttd_chumba."""
     # Chumba KPI = ONE pixel under ONE attribution model, never a sum.
     #
@@ -1505,6 +1515,7 @@ def refresh_ttd_chumba() -> int:
             "IdentityAllianceWithHousehold - Total Click + View Conversions",
             "01 - Total Click + View Conversions",
         ),
+        report_file=report_file,
     )
 
 
@@ -1647,10 +1658,11 @@ def migrate_table_names() -> None:
 def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None:
     """Email a concise summary of WARNING/ERROR records to REFRESH_ALERT_TO.
     Silently skips if credentials or recipient are not configured."""
+    import adops_mail
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
     to_addr  = os.environ.get("REFRESH_ALERT_TO")
-    if not (api_key and inbox_id and to_addr):
+    if not to_addr or not (adops_mail.configured() or (api_key and inbox_id)):
         return
 
     today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1661,6 +1673,15 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
         + "\n".join(lines)
         + f"\n\n{total_rows:,} rows written total.\n"
     )
+    if adops_mail.configured():
+        try:
+            adops_mail.send([to_addr], subject, body)
+            logger.info("Sweep alert sent to %s via the AdOps mail flow", to_addr)
+            return
+        except Exception:
+            logger.exception("AdOps mail flow failed — falling back to agentmail")
+    if not (api_key and inbox_id):
+        return
     payload = {"to": [to_addr], "subject": subject, "text": body}
     req = urllib.request.Request(
         f"https://api.agentmail.to/v0/inboxes/{inbox_id}/messages/send",
@@ -1679,9 +1700,15 @@ def main() -> None:
     _load_dotenv()
 
     mode = "all"
+    report_file = None
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
+        elif arg.startswith("--file="):
+            report_file = os.path.expanduser(arg.split("=", 1)[1].strip())
+    if report_file and mode != "ttd-chumba":
+        logger.error("--file= is only supported with --mode=ttd-chumba")
+        raise SystemExit(2)
 
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
@@ -1710,7 +1737,9 @@ def main() -> None:
         return
 
     if mode == "ttd-chumba":
-        _run_with_alert("ttd-chumba", [refresh_ttd_chumba])
+        def refresh_ttd_chumba_cli() -> int:
+            return refresh_ttd_chumba(report_file)
+        _run_with_alert("ttd-chumba", [refresh_ttd_chumba_cli])
         return
 
     if mode == "opensincera":

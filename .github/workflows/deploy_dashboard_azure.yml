@@ -1,0 +1,48 @@
+# Deploy the Streamlit dashboard to Azure App Service on every push to main.
+#
+# Target: https://adops.azurewebsites.net (Entra login),
+# web app `adops`, plan `nw-adops-yield-plan` (B1 Linux,
+# East US 2), RG `rg-adops-supermetrics-prod`. The app builds itself on deploy
+# (SCM_DO_BUILD_DURING_DEPLOYMENT=true → Oryx pip-installs requirements.txt) and
+# starts `python -m streamlit run dashboard.py --server.port 8000 …`.
+# Auth: the web app's publish profile in secret AZURE_WEBAPP_PUBLISH_PROFILE
+# (deploy-only, this app only). Runbook: docs/azure_dashboard.md
+name: Deploy dashboard to Azure
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dashboard-azure
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package source (tracked files only)
+        run: git archive --format=zip -o app.zip HEAD && ls -lh app.zip
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: adops
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: app.zip
+      - name: Wait for the app to come back
+        # Unauthenticated requests get 401 from the Entra login in front of the
+        # app; anything but 5xx/000 means the container is up again.
+        run: |
+          for i in $(seq 1 40); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://adops.azurewebsites.net/_stcore/health || true)
+            echo "try $i: $c"
+            case "$c" in 200|302|401) exit 0;; esac
+            sleep 15
+          done
+          echo "app did not come back within 10 minutes"; exit 1

@@ -1,5 +1,10 @@
 # deal_health
 
+> **RETIRED 2026-11-16.** The weekly email no longer sends, and
+> `.github/workflows/weekly_report.yml` has been deleted. This package stays
+> as a reference. Before reviving it, add a date window to the SQL in
+> `data.py` (see CLAUDE.md, "Weekly deal health email is retired").
+
 Weekly Newsweek "deal health" email — surfaces PMP/PG deals that received
 bid requests but no bids over the last 7 days, grouped by seller and broken
 out **SSP → DSP → Agency → Advertiser → deal** for fast triage.
