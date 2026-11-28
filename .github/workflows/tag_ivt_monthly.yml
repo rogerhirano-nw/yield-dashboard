@@ -41,6 +41,7 @@ jobs:
           python - <<'PY'
           import json, adops_mail
           miss = json.load(open("out/missing.json"))
+          drive = open("out/drive.txt").read().strip()
           if not miss:
               print("all closed months have their numbers"); raise SystemExit
           text = ("The TAG IVT deck was rebuilt, but these months still need their numbers "
@@ -48,7 +49,9 @@ jobs:
                   "\n\nFor each month: GA4 web pageviews, DoubleVerify pre-bid requests, and DV "
                   "post-bid SIVT for display and video (DV Inventory Quality tiles). Enter them in "
                   "the dashboard: https://adops.azurewebsites.net/?view=tools → TAG IVT → Monthly numbers, "
-                  "then press Rebuild deck.\n\nRunbook: docs/tag_ivt_monitoring_report.md")
+                  "then press Rebuild deck. DV pre-bid fills itself from DV's Drive folder."
+                  + (f"\n\nNote: {drive}" if drive else "")
+                  + "\n\nRunbook: docs/tag_ivt_monitoring_report.md")
           if adops_mail.configured():
               adops_mail.send(["adops@newsweek.com"], "TAG IVT deck — numbers needed for " + ", ".join(miss), text)
               print("reminder sent")

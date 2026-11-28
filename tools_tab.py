@@ -412,10 +412,10 @@ def _save_tag_months(engine, year: int, edited: pd.DataFrame) -> int:
 def _tag_ivt(engine) -> None:
     st.markdown("The **TAG IVT Monitoring Report** deck for TAG Certified Against Fraud "
                 "rebuilds itself on the **4th of each month** (DoubleVerify needs about 3 "
-                "days after the month closes). Its numbers come from GA4 and DoubleVerify, "
-                "neither of which this system can read, so type each month's four "
-                "numbers below. If a closed month is still missing, adops@ gets a "
-                "reminder. Runbook: `docs/tag_ivt_monitoring_report.md`.")
+                "days after the month closes). **DV pre-bid fills itself** from the CSV DV "
+                "drops in its shared Drive folder each month; GA4 pageviews and DV's SIVT "
+                "rates have no feed here, so type those below. If a closed month is still "
+                "missing, adops@ gets a reminder. Runbook: `docs/tag_ivt_monitoring_report.md`.")
     today = datetime.now(_ET).date()
     year = st.selectbox("Year", list(range(today.year, 2025, -1)),
                         index=0 if today.month > 1 else 1, key="tag_year")

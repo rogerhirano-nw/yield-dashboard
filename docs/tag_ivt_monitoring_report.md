@@ -76,6 +76,18 @@ and stores the result for download in the dashboard (**Tools → TAG IVT**,
 Postgres `campaign_reports`, kind `tag`). Nothing else on the slides changes;
 edit narrative slides (e.g. 8, "Key changes") in the template.
 
+**DV pre-bid reads itself** from DV's shared Drive folder "TAG Certification
+[Client Shared Folder]" (`1JXnbW3dBa-KjEO_W-aWQXCzUdApxmtxt`): one
+`report_YYYY-MM.csv` per month (`Day,Total`), dropped around the 1st; the
+month's sum is the deck's DV pre-bid (September sums to exactly 50,519,576,
+the figure in the deck as sent). `scripts/dv_prebid_drive.py` reads it with
+the GAM service account at the start of each monthly run and writes only full
+months. **Needs, once:** the folder shared (Viewer) with the GAM service
+account's email (GAM → Admin → Global settings → Network settings → API
+access), and the Google Drive API enabled in that account's Cloud project.
+Until then the run logs why, the reminder email says so, and the number can
+be typed in as before.
+
 **What still has to be typed in:** per month, GA4 web pageviews, DV pre-bid
 requests, and DV post-bid SIVT for display and video. Neither GA4 nor DV's
 Inventory Quality tiles have an API this system can reach. Enter them in the
