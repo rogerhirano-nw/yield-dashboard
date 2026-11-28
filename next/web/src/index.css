@@ -156,3 +156,27 @@ main.busy { opacity: .6; transition: opacity .2s; }
   .li-hero { grid-template-columns: 1fr; }
   .triage-sum { margin-left: 0; }
 }
+
+/* Priority flights — slim monitor rows (dashboard.py .nw-flight) */
+.flights { margin: 0 0 26px; }
+.eyebrow-sub { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 12px; color: var(--text-secondary); margin-left: 6px; }
+.flight { background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--radius-md); margin-top: 10px; }
+.flight.crit { border-left-color: var(--state-critical); } .flight.pos { border-left-color: var(--state-positive); }
+.flight > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(200px, 1.4fr) minmax(150px, .9fr) minmax(280px, 2fr) minmax(160px, 1.2fr) auto; gap: 14px; align-items: center; padding: 12px 14px; }
+.flight > summary::-webkit-details-marker { display: none; }
+.flight small { display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.fl-name small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.fl-cpa b { font: 400 24px var(--font-display); margin-right: 6px; }
+.fl-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.fl-spark small { text-transform: none; font-weight: 400; letter-spacing: 0; color: var(--text-muted); }
+.fl-more { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.txt-crit { color: var(--state-critical); font-weight: 600; }
+.fl-body { border-top: 1px solid var(--border); padding: 14px; display: grid; gap: 14px; }
+.fl-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.fl-hero b { display: block; font: 400 22px var(--font-display); }
+.fl-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fl-table caption { text-align: left; font-weight: 700; padding: 4px 0; }
+.fl-table th, .fl-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.fl-table th:first-child, .fl-table td:first-child { text-align: left; }
+@media (max-width: 900px) { .flight > summary { grid-template-columns: 1fr 1fr; } .fl-charts { grid-template-columns: 1fr; } }
