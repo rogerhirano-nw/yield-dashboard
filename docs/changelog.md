@@ -19,6 +19,35 @@ keeps its folder state, and line 12 finally does its job.
 `git ls-files -i -c --exclude-standard` found no other tracked file matching an
 ignore pattern, so `.DS_Store` was the only one.
 
+## 2026-11-13 — Magnite deal ages backfilled (no Magnite deals in deal health)
+
+Every row of `magnite_deal_metadata` had `first_seen = 2026-10-01`, including
+deals bidding since May, so every Magnite deal was ~43 days old and the weekly
+deal-health email's 90-day age cutoff dropped **all** of them. Not a #421
+regression: the 11-01 and 11-02 runs of the old "180-day" pull already wrote
+102 deals at 10-01 — Magnite returned only ~1 month of the 05-06 → 11-01
+range, without an error — and #421's cumulative merge then carried that
+forward. #421's note that the table "already held 180 days" was wrong.
+
+Fixed in prod (one-off, run 2026-11-13; 101 of 102 rows moved, mostly to
+2026-05-26, the tracker's own floor, so those ages are still lower bounds):
+
+```sql
+WITH t AS (
+  SELECT deal_key, MIN(first_seen_date)::date AS tfs
+  FROM pmp_last_bid_date
+  WHERE ssp ILIKE 'magnite' AND first_seen_date IS NOT NULL
+  GROUP BY 1)
+UPDATE magnite_deal_metadata m
+SET first_seen = to_char(t.tfs, 'YYYY-MM-DD')
+FROM t
+WHERE t.deal_key = m.deal_id AND t.tfs < m.first_seen::date;
+```
+
+Rollback (every row was 10-01 before): `UPDATE magnite_deal_metadata SET
+first_seen = '2026-10-01';`. Result: `deal_health.load_deals()` now returns
+17 Magnite zero-bid deals (0 before). No Magnite API call was needed.
+
 ## 2026-11-28 — Tools tab: name builder, final reports, screenshot decks
 
 The dashboard gets a **Tools** tab so three jobs no longer need GitHub, Claude
@@ -103,6 +132,33 @@ per-minute metrics scrape spilled to temp every time it read the view.
 `refresh_cache._to_sql_append` now bulk-loads through `COPY` (one constant
 statement per table), proven equivalent to the old path on a real Postgres.
 The view was reset on prod. Runbook: `docs/supabase_disk_io.md`.
+
+## 2026-10-20 — TAG IVT monitoring report runbook
+
+`docs/tag_ivt_monitoring_report.md`: how to refresh the TAG CAF IVT deck and
+its DV-GA / DV-GAM workbooks each quarter from the `TAG:` GAM reports, DV
+Pinnacle and GA4. Writing it down turned up three inconsistencies in the 2026
+files: slide 4 divides the discrepancy by DV while the workbook divides by
+pageviews (3.21% vs 3.11% for Q1); "GAM total" is code served count on the
+display sheet but `B+D+E` on the video sheet; DV post-bid impressions are
+entered rounded to 100k.
+Follow-up: `scripts/tag_ivt_gam_pull.py` + `tag_ivt_gam_pull.yml` rebuild
+the eleven `TAG:` reports via the API, with definitions taken from Roger's UI
+screenshots. Checked against Jan–Sep, it reproduces display C–G and video C–F
+exactly. Column B showed two entry errors: display January is Open Auction
+(Ad Exchange minus PA, −394,000), and video B dropped the "In-stream video or
+audio" format rows (−82,199 in Aug). Roger's call: the workbooks are the
+reference. The pull now follows their conventions (B from the inventory-format
+split, video G = `B+D+E`, discrepancy ÷ pageviews) and matches 107 of 108
+cells. The one mismatch is display Jan B. The runbook then switched from naming
+saved `TAG:` reports to defining each column by GAM dimension, metric and filter.
+Then two more calls from Roger: columns are named, never lettered; and video
+Ad Exchange always includes both In-stream video and In-stream video or audio,
+which makes video Jan and Jul–Sep entry errors too (99 of 108 cells match).
+Display January Ad Exchange corrected to the full figure, 59,956,722 (it had been
+entered as Open Auction only); the guide's "Ad Exchange includes PA" card was
+removed at Roger's request.
+2026-10-21: the refresh is now monthly; the guide covers the yearly AAM review, names the reviewers and recipient, and drops IAS. Video post-bid is measured at 100% because DoubleVerify is GAM's Open Measurement Viewability Partner (replaces the old 1–5% sampled answer).
 
 ## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
 
