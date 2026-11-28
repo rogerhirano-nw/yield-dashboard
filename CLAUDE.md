@@ -209,7 +209,7 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 |---|---|---|---|---|
 | ~~Betting CPA (Spinfinite, IO1109)~~ **RETIRED** | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
 | ~~Weekly deal health (zero-bid PMP/PG deals)~~ **RETIRED** | `python -m deal_health` | ~~`.github/workflows/weekly_report.yml`~~ (deleted) | was hard-coded in the workflow (am@, adops@, revops@ + 3 sellers) | `Weekly Deal Health — <date>` |
-| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
+| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, **adops@newsweek.com** since 2026-11-27; code default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
 
 The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join

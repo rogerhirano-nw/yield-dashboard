@@ -55,6 +55,15 @@ Newsweek GitHub org:
    az keyvault secret set --vault-name nw-adops-sched-kv -n github-dispatch-token --file token.txt
    ```
 
+## Alerts
+Each Logic App has a metric alert `alert-la-sched-<job>-failed` (any failed run
+in the last hour, checked every 15 min, severity 2) that emails
+**adops@newsweek.com** through action group `ag-adops-email`. A failure almost
+always means the GitHub token was revoked/expired or a repo moved. Related
+recipients, all AdOps since 2026-11-27: yield-dashboard vars `HEALTH_DIGEST_TO`
+(health check) and `REFRESH_ALERT_TO` (sweep failures), apple-news var
+`ALERT_TO` (report failures).
+
 ## Operating it
 - **Did it fire?** Portal → the Logic App → *Runs history*, or the GitHub
   Actions list (runs show as `workflow_dispatch`). A run whose
