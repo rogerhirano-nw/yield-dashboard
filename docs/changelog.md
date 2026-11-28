@@ -48,6 +48,17 @@ Rollback (every row was 10-01 before): `UPDATE magnite_deal_metadata SET
 first_seen = '2026-10-01';`. Result: `deal_health.load_deals()` now returns
 17 Magnite zero-bid deals (0 before). No Magnite API call was needed.
 
+## 2026-11-28 — Final reports and decks build themselves; TAG IVT on the Tools tab
+
+`campaign_reports.yml` (daily 07:30 ET via Logic App
+`la-sched-yield-campaign-reports`) builds the final report the morning after a
+Direct/PG order ends, and a screenshot deck for each on-site line item once it
+starts, on an article it picks itself (`capture_screenshots.py --article-url
+auto`, still gated on vertical + brand safety). Both are stored in the new
+Postgres table `campaign_reports`, and the Tools tab's Final reports and
+Screenshots tabs now open on that library, with a date filter and a button to
+build anything missing in the range. New TAG IVT tab for the monthly GAM pull.
+
 ## 2026-11-28 — Tools tab: name builder, final reports, screenshot decks
 
 The dashboard gets a **Tools** tab so three jobs no longer need GitHub, Claude

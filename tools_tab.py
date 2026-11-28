@@ -15,9 +15,11 @@ in dashboard_logic / the scripts, per the testability rule in CLAUDE.md.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+import sqlalchemy as sa
 import streamlit as st
 
 import dashboard_logic as dl
@@ -27,6 +29,100 @@ _ET = ZoneInfo("America/New_York")
 FINAL_WF = "final_campaign_report.yml"
 PLAN_WF = "pull_screenshots_source.yml"
 CAPTURE_WF = "capture_screenshots.yml"
+AUTO_WF = "campaign_reports.yml"
+TAG_WF = "tag_ivt_gam_pull.yml"
+
+# ── campaign_reports library (filled daily by scripts/campaign_reports_auto.py) ──
+_LIB_COLS = ("id, kind, order_id, line_item_id, order_name, advertiser, campaign, "
+             "start_date, end_date, file_name, status, note, run_url, created_at")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _library(_engine, kind: str, start: date, end: date) -> pd.DataFrame:
+    """Stored reports of ``kind`` whose end date (final) / start date (deck)
+    falls in [start, end]. No table yet → empty (the first daily run makes it)."""
+    col = "end_date" if kind == "final" else "start_date"
+    try:
+        with _engine.connect() as c:
+            df = pd.read_sql(sa.text(
+                f"SELECT {_LIB_COLS} FROM campaign_reports WHERE kind = :k "
+                f"AND {col} BETWEEN :s AND :e ORDER BY {col} DESC, advertiser"),
+                c, params={"k": kind, "s": start, "e": end})
+        for col_ in ("start_date", "end_date", "created_at"):
+            df[col_] = pd.to_datetime(df[col_], errors="coerce")
+        return df
+    except Exception:  # noqa: BLE001 — table missing before the first run
+        return pd.DataFrame()
+
+
+def _file(engine, rid: int) -> tuple[str, bytes] | None:
+    with engine.connect() as c:
+        r = c.execute(sa.text("SELECT file_name, file_bytes FROM campaign_reports "
+                              "WHERE id = :i"), {"i": int(rid)}).first()
+    return (r[0], bytes(r[1])) if r and r[1] is not None else None
+
+
+def _library_view(engine, kind: str) -> None:
+    final = kind == "final"
+    what = "final reports" if final else "screenshot decks"
+    st.markdown(
+        ("**Campaigns that ended.** A final report is built automatically the morning "
+         "after a Direct or PG campaign's last day (07:30 ET)."
+         if final else
+         "**Campaigns that went live.** A deck is built automatically for each on-site "
+         "line item once it starts (07:30 ET each morning), on an article in the "
+         "client's industry that passes the brand-safety check.")
+        + " Pick older dates to find past ones, and build any that are missing.")
+    today = datetime.now(_ET).date()
+    c1, c2 = st.columns([2, 3])
+    rng = c1.date_input("Campaign " + ("end" if final else "start") + " date",
+                        (today - timedelta(days=30), today), key=f"lib_{kind}_rng",
+                        max_value=today + timedelta(days=60))
+    if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+        st.caption("Pick a start and an end date.")
+        return
+    start, end = rng
+    df = _library(engine, kind, start, end)
+    with c2:
+        st.write("")
+        if st.button(f"Build missing {what} for these dates", key=f"lib_{kind}_build",
+                     help="Finds every campaign in the range that has no "
+                          + ("report" if final else "deck") + " yet and builds it. "
+                          "Takes a few minutes; press Refresh after."):
+            _dispatch(AUTO_WF, {"kind": kind, "from": start.isoformat(),
+                                "to": end.isoformat()}, f"{what} build")
+    if df.empty:
+        st.info(f"No {what} stored for {start:%-d %b} – {end:%-d %b %Y} yet.")
+        return
+    okn = int((df["status"] == "ok").sum())
+    one = "final report" if final else "deck"
+    label = f"{okn} {one if okn == 1 else what}"
+    st.caption(f"{label} · {len(df) - okn} failed" if len(df) > okn else label)
+    files = st.session_state.setdefault(f"lib_{kind}_files", {})
+    for r in df.itertuples():
+        row = st.columns([5, 2, 3])
+        title = " — ".join(x for x in (r.advertiser, r.campaign) if x) or r.order_name
+        dates = " – ".join(f"{d:%-d %b %Y}" for d in (r.start_date, r.end_date) if pd.notna(d))
+        ident = f"Order {r.order_id}" + (f" · line item {r.line_item_id}" if r.line_item_id else "")
+        row[0].markdown(f"**{title}**  \n<span style='color:#57564f;font-size:12px'>"
+                        f"{ident} · {dates}</span>", unsafe_allow_html=True)
+        if r.status != "ok":
+            row[1].markdown("🔴 Failed")
+            row[2].caption((r.note or "")[:160])
+            if row[2].button("Try again", key=f"lib_{kind}_retry_{r.id}"):
+                _dispatch(AUTO_WF, {"kind": kind, "force": True,
+                                    ("orders" if final else "line_items"):
+                                    r.order_id if final else r.line_item_id}, "rebuild")
+            continue
+        row[1].markdown(f"🟢 {r.created_at:%-d %b}" if pd.notna(r.created_at) else "🟢")
+        got = files.get(r.id)
+        if got is None and row[2].button("Get file", key=f"lib_{kind}_get_{r.id}"):
+            got = files[r.id] = _file(engine, r.id)
+        if got:
+            row[2].download_button(f"⬇ {got[0]}", got[1], file_name=got[0],
+                                   key=f"lib_{kind}_dl_{r.id}")
+        if not final and r.note:
+            row[0].caption(r.note)
 
 # Common values, offered first; every field still takes free text.
 _VERTICALS = ["Auto", "Finance", "Health", "Retail", "Tech", "Travel", "Entertainment",
@@ -173,7 +269,10 @@ def _dispatch(workflow: str, inputs: dict, what: str) -> None:
 
 
 # ── Final report ─────────────────────────────────────────────────────────
-def _final_report() -> None:
+def _final_report(engine) -> None:
+    _library_view(engine, "final")
+    st.divider()
+    st.markdown("##### Build one by hand")
     st.markdown("End-of-flight report for a Direct campaign: GAM delivery against goal, "
                 "CTR, Active View and DoubleVerify attention for the whole flight, filled "
                 "into the house workbook (the Sky Program layout). Advertiser, campaign, "
@@ -208,7 +307,10 @@ def _final_report() -> None:
 
 
 # ── Screenshots ──────────────────────────────────────────────────────────
-def _screenshots() -> None:
+def _screenshots(engine) -> None:
+    _library_view(engine, "deck")
+    st.divider()
+    st.markdown("##### Shoot one by hand")
     st.markdown("Proof-of-placement deck for a Direct campaign. **Step 1** lists the "
                 "line items, creatives and sizes to shoot. **Step 2** shoots every "
                 "creative on one line item in context on a newsweek.com article "
@@ -249,12 +351,37 @@ def _screenshots() -> None:
     _runs(CAPTURE_WF, "ssc", (".pptx",))
 
 
-def render(settings: dict) -> None:
+# ── TAG IVT ──────────────────────────────────────────────────────────────
+def _tag_ivt() -> None:
+    st.markdown("GAM columns for the monthly **TAG IVT Monitoring Report** (the DV-GAM "
+                "impressions and SIVT workbook): display and video totals by month, "
+                "using the 2026 workbooks' definitions. The DoubleVerify and GA4 "
+                "numbers stay manual. Runbook: `docs/tag_ivt_monitoring_report.md`.")
+    today = datetime.now(_ET).date()
+    last_closed = (today.replace(day=1) - timedelta(days=1))
+    with st.form("tag_form"):
+        c1, c2 = st.columns(2)
+        start = c1.text_input("From month", value=f"{today.year}-01", help="YYYY-MM")
+        end = c2.text_input("To month", value=f"{last_closed:%Y-%m}",
+                            help="YYYY-MM · default: the last closed month")
+        go = st.form_submit_button("Pull GAM columns", type="primary")
+    if go:
+        import re as _re
+        if not (_re.fullmatch(r"\d{4}-\d{2}", start) and _re.fullmatch(r"\d{4}-\d{2}", end)):
+            st.error("Months are YYYY-MM, e.g. 2026-01.")
+        else:
+            _dispatch(TAG_WF, {"start": start, "end": end}, "TAG IVT pull")
+    _runs(TAG_WF, "tag", (".csv",))
+
+
+def render(settings: dict, engine=None) -> None:
     st.markdown('<div class="nw-section-eyebrow">Tools</div>', unsafe_allow_html=True)
-    t1, t2, t3 = st.tabs(["Name builder", "Final report", "Screenshots"])
+    t1, t2, t3, t4 = st.tabs(["Name builder", "Final reports", "Screenshots", "TAG IVT"])
     with t1:
         _name_builder(settings)
-    for tab, fn in ((t2, _final_report), (t3, _screenshots)):
+    eng = engine() if callable(engine) else engine
+    for tab, fn in ((t2, lambda: _final_report(eng)), (t3, lambda: _screenshots(eng)),
+                    (t4, _tag_ivt)):
         with tab:
             if not gha.configured():
                 st.info("This needs the GitHub token (app setting GITHUB_DISPATCH_TOKEN, "

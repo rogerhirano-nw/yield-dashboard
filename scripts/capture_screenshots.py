@@ -295,6 +295,53 @@ def _special_shots(page, args, out: Path, cid, meta, vname, is_mobile, shots):
         print(f"  shot {tag}: {args.mode} mode {state}")
 
 
+# Section listing per category slug (pull_screenshots_source._VERTICAL_SLUGS).
+# The listing only supplies candidates: each page is still gated on its own
+# `cat` / `brandsafe` KVs, because the listing is cross-posted.
+SECTION_PATHS = {
+    "health": "/health", "autos": "/autos", "technology": "/tech",
+    "personal_finance": "/personal-finance", "business": "/business",
+    "travel": "/travel", "sports": "/sports", "culture": "/culture",
+    "entertainment": "/entertainment", "politics": "/politics",
+    "education": "/education",
+}
+ARTICLE_RE = re.compile(r"^https://www\.newsweek\.com/[a-z0-9-]+-\d{6,}$")
+
+
+def find_page(browser, slugs: list[str], tries: int = 15) -> str | None:
+    """First recent article that passes both page tests (`--article-url auto`,
+    used by the go-live decks in scripts/campaign_reports_auto.py)."""
+    ctx = browser.new_context(viewport={"width": 1600, "height": 1000})
+    page = ctx.new_page()
+    cands: list[str] = []
+    try:
+        for path in [SECTION_PATHS[x] for x in slugs if x in SECTION_PATHS] or ["/"]:
+            try:
+                page.goto("https://www.newsweek.com" + path,
+                          wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(3000)
+                for h in page.eval_on_selector_all("a[href]", "els => els.map(e => e.href)"):
+                    h = h.split("?")[0].split("#")[0]
+                    if ARTICLE_RE.match(h) and h not in cands:
+                        cands.append(h)
+            except Exception as e:  # noqa: BLE001
+                print(f"  page finder: {path} failed: {e}")
+        for u in cands[:tries]:
+            try:
+                page.goto(u, wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(5000)
+                ok, detail = gate_page(page, slugs, False)
+            except Exception as e:  # noqa: BLE001
+                print(f"  page finder: {u}: {e}")
+                continue
+            print(f"  page finder: {u}\n     {detail.splitlines()[0]}{'' if ok else '  -> no'}")
+            if ok:
+                return u
+    finally:
+        ctx.close()
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--line-item", default=os.environ.get("CAPTURE_LINE_ITEM"))
@@ -312,7 +359,8 @@ def main() -> int:
                          "player and shoot the pre-roll.")
     args = ap.parse_args()
     if not args.line_item or not args.article_url:
-        ap.error("--line-item and --article-url are required")
+        ap.error("--line-item and --article-url are required (--article-url auto "
+                 "picks a recent article that passes the page tests)")
 
     from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -378,6 +426,15 @@ def main() -> int:
         browser = pw.chromium.launch(args=["--disable-dev-shm-usage",
                                               "--autoplay-policy=no-user-gesture-required"])
         gated_ok = None
+        if args.article_url == "auto":
+            found = find_page(browser, slugs)
+            if not found:
+                print("  ABORTING — no recent article in the vertical passed both "
+                      "page tests; pick one by hand", file=sys.stderr)
+                browser.close()
+                return 2
+            args.article_url = found
+            print(f"  article  : {found} (picked automatically)")
 
         for cid, meta in creatives.items():
             cw = meta["w"]

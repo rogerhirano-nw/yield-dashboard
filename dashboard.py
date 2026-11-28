@@ -7933,7 +7933,7 @@ if st.session_state.active_view == "campaigns":
 # ── Tools tab (name builder, final reports, screenshot decks) ────────────────
 if st.session_state.active_view == "tools":
     import tools_tab
-    tools_tab.render(_cfg)
+    tools_tab.render(_cfg, _engine)
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 

@@ -8,6 +8,13 @@ design a new one; fill the template.
 
 ## Order id in, doc + workbook out
 
+**Automatic (since 2026-11-28):** the morning after a Direct/PG order's last
+day (07:30 ET), `campaign_reports.yml` builds the report and workbook and
+stores them in Postgres `campaign_reports`. Dashboard → **Tools → Final
+reports** lists them by end date; pick older dates and press *Build missing
+final reports for these dates* to backfill. A failed one shows its error and a
+*Try again* button.
+
 **From the dashboard (since 2026-11-28):** https://adops.azurewebsites.net →
 **Tools → Final report** → order id → *Build final report*. The workflow now
 also builds the workbook itself (`scripts/final_report_workbook.py`): it

@@ -15,6 +15,7 @@ linked runbooks; `CLAUDE.md` is the full engineering reference.
 | 08:00 daily | Seller campaign report, TTD CPA report | `seller-comms` | `la-sched-seller-daily-report`, `la-sched-seller-ttd-cpa` |
 | Mon 09:00 | Weekly deal health | `seller-comms/weekly_report.yml` | `la-sched-seller-weekly-deal-health` |
 | 10:00 daily / 3rd monthly | Apple News reports | `apple-news` | `la-sched-applenews-daily` / `-monthly` |
+| 07:30 daily | Final reports for campaigns that ended yesterday; screenshot decks for lines that went live | `yield-dashboard/campaign_reports.yml` | `la-sched-yield-campaign-reports` |
 | 07:15, 07:52 daily | PepsiCo media-plan card, IO1170 card (Supermetrics → Teams) | Claude routines → `seller-comms/campaign_feed.yml` | Claude routines on Roger's claude.ai account |
 | on demand | Name builder, final report (.xlsx), screenshot deck (.pptx) | dashboard **Tools** tab → GitHub workflows | whoever signs in to the dashboard |
 | always | Yield dashboard | Azure App Service `adops` → https://adops.azurewebsites.net (Newsweek login) | auto-deploys from `yield-dashboard` `main` |

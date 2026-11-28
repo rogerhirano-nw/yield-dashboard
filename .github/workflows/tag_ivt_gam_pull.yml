@@ -1,4 +1,5 @@
 name: TAG IVT report — GAM pull
+run-name: "TAG IVT · ${{ inputs.start || 'Jan' }} → ${{ inputs.end || 'last closed month' }}"
 
 on:
   workflow_dispatch:
