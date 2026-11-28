@@ -1,0 +1,49 @@
+name: TAG IVT report — GAM pull
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start month YYYY-MM (default: January of this year)"
+        required: false
+      end:
+        description: "End month YYYY-MM (default: last closed month)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas
+
+      - name: Run pull
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+        run: |
+          set -o pipefail
+          mkdir -p out
+          ARGS=""
+          if [ -n "$START" ]; then ARGS="--start $START"; fi
+          if [ -n "$END" ]; then ARGS="$ARGS --end $END"; fi
+          python scripts/tag_ivt_gam_pull.py $ARGS --csv out/tag_ivt_gam.csv 2>/dev/null | tee /tmp/output.txt
+          { echo '### TAG IVT report — GAM columns'; echo '```'; cat /tmp/output.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-ivt-gam
+          path: out/
