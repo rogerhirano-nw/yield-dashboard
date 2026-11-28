@@ -32,10 +32,19 @@ export interface Options {
   team: string[]; manager: string[];
 }
 
+export interface FlightSummary {
+  date_min: string | null; date_max: string | null; impressions: number; clicks: number; conversions: number;
+  spend_usd: number; cpa: number | null; conv_rate: number | null;
+  by_media_type: Record<string, number | string | null>[]; by_ad_size: Record<string, number | string | null>[];
+  daily_conversions: [string, number][]; daily_cpa: [string, number][];
+  delta_conversions: number | null; delta_cpa: number | null; delta_spend: number | null;
+}
+export interface Flight { title: string; goal: number; summary: FlightSummary; goal_delta: { over: boolean; delta: number } | null }
+
 export interface CampaignsResponse {
   rows: Row[]; total: number; shown: number; kpis: Kpi[];
   triage: Record<string, number>; options: Options; applied_status: string[];
-  pulled_at: string | null; pacing_target: number; gam_network_id: string;
+  pulled_at: string | null; pacing_target: number; gam_network_id: string; flights: Flight[];
 }
 
 export interface Detail {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { filtersFromUrl, filtersToQuery, getCampaigns, type CampaignsResponse, type Filters } from "./api";
 import { DirectTable, PAGE_SIZE } from "./components/DirectTable";
 import { FilterBar } from "./components/FilterBar";
+import { Flights } from "./components/Flights";
 import { KpiStrip } from "./components/KpiStrip";
 import { TRIAGE_LABEL, Triage } from "./components/Triage";
 import { ago } from "./format";
@@ -59,6 +60,7 @@ export default function App() {
           </div>
           <Triage counts={data.triage} total={data.total} active={f.triage} onPick={(t) => update({ ...f, triage: t, page: 0 })} />
           <KpiStrip kpis={data.kpis} />
+          <Flights flights={data.flights} />
           <section className="direct">
             <div className="eyebrow">All direct campaigns</div>
             <h2>Direct campaigns <small>

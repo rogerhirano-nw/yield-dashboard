@@ -343,6 +343,31 @@ def _kpis(v: pd.DataFrame, st: Store, cfg: dict) -> list[dict]:
     ]
 
 
+# ── Priority flights (TTD CPA monitor; dashboard.py 4681–4710, 4217–4461) ──
+FLIGHTS = [  # (title, TTD table, order-name token that ties GAM lines to it)
+    ("VGW Chumba Casino · TTD Acquisition", "ttd_chumba", "Chumba"),
+]
+
+
+def _flights(v: pd.DataFrame, st: Store, cfg: dict) -> list[dict]:
+    goal = float(cfg.get("ttd_cpa_goal", 50.0))
+    out = []
+    for title, table, token in FLIGHTS:
+        df = st.get(table)
+        # window starts at the earliest start among the *filtered* GAM lines of
+        # this flight, so the card follows the Status filter (dashboard.py
+        # _ttd_li_start); no matching line → flight to date
+        m = v["order_name"].astype(str).str.contains(token, case=False, na=False)
+        starts = [d for d in v.loc[m, "start_date"] if isinstance(d, date)]
+        start = min(starts) if starts else None
+        s = dl.ttd_cpa_summary(df, start=start) if not df.empty else None
+        if not s:
+            continue
+        out.append({"title": title, "goal": goal, "summary": s,
+                    "goal_delta": dl.cpa_goal_delta(s.get("cpa"), goal)})
+    return out
+
+
 ROW_FIELDS = [
     "line_item_id", "line_item_name", "display_name", "ordinal", "order_id", "order_name", "advertiser",
     "campaign_name", "ad_format", "cpm_rate", "seller_ae", "team", "status", "line_item_type",
@@ -368,6 +393,8 @@ def _clean(x):
         return None
     if isinstance(x, (list, tuple, np.ndarray)):
         return [_clean(y) for y in x]
+    if isinstance(x, dict):
+        return {k: _clean(v) for k, v in x.items()}
     return x
 
 
@@ -423,6 +450,7 @@ def campaigns(seller: str = "All", advertiser: list[str] = Query([]), format: li
         "options": options, "applied_status": status,
         "pulled_at": str(pulled) if pulled is not None else None,
         "pacing_target": float(cfg.get("pacing_target_pct", 100.0)),
+        "flights": _clean(_flights(v, st, cfg)),
         "gam_network_id": cfg.get("gam_network_id") or "",
     }
 

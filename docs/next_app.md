@@ -15,7 +15,7 @@ core). The new app, same data and same `dashboard_logic` decisions:
 
 **Live side by side:** https://adops-next.azurewebsites.net (same Newsweek
 login). Ported so far: **Campaigns → Direct** (filters, triage, KPI strip,
-table, drawer). Other tabs link to the old dashboard until ported.
+table, drawer) and **Priority flights** (TTD CPA monitor). Other tabs link to the old dashboard until ported.
 
 ## How it works
 - `next/api/data.py` — keeps every cache table in memory. A background thread
@@ -58,5 +58,5 @@ redirect URIs include adops-next). Secret: `AZURE_NEXT_PUBLISH_PROFILE`.
    (2026-11-28).
 5. When every tab is ported: point `adops` at this app, retire `dashboard.py`.
 
-Remaining: Campaigns → Priority flights (TTD) + PMP section; By site/size;
+Remaining: Campaigns → PMP section; By site/size;
 By DSP; Magnite; Pubmatic; OpenSincera; Tools; Configure (settings editor).
