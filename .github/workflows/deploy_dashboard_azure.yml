@@ -1,7 +1,7 @@
 # Deploy the Streamlit dashboard to Azure App Service on every push to main.
 #
-# Target: https://nw-adops-yield-dashboard.azurewebsites.net (Entra login),
-# web app `nw-adops-yield-dashboard`, plan `nw-adops-yield-plan` (B1 Linux,
+# Target: https://adops.azurewebsites.net (Entra login),
+# web app `adops`, plan `nw-adops-yield-plan` (B1 Linux,
 # East US 2), RG `rg-adops-supermetrics-prod`. The app builds itself on deploy
 # (SCM_DO_BUILD_DURING_DEPLOYMENT=true → Oryx pip-installs requirements.txt) and
 # starts `python -m streamlit run dashboard.py --server.port 8000 …`.
@@ -32,7 +32,7 @@ jobs:
       - name: Deploy to App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: nw-adops-yield-dashboard
+          app-name: adops
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: app.zip
       - name: Wait for the app to come back
@@ -40,7 +40,7 @@ jobs:
         # app; anything but 5xx/000 means the container is up again.
         run: |
           for i in $(seq 1 40); do
-            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://nw-adops-yield-dashboard.azurewebsites.net/_stcore/health || true)
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://adops.azurewebsites.net/_stcore/health || true)
             echo "try $i: $c"
             case "$c" in 200|302|401) exit 0;; esac
             sleep 15
