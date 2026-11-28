@@ -24,6 +24,7 @@ the GitHub token from Key Vault with its own managed identity, and calls
 | `la-sched-yield-refresh-direct` | yield-dashboard | `refresh_direct.yml` | every hour at :45 |
 | `la-sched-yield-health-check` | yield-dashboard | `health_check.yml` | 05:45 and 09:45 (was launchd on Roger's Mac) |
 | `la-sched-yield-campaign-reports` | yield-dashboard | `campaign_reports.yml` | daily 07:30 (final reports + decks) |
+| `la-sched-yield-tag-ivt` | yield-dashboard | `tag_ivt_monthly.yml` | 4th of the month 09:00 (TAG IVT deck) |
 | `la-sched-seller-cap-digest` | seller-comms | `cap_digest.yml` | every hour at :00 |
 | `la-sched-seller-daily-report` | seller-comms | `daily_seller_report.yml` | daily 08:00 |
 | `la-sched-seller-ttd-cpa` | seller-comms | `ttd_cpa_report.yml` | daily 08:00 |

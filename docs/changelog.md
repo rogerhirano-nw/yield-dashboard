@@ -48,6 +48,14 @@ Rollback (every row was 10-01 before): `UPDATE magnite_deal_metadata SET
 first_seen = '2026-10-01';`. Result: `deal_health.load_deals()` now returns
 17 Magnite zero-bid deals (0 before). No Magnite API call was needed.
 
+## 2026-11-28 — TAG IVT deck rebuilds itself monthly
+
+`tag_ivt_monthly.yml` (Logic App `la-sched-yield-tag-ivt`, 4th at 09:00 ET)
+fills the 2026 TAG IVT deck template from Postgres `tag_ivt_months` (GA4 /
+DV numbers typed in on Tools → TAG IVT, Jan–Sep seeded from the deck as sent)
+and stores it for download; closed months still missing numbers are emailed
+to adops@. Rebuilt from the seed, the deck matches the one sent.
+
 ## 2026-11-28 — Final reports and decks build themselves; TAG IVT on the Tools tab
 
 `campaign_reports.yml` (daily 07:30 ET via Logic App
