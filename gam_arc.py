@@ -137,9 +137,8 @@ def record_arc_block(
     confiant_id: str | None,
     protection_id: int = 28044902,
 ) -> None:
-    """Insert a row into `blocked_domains` so the weekly digest shows it
-    under its own ARC-blocks bucket (distinct from URL-based Protection
-    pushes)."""
+    """Insert a row into `blocked_domains` so ARC blocks are tracked
+    separately from URL-based Protection pushes."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     cid_part = f"Confiant ID {confiant_id} → " if confiant_id else ""
     it = f"Manual block in GAM ARC — {cid_part}GPT {gpt_id}"

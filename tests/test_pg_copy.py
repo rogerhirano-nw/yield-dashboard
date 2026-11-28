@@ -3,7 +3,7 @@
 pg_stat_statements kept one ~250 KB entry per distinct `INSERT … VALUES`
 batch size — 464 MB of query text against an 89 MB database — and Supabase's
 per-minute metrics scrape spilled ~460 GB/day of temp files reading it (the
-2026-10 Disk IO Budget warning, docs/supabase_disk_io.md). COPY is one
+2026-10 Disk IO Budget warning on the old Supabase DB). COPY is one
 constant statement per table, so the view stays small.
 
 Equivalence against a real Postgres (4,900 rows, every dtype the sweep writes,

@@ -1,3 +1,7 @@
+> **RETIRED 2026-11-27.** All Confiant jobs (daily blocklist push, weekly RevOps digest,
+> HRAP seed/forward, outreach drafts) were canceled when Roger left Newsweek. Nothing
+> schedules them anymore; the scripts are kept for reference only.
+
 # Confiant -> GAM blocklist
 
 Weekly job: pull Confiant's `issue_type_by_domain` report via their REST API,
@@ -161,47 +165,27 @@ Failed runs are flagged in the subject line and include the exception in the
 body. Dry-run summaries say "(DRY RUN)" in the subject and show what *would*
 have been pushed.
 
-## Weekly RevOps summary
+## Weekly RevOps summary — RETIRED 2026-11-24
 
-`confiant_blocklist_weekly_report.py` rolls up the last 7 days of pushes
-into a single digest emailed to RevOps every Monday at 09:00 ET. It reads
-only from `state.sqlite` — no Confiant or GAM API calls — so it's cheap
-and always agrees with what actually landed in the GAM Protection.
+Roger retired the weekly "GAM Blocklist — Weekly Summary" email.
+`confiant_blocklist_weekly_report.py` and its launchd plist are deleted. It
+sent every week even with zero new URLs, and it only counted rows in
+`state.sqlite`, so a broken daily job looked the same as a quiet week.
+(Its plist also used `Weekday=2`, which is Tuesday in launchd, not Monday.)
 
-Contents:
-- Per-day count of URLs added (so it's obvious whether activity is flat,
-  spiking, or falling off).
-- All new URLs grouped by issue type, ordered by descending count.
-- Cumulative blocklist size + a deep link into the GAM Protection (when
-  `GAM_NETWORK_ID` is set).
-
-Default recipient: `revops@newsweek.com`. Override with `--to`, env var
-`CONFIANT_BLOCKLIST_WEEKLY_TO`, or add CCs via `CONFIANT_BLOCKLIST_WEEKLY_CC`.
-
-One-off run for a different window or recipient:
+The installed job lives on the Mac, so deleting the repo files does not
+unschedule it. Remove it once by hand:
 
 ```bash
-# preview without sending
-python confiant_blocklist_weekly_report.py --days 14 --dry-run
-
-# emit the HTML to stdout (useful for piping to a file or pbcopy)
-python confiant_blocklist_weekly_report.py --print-html
-
-# send to a different recipient
-python confiant_blocklist_weekly_report.py --to someone@newsweek.com
+launchctl disable gui/$(id -u)/com.newsweek.confiant-blocklist-weekly
+launchctl bootout gui/$(id -u)/com.newsweek.confiant-blocklist-weekly
+rm ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.plist
 ```
 
-Install the cron the same way as the daily one:
+(Plain `launchctl unload` is not permanent: the job loads again at next login.)
 
-```bash
-cp ~/code/yield-dashboard/.launchd/com.newsweek.confiant-blocklist-weekly.plist \
-   ~/Library/LaunchAgents/
-# fill in REPLACE_ME for AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID, GAM_NETWORK_ID
-launchctl load -w ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.plist
-# one-off trigger to verify
-launchctl start com.newsweek.confiant-blocklist-weekly
-tail ~/.confiant-blocklist/launchd.weekly.err.log
-```
+The daily job is unaffected. Its failure alerts (`CONFIANT_ALERT_TO_EMAIL`,
+see "Email routing") are now the only notice that blocking has stopped.
 
 ## High Risk Ad Platforms (HRAPs) — seed + SSP forward
 
@@ -237,9 +221,8 @@ python confiant_blocklist_seed_hraps.py \
   (raised to 30s in `gam_blocklist_ui.py` as a separate safety bump).
   Each batch records its own `runs` row in `state.sqlite` so partial
   successes don't roll back.
-- Records each push with `issue_type = "HRAP — <platform>"` so the weekly
-  RevOps digest can distinguish platform-blocks from per-creative blocks
-  at a glance.
+- Records each push with `issue_type = "HRAP — <platform>"` so
+  `state.sqlite` distinguishes platform-blocks from per-creative blocks.
 
 ### `confiant_hrap_forward.py` — Outlook drafts to every SSP partner
 
@@ -261,8 +244,8 @@ python confiant_hrap_forward.py --provider 'Index Exchange'
 - Reuses `confiant_outreach_drafts.create_graph_draft` (handles RFC 5322
   display names — `"Tristen Fabricant <tfabricant@zetaglobal.com>"`).
 - Subject: `<SSP>//Newsweek — Confiant HRAP notice: N high-risk ad
-  platforms to block`. Body: branded layout matching the weekly RevOps
-  digest, full HRAP table grouped by platform, "additions this update"
+  platforms to block`. Body: branded layout matching the daily
+  blocklist email, full HRAP table grouped by platform, "additions this update"
   highlighted at top.
 
 ### Updating the list
@@ -355,13 +338,12 @@ remains the right lead.
 - `~/.confiant-blocklist/playwright-profile/` — Chromium profile with the
   logged-in Google session.
 - `~/.confiant-blocklist/launchd.{out,err}.log` — daily cron stdio.
-- `~/.confiant-blocklist/launchd.weekly.{out,err}.log` — weekly digest stdio.
 
 None of these are committed; the scripts auto-create them.
 
 ## Credentials live in `.env`, not in the launchd plist
 
-All four scripts (`confiant_blocklist.py`, `confiant_blocklist_weekly_report.py`,
+All three scripts (`confiant_blocklist.py`,
 `confiant_blocklist_seed_hraps.py`, `confiant_hrap_forward.py`) call the same
 `_load_dotenv()` helper at startup, which reads `~/code/yield-dashboard/.env`
 via `os.environ.setdefault`. Required keys:
@@ -491,12 +473,9 @@ Two-phase flow:
 Each successful block writes one row to `blocked_domains` with:
 
 - `domain = "gam-arc:<gpt_ad_response_id>"` (tagged differently from
-  destination-URL blocks so the weekly digest can distinguish them)
+  destination-URL blocks so the two can be told apart)
 - `issue_type = "Manual block in GAM ARC — Confiant ID xxxxx → GPT ..."`
 - `protection_label = "ARC manual block"`
-
-In the weekly RevOps digest these surface under their own issue-type
-card, separate from the URL-based GAM Protection blocks.
 
 ## Auto-fix MVP (opt-in, OFF by default)
 
@@ -587,15 +566,7 @@ The four useful combinations:
 | **unset** | **set** | **Quiet-on-success, loud-on-failure** ("monitoring mode" — what the laptop has been on since 2026-06-10) |
 | unset | unset | Silent. Failure prints a warning to launchd.err.log so the gap is visible |
 
-The weekly RevOps digest (`confiant_blocklist_weekly_report.py`) is its
-own script with its own `--to` arg — it doesn't read these env vars.
-Pause it by unloading the plist:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.newsweek.confiant-blocklist-weekly.plist
-```
-
-The plist file stays on disk (just dormant). Resume with `launchctl load -w`.
+The weekly RevOps digest is retired (see "Weekly RevOps summary" above).
 
 ## Data sharing & Claude — what's connected
 
@@ -642,7 +613,7 @@ agreements; legal has the contracts.
 |---|---|---|
 | Confiant | Data source | Pull only — our property's flagged creatives (IDs, destinations, imps, timestamps) |
 | Microsoft Graph (Outlook) | Draft creation | Email draft bodies stored in Roger's mailbox; standard M365 terms apply |
-| agentmail.to | Outbound MTA | Internal status emails only (daily/weekly summaries) — no advertiser data flows through |
+| agentmail.to | Outbound MTA | Internal status emails only (daily summaries) — no advertiser data flows through |
 | Anthropic (Claude Code) | Code-gen + interactive drafting | Per Anthropic's enterprise terms for the Claude account |
 
 ### Reference
