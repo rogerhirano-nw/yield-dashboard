@@ -1,0 +1,72 @@
+name: Campaign reports (final reports + screenshot decks)
+run-name: "Campaign reports · ${{ inputs.kind || 'both' }}${{ inputs.from && format(' · {0} → {1}', inputs.from, inputs.to) || '' }}${{ inputs.orders && format(' · orders {0}', inputs.orders) || '' }}${{ inputs.line_items && format(' · line items {0}', inputs.line_items) || '' }}"
+
+# Daily (Azure Logic App la-sched-yield-campaign-reports, 07:30 ET, no inputs):
+#   final  — Direct/PG orders that ended yesterday
+#   deck   — on-site line items that started in the last 3 days
+# On demand from the dashboard's Tools tab: a date range, or explicit ids.
+# Results go to Postgres table campaign_reports; the Tools tab serves them.
+# Read-only against GAM. Runbook: docs/final_report.md, docs/screenshots_document.md.
+on:
+  workflow_dispatch:
+    inputs:
+      kind: { description: 'final, deck or both', required: false, default: 'both' }
+      from: { description: 'Window start YYYY-MM-DD (final: end date; deck: start date). Blank = default window', required: false, default: '' }
+      to: { description: 'Window end YYYY-MM-DD', required: false, default: '' }
+      orders: { description: 'Final reports for these order ids (comma separated) instead of a window', required: false, default: '' }
+      line_items: { description: 'Decks for these line item ids instead of a window', required: false, default: '' }
+      force: { description: 'Rebuild even if already stored', required: false, type: boolean, default: false }
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campaign-reports
+  cancel-in-progress: false
+
+jobs:
+  final:
+    if: ${{ (inputs.kind || 'both') != 'deck' && inputs.line_items == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.11" }
+      - run: pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary requests openpyxl pillow
+      - name: Build final reports
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
+          CR_FROM: ${{ inputs.from }}
+          CR_TO: ${{ inputs.to }}
+          CR_ORDERS: ${{ inputs.orders }}
+          CR_FORCE: ${{ inputs.force }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/campaign_reports_auto.py --kind final
+
+  deck:
+    if: ${{ (inputs.kind || 'both') != 'final' && inputs.orders == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.11" }
+      - run: |
+          pip install google-ads-admanager google-auth pandas googleads 'sqlalchemy<2.1' psycopg2-binary playwright pillow python-pptx
+          playwright install --with-deps chromium
+      - name: Build screenshot decks
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CR_FROM: ${{ inputs.from }}
+          CR_TO: ${{ inputs.to }}
+          CR_LINE_ITEMS: ${{ inputs.line_items }}
+          CR_FORCE: ${{ inputs.force }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/campaign_reports_auto.py --kind deck

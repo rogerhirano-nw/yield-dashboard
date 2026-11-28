@@ -1083,6 +1083,23 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- **Automatic final reports + screenshot decks** (2026-11-28) —
+  `campaign_reports.yml` → `scripts/campaign_reports_auto.py`, daily 07:30 ET
+  (Logic App `la-sched-yield-campaign-reports`). **final**: every
+  `Newsweek_Direct%` / `Newsweek_PG%` order (not the two test orders) whose GAM
+  order `endDateTime` was yesterday gets the report + workbook. **deck**: every
+  on-site line item (no Apple News / newsletter) that started in the last 3
+  days gets a capture on an article picked by `capture_screenshots.py
+  --article-url auto` (`find_page`: the vertical's section listing supplies
+  candidates, each still gated on its own `cat`/`brandsafe` KVs) and the deck.
+  Results go to Postgres **`campaign_reports`** (kind + order + line item
+  unique, file as bytea, `status` ok/failed with a note); an `ok` row is never
+  rebuilt unless `force`. The Tools tab lists them by end / start date with a
+  date-range filter and a "build missing for these dates" button (dispatches the
+  same workflow with `from`/`to`), so older campaigns can be backfilled. GAM is
+  queried directly (the cache's `gam_campaigns` only holds lines ending since
+  ~a month back). Human check still applies: look at a deck's shots before
+  sending; the logo and the Docs report stay manual.
 - **Tools tab** (`?view=tools`, `tools_tab.py`, 2026-11-28) — three jobs that
   used to live outside the dashboard, now behind the Newsweek login:
   **Name builder** (the SOP 1.3 14-field naming standard; logic is
@@ -1097,7 +1114,8 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   are read-only against GAM; anyone who can sign in to the dashboard can start
   them. `st.tabs` renders all three tabs each rerun, so the run lists are
   cached 20s (`_recent_runs`) — keep it, or every keystroke in the name builder
-  costs three GitHub calls.
+  costs three GitHub calls. A fourth tab, **TAG IVT**, dispatches
+  `tag_ivt_gam_pull.yml` for a month range and serves its CSV.
 - `docs/final_report.md` — **campaign final reports** (doc + client Excel
   workbook). The house format is the AppleTv Sky Program F3 report: fill
   `templates/final_report_template.xlsx` with `scripts/build_final_report_xlsx.py`

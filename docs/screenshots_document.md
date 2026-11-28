@@ -9,6 +9,16 @@ the doc body.
 When someone sends an order id and asks for screenshots, this is the whole job.
 Deliver the `.pptx`; don't stop at raw PNGs or a browser deck.
 
+**Automatic (since 2026-11-28):** every on-site line item (not Apple News or
+newsletter) that started in the last 3 days gets a deck at 07:30 ET, shot on an
+article `capture_screenshots.py --article-url auto` picks: candidates come from
+the vertical's section page (`SECTION_PATHS`), and the first one whose own KVs
+pass both page tests is used (verified live 2026-11-28: it rejected a
+`brandsafe=n` health story and took the next). Stored in Postgres
+`campaign_reports`; Dashboard → **Tools → Screenshots** lists them by start date
+with a date filter and *Build missing decks for these dates*. Check the shots
+before sending, as always.
+
 **From the dashboard (since 2026-11-28):** https://adops.azurewebsites.net →
 **Tools → Screenshots**. Step 1 takes the order (or a line item) and shows the
 shot list inline; step 2 takes a line item + article and returns the finished
