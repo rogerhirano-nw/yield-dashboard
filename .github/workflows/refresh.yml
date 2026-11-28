@@ -31,6 +31,7 @@ jobs:
           MAGNITE_SECRET:       ${{ secrets.MAGNITE_SECRET }}
           MAGNITE_PUBLISHER_ID: ${{ secrets.MAGNITE_PUBLISHER_ID }}
           AGENTMAIL_API_KEY:    ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID:   ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:     ${{ vars.REFRESH_ALERT_TO }}
 
@@ -50,6 +51,7 @@ jobs:
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           GAM_HOURLY_LINE_ITEMS:    ${{ vars.GAM_HOURLY_LINE_ITEMS }}
           AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
 
@@ -68,6 +70,7 @@ jobs:
           GAM_NETWORK_ID:           ${{ secrets.GAM_NETWORK_ID }}
           GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
           AGENTMAIL_API_KEY:        ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID:       ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:         ${{ vars.REFRESH_ALERT_TO }}
 
@@ -91,6 +94,7 @@ jobs:
           # 60-day refresh window is missed (pubmatic_client._call_generate).
           PUBMATIC_PASSWORD:      ${{ secrets.PUBMATIC_PASSWORD }}
           AGENTMAIL_API_KEY:      ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID:     ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:       ${{ vars.REFRESH_ALERT_TO }}
 
@@ -107,6 +111,7 @@ jobs:
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
 
@@ -124,6 +129,7 @@ jobs:
           DATABASE_URL:      ${{ secrets.DATABASE_URL }}
           OPENSINCERA_TOKEN: ${{ secrets.OPENSINCERA_TOKEN }}
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:  ${{ vars.REFRESH_ALERT_TO }}
 
@@ -141,6 +147,7 @@ jobs:
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}
 
@@ -159,5 +166,6 @@ jobs:
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           REFRESH_ALERT_TO:   ${{ vars.REFRESH_ALERT_TO }}

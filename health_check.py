@@ -643,11 +643,21 @@ def main(argv: list[str]) -> int:
         to = [a.strip() for a in
               (os.environ.get("HEALTH_DIGEST_TO") or DEFAULT_RECIPIENT).split(",")
               if a.strip()]
-        resp = send_via_agentmail(
-            os.environ["AGENTMAIL_API_KEY"], os.environ["AGENTMAIL_INBOX_ID"],
-            to, subject, body,
-        )
-        logger.info("Sent to %s: %s", to, resp.get("message_id") or resp)
+        import adops_mail
+        sent = False
+        if adops_mail.configured():
+            try:
+                adops_mail.send(to, subject, body)
+                logger.info("Sent to %s via the AdOps mail flow (from adops@)", to)
+                sent = True
+            except Exception as e:  # noqa: BLE001 — fall back to agentmail
+                logger.warning("AdOps mail flow failed (%s) — falling back to agentmail", e)
+        if not sent:
+            resp = send_via_agentmail(
+                os.environ["AGENTMAIL_API_KEY"], os.environ["AGENTMAIL_INBOX_ID"],
+                to, subject, body,
+            )
+            logger.info("Sent to %s: %s", to, resp.get("message_id") or resp)
 
     return 0 if all_ok else 1
 

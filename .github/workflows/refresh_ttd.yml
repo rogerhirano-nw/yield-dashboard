@@ -33,6 +33,7 @@ jobs:
         env:
           DATABASE_URL:       ${{ secrets.DATABASE_URL }}
           AGENTMAIL_API_KEY:  ${{ secrets.AGENTMAIL_API_KEY }}
+          MAIL_WEBHOOK_URL: ${{ secrets.MAIL_WEBHOOK_URL }}  # alerts as adops@ (agentmail = fallback)
           AGENTMAIL_INBOX_ID: ${{ secrets.AGENTMAIL_INBOX_ID }}
           TTD_THREAD_ID:      ${{ inputs.thread_id }}
 

@@ -1684,10 +1684,11 @@ def migrate_table_names() -> None:
 def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None:
     """Email a concise summary of WARNING/ERROR records to REFRESH_ALERT_TO.
     Silently skips if credentials or recipient are not configured."""
+    import adops_mail
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
     to_addr  = os.environ.get("REFRESH_ALERT_TO")
-    if not (api_key and inbox_id and to_addr):
+    if not to_addr or not (adops_mail.configured() or (api_key and inbox_id)):
         return
 
     today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1698,6 +1699,15 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
         + "\n".join(lines)
         + f"\n\n{total_rows:,} rows written total.\n"
     )
+    if adops_mail.configured():
+        try:
+            adops_mail.send([to_addr], subject, body)
+            logger.info("Sweep alert sent to %s via the AdOps mail flow", to_addr)
+            return
+        except Exception:
+            logger.exception("AdOps mail flow failed — falling back to agentmail")
+    if not (api_key and inbox_id):
+        return
     payload = {"to": [to_addr], "subject": subject, "text": body}
     req = urllib.request.Request(
         f"https://api.agentmail.to/v0/inboxes/{inbox_id}/messages/send",
