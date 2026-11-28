@@ -1,0 +1,65 @@
+name: Setup IO order in GAM
+
+# Creates a Direct order + line items from a signed-IO spec
+# (scripts/orders/<IO#>.json) using the repo's GAM secrets — the way to run a
+# one-off GAM write when no session has local credentials.
+#
+# A push is a dry run unless APPLY_ON_PUSH is flipped to "true" in a reviewed
+# commit; a manual dispatch writes only with apply=true. The script is
+# lookup-first, so re-running an apply never duplicates the order or its lines.
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: 'Order spec path'
+        required: false
+        default: 'scripts/orders/SO01190.json'
+      apply:
+        description: 'Write to GAM (leave false for a dry run)'
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [claude/happy-einstein-sqg1tw]
+    paths:
+      - 'scripts/setup_io_order.py'
+      - 'scripts/orders/*.json'
+      - '.github/workflows/setup_io_order.yml'
+
+env:
+  APPLY_ON_PUSH: "false"
+  PUSH_SPEC: scripts/orders/SO01190.json
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: pip install googleads
+
+      - name: Setup order
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          EVENT: ${{ github.event_name }}
+          IN_SPEC: ${{ inputs.spec }}
+          IN_APPLY: ${{ inputs.apply }}
+        run: |
+          set -o pipefail
+          SPEC="${IN_SPEC:-$PUSH_SPEC}"
+          ARGS=""
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_APPLY" = "true" ]; then ARGS="--apply"; fi
+          if [ "$EVENT" = "push" ] && [ "$APPLY_ON_PUSH" = "true" ]; then ARGS="--apply"; fi
+          echo "spec: $SPEC  args: $ARGS"
+          python scripts/setup_io_order.py "$SPEC" $ARGS 2>&1 | tee /tmp/out.txt
+          { echo '```'; cat /tmp/out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

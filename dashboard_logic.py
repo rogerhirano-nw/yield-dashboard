@@ -1401,3 +1401,81 @@ def viewability_mix_adjusted(df, group_col, cell_cols,
         })
     out = pd.DataFrame(rows).sort_values("impressions", ascending=False)
     return out.reset_index(drop=True)
+
+
+# ── Naming / taxonomy standard (AdOps SOP 1.3) ────────────────────────────
+# The 14-field campaign + deal name the "Taxonomy Standard" workbook builds:
+#   Newsweek_DealType_Vertical_SSP_DSP_HoldingCompany_Agency_Client_Campaign_
+#   Geo_MediaType_CPMorIO_Team_Seller
+# Token positions are what the rest of the dashboard parses (advertiser =
+# token 7, campaign = token 8, floor = token 11), so a name built here has to
+# split back into exactly 14 underscore-separated fields.
+TAXONOMY_FIELDS = (
+    ("site", "Site"), ("deal_type", "Deal type"), ("vertical", "Vertical"),
+    ("ssp", "SSP"), ("dsp", "DSP"), ("holding", "Holding company"),
+    ("agency", "Agency"), ("client", "Client / advertiser"),
+    ("campaign", "Campaign"), ("geo", "Geo"), ("media_type", "Media type"),
+    ("cpm_or_io", "CPM or IO"), ("team", "Team"), ("seller", "Seller"),
+)
+TAXONOMY_SITES = ("Newsweek", "Unconventional")
+TAXONOMY_DEAL_TYPES = ("Direct", "PD", "PA", "PG", "House")
+TAXONOMY_MEDIA_TYPES = ("Display", "Video", "Interscroller", "Multi")
+TAXONOMY_TEAMS = ("Team-USA", "Team-International")
+TAXONOMY_REGIONS = ("EMEA", "APAC", "LATAM", "Global")
+
+
+def taxonomy_clean(value) -> str:
+    """One field's value as it goes into the name: trimmed, spaces and
+    underscores become hyphens (an underscore would add a field), blank → NA."""
+    s = re.sub(r"[\s_]+", "-", str(value or "").strip()).strip("-")
+    return s or "NA"
+
+
+def taxonomy_name(values: dict, line_item: bool = False) -> tuple[str, list[str]]:
+    """Build the name from ``values`` (keys from ``TAXONOMY_FIELDS``) and list
+    what breaks the standard. The name is always returned so the user can see
+    it while fixing the problems. ``line_item`` → field 12 is a NetSuite line
+    id (``SO00687-3``) instead of the IO."""
+    v = {k: taxonomy_clean(values.get(k)) for k, _ in TAXONOMY_FIELDS}
+    name = "_".join(v[k] for k, _ in TAXONOMY_FIELDS)
+    p: list[str] = []
+    label = dict(TAXONOMY_FIELDS)
+    required = ("site", "deal_type", "vertical", "client", "campaign", "geo",
+                "media_type", "team", "seller")  # cpm_or_io: its format check below
+    for k in required:
+        if v[k] == "NA":
+            p.append(f"{label[k]} can't be NA.")
+    if v["site"] not in TAXONOMY_SITES:
+        p.append(f"Site should be one of {', '.join(TAXONOMY_SITES)}.")
+    if v["deal_type"] not in TAXONOMY_DEAL_TYPES:
+        p.append(f"Deal type should be one of {', '.join(TAXONOMY_DEAL_TYPES)}.")
+    if v["media_type"] not in TAXONOMY_MEDIA_TYPES:
+        p.append(f"Media type should be one of {', '.join(TAXONOMY_MEDIA_TYPES)}.")
+    if v["team"] not in TAXONOMY_TEAMS:
+        p.append(f"Team should be one of {', '.join(TAXONOMY_TEAMS)}.")
+    direct = v["deal_type"] in ("Direct", "House")
+    if direct:
+        if v["ssp"] != "NA" or v["dsp"] != "NA":
+            p.append("Direct and House names use NA for SSP and DSP.")
+        pat = r"SO\d{4,6}-\d+" if line_item else r"SO\d{4,6}"
+        if v["deal_type"] == "House" and v["cpm_or_io"] == "NA":
+            p.append("CPM or IO can't be NA.")
+        elif v["deal_type"] == "Direct" and not re.fullmatch(pat, v["cpm_or_io"]):
+            p.append("CPM or IO: a Direct name takes the NetSuite IO, e.g. "
+                     + ("SO00687-3 (IO#-row#) for a line item." if line_item else "SO00687."))
+    else:
+        if v["ssp"] == "NA":
+            p.append("A programmatic deal needs its SSP.")
+        if not re.fullmatch(r"\$\d+(\.\d{1,2})?", v["cpm_or_io"]):
+            p.append("CPM or IO: a programmatic deal takes its CPM floor, e.g. $16.")
+    geo = v["geo"]
+    codes = geo.split("-")
+    if geo not in TAXONOMY_REGIONS and not (
+            1 <= len(codes) <= 3 and all(re.fullmatch(r"[A-Z]{2}", c) for c in codes)):
+        p.append("Geo: a country code (US), two or three joined by hyphens (US-UK), "
+                 "or a region (EMEA, APAC, LATAM, Global) for four or more.")
+    if v["seller"] != "NA" and not re.fullmatch(r"[A-Z][A-Za-z]+", v["seller"]):
+        p.append("Seller: first initial plus last name, e.g. BRobinson.")
+    if name.count("_") != len(TAXONOMY_FIELDS) - 1:  # pragma: no cover - clean() guarantees it
+        p.append("The name doesn't split into 14 fields.")
+    return name, p

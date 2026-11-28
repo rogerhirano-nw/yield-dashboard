@@ -19,6 +19,104 @@ keeps its folder state, and line 12 finally does its job.
 `git ls-files -i -c --exclude-standard` found no other tracked file matching an
 ignore pattern, so `.DS_Store` was the only one.
 
+## 2026-11-28 — Tools tab: name builder, final reports, screenshot decks
+
+The dashboard gets a **Tools** tab so three jobs no longer need GitHub, Claude
+or the SharePoint workbook: a **name builder** for the SOP 1.3 naming standard
+(`dl.taxonomy_name`, flags anything off-standard), **Final report** (order id →
+client workbook; `final_campaign_report.yml` now builds the `.xlsx` itself via
+`scripts/final_report_workbook.py`, which derives the wording from the order
+name) and **Screenshots** (shot list, then line item + article → `.pptx`;
+`capture_screenshots.py` writes a `manifest.json` and
+`scripts/screenshots_auto_spec.py` turns it into the deck spec). The app
+reads the scheduler's GitHub token through a Key Vault reference. Workflows
+gained `run-name`s so the run list says which order each run was for.
+
+## 2026-11-28 — Campaign final reports: GAM pull + Sky-format workbook (#420)
+
+`final_campaign_report.yml` → `scripts/final_campaign_report.py` pulls an
+order's final delivery (flight start → today ET) with Active View and DV
+attention. `scripts/build_final_report_xlsx.py` fills
+`templates/final_report_template.xlsx`, the AppleTv Sky F3 workbook with its
+data blanked, so every client workbook looks the same. First used for American
+Hospital Dubai (4194246183). Fixes found on the way: `dv_attention` only holds
+~8 days, so attention is now read from the DV emails (2 days → 43); the display
+CTR target is 0.10%, not the 0.30% in settings; the client logo sits on a
+transparent background; Excel's warning triangles are suppressed. Runbook:
+`docs/final_report.md`.
+
+## 2026-11-24 — Weekly GAM blocklist email retired
+
+Roger retired the weekly "GAM Blocklist — Weekly Summary" email.
+`confiant_blocklist_weekly_report.py` and its launchd plist are deleted; the
+installed job on the Mac still has to be removed by hand (`launchctl disable` +
+`bootout`). It sent even with nothing to report, and "0 this week" could not be
+told apart from a broken daily job. The daily blocklist job is unchanged.
+Detail: `docs/confiant_blocklist.md`, "Weekly RevOps summary".
+
+## 2026-11-16 — Weekly deal health email retired
+
+Roger retired the Wednesday "Weekly Deal Health" email (zero-bid PMP/PG deals,
+sent to the sales team). `weekly_report.yml` is deleted and its cron-job.org
+entry is removed from `scripts/setup_cronjob_org.py`. The live cron-job.org job
+has to be deleted by hand; until then its dispatch 404s harmlessly. The
+`deal_health/` package is kept. We found it had a gap, so it was never fixed:
+its "last 7 days" SQL had no date filter and was really reading every day left
+in the Magnite/Pubmatic cache (back to May). Detail: CLAUDE.md, "Outbound daily
+digests".
+
+## 2026-11-13 — GAM's own pacing for the cap-tracker card
+
+The seller-comms tracker card showed **169.3%** pacing on AppleTv 7472702553's
+launch day while GAM's UI showed **124%**: seller-comms estimated launch-day
+pacing straight-line by the clock (today's imps ÷ goal/day × hours elapsed),
+and GAM weights its expectation differently. `refresh_gam_delivery_indicator`
+(run with `--mode=gam_hourly`, plus the `gam` and `all` sweeps) now snapshots
+SOAP `LineItem.deliveryIndicator` for the `GAM_HOURLY_LINE_ITEMS` set into
+**`gam_li_delivery_indicator`** (`expected_delivery_pct`, `actual_delivery_pct`,
+`gam_progress_pct` = actual ÷ expected × 100, the GAM UI "Progress" figure;
+`gam_client.gam_progress_pct`, tests in `tests/test_gam_progress.py`). The table
+is replaced each run via `_safe_replace`, so it is born RLS-locked. v1 REST has
+no equivalent field. seller-comms prefers it over its own estimate when the
+snapshot is under 6h old.
+
+## 2026-11-02 — Magnite API calls cut to one day each
+
+Magnite DV+ (Terence Roney) flagged our reporting calls as querying 30+ days
+and asked for one-day calls within a week, or API access would be revoked. The
+call they logged (2026-11-02 14:58:09 UTC) was the daily **180-day**
+deal-age pull (`refresh_magnite_deal_metadata`); the other Magnite reports
+pulled 7 / 14 / 30 days. Every Magnite report now pulls `yesterday` only and
+merges into its table: date-keyed tables replace the pulled day, the demand
+lookup keeps deal_ids for 30 days, and the deal-age table is cumulative.
+Verified against a Postgres 16 table set up like prod: a same-day re-run left
+no duplicate rows and history was kept. `seed_pmp_last_bid_date.py` refuses
+multi-day Magnite pulls. Detail: CLAUDE.md, "Magnite: one day per API call".
+
+## 2026-10-21 — Supabase Disk IO: sweep appends via COPY, not multi-row INSERT
+
+Second "depleting its Disk IO Budget" warning. Measured on prod: an 89 MB
+database with a 100% cache-hit ratio, but **33 TB of temp files in 72 days**
+(~460 GB/day). The cause was pg_stat_statements holding **464 MB of query
+text**: one ~250 KB entry per distinct `to_sql` INSERT batch size. Supabase's
+per-minute metrics scrape spilled to temp every time it read the view.
+`refresh_cache._to_sql_append` now bulk-loads through `COPY` (one constant
+statement per table), proven equivalent to the old path on a real Postgres.
+The view was reset on prod. Runbook: `docs/supabase_disk_io.md`.
+
+## 2026-09-23 — Comscore CCR setup forms built from GAM (#390)
+
+Comscore kept finding Direct campaigns with live tag activity and no CCR setup
+form (4057788230, 4159204943, 4171515326, 4183464375). `build_ccr_form.yml` →
+`scripts/build_ccr_form.py` now fills `templates/comscore_ccr_template.xlsx`
+from a GAM order id: name, flight, reporting period, advertiser/brand/product/
+category, KPIs, campaign ID. The Media Details impression breakdown is left
+blank (Roger). Apple News and newsletter lines are excluded. The template
+Kael had been sending carried a hidden "Q4 2024 - $128k" sheet (a Verizon media
+plan with another client's pricing); it is gone from the repo template and the
+script refuses to write if a hidden sheet reappears. Verified live on
+4183464375, 4187974224 and 4199964192.
+
 ## 2026-09-17 — TTD Chumba: unfreeze the feed after the report was replaced
 
 The daily health check had been red since 2026-09-15 on one row — `ttd_chumba

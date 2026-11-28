@@ -2,7 +2,7 @@ requests
 pandas
 openpyxl
 streamlit
-sqlalchemy
+sqlalchemy<2.1  # 2.1.0 (2026-09-24) makes psycopg 3 the default postgresql:// driver; we ship psycopg2 — unpinned, it broke every refresh run from 21:00 UTC that day
 psycopg2-binary
 altair
 google-ads-admanager

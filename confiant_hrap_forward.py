@@ -38,7 +38,7 @@ import confiant_outreach_drafts
 
 _HRAP_FILE = Path(__file__).parent / "data" / "confiant_hraps.json"
 
-# Newsweek brand palette — same as the weekly RevOps digest for visual
+# Newsweek brand palette — same as the daily blocklist email for visual
 # consistency across all Confiant-sourced outbound mail.
 _NW_RED       = "#d72638"
 _NW_DARK      = "#1a1a1a"

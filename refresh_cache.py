@@ -36,7 +36,7 @@ from dv_ivt_client import pull_dv_ivt
 from gam_client import GAMClient
 from opensincera_client import OpenSinceraClient
 from pubmatic_client import PubmaticClient
-from ttd_client import pull_ttd, CHUMBA_SUBJECT_NEEDLE
+from ttd_client import pull_ttd, parse_ttd_csv, CHUMBA_SUBJECT_NEEDLE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -129,30 +129,39 @@ def _engine() -> sqlalchemy.Engine:
     return _ENGINE
 
 
-def _lockdown_table(conn, table: str) -> None:
-    """Enable RLS + revoke anon/authenticated on a just-created public table
-    (the end-state of docs/supabase_rls_lockdown.sql).
+_COPY_NULL = r"\N"
 
-    On Supabase, a freshly created table is REST-reachable: RLS is off and
-    nothing auto-enables it, so every create — first deploy OR a
-    schema-change DROP+recreate — silently re-opens the PostgREST surface
-    until the daily health check catches it. Worse, the recreate case
-    ping-ponged with the health check's in-place RLS fix (2026-07-27:
-    ttd_luckyland dropped on every sweep by a TTD report-schema change,
-    undoing each remediation). Locking down at creation, in the same
-    transaction as the write, closes the gap entirely.
 
-    No-op off Postgres (local SQLite) and when the Supabase REST roles
-    don't exist (plain Postgres)."""
-    if conn.dialect.name != "postgresql":
-        return
-    ident = 'public."' + table.replace('"', '""') + '"'
-    conn.execute(text(f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
-    roles = [r for (r,) in conn.execute(text(
-        "SELECT rolname FROM pg_roles "
-        "WHERE rolname IN ('anon', 'authenticated')"))]
-    if roles:
-        conn.execute(text(f"REVOKE ALL ON {ident} FROM {', '.join(roles)}"))
+def _pg_copy(pd_table, conn, keys, data_iter) -> None:
+    """`DataFrame.to_sql(method=...)` callable: bulk-load via COPY FROM STDIN.
+
+    The default executemany path sends multi-row `INSERT … VALUES ($1…$15000)`
+    batches, and pg_stat_statements keeps one ~250 KB text entry per distinct
+    batch size — 464 MB of query text against an 89 MB database by 2026-10.
+    Supabase's metrics exporter reads that view every minute and spilled
+    ~460 GB/day of temp files sorting it: the Disk IO Budget drain
+    (the 2026-10 pg_stat_statements bloat on the old Supabase DB). COPY is one constant statement per table."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    for row in data_iter:
+        writer.writerow([_COPY_NULL if v is None else v for v in row])
+    buf.seek(0)
+    cols = ", ".join(f'"{k}"' for k in keys)
+    target = (f'"{pd_table.schema}"."{pd_table.name}"' if pd_table.schema
+              else f'"{pd_table.name}"')
+    with conn.connection.cursor() as cur:
+        cur.copy_expert(
+            f"COPY {target} ({cols}) FROM STDIN WITH (FORMAT csv, NULL '\\N')",
+            buf)
+
+
+def _to_sql_append(df: pd.DataFrame, table: str, conn) -> None:
+    """Append df to table — COPY on Postgres, pandas' default elsewhere (SQLite)."""
+    method = _pg_copy if conn.dialect.name == "postgresql" else None
+    df.to_sql(table, conn, if_exists="append", index=False, method=method)
 
 
 def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
@@ -165,14 +174,14 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
     if not created:
         existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
         if existing_cols == set(df.columns):
-            conn.execute(text(f'TRUNCATE TABLE "{table}"'))
+            # SQLite (local dev / tests) has no TRUNCATE.
+            verb = "TRUNCATE TABLE" if conn.dialect.name == "postgresql" else "DELETE FROM"
+            conn.execute(text(f'{verb} "{table}"'))
         else:
             logger.info("Schema change detected for %s — dropping and recreating", table)
             conn.execute(text(f'DROP TABLE "{table}"'))
             created = True
-    df.to_sql(table, conn, if_exists="append", index=False)
-    if created:
-        _lockdown_table(conn, table)
+    _to_sql_append(df, table, conn)
 
 
 # (table, index_name, column_expression)
@@ -314,6 +323,27 @@ def _ensure_indexes() -> None:
     return 0
 
 
+# ── Magnite: ONE DAY PER API CALL ────────────────────────────────────────────
+# Magnite DV+ (Terence Roney, 2026-11-02) asked that every reporting call cover
+# a single day — "historical data doesn't change once posted" — and threatened
+# to revoke API access otherwise. The trigger was refresh_magnite_deal_metadata's
+# 180-day pull (deal,deal_id,date × bid_requests, 05-06 → 11-01, logged by
+# Magnite at 2026-11-02 14:58:09 UTC); the other reports pulled 7/14/30 days.
+#
+# So every Magnite report now asks for `yesterday` only and MERGES into what
+# the table already holds — the multi-day views the dashboard needs are built
+# up across daily runs instead of being re-pulled each morning:
+#   - date-keyed tables  → `_magnite_append_days`: delete the pulled date(s),
+#     append. Idempotent, so a same-day health-check re-run is safe.
+#   - lookup tables      → `_magnite_merge_lookup`: replace the re-seen keys,
+#     keep the rest, expire keys not seen for N days.
+#   - deal-age metadata  → `merge_deal_age`: cumulative first/last seen.
+# **Never widen these back past one day** — and don't add a `last_N` preset or
+# a multi-day start/end to a new Magnite report. A day the sweep misses
+# entirely (every run failed) stays a gap; `_magnite_append_days` logs it as a
+# WARNING so the sweep alert email names it.
+MAGNITE_DATE_RANGE = "yesterday"
+
 # Tune these to match the dashboard's actual filter dimensions.
 # Don't grab every dim — the row count blows up fast and you'll hit the 500K cap.
 REPORTS = {
@@ -328,7 +358,6 @@ REPORTS = {
             "publisher_gross_revenue",
             "ecpm",
         ],
-        "date_range": "last_7",
     },
     "magnite_dsp_daily": {
         "dimensions": ["date", "partner", "site"],
@@ -340,10 +369,12 @@ REPORTS = {
             "publisher_gross_revenue",
             "win_rate",
         ],
-        "date_range": "last_7",
     },
     "magnite_deal_daily": {
-        "dimensions": ["date", "deal", "deal_id"],  # partner/ad_format not returned by API; derived from deal name in dashboard
+        # partner/ad_format not returned by API; derived from deal name in dashboard.
+        # The dashboard's 14-day week-vs-week momentum reads the accumulated
+        # daily rows — it no longer needs a 14-day pull.
+        "dimensions": ["date", "deal", "deal_id"],
         "metrics": [
             "bid_requests",
             "bid_responses",
@@ -354,67 +385,125 @@ REPORTS = {
             "ecpm",
             "win_rate",
         ],
-        # 14-day window powers the dashboard's week-vs-week spend momentum (the
-        # PMP summary windows itself back to 7 days). Explicit window via
-        # window_days; retention 15 = 14 + 1 keeps the replace duplicate-free.
-        # The other Magnite reports keep their last_7 preset + default-8
-        # retention, untouched by this report's wider window.
-        "window_days": 14,
-        "retention_days": 15,
     },
     # demand_type_ad_resp and revenue_source are "Demand Fields" — incompatible with auction
     # metrics (bid_requests, bid_responses, impressions). Pull separately with ad metrics only
     # and join to magnite_deal_daily in the dashboard.
     # No date dimension — this is a lookup table (deal_id → demand_type + revenue_source).
-    # last_30 maximises coverage: deals with zero impressions in the past 7 days still appear.
+    # It used to be a `last_30` pull for coverage of deals idle in the past week;
+    # now each day's deals are merged in and a deal_id is kept until it hasn't
+    # been seen for 30 days — the same coverage, one day per call. The two
+    # metrics are therefore the latest single day's, and nothing reads them.
     "magnite_deal_demand": {
         "dimensions": ["deal", "deal_id", "demand_type_ad_resp", "revenue_source"],
         "metrics": [
             "paid_impression",
             "publisher_gross_revenue",
         ],
-        "date_range": "last_30",
+        "lookup_key": "deal_id",
+        "lookup_keep_days": 30,
     },
     # Add Prebid-specific reports here once you've confirmed the column names
     # against the logged-in Prebid Analytics API docs, and set dataset="prebid".
 }
 
 
-def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
-    """Pull a single report and write it to its own table. Returns row count.
+def _norm_key(v):
+    """Comparable string form of an id that may round-trip as int, float or
+    text (a float64 column reads 123 as 123.0 — the #151 hazard)."""
+    if v is None or (isinstance(v, float) and pd.isna(v)) or v is pd.NA:
+        return None
+    s = str(v).strip()
+    return s[:-2] if s.endswith(".0") and s[:-2].lstrip("-").isdigit() else s
 
-    **Per-report retention.** Two optional, non-API config keys tune the date
-    window independently per report (popped before the API call):
-      - ``window_days``: pull an explicit N-day window via start/end instead of
-        a ``date_range`` preset (Magnite rejects bare YYYY-MM-DD, so the dates
-        are sent as ISO-8601 with timezone). Lets one report carry 14 days
-        without changing the others.
-      - ``retention_days``: the DELETE cutoff (default 8). The no-duplicate
-        invariant is ``retention_days == pull_window + 1`` — the DELETE must
-        clear yesterday's oldest row so the fresh pull replaces the window
-        cleanly. A 14-day pull therefore sets ``retention_days=15``. Widening
-        one report's window no longer risks duplicating rows in the others,
-        which keep the default 8 (7-day pull + 1)."""
+
+def _iso_day(series: pd.Series) -> pd.Series:
+    """YYYY-MM-DD strings (NaN where unparseable) from dates/strings/timestamps."""
+    return pd.to_datetime(series.astype("string").str[:10], errors="coerce").dt.strftime("%Y-%m-%d")
+
+
+def _magnite_append_days(conn, table: str, df: pd.DataFrame) -> None:
+    """Merge a date-keyed one-day pull: replace the date(s) it covers, append.
+
+    Re-running the same day deletes and rewrites only that day, so the
+    health check's same-day sweep re-run never duplicates rows. Older days are
+    left untouched (they always were — this table accumulates history).
+    Schema drift widens the table instead of dropping it: with a one-day pull
+    a DROP would throw away every accumulated day."""
+    if "date" not in df.columns:
+        raise ValueError(f"{table}: date-keyed Magnite report returned no 'date' column")
+    days = df["date"].dropna().astype(str)
+    if days.empty:
+        raise ValueError(f"{table}: report returned no dated rows")
+    lo, hi = days.min(), days.max()
+
+    created = table not in sa_inspect(conn).get_table_names()
+    if not created:
+        _widen_table_to(conn, table, df)
+        prev_max = conn.execute(text(f'SELECT MAX(date) FROM "{table}" WHERE date < :lo'),
+                                {"lo": lo}).scalar()
+        if prev_max is not None:
+            gap = (pd.Timestamp(str(lo)[:10]) - pd.Timestamp(str(prev_max)[:10])).days - 1
+            if gap > 0:
+                logger.warning(
+                    "%s: %d day(s) missing between %s and %s — Magnite pulls are "
+                    "one day per call, so a fully-missed day is not re-pulled",
+                    table, gap, str(prev_max)[:10], str(lo)[:10])
+        conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :lo AND date <= :hi'),
+                     {"lo": lo, "hi": hi})
+    _to_sql_append(df, table, conn)
+
+
+def merge_lookup_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str,
+                      keep_days: int, now: datetime) -> pd.DataFrame:
+    """Fresh rows replace any existing rows with the same key; untouched keys
+    are kept until their `_pulled_at` is older than *keep_days*."""
+    if existing is None or existing.empty:
+        return new.reset_index(drop=True)
+    seen = set(new[key].map(_norm_key))
+    old = existing[~existing[key].map(_norm_key).isin(seen)]
+    if "_pulled_at" in old.columns:
+        cutoff = (now - timedelta(days=keep_days)).isoformat()
+        pulled = old["_pulled_at"].astype("string")
+        old = old[pulled.isna() | (pulled >= cutoff)]
+    out = pd.concat([new, old], ignore_index=True)
+    return _restore_int_columns(out)
+
+
+def _restore_int_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Float columns holding only whole numbers (an integer column read back
+    from the DB with a NULL in it) → nullable Int64, so COPY writes "5", not
+    "5.0", into a bigint column."""
+    df = df.copy()
+    for c in df.columns:
+        s = df[c]
+        if pd.api.types.is_float_dtype(s) and s.notna().any():
+            vals = s.dropna()
+            if (vals == vals.round()).all() and vals.abs().max() < 2**53:
+                df[c] = s.astype("Int64")
+    return df
+
+
+def _magnite_merge_lookup(conn, table: str, df: pd.DataFrame, key: str, keep_days: int) -> None:
+    existing = pd.DataFrame()
+    if table in sa_inspect(conn).get_table_names():
+        existing = pd.read_sql(text(f'SELECT * FROM "{table}"'), conn)
+    merged = merge_lookup_rows(existing, df, key, keep_days, datetime.now(timezone.utc))
+    _safe_replace(merged, table, conn)
+
+
+def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
+    """Pull ONE day (yesterday) of a Magnite report and merge it into its table.
+    Returns the number of rows pulled. See the MAGNITE_DATE_RANGE note above."""
     logger.info("Refreshing %s", table)
     cfg = dict(config)  # copy — we pop non-API keys, leave the caller's dict intact
-    retention_days = cfg.pop("retention_days", 8)
-    window_days    = cfg.pop("window_days", None)
+    lookup_key = cfg.pop("lookup_key", None)
+    keep_days  = cfg.pop("lookup_keep_days", 30)
+    for k in ("date_range", "start", "end"):
+        if k in cfg:
+            raise ValueError(f"{table}: Magnite reports are pinned to one day — drop '{k}'")
 
-    if window_days is not None:
-        # Explicit window via start/end (Magnite requires ISO-8601 + tz, not
-        # bare dates). date_range must be None when start/end are set.
-        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-        start     = yesterday - timedelta(days=window_days - 1)
-        cfg.pop("date_range", None)
-        df = client.run_report(
-            date_range=None,
-            start=f"{start.isoformat()}T00:00:00Z",
-            end=f"{yesterday.isoformat()}T23:59:59Z",
-            **cfg,
-        )
-    else:
-        df = client.run_report(**cfg)
-
+    df = client.run_report(date_range=MAGNITE_DATE_RANGE, **cfg)
     if df.empty:
         logger.warning("%s came back empty — nothing to write", table)
         return 0
@@ -422,21 +511,10 @@ def refresh_one_report(client: MagniteClient, table: str, config: dict) -> int:
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
     with _engine().begin() as conn:
-        existing_tables = sa_inspect(conn).get_table_names()
-        if table in existing_tables:
-            existing_cols = {c["name"] for c in sa_inspect(conn).get_columns(table)}
-            new_cols = set(df.columns)
-            if existing_cols != new_cols:
-                logger.info("Schema change detected for %s — dropping and recreating", table)
-                conn.execute(text(f'DROP TABLE "{table}"'))
-            elif "date" in df.columns:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%d")
-                conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :cutoff'), {"cutoff": cutoff})
-            else:
-                # Lookup table with no date column — TRUNCATE is cheaper than
-                # DELETE for a full-table clear (single WAL record, no dead tuples).
-                conn.execute(text(f'TRUNCATE TABLE "{table}"'))
-        df.to_sql(table, conn, if_exists="append", index=False)
+        if lookup_key:
+            _magnite_merge_lookup(conn, table, df, lookup_key, keep_days)
+        else:
+            _magnite_append_days(conn, table, df)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
@@ -491,7 +569,7 @@ def refresh_gam() -> int:
                     text(f'DELETE FROM "{table}" WHERE report_start >= :cutoff'),
                     {"cutoff": cutoff},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
 
@@ -506,25 +584,55 @@ def refresh_gam() -> int:
     return len(df)
 
 
+
+def _tracked_line_items() -> "list[str]":
+    """The cap-tracked LI ids for the hourly / weekly / delivery-indicator pulls.
+
+    Primary source: the tracked_line_items table in the shared cache, written
+    hourly by seller-comms from its settings.json — the single source of truth
+    for tracked LIs (see seller-comms CLAUDE.md "Single source of truth").
+    Adding a campaign there now reaches this feed with no variable edit.
+
+    Falls back to the legacy GAM_HOURLY_LINE_ITEMS env var when the table is
+    missing or empty (deploy order doesn't matter; local runs still work).
+    """
+    import os
+    try:
+        with _engine().connect() as conn:
+            if "tracked_line_items" in sa_inspect(conn).get_table_names():
+                rows = conn.execute(
+                    text("SELECT line_item_id FROM tracked_line_items ORDER BY line_item_id")
+                ).fetchall()
+                ids = [str(r[0]).strip() for r in rows if str(r[0]).strip()]
+                if ids:
+                    logger.info("Tracked LIs from tracked_line_items table (%d): %s", len(ids), ids)
+                    return ids
+                logger.info("tracked_line_items table is empty — falling back to GAM_HOURLY_LINE_ITEMS")
+    except Exception:
+        logger.exception("tracked_line_items read failed — falling back to GAM_HOURLY_LINE_ITEMS")
+    ids = [x.strip() for x in os.environ.get("GAM_HOURLY_LINE_ITEMS", "").split(",") if x.strip()]
+    if ids:
+        logger.info("Tracked LIs from GAM_HOURLY_LINE_ITEMS env var (%d): %s", len(ids), ids)
+    return ids
+
+
 def refresh_gam_hourly() -> int:
     """Pull today's hourly GAM delivery for line items with weekly budget caps.
 
-    Line item IDs are read from the GAM_HOURLY_LINE_ITEMS environment variable
-    (comma-separated string). Only those IDs are queried and stored. Skips
-    silently if the variable is unset.
+    Line item IDs come from _tracked_line_items (the tracked_line_items table
+    in the shared cache, written by seller-comms; legacy fallback: the
+    GAM_HOURLY_LINE_ITEMS env var). Only those IDs are queried and stored.
+    Skips silently when neither source has ids.
 
     Writes to gam_campaigns_hourly (date, hour, line_item_id, ad_server_impressions,
     ad_server_clicks, pulled_at). Upserts by deleting today's rows for these LIs
     then re-inserting so re-runs throughout the day always reflect the latest
     intraday delivery.
     """
-    import os
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping hourly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping hourly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     # Use ET date to match what the cap digest queries — the 7:30 PM ET refresh
     # runs at 23:30 UTC (still May 29 ET) and must write the same date the
     # 8 PM cap digest (= 00:00 UTC = May 30 UTC) will query.
@@ -553,8 +661,36 @@ def refresh_gam_hourly() -> int:
                 text(f"DELETE FROM \"{table}\" WHERE date = :d AND line_item_id::text = ANY(:ids)"),
                 {"d": today.isoformat(), "ids": li_ids},
             )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
     logger.info("Wrote %d hourly rows to %s", len(df), table)
+    return len(df)
+
+
+def refresh_gam_delivery_indicator() -> int:
+    """Snapshot GAM's own pacing (LineItem.deliveryIndicator) for the cap-tracked LIs.
+
+    Same LI set as refresh_gam_hourly (GAM_HOURLY_LINE_ITEMS) and run on the same
+    intraday cadence, so seller-comms' tracker card can show GAM's "Progress"
+    figure instead of recomputing pacing itself (its straight-line launch-day
+    estimate read 169% on a line GAM showed at 124%, 2026-11-13).
+
+    Writes gam_li_delivery_indicator — one row per LI, replaced on every run
+    (line_item_id, expected_delivery_pct, actual_delivery_pct, gam_progress_pct,
+    pulled_at). A failed or empty pull leaves the previous snapshot in place.
+    """
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping delivery-indicator refresh")
+        return 0
+    df = GAMClient().get_delivery_indicators(li_ids)
+    if df.empty:
+        logger.info("No delivery indicators returned — keeping previous snapshot")
+        return 0
+    df["pulled_at"] = datetime.now(timezone.utc).isoformat()
+    table = "gam_li_delivery_indicator"
+    with _engine().begin() as conn:
+        _safe_replace(df, table, conn)
+    logger.info("Wrote %d delivery indicators to %s", len(df), table)
     return len(df)
 
 
@@ -569,14 +705,11 @@ def refresh_gam_weekly() -> int:
 
     Skips silently when GAM_HOURLY_LINE_ITEMS is unset.
     """
-    import os
     from datetime import timedelta as _td
-    li_ids_raw = os.environ.get("GAM_HOURLY_LINE_ITEMS", "").strip()
-    if not li_ids_raw:
-        logger.info("GAM_HOURLY_LINE_ITEMS not set — skipping weekly refresh")
+    li_ids = _tracked_line_items()
+    if not li_ids:
+        logger.info("No tracked LIs (table empty, GAM_HOURLY_LINE_ITEMS unset) — skipping weekly refresh")
         return 0
-
-    li_ids = [x.strip() for x in li_ids_raw.split(",") if x.strip()]
     from zoneinfo import ZoneInfo
     today = datetime.now(tz=ZoneInfo("America/New_York")).date()
     start = today - _td(days=35)
@@ -605,7 +738,7 @@ def refresh_gam_weekly() -> int:
                 text(f"DELETE FROM \"{table}\" WHERE line_item_id::text = ANY(:ids) AND week_start >= :ws"),
                 {"ids": li_ids, "ws": (start - _td(days=start.weekday())).isoformat()},
             )
-        agg.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(agg, table, conn)
     logger.info("Wrote %d weekly rows to %s", len(agg), table)
     return len(agg)
 
@@ -739,7 +872,7 @@ def refresh_gam_lica() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_lica", conn, if_exists="append", index=False)
+        _to_sql_append(df, "gam_lica", conn)
     logger.info("Appended %d LICAs to gam_lica", len(df))
     return len(df)
 
@@ -787,7 +920,7 @@ def refresh_gam_creatives() -> int:
         return 0
     df["_pulled_at"] = datetime.now(timezone.utc).isoformat()
     with _engine().begin() as conn:
-        df.to_sql("gam_creatives", conn, if_exists="append", index=False)
+        _to_sql_append(df, "gam_creatives", conn)
     logger.info("Appended %d rows to gam_creatives", len(df))
     return len(df)
 
@@ -808,45 +941,93 @@ def refresh_magnite() -> int:
     return total
 
 
-def refresh_magnite_deal_metadata() -> int:
-    """Pull a 180-day Magnite deal-keyed report to determine each deal's
-    earliest appearance. Used by weekly_report.py as an age proxy since
-    Magnite's reports API doesn't expose a deal creation_date dimension.
+def merge_deal_age(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """Fold one day's per-deal (first_seen, last_seen, days_seen) into the
+    cumulative deal-age table.
 
+    first_seen only moves back, last_seen only moves forward, and days_seen
+    grows by the new day's count only when that day is newer than anything
+    already recorded — so a same-day re-run (the health check's sweep retry)
+    never double-counts. Keys are (deal, deal_id); deal_id is compared in
+    normalized string form so an int/float/text round-trip can't split a deal.
+    """
+    cols = ["deal", "deal_id", "first_seen", "last_seen", "days_seen"]
+
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        df = df[[c for c in cols if c in df.columns]].copy()
+        df["deal"] = df["deal"].astype("string").fillna("")
+        df["deal_id"] = df["deal_id"].map(_norm_key).astype("string").fillna("")
+        df["first_seen"] = _iso_day(df["first_seen"])
+        df["last_seen"] = _iso_day(df["last_seen"])
+        df["days_seen"] = pd.to_numeric(df.get("days_seen", 0), errors="coerce").fillna(0).astype(int)
+        return df.groupby(["deal", "deal_id"], as_index=False).agg(
+            first_seen=("first_seen", "min"),
+            last_seen=("last_seen", "max"),
+            days_seen=("days_seen", "max"),
+        )
+
+    new = _prep(new)
+    if existing is None or existing.empty:
+        out = new
+    else:
+        old = _prep(existing)
+        m = old.merge(new, on=["deal", "deal_id"], how="outer", suffixes=("_old", "_new"))
+        out = m[["deal", "deal_id"]].copy()
+        out["first_seen"] = m[["first_seen_old", "first_seen_new"]].min(axis=1)
+        out["last_seen"] = m[["last_seen_old", "last_seen_new"]].max(axis=1)
+        newer = m["last_seen_old"].isna() | (m["last_seen_new"] > m["last_seen_old"])
+        out["days_seen"] = (
+            m["days_seen_old"].fillna(0)
+            + m["days_seen_new"].fillna(0).where(newer & m["last_seen_new"].notna(), 0)
+        ).astype(int)
+    # Write back the "no value" sentinels as NULLs, like the API returned them.
+    out = out.replace({"deal": {"": None}, "deal_id": {"": None}})
+    return out.sort_values(["first_seen", "deal"], na_position="last").reset_index(drop=True)
+
+
+def refresh_magnite_deal_metadata() -> int:
+    """Maintain each Magnite deal's earliest/latest appearance — the deal-age
+    proxy deal_health reads (`MIN(first_seen)`), since Magnite's reports API
+    doesn't expose a deal creation_date dimension.
+
+    Pulls ONE day (yesterday) and folds it into the cumulative table via
+    `merge_deal_age`. This was a 180-day pull every morning until Magnite
+    flagged it on 2026-11-02 (see the MAGNITE_DATE_RANGE note). The table
+    already held 180 days of first_seen history, so ages stay correct, and
+    because it's now cumulative a deal's age is no longer capped at 180 days.
     Conservative — only underestimates true age, never overestimates."""
-    logger.info("Refreshing magnite_deal_metadata (180-day age proxy)")
+    logger.info("Refreshing magnite_deal_metadata (deal-age proxy, 1-day merge)")
     api_key    = os.environ["MAGNITE_KEY"]
     api_secret = os.environ["MAGNITE_SECRET"]
     account_id = os.environ["MAGNITE_PUBLISHER_ID"]
     client = MagniteClient(api_key=api_key, api_secret=api_secret, account_id=account_id)
 
-    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-    start     = yesterday - timedelta(days=179)
-
-    # Magnite rejects bare YYYY-MM-DD; requires ISO-8601 with timezone, e.g.
-        # "yyyy-MM-dd'T'HH:mm:ssZ". Send midnight UTC for start and end-of-day UTC for end.
     df = client.run_report(
         dimensions=["deal", "deal_id", "date"],
         metrics=["bid_requests"],
-        start=f"{start.isoformat()}T00:00:00Z",
-        end=f"{yesterday.isoformat()}T23:59:59Z",
-        date_range=None,
+        date_range=MAGNITE_DATE_RANGE,
     )
     if df.empty:
         logger.warning("Magnite metadata report came back empty — nothing to write")
         return 0
 
-    agg = df.groupby(["deal", "deal_id"], dropna=False).agg(
+    day = df.groupby(["deal", "deal_id"], dropna=False).agg(
         first_seen=("date", "min"),
         last_seen=("date", "max"),
         days_seen=("date", "nunique"),
     ).reset_index()
-    agg["_pulled_at"] = datetime.now(timezone.utc).isoformat()
 
+    table = "magnite_deal_metadata"
     with _engine().begin() as conn:
-        _safe_replace(agg, "magnite_deal_metadata", conn)
-    logger.info("Wrote %d Magnite deals to magnite_deal_metadata", len(agg))
-    return len(agg)
+        existing = pd.DataFrame()
+        if table in sa_inspect(conn).get_table_names():
+            existing = pd.read_sql(text(f'SELECT * FROM "{table}"'), conn)
+        merged = merge_deal_age(existing, day)
+        merged["_pulled_at"] = datetime.now(timezone.utc).isoformat()
+        _safe_replace(merged, table, conn)
+    logger.info("Merged %d Magnite deals from yesterday into %s (%d total)",
+                len(day), table, len(merged))
+    return len(day)
 
 
 def refresh_pubmatic_deal_metadata() -> int:
@@ -1030,7 +1211,7 @@ def refresh_pubmatic() -> int:
                     text(f'DELETE FROM "{table}" WHERE date >= :cutoff'),
                     {"cutoff": cutoff},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
 
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
@@ -1215,6 +1396,7 @@ def _refresh_ttd_campaign(
     subject_needle: str,
     table: str,
     primary_conv_col: str | Sequence[str] | None = None,
+    report_file: str | None = None,
 ) -> int:
     """Poll newsweek@agentmail.to for a TTD report whose subject contains
     *subject_needle*, download the XLSX/CSV, and upsert into *table*.
@@ -1228,21 +1410,36 @@ def _refresh_ttd_campaign(
     `primary_conv_col` — forwarded to `pull_ttd`/`parse_ttd_csv`; sets the
     single authoritative conversion KPI column for this campaign.
     """
-    logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
-    api_key  = os.environ.get("AGENTMAIL_API_KEY")
-    inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
-    if not api_key or not inbox_id:
-        logger.warning(
-            "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
-            "skipping TTD report refresh (%s)", table,
-        )
-        return 0
+    if report_file:
+        # Load a downloaded TTD export straight from disk, skipping the inbox
+        # (2026-11-12: the report couldn't be delivered to agentmail).  Same
+        # parser and the same merge below, so the result is identical to a pull.
+        logger.info("Loading TTD report from file: table=%s file=%s", table, report_file)
+        with open(report_file, "rb") as fh:
+            content = fh.read()
+        exec_id = f"file-{os.path.basename(report_file)}"
+        df = parse_ttd_csv(content, execution_id=exec_id,
+                           primary_conv_col=primary_conv_col)
+        meta = {"execution_id": exec_id}
+        logger.info("Parsed %d rows from %s (%s to %s)", len(df), report_file,
+                    df["date"].min() if "date" in df else None,
+                    df["date"].max() if "date" in df else None)
+    else:
+        logger.info("Refreshing TTD report: table=%s needle=%r", table, subject_needle)
+        api_key  = os.environ.get("AGENTMAIL_API_KEY")
+        inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
+        if not api_key or not inbox_id:
+            logger.warning(
+                "AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID not set — "
+                "skipping TTD report refresh (%s)", table,
+            )
+            return 0
 
-    df, meta = pull_ttd(
-        api_key, inbox_id,
-        subject_needle=subject_needle,
-        primary_conv_col=primary_conv_col,
-    )
+        df, meta = pull_ttd(
+            api_key, inbox_id,
+            subject_needle=subject_needle,
+            primary_conv_col=primary_conv_col,
+        )
     if df.empty:
         logger.warning(
             "No TTD report found for %s (exec_id=%s)", table, meta.get("execution_id")
@@ -1273,9 +1470,7 @@ def _refresh_ttd_campaign(
                         text(f'DELETE FROM "{table}" WHERE date::text = ANY(:dates)'),
                         {"dates": dates},
                     )
-        df.to_sql(table, conn, if_exists="append", index=False)
-        if created:
-            _lockdown_table(conn, table)
+        _to_sql_append(df, table, conn)
 
     logger.info(
         "Wrote %d rows to %s (exec_id=%s, %d dates)",
@@ -1293,7 +1488,7 @@ def _refresh_ttd_campaign(
 # (below) still uses, and the pattern for the next TTD-reported flight.
 
 
-def refresh_ttd_chumba() -> int:
+def refresh_ttd_chumba(report_file: str | None = None) -> int:
     """Poll for VGW Chumba Casino TTD report and upsert into ttd_chumba."""
     # Chumba KPI = ONE pixel under ONE attribution model, never a sum.
     #
@@ -1314,6 +1509,7 @@ def refresh_ttd_chumba() -> int:
             "IdentityAllianceWithHousehold - Total Click + View Conversions",
             "01 - Total Click + View Conversions",
         ),
+        report_file=report_file,
     )
 
 
@@ -1365,7 +1561,7 @@ def refresh_opensincera_ecosystem() -> int:
                     text(f'DELETE FROM "{table}" WHERE date = :d'),
                     {"d": df["date"].iloc[0]},
                 )
-        df.to_sql(table, conn, if_exists="append", index=False)
+        _to_sql_append(df, table, conn)
     logger.info("Wrote %d rows to %s", len(df), table)
     return len(df)
 
@@ -1456,10 +1652,11 @@ def migrate_table_names() -> None:
 def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None:
     """Email a concise summary of WARNING/ERROR records to REFRESH_ALERT_TO.
     Silently skips if credentials or recipient are not configured."""
+    import adops_mail
     api_key  = os.environ.get("AGENTMAIL_API_KEY")
     inbox_id = os.environ.get("AGENTMAIL_INBOX_ID")
     to_addr  = os.environ.get("REFRESH_ALERT_TO")
-    if not (api_key and inbox_id and to_addr):
+    if not to_addr or not (adops_mail.configured() or (api_key and inbox_id)):
         return
 
     today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1470,6 +1667,15 @@ def _send_sweep_alert(records: list[logging.LogRecord], total_rows: int) -> None
         + "\n".join(lines)
         + f"\n\n{total_rows:,} rows written total.\n"
     )
+    if adops_mail.configured():
+        try:
+            adops_mail.send([to_addr], subject, body)
+            logger.info("Sweep alert sent to %s via the AdOps mail flow", to_addr)
+            return
+        except Exception:
+            logger.exception("AdOps mail flow failed — falling back to agentmail")
+    if not (api_key and inbox_id):
+        return
     payload = {"to": [to_addr], "subject": subject, "text": body}
     req = urllib.request.Request(
         f"https://api.agentmail.to/v0/inboxes/{inbox_id}/messages/send",
@@ -1488,9 +1694,15 @@ def main() -> None:
     _load_dotenv()
 
     mode = "all"
+    report_file = None
     for arg in sys.argv[1:]:
         if arg.startswith("--mode="):
             mode = arg.split("=", 1)[1].strip().lower()
+        elif arg.startswith("--file="):
+            report_file = os.path.expanduser(arg.split("=", 1)[1].strip())
+    if report_file and mode != "ttd-chumba":
+        logger.error("--file= is only supported with --mode=ttd-chumba")
+        raise SystemExit(2)
 
     _VALID_MODES = (
         "all", "direct", "opensincera", "deal-metadata", "gam_hourly",
@@ -1511,7 +1723,7 @@ def main() -> None:
         return
 
     if mode == "gam_hourly":
-        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_weekly])
+        _run_with_alert("gam_hourly", [refresh_gam_hourly, refresh_gam_delivery_indicator, refresh_gam_weekly])
         return
 
     if mode == "dv":
@@ -1519,7 +1731,9 @@ def main() -> None:
         return
 
     if mode == "ttd-chumba":
-        _run_with_alert("ttd-chumba", [refresh_ttd_chumba])
+        def refresh_ttd_chumba_cli() -> int:
+            return refresh_ttd_chumba(report_file)
+        _run_with_alert("ttd-chumba", [refresh_ttd_chumba_cli])
         return
 
     if mode == "opensincera":
@@ -1549,6 +1763,7 @@ def main() -> None:
         _run_with_alert("gam", [
             refresh_gam,
             refresh_gam_hourly,
+            refresh_gam_delivery_indicator,
             refresh_gam_weekly,
             refresh_gam_pmp_deals,
             refresh_gam_deal_bids,
@@ -1577,6 +1792,7 @@ def main() -> None:
         refresh_magnite_deal_metadata,
         refresh_gam,
         refresh_gam_hourly,
+        refresh_gam_delivery_indicator,
         refresh_gam_weekly,
         refresh_gam_pmp_deals,
         refresh_gam_deal_bids,
