@@ -26,9 +26,12 @@ PLACEMENT = {"970x250": "Billboard", "728x90": "Leaderboard", "300x250": "Medium
 
 def build_spec(shots_dir: Path, ae_names: dict) -> dict:
     m = json.loads((shots_dir / "manifest.json").read_text())
-    tok = (m.get("order_name") or "").split("_")
-    adv = tok[7].replace("-", " ") if len(tok) > 8 else m.get("order_name", "")
-    camp = tok[8].replace("-", " ") if len(tok) > 8 else (m.get("line_item_name") or "")
+    conv = next((n for n in (m.get("order_name") or "", m.get("line_item_name") or "")
+                 if len(n.split("_")) >= 14), m.get("order_name") or "")
+    tok = conv.split("_")
+    words = lambda t: " ".join(t.replace("-", " ").split())  # noqa: E731
+    adv = words(tok[7]) if len(tok) > 8 else m.get("order_name", "")
+    camp = words(tok[8]) if len(tok) > 8 else (m.get("line_item_name") or "")
     seller = ae_names.get(tok[-1], "") if len(tok) >= 14 else ""
     page = re.sub(r"^https?://(www\.)?", "", m.get("article_url", "")).split("?")[0]
     shots = []
