@@ -2127,12 +2127,13 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 # with a divider, AND a gear icon button in the header top-right. Both
 # entry points route through st.session_state.active_view.
 # ──────────────────────────────────────────────────────────────────────────
-_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "opensincera", "configure")
+_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "opensincera", "tools", "configure")
 _VIEW_TITLE = {
     "campaigns":   "Overall performance",
     "site":        "By site / size",
     "dsp":         "By DSP",
     "magnite":     "Magnite deals",
+    "tools":       "Tools",
     "pubmatic":    "Pubmatic deals",
     "opensincera": "OpenSincera",
     "configure":   "Configure",
@@ -2144,6 +2145,7 @@ _NAV_DATA = [
     ("magnite",     "Magnite deals"),
     ("pubmatic",    "Pubmatic deals"),
     ("opensincera", "OpenSincera"),
+    ("tools",       "Tools"),
 ]
 
 if "active_view" not in st.session_state:
@@ -7927,6 +7929,11 @@ if st.session_state.active_view == "campaigns":
         # GAM private-auction "No delivery" and "Stale deals" both render
         # inside the "PMP signals" accordion above (folded in 2026-06); the
         # standalone cards + the archive UI were removed when they moved up.
+
+# ── Tools tab (name builder, final reports, screenshot decks) ────────────────
+if st.session_state.active_view == "tools":
+    import tools_tab
+    tools_tab.render(_cfg)
 
 # ── Settings tab ─────────────────────────────────────────────────────────────
 

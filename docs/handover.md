@@ -16,6 +16,7 @@ linked runbooks; `CLAUDE.md` is the full engineering reference.
 | Mon 09:00 | Weekly deal health | `seller-comms/weekly_report.yml` | `la-sched-seller-weekly-deal-health` |
 | 10:00 daily / 3rd monthly | Apple News reports | `apple-news` | `la-sched-applenews-daily` / `-monthly` |
 | 07:15, 07:52 daily | PepsiCo media-plan card, IO1170 card (Supermetrics → Teams) | Claude routines → `seller-comms/campaign_feed.yml` | Claude routines on Roger's claude.ai account |
+| on demand | Name builder, final report (.xlsx), screenshot deck (.pptx) | dashboard **Tools** tab → GitHub workflows | whoever signs in to the dashboard |
 | always | Yield dashboard | Azure App Service `adops` → https://adops.azurewebsites.net (Newsweek login) | auto-deploys from `yield-dashboard` `main` |
 
 Runbooks: `docs/azure_scheduler.md` (schedules), `docs/azure_dashboard.md`
@@ -38,7 +39,7 @@ Runbooks: `docs/azure_scheduler.md` (schedules), `docs/azure_dashboard.md`
 | # | Item | What breaks if it isn't moved | What to do |
 |---|---|---|---|
 | 1 | **GitHub repos** `yield-dashboard`, `seller-comms`, `apple-news`, `adops-gam-reports` are under Roger's personal account | Everything (code, workflows, secrets) | Transfer to a Newsweek GitHub org; then redeploy the scheduler with the new owner (`docs/azure_scheduler.md`) |
-| 2 | **Scheduler GitHub token** (Roger's PAT, Key Vault `github-dispatch-token`) | Every scheduled job silently stops starting | Newsweek-owned account creates a fine-grained token (Actions RW on the repos) → replace the Key Vault secret |
+| 2 | **Scheduler GitHub token** (Roger's PAT, Key Vault `github-dispatch-token`) | Every scheduled job silently stops starting, and the dashboard's Tools tab can't start reports | Newsweek-owned account creates a fine-grained token (Actions RW on the repos) → replace the Key Vault secret |
 | 3 | **Power Automate flows** (17, all owned by Roger): "Report mail as AdOps" (all seller-comms email), the apple-news copy, Teams card flows (Ivy, PepsiCo, Chumba, IO1170) | All seller emails, apple-news, health/alert emails, Teams cards | A staying colleague is added as co-owner of each flow and swaps in their own Outlook/Teams connections. Long-term: switch mail to reporting@ via Graph (#430, apple-news `GRAPH_MAILBOX`) once IT consents |
 | 4 | **Claude routines** (PepsiCo feed, IO1170 card) on Roger's claude.ai account | The two Supermetrics cards | New owner recreates them from their instructions (seller-comms `CLAUDE.md`, "Campaign feeds") |
 | 5 | **Supermetrics** — Roger is the only member; license ends **2026-12-15** | Supermetrics data | m.lukac (Owner) / l.eccleston (Admin) accept their invites; move billing; reconnect Meta/LinkedIn/GA4/IG/FB/TikTok with their own logins |
@@ -46,7 +47,8 @@ Runbooks: `docs/azure_scheduler.md` (schedules), `docs/azure_dashboard.md`
 | 7 | **apple-news Gmail sender** `campaign.insights.newsweek@gmail.com` (fallback sender) | apple-news fallback | Put its password + 2FA in Newsweek's vault |
 | 8 | **GAM service account** — confirm the Google Cloud project is Newsweek-owned | All GAM data | Check project ownership in GCP |
 | 9 | **Vendor API logins** (Magnite, PubMatic, OpenSincera) | Those data sources | Move to shared accounts, update repo secrets |
-| 10 | **Azure CLI deploys** — basic-auth publish profile on `adops` | Only manual deploys | Optional hardening: IT grants a deploy identity Website Contributor, switch to OIDC |
+| 10 | **Final Reports hub** (claude.ai artifact, Roger's account) — the ledger of past final reports | The list of past reports (the workbooks themselves are in each run's artifacts for 90 days) | Export it, or keep the record in the AdOps Airtable base instead |
+| 11 | **Azure CLI deploys** — basic-auth publish profile on `adops` | Only manual deploys | Optional hardening: IT grants a deploy identity Website Contributor, switch to OIDC |
 
 ## Waiting on IT (one request covers it)
 1. Admin consent for **`yield-reporting-automation`** (Mail.Read + Mail.Send) scoped to reporting@ — moves all email off Roger's flows and agentmail.
