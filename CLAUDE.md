@@ -209,33 +209,22 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 |---|---|---|---|---|
 | ~~Betting CPA (Spinfinite, IO1109)~~ **RETIRED** | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
 | ~~Weekly deal health (zero-bid PMP/PG deals)~~ **RETIRED** | `python -m deal_health` | ~~`.github/workflows/weekly_report.yml`~~ (deleted) | was hard-coded in the workflow (am@, adops@, revops@ + 3 sellers) | `Weekly Deal Health — <date>` |
-| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, **adops@newsweek.com** since 2026-11-27; code default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
+| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, **adops@newsweek.com** since 2026-11-27; code default roger.hirano@newsweek.com) | `Yield health — ✅ all N checks passed (<day>)` / `❌ N of M need attention (<day>)` |
 
 The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
 rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
 Pubmatic +1 day, DV may lag 3; OpenSincera's four tables by `_pulled_at`
-within 26h), that the latest `refresh.yml` run succeeded within 26h, and
-**`public RLS hygiene`** — every public table has RLS enabled and no
-anon/authenticated grants, so the Supabase REST API can't reach the cache
-(`docs/supabase_rls_lockdown.sql` is the lockdown; this canaries it against
-drift, since new source tables arrive RLS-off — see the memory note
-`project_yield_dashboard_ops`). **Auto-remediation:** when a *remediable* check fails
-(stale table / failed sweep), the script re-dispatches `refresh.yml` itself,
-waits for it, re-checks everything, and reports the final state — transient
-upstream failures heal hands-free. **RLS-hygiene drift is fixed *in-place*
-instead** — it enables RLS + revokes anon/authenticated grants on the
-offending tables (a sweep can't fix RLS, and re-running it creates the very
-tables that drift), then re-checks. **The sweep re-run goes FIRST, the RLS
-fix second** (2026-07-27): a sweep can DROP+recreate a table whose upstream
-report schema changed, re-opening RLS on it — with the old order the
-in-place fix was undone before the re-check on every run (`ttd_luckyland`,
-recreated daily by a TTD report-schema change, looped ❌ this way). Belt and
-braces, `refresh_cache._lockdown_table` now also enables RLS + revokes
-anon/authenticated *at table creation* in the same transaction as the write
-(the `_safe_replace` drop path, `_refresh_ttd_campaign`'s schema-change
-drop, and first-time creates on those paths) — so recreated tables are born
-locked instead of waiting for the next health check. Code-level failures (id format, join
+within 26h), and that the latest `refresh.yml` run succeeded within 26h.
+The email leads with **plain-English lines, failures first** (each check sets
+`CheckResult.friendly`, e.g. "Magnite by site: data through Fri Nov 27"; table
+names map through `TABLE_LABELS`), with the technical name/detail of every
+check in a "Technical details" section at the end. (A Supabase-only "public RLS
+hygiene" check and the RLS lockdown at table creation were removed 2026-11-28 —
+Azure Postgres has no public REST API to lock down.) **Auto-remediation:** when
+a *remediable* check fails (stale table / failed sweep), the script
+re-dispatches `refresh.yml` itself, waits for it, re-checks everything, and
+reports the final state — transient upstream failures heal hands-free. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients
@@ -1034,8 +1023,7 @@ touches them.
 2026-08-03 — was 6h → 1h on 2026-06-12 on the premise that Pro + Micro
 compute made the egress cap and disk-IO budget moot; Supabase's
 2026-08-03 "depleting its Disk IO Budget" warning disproved the IO half,
-so the TTL went back up to 2h. See `docs/supabase_disk_io.md` for the
-full IO story + the `db_disk_io_report.yml` diagnostic), keyed on
+so the TTL went back up to 2h. (the Supabase-era disk-IO runbook was removed with Supabase), keyed on
 function source — a push that doesn't change those functions
 hot-reloads the script but keeps the old cached frames. So after fixing
 data out-of-band (direct SQL against prod), the dashboard keeps
@@ -1093,21 +1081,14 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   because Central US has no App Service quota, Entra login, publish-profile deploys, rotation).
 - `docs/azure_db_migration.md` — **moving the cache DB from Supabase to Azure
   Database for PostgreSQL** (handoff to Newsweek ownership, 2026-11). Switch is
-  one `DATABASE_URL`; one-off copy via `migrate_db_to_azure.yml` (pg_dump →
-  pg_restore + `scripts/compare_db_rowcounts.py`). Off Supabase (no
-  `anon`/`authenticated` roles) the health check's RLS row passes as
-  "not Supabase" instead of erroring.
-- `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook. **Root cause
-  (2026-10-21): pg_stat_statements query-text bloat** — `to_sql`'s multi-row
-  INSERT batches left 464 MB of text in the view (DB is 89 MB), and Supabase's
-  per-minute metrics scrape spilled ~460 GB/day of temp files reading it. Sweep
-  appends now go through `refresh_cache._to_sql_append` (COPY). **Never add a
-  plain `df.to_sql` to the sweep.** Also covers (from the 2026-08-03 warning): what in this stack spends disk IO, how to
-  measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,
-  read-only pg_stat/pg_statio/pg_stat_statements report, optional
-  `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
-  and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
-  conversion, compute upgrade).
+  one `DATABASE_URL`; the one-off copy workflow was removed after the
+  2026-11-27 cutover. **Supabase is gone (2026-11-28)**: its final export is
+  `supabase/supabase_ltavpsikmmqmracvjtvk_2026-11-28.dump` in Azure storage
+  account `nwadopsyieldarchive`, container `db-archive`.
+- **Never add a plain `df.to_sql` to the sweep** — appends go through
+  `refresh_cache._to_sql_append` (COPY). Multi-row INSERT batches bloated
+  `pg_stat_statements` to 464 MB on the old Supabase DB (2026-10-21) and blew
+  its disk-IO budget; COPY is one constant statement per table.
 - `docs/confiant_blocklist.md` — **RETIRED 2026-11-27** (Roger: "Confiant jobs should be all
   canceled", ahead of his departure). The launchd jobs on Roger's laptop are unloaded and
   nothing else schedules them; the scripts stay as reference only — don't re-schedule
@@ -1495,10 +1476,9 @@ approve project servers; approval is per-user, stored outside the repo).
 
 | Server | Transport | URL | Auth |
 |---|---|---|---|
-| `supabase` | http | `https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk` | OAuth in the browser on first use |
 | `beehiiv` | http | `https://mcp.beehiiv.com/mcp` | OAuth in the browser on first use |
 
-Both are **remote HTTP servers with browser OAuth** — no API key goes in the
+It is a **remote HTTP server with browser OAuth** — no API key goes in the
 repo or in `.env`, and neither can be authorized from a headless/cloud session
 (Claude Code on the web, Actions). Authorize them once from an interactive
 local `claude` session (`/mcp`, pick the server, approve in the browser); the

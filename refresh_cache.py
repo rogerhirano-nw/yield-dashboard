@@ -129,32 +129,6 @@ def _engine() -> sqlalchemy.Engine:
     return _ENGINE
 
 
-def _lockdown_table(conn, table: str) -> None:
-    """Enable RLS + revoke anon/authenticated on a just-created public table
-    (the end-state of docs/supabase_rls_lockdown.sql).
-
-    On Supabase, a freshly created table is REST-reachable: RLS is off and
-    nothing auto-enables it, so every create — first deploy OR a
-    schema-change DROP+recreate — silently re-opens the PostgREST surface
-    until the daily health check catches it. Worse, the recreate case
-    ping-ponged with the health check's in-place RLS fix (2026-07-27:
-    ttd_luckyland dropped on every sweep by a TTD report-schema change,
-    undoing each remediation). Locking down at creation, in the same
-    transaction as the write, closes the gap entirely.
-
-    No-op off Postgres (local SQLite) and when the Supabase REST roles
-    don't exist (plain Postgres)."""
-    if conn.dialect.name != "postgresql":
-        return
-    ident = 'public."' + table.replace('"', '""') + '"'
-    conn.execute(text(f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
-    roles = [r for (r,) in conn.execute(text(
-        "SELECT rolname FROM pg_roles "
-        "WHERE rolname IN ('anon', 'authenticated')"))]
-    if roles:
-        conn.execute(text(f"REVOKE ALL ON {ident} FROM {', '.join(roles)}"))
-
-
 _COPY_NULL = r"\N"
 
 
@@ -166,7 +140,7 @@ def _pg_copy(pd_table, conn, keys, data_iter) -> None:
     batch size — 464 MB of query text against an 89 MB database by 2026-10.
     Supabase's metrics exporter reads that view every minute and spilled
     ~460 GB/day of temp files sorting it: the Disk IO Budget drain
-    (docs/supabase_disk_io.md). COPY is one constant statement per table."""
+    (the 2026-10 pg_stat_statements bloat on the old Supabase DB). COPY is one constant statement per table."""
     import csv
     import io
 
@@ -208,8 +182,6 @@ def _safe_replace(df: pd.DataFrame, table: str, conn) -> None:
             conn.execute(text(f'DROP TABLE "{table}"'))
             created = True
     _to_sql_append(df, table, conn)
-    if created:
-        _lockdown_table(conn, table)
 
 
 # (table, index_name, column_expression)
@@ -480,8 +452,6 @@ def _magnite_append_days(conn, table: str, df: pd.DataFrame) -> None:
         conn.execute(text(f'DELETE FROM "{table}" WHERE date >= :lo AND date <= :hi'),
                      {"lo": lo, "hi": hi})
     _to_sql_append(df, table, conn)
-    if created:
-        _lockdown_table(conn, table)
 
 
 def merge_lookup_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str,
@@ -1501,8 +1471,6 @@ def _refresh_ttd_campaign(
                         {"dates": dates},
                     )
         _to_sql_append(df, table, conn)
-        if created:
-            _lockdown_table(conn, table)
 
     logger.info(
         "Wrote %d rows to %s (exec_id=%s, %d dates)",

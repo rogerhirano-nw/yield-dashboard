@@ -3,7 +3,8 @@
 Verifies invariants on the prod DB *after* the morning refresh sweep, so
 data problems surface in one glanceable email instead of someone having to
 eyeball the dashboard every day. The subject line carries the verdict —
-"✅ N/N pass" means there is nothing to open.
+"✅ all N checks passed" means there is nothing to open. Each check carries a
+plain-English line for the email; the technical detail is listed at the end.
 
 Checks (each fails independently; an exception in one check is reported as
 that check failing, never as a crash of the whole run):
@@ -21,29 +22,20 @@ that check failing, never as a crash of the whole run):
   4. Sweep liveness     — the latest completed "Refresh cache" workflow run
                           (refresh.yml) succeeded within the last 26h.
                           Requires GITHUB_TOKEN; skipped when absent (local).
-  5. RLS hygiene        — every public table has RLS enabled and no
-                          anon/authenticated grants, so the Supabase REST
-                          API can't reach the cache. Canaries the lockdown
-                          (docs/supabase_rls_lockdown.sql) against drift: new
-                          source tables (TTD, DV, …) arrive RLS-off and
-                          silently re-open the REST surface. Fixed in-place
-                          (see below), not by a sweep.
 
 Auto-remediation: when a *remediable* check fails (freshness / sweep
 liveness — i.e. things a re-pull can fix), the script re-dispatches
 refresh.yml via the GitHub API, waits for it to complete, re-runs every
 check, and reports the final state — so a transient upstream failure heals
-itself without anyone touching Actions. RLS-hygiene drift is fixed *in-place*
-instead — enable RLS + revoke anon/authenticated grants on the offending
-tables (mirrors docs/supabase_rls_lockdown.sql) — because a sweep can't fix
-it and in fact creates the tables that drift. Code-level failures (DV id
+itself without anyone touching Actions. Code-level failures (DV id
 format, join rate) are NOT remediable by re-running and are reported as such.
-At most one of each remediation kind per run, never loops. Requires
+At most one remediation per run, never loops. Requires
 `actions: write` on the workflow's GITHUB_TOKEN; GITHUB_TOKEN-created
 workflow_dispatch events are exempt from GitHub's recursive-trigger guard,
 so the dispatch works.
 
-Sends via agentmail.to, same outbound pattern as betting_daily_update.py.
+Sends as adops@ through the AdOps Power Automate flow (adops_mail.py,
+MAIL_WEBHOOK_URL), falling back to agentmail.to.
 Exits non-zero when any check still fails so the Actions run goes red too.
 
 Manual ad-hoc:
@@ -51,7 +43,7 @@ Manual ad-hoc:
     python health_check.py              # run checks + remediate + send
 
 Env required:
-    DATABASE_URL          Postgres (Supabase) — same as refresh_cache.py
+    DATABASE_URL          Postgres (Azure) — same as refresh_cache.py
     AGENTMAIL_API_KEY     Bearer token for agentmail.to (not needed --dry-run)
     AGENTMAIL_INBOX_ID    "newsweek@agentmail.to"   (not needed --dry-run)
 Optional:
@@ -125,33 +117,6 @@ PULLED_AT_CHECKS = [
     ("opensincera_modules pulled",    "opensincera_modules",    "_pulled_at", SWEEP_MAX_AGE_HOURS),
 ]
 
-# RLS hygiene: the dashboard/refresh reach the cache only through DATABASE_URL
-# (the postgres role, which bypasses RLS), never the Supabase REST API — so
-# every public table should have RLS enabled with no anon/authenticated grants,
-# i.e. the PostgREST surface is closed. docs/supabase_rls_lockdown.sql sets that
-# up; this canaries it. The hazard is drift: a new source table is created
-# RLS-off (ALTER DEFAULT PRIVILEGES revokes its grants automatically, but
-# nothing auto-enables RLS), silently re-opening the REST surface for it.
-RLS_CHECK_NAME = "public RLS hygiene"
-# anon/authenticated holding any of these on a public table = REST-reachable.
-_ANON_AUTH_GRANT_PRED = " OR ".join(
-    f"has_table_privilege('{role}', c.oid, '{priv}')"
-    for role in ("anon", "authenticated")
-    for priv in ("SELECT", "INSERT", "UPDATE", "DELETE")
-)
-# Offending public tables: RLS off, or any anon/authenticated DML grant.
-_RLS_OFFENDERS_SQL = f"""
-SELECT c.relname AS table_name,
-       NOT c.relrowsecurity AS rls_off,
-       ({_ANON_AUTH_GRANT_PRED}) AS has_grants
-FROM pg_class c
-WHERE c.relnamespace = 'public'::regnamespace
-  AND c.relkind = 'r'
-  AND (NOT c.relrowsecurity OR {_ANON_AUTH_GRANT_PRED})
-ORDER BY c.relname
-"""
-
-
 @dataclass
 class CheckResult:
     name: str
@@ -161,11 +126,44 @@ class CheckResult:
     # failed sweep). False for code/contract problems (id format, join
     # rate) where re-pulling would just rewrite the same bad rows.
     remediable: bool = False
+    # Plain-English line for the email (falls back to name + detail).
+    friendly: str = ""
 
 
-# ----------------------------------------------------------------------
-# Individual checks
-# ----------------------------------------------------------------------
+# Plain-English names for the email. Anything missing falls back to the table name.
+TABLE_LABELS = {
+    "dv_attention": "DoubleVerify attention",
+    "dv_ivt": "DoubleVerify invalid traffic",
+    "magnite_site_daily": "Magnite by site",
+    "magnite_dsp_daily": "Magnite by DSP",
+    "magnite_deal_daily": "Magnite deals",
+    "pubmatic_deals": "PubMatic deals",
+    "gam_pmp_deals": "GAM programmatic deals",
+    "ttd_chumba": "Trade Desk (Chumba)",
+    "gam_campaigns": "GAM direct campaigns",
+    "pmp_last_bid_date": "Stale-deal tracker",
+    "opensincera_ecosystem": "OpenSincera ecosystem",
+    "opensincera_publishers": "OpenSincera publishers",
+    "opensincera_adsystems": "OpenSincera ad systems",
+    "opensincera_modules": "OpenSincera Prebid modules",
+}
+
+
+def _label(table: str) -> str:
+    return TABLE_LABELS.get(table, table)
+
+
+def _day(d: date) -> str:
+    return f"{d:%a} {d:%b} {d.day}"
+
+
+def _ago(hours: float) -> str:
+    if hours < 1:
+        return f"{max(1, round(hours * 60))} minutes ago"
+    if hours < 48:
+        return f"{round(hours)} hour{'s' if round(hours) != 1 else ''} ago"
+    return f"{round(hours / 24)} days ago"
+
 
 def _check_dv_id_format(conn, table: str) -> CheckResult:
     n = conn.execute(text(
@@ -175,6 +173,8 @@ def _check_dv_id_format(conn, table: str) -> CheckResult:
         f"{table} id format", n == 0,
         "no float-suffixed line_item_ids" if n == 0
         else f"{n} rows with float-suffixed line_item_id — DV↔GAM join is broken (see #151)",
+        friendly=(f"{_label(table)}: line item IDs are clean" if n == 0 else
+                  f"{_label(table)}: {n:,} rows have broken line item IDs, so they can't link to GAM"),
     )
 
 
@@ -192,12 +192,16 @@ def _check_dv_join_rate(conn, table: str) -> CheckResult:
     )).one()
     if not row.total:
         return CheckResult(f"{table} ↔ GAM join", False,
-                           "no DV line_item_ids in the last 30 days")
+                           "no DV line_item_ids in the last 30 days",
+                           friendly=f"{_label(table)}: no line items at all in the last 30 days")
     pct = 100.0 * row.matched / row.total
     return CheckResult(
         f"{table} ↔ GAM join", pct >= JOIN_RATE_THRESHOLD_PCT,
         f"{pct:.1f}% of {row.total} ids match gam_campaigns "
         f"(threshold {JOIN_RATE_THRESHOLD_PCT:.0f}%)",
+        friendly=(f"{_label(table)}: {'' if pct >= JOIN_RATE_THRESHOLD_PCT else 'only '}"
+                  f"{pct:.1f}% of {row.total:,} line items link to GAM "
+                  f"(needs {JOIN_RATE_THRESHOLD_PCT:.0f}%)"),
     )
 
 
@@ -220,14 +224,18 @@ def _eval_freshness(name: str, observed: date | None, max_age_days: int,
                     today: date) -> CheckResult:
     """Pure comparison — split from the query so it's unit-testable."""
     required = today - timedelta(days=max_age_days)
+    label = _label(name.rsplit(" ", 1)[0])
     if observed is None:
         return CheckResult(name, False, "table is empty (max date is NULL)",
-                           remediable=True)
+                           remediable=True, friendly=f"{label}: no data at all")
+    ok = observed >= required
     return CheckResult(
-        name, observed >= required,
+        name, ok,
         f"max(date) {observed.isoformat()}"
-        + ("" if observed >= required else f" < required {required.isoformat()}"),
+        + ("" if ok else f" < required {required.isoformat()}"),
         remediable=True,
+        friendly=(f"{label}: data through {_day(observed)}" if ok else
+                  f"{label}: data stops at {_day(observed)}, should reach {_day(required)}"),
     )
 
 
@@ -247,58 +255,18 @@ def _check_pulled_at(conn, name: str, table: str, col: str,
     )).scalar()
     if observed is None:
         return CheckResult(name, False, "table is empty (max timestamp is NULL)",
-                           remediable=True)
+                           remediable=True, friendly=f"{_label(table)}: no data at all")
     if observed.tzinfo is None:
         observed = observed.replace(tzinfo=timezone.utc)
     age_h = (datetime.now(timezone.utc) - observed).total_seconds() / 3600
+    ok = age_h <= max_age_hours
     return CheckResult(
-        name, age_h <= max_age_hours,
+        name, ok,
         f"last write {age_h:.1f}h ago (max {max_age_hours}h)",
         remediable=True,
+        friendly=(f"{_label(table)}: updated {_ago(age_h)}" if ok else
+                  f"{_label(table)}: last updated {_ago(age_h)}, should be at least daily"),
     )
-
-
-def _eval_rls_hygiene(offenders: list[tuple[str, bool, bool]],
-                      name: str = RLS_CHECK_NAME) -> CheckResult:
-    """Pure verdict from the offender rows (table, rls_off, has_grants) —
-    split from the query so it's unit-testable.
-
-    Deliberately NOT remediable: the `remediable` flag triggers a refresh
-    sweep, which can't enable RLS (and creates the very tables that drift).
-    RLS drift is fixed in-place by remediate_rls() instead."""
-    if not offenders:
-        return CheckResult(
-            name, True, "all public tables RLS-on, no anon/authenticated grants")
-    bits = []
-    for table, rls_off, has_grants in offenders:
-        why = ", ".join(w for w in (
-            "RLS off" if rls_off else "",
-            "anon/authenticated grant" if has_grants else "") if w)
-        bits.append(f"{table} ({why})")
-    return CheckResult(
-        name, False,
-        f"{len(offenders)} public table(s) reachable via the REST API — "
-        + "; ".join(bits) + " (run docs/supabase_rls_lockdown.sql)")
-
-
-def _has_supabase_roles(conn) -> bool:
-    """True on Supabase. Plain Postgres (e.g. Azure Database for PostgreSQL)
-    has no anon/authenticated roles and no REST API to lock down — and
-    has_table_privilege() errors on a missing role, so the RLS check must
-    not run there."""
-    n = conn.execute(text(
-        "SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated')"
-    )).scalar()
-    return n == 2
-
-
-def _check_rls_hygiene(conn) -> CheckResult:
-    if not _has_supabase_roles(conn):
-        return CheckResult(RLS_CHECK_NAME, True,
-                           "not Supabase (no anon/authenticated roles) — no REST API to lock down")
-    rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
-    return _eval_rls_hygiene(
-        [(r.table_name, r.rls_off, r.has_grants) for r in rows])
 
 
 def _check_sweep_workflow() -> CheckResult:
@@ -307,7 +275,8 @@ def _check_sweep_workflow() -> CheckResult:
     token = os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("GITHUB_REPOSITORY")
     if not token or not repo:
-        return CheckResult(name, True, "skipped — no GITHUB_TOKEN (local run)")
+        return CheckResult(name, True, "skipped — no GITHUB_TOKEN (local run)",
+                           friendly="Daily refresh: not checked (local run)")
     api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     req = urllib.request.Request(
         f"{api}/repos/{repo}/actions/workflows/refresh.yml/runs"
@@ -319,7 +288,7 @@ def _check_sweep_workflow() -> CheckResult:
         runs = json.loads(r.read()).get("workflow_runs") or []
     if not runs:
         return CheckResult(name, False, "no completed refresh.yml runs found",
-                           remediable=True)
+                           remediable=True, friendly="Daily refresh: has never run")
     run = runs[0]
     created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
     age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
@@ -328,6 +297,9 @@ def _check_sweep_workflow() -> CheckResult:
         name, ok,
         f"latest run {run['conclusion']} {age_h:.1f}h ago ({run['html_url']})",
         remediable=True,
+        friendly=(f"Daily refresh: last run succeeded {_ago(age_h)}" if ok else
+                  f"Daily refresh: last run {'succeeded' if run['conclusion'] == 'success' else 'FAILED'} "
+                  f"{_ago(age_h)}" + ("" if run["conclusion"] != "success" else ", should be daily")),
     )
 
 
@@ -403,43 +375,6 @@ def remediate_with_sweep() -> tuple[bool, str]:
     return False, f"refresh sweep still running after {REMEDIATION_TIMEOUT_MINUTES}min ({run['html_url']})"
 
 
-def remediate_rls() -> tuple[bool, str]:
-    """Close any RLS drift in-place: enable RLS + revoke anon/authenticated
-    grants on the offending public tables (the same end-state as
-    docs/supabase_rls_lockdown.sql). Instant local DDL — no sweep.
-
-    Safe to auto-apply: the dashboard/refresh connect as the postgres owner
-    (BYPASSRLS, and RLS is never FORCEd here), so deny-all RLS can't block
-    them — proven by the core tables already locked this way. Idempotent
-    (ENABLE on an already-RLS table and REVOKE of an absent grant are no-ops).
-    Returns (succeeded, human-readable description)."""
-    try:
-        engine = sqlalchemy.create_engine(
-            os.environ["DATABASE_URL"], pool_size=1, max_overflow=0,
-            connect_args={"connect_timeout": 10},
-        )
-        with engine.begin() as conn:
-            if not _has_supabase_roles(conn):
-                return True, "RLS hygiene: not Supabase, nothing to fix"
-            rows = conn.execute(text(_RLS_OFFENDERS_SQL)).all()
-            if not rows:
-                return True, "RLS hygiene: nothing to fix"
-            for r in rows:
-                # relname comes from pg_class (our own catalog); double-quote
-                # defensively rather than interpolate it bare.
-                ident = 'public."' + r.table_name.replace('"', '""') + '"'
-                if r.rls_off:
-                    conn.execute(text(
-                        f"ALTER TABLE {ident} ENABLE ROW LEVEL SECURITY"))
-                conn.execute(text(
-                    f"REVOKE ALL ON {ident} FROM anon, authenticated"))
-        tables = ", ".join(sorted(r.table_name for r in rows))
-        return True, (f"locked down {len(rows)} drifted table(s) "
-                      f"(enabled RLS + revoked anon/authenticated): {tables}")
-    except Exception as e:  # noqa: BLE001 — report, don't crash the run
-        return False, f"RLS auto-lockdown failed: {e}"
-
-
 def run_checks() -> list[CheckResult]:
     """Run every check, isolating failures so one bad table can't hide the rest."""
     results: list[CheckResult] = []
@@ -448,13 +383,15 @@ def run_checks() -> list[CheckResult]:
         try:
             results.append(fn())
         except Exception as e:  # noqa: BLE001 — a broken check IS the finding
-            results.append(CheckResult(name, False, f"check errored: {e}"))
+            results.append(CheckResult(
+                name, False, f"check errored: {e}",
+                friendly=f"{name}: the check itself couldn't run ({str(e).splitlines()[0][:120]})"))
 
     engine = sqlalchemy.create_engine(
         os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_recycle=300,
         connect_args={"connect_timeout": 10},
     )
-    # Retry the initial connect — a transient pooler blip would otherwise
+    # Retry the initial connect — a transient connection blip would otherwise
     # error every SQL check at once and email a false ❌ (the same failure
     # mode that killed the gam sweep job on 2026-06-11). After the retry
     # budget, fall through and let the per-check guard report it.
@@ -478,7 +415,6 @@ def run_checks() -> list[CheckResult]:
         for name, table, col, hours in PULLED_AT_CHECKS:
             _guard(name, lambda n=name, t=table, c=col, h=hours:
                    _check_pulled_at(conn, n, t, c, h))
-        _guard(RLS_CHECK_NAME, lambda: _check_rls_hygiene(conn))
     _guard("refresh sweep run", _check_sweep_workflow)
     return results
 
@@ -490,31 +426,48 @@ def run_checks() -> list[CheckResult]:
 def build_report(results: list[CheckResult], today: date,
                  remediation: str | None = None) -> tuple[str, str, bool]:
     """Returns (subject, body, all_ok). `remediation` is a one-line account
-    of an auto-remediation attempt; results should then be the re-check."""
+    of an auto-remediation attempt; results should then be the re-check.
+
+    The body leads with plain-English lines (failures first) and keeps the
+    technical name/detail of every check in a section at the bottom."""
     n_fail = sum(1 for r in results if not r.ok)
     all_ok = n_fail == 0
+    n = len(results)
+    day = f"{today:%a} {today:%b} {today.day}"
     if all_ok:
-        subject = f"Yield health — ✅ {len(results)}/{len(results)} pass"
+        subject = f"Yield health — ✅ all {n} checks passed"
         if remediation:
-            subject += " (auto-remediated)"
+            subject += " (after an automatic fix)"
     else:
-        subject = f"Yield health — ❌ {n_fail} of {len(results)} FAILING"
-    subject += f" ({today.isoformat()})"
-    width = max(len(r.name) for r in results)
-    lines = [f"Yield-dashboard data health — {today.isoformat()} (UTC)", ""]
-    for r in results:
-        mark = "✅ PASS" if r.ok else "❌ FAIL"
-        lines.append(f"{mark}  {r.name.ljust(width)}  {r.detail}")
+        subject = f"Yield health — ❌ {n_fail} of {n} need attention"
+    subject += f" ({day})"
+
+    def line(r: CheckResult) -> str:
+        return ("✅ " if r.ok else "❌ ") + (r.friendly or f"{r.name}: {r.detail}")
+
+    lines = [f"Yield dashboard data health — {day}", ""]
+    if all_ok:
+        lines += ["Everything is up to date.", ""]
+    else:
+        lines += [f"{n_fail} of {n} checks need attention:", ""]
+        lines += [line(r) for r in results if not r.ok]
+        lines += ["", "Everything else is fine:", ""]
+    lines += [line(r) for r in results if r.ok]
     lines.append("")
-    lines.append(f"{len(results) - n_fail}/{len(results)} checks pass.")
     if remediation:
-        lines.append(f"Auto-remediation: {remediation}")
+        lines.append(f"Automatic fix tried: {remediation}")
     if not all_ok:
         lines.append(
-            "Still failing after remediation — needs a human."
+            "Still failing after the automatic fix, so a person needs to look."
             if remediation else
-            "Re-run the sweep: gh workflow run refresh.yml — details in CLAUDE.md / docs."
+            "To retry the data refresh: gh workflow run refresh.yml "
+            "(details in CLAUDE.md and docs/)."
         )
+        lines.append("")
+    lines.append("Technical details")
+    width = max(len(r.name) for r in results)
+    for r in results:
+        lines.append(f"  {'PASS' if r.ok else 'FAIL'}  {r.name.ljust(width)}  {r.detail}")
     lines.append("")
     lines.append(f"Generated by yield-dashboard.health_check at "
                  f"{datetime.now(timezone.utc).isoformat()}.")
@@ -590,30 +543,17 @@ def main(argv: list[str]) -> int:
 
     results = run_checks()
 
-    # Auto-remediate, then re-check once. Two independent fix paths:
-    #   • RLS-hygiene drift   → fixed in-place (instant DDL); a sweep can't.
-    #   • stale table / sweep → re-run refresh.yml (the *remediable* checks).
-    # Code-level failures (id format, join rate) have neither path and skip
-    # straight to the report. At most one of each per run, never loops.
+    # Auto-remediate, then re-check once: a stale table or failed sweep
+    # (the *remediable* checks) re-runs refresh.yml. Code-level failures
+    # (id format, join rate) skip straight to the report. Never loops.
     remediation = None
     remediate_enabled = (os.environ.get("HEALTH_AUTO_REMEDIATE") or "1").lower() \
         not in ("0", "false", "no")
     if not dry_run and remediate_enabled:
         notes: list[str] = []
         failing_before = {r.name for r in results if not r.ok}
-        # Sweep FIRST, RLS fix second — the sweep can DROP+recreate a table
-        # whose upstream schema changed, which re-opens RLS on it; with the
-        # old order (RLS first) that undid the in-place fix before the
-        # re-check every time (2026-07-27: ttd_luckyland recreated on every
-        # sweep by a TTD report-schema change → permanent ❌ loop). The RLS
-        # fix re-queries offenders itself, so run last it also catches drift
-        # the sweep just created. refresh_cache now locks down tables at
-        # creation too, so this ordering is defense in depth.
         if any(not r.ok and r.remediable for r in results):
             _, note = remediate_with_sweep()
-            notes.append(note)
-        if any(r.name == RLS_CHECK_NAME and not r.ok for r in results):
-            _, note = remediate_rls()
             notes.append(note)
         if notes:
             results = run_checks()
