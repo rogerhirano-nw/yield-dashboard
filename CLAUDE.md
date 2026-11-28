@@ -287,7 +287,7 @@ cache", which inflated request counts and missed deals that bid long ago but
 have since gone dark. The `*_deal_metadata` refreshes it used to run weekly
 are still part of the daily sweep (they feed nothing else today).
 
-Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally via `workflow_dispatch` by the Azure Logic Apps scheduler (`docs/azure_scheduler.md`; was cron-job.org until 2026-11-27) (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
+**Since 2026-11-28 the health check and sweep alerts send as adops@newsweek.com** through the AdOps Power Automate flow (`adops_mail.py`, secret `MAIL_WEBHOOK_URL`), falling back to agentmail on any error. Temporary: the flow runs on Roger's Outlook connection; the durable path is the reporting@ Graph app (PR #430) once IT consents. Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally via `workflow_dispatch` by the Azure Logic Apps scheduler (`docs/azure_scheduler.md`; was cron-job.org until 2026-11-27) (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
 
 ## Dashboard ad-format taxonomy
 **Seven canonical formats** (owner-defined by Roger, 2026-06-12; PRs
