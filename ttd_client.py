@@ -29,6 +29,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import re
 import urllib.error
 import urllib.parse
@@ -232,6 +233,32 @@ def _messages_from(raw) -> list[dict]:
     return raw or []
 
 
+# A listing returns one page of at most `limit` messages.  Reading only that
+# page silently caps the window: on 2026-11-12 every scan came back with exactly
+# 100 Chumba matches (= the limit) and never surfaced the fresh report that had
+# been mailed in that day, while the pull kept loading the 11-05 forward.
+# Follow `next_page_token` so the newest-first sort sees every match.
+_MAX_PAGES = 20
+
+
+def _list_all_pages(path: str, *, api_key: str, label: str = "") -> list[dict]:
+    raw = _api_get(path, api_key=api_key)
+    messages = list(_messages_from(raw))
+    pages = 1
+    while isinstance(raw, dict) and raw.get("next_page_token") and pages < _MAX_PAGES:
+        token = urllib.parse.quote(str(raw["next_page_token"]), safe="")
+        raw = _api_get(f"{path}&page_token={token}", api_key=api_key)
+        messages.extend(_messages_from(raw))
+        pages += 1
+    if pages > 1:
+        logger.info("agentmail: %s listing read %d page(s), %d message(s)",
+                    label, pages, len(messages))
+    if isinstance(raw, dict) and raw.get("next_page_token"):
+        logger.warning("agentmail: %s listing stopped at %d pages with more remaining",
+                       label, _MAX_PAGES)
+    return messages
+
+
 def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> None:
     """Log the subjects of TTD-sent mail that did NOT match the needle.
 
@@ -246,7 +273,7 @@ def _log_unmatched_ttd_senders(messages: list[dict], subject_needle: str) -> Non
         (m.get("subject") or "").strip()
         for m in messages
         if TTD_SENDER_DOMAIN in str(m.get("from") or m.get("sender") or "").lower()
-        and subject_needle not in (m.get("subject") or "")
+        and subject_needle.lower() not in (m.get("subject") or "").lower()
     })
     if others:
         logger.warning(
@@ -274,34 +301,84 @@ def list_ttd_messages(
 
     Falls back to an unfiltered scan if the filtered call yields nothing (the
     filter is an optimization, never a hard dependency — `subject_needle` is
-    re-checked client-side either way), and then to the unauthenticated folder,
-    where forwarded reports land when the sender isn't whitelisted.
+    re-checked client-side either way).  The unauthenticated folder, where
+    forwarded reports land when the sender isn't whitelisted, is ALWAYS scanned
+    too and merged in — see the comment below.
     """
     subject_enc = urllib.parse.quote(subject_needle, safe="")
     base = f"/inboxes/{inbox_id}/messages?limit={limit}"
+    unauth = f"{base}&include_unauthenticated=true"
 
-    scanned: list[dict] = []
-    for path, label in (
+    def _scan(chain) -> tuple[list[dict], list[dict]]:
+        """First listing in *chain* that yields a needle match wins."""
+        seen: list[dict] = []
+        for path, label in chain:
+            try:
+                messages = _list_all_pages(path, api_key=api_key, label=label)
+            except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
+                logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
+                continue
+            seen = messages or seen
+            matches = [m for m in messages
+                       if subject_needle.lower() in (m.get("subject") or "").lower()]
+            logger.info(
+                "agentmail: %s scan of %d message(s); %d match needle %r",
+                label, len(messages), len(matches), subject_needle,
+            )
+            if matches:
+                return matches, seen
+        return [], seen
+
+    # The unauthenticated folder is scanned EVERY time, not only as a last
+    # resort: a report forwarded by hand lands there, and the authenticated
+    # listing always holds older matches (the daily automated forwards), so a
+    # "fallback only" scan never looked — the 2026-11-12 manual forward of the
+    # fresh Chumba report sat unseen through three refreshes.  Both sets are
+    # merged and the caller picks the newest by timestamp.
+    auth_matches, auth_seen = _scan((
         (f"{base}&subject={subject_enc}", "subject-filtered"),
         (base, "unfiltered"),
-        (f"{base}&include_unauthenticated=true", "unauthenticated"),
-    ):
-        try:
-            messages = _messages_from(_api_get(path, api_key=api_key))
-        except Exception as exc:  # noqa: BLE001 — a filter the API rejects must not be fatal
-            logger.warning("agentmail %s listing failed (%s) — trying next", label, exc)
-            continue
-        scanned = messages or scanned
-        matches = [m for m in messages
-                   if subject_needle in (m.get("subject") or "").strip()]
-        logger.info(
-            "agentmail: %s scan of %d message(s); %d match needle %r",
-            label, len(messages), len(matches), subject_needle,
-        )
-        if matches:
-            return matches
+    ))
+    unauth_matches, unauth_seen = _scan((
+        (f"{unauth}&subject={subject_enc}", "unauthenticated subject-filtered"),
+        (unauth, "unauthenticated"),
+    ))
+    # The console's "All" view also covers spam/blocked mail.  An API that
+    # rejects these flags just fails this listing (logged, non-fatal).
+    allf = f"{unauth}&include_spam=true&include_blocked=true"
+    all_matches, _ = _scan((
+        (f"{allf}&subject={subject_enc}", "all-folders subject-filtered"),
+    ))
+    unauth_matches = unauth_matches + all_matches
 
-    _log_unmatched_ttd_senders(scanned, subject_needle)
+    # Arrival diagnostic: the newest messages in the whole inbox, as
+    # (time, sender DOMAIN, needle-in-subject).  Subjects and full addresses are
+    # never logged — the Actions logs are public.  This is what tells "the
+    # report was never delivered" apart from "it arrived under a subject we
+    # don't match" (2026-11-12: three hand-sent reports never surfaced).
+    try:
+        recent = _messages_from(_api_get(f"{unauth}", api_key=api_key))
+        recent = sorted(recent, key=_msg_ts, reverse=True)[:8]
+        logger.info("agentmail: newest inbox messages (time, sender domain, has needle): %r", [
+            (_msg_ts(m),
+             str(m.get("from") or m.get("sender") or "").rsplit("@", 1)[-1].strip(" >\"'").lower(),
+             subject_needle.lower() in (m.get("subject") or "").lower())
+            for m in recent
+        ])
+    except Exception as exc:  # noqa: BLE001 — diagnostic only
+        logger.warning("agentmail: arrival diagnostic failed (%s)", exc)
+
+    merged: list[dict] = []
+    ids: set = set()
+    for m in auth_matches + unauth_matches:
+        key = m.get("id") or m.get("message_id") or id(m)
+        if key not in ids:
+            ids.add(key)
+            merged.append(m)
+    if merged:
+        return merged
+
+    _log_unmatched_ttd_senders(unauth_seen or auth_seen, subject_needle)
     return []
 
 
@@ -496,6 +573,58 @@ def parse_ttd_csv(
     return df
 
 
+def _fetch_attachment(api_key: str, inbox_id: str, thread_id: str, attachment_id: str) -> bytes:
+    """Download one attachment (same endpoint the DV clients use): the threads
+    attachment call returns JSON with a pre-signed CDN `download_url`."""
+    meta = _api_get(
+        f"/inboxes/{inbox_id}/threads/{thread_id}/attachments/{attachment_id}",
+        api_key=api_key,
+    )
+    dl = (meta.get("download_url") or meta.get("url")) if isinstance(meta, dict) else None
+    if not dl:
+        raise RuntimeError("no download_url in attachment response")
+    with urllib.request.urlopen(urllib.request.Request(dl), timeout=60) as r:
+        return r.read()
+
+
+def _report_from_attachment(
+    api_key: str,
+    inbox_id: str,
+    msg: dict,
+    detail: dict,
+    *,
+    primary_conv_col: str | Sequence[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Parse the first .xlsx/.csv attachment of *msg* as a TTD report."""
+    atts = msg.get("attachments") or detail.get("attachments") or []
+    thread_id = str(msg.get("thread_id") or detail.get("thread_id") or "").strip()
+    msg_id = msg.get("id") or msg.get("message_id") or ""
+    for att in atts:
+        fn = (att.get("filename") or att.get("name") or "").lower()
+        att_id = att.get("id") or att.get("attachment_id") or ""
+        if not fn.endswith((".xlsx", ".csv")) or not att_id or not thread_id:
+            continue
+        exec_id = f"attachment-{str(att_id)[:16]}"
+        try:
+            content = _fetch_attachment(api_key, inbox_id, thread_id, att_id)
+            df = parse_ttd_csv(content, execution_id=exec_id,
+                               primary_conv_col=primary_conv_col)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TTD report attachment %s on msg %s failed: %s",
+                           fn, msg_id, exc)
+            continue
+        logger.info("Parsed %d rows from TTD report attachment %s (msg %s)",
+                    len(df), fn, msg_id)
+        return df, {
+            "message_id":   msg_id,
+            "subject":      msg.get("subject") or "",
+            "received_at":  _msg_ts(msg),
+            "execution_id": exec_id,
+            "download_url": None,
+        }
+    return pd.DataFrame(), {}
+
+
 def pull_ttd(
     api_key: str,
     inbox_id: str,
@@ -513,6 +642,24 @@ def pull_ttd(
     `primary_conv_col` is forwarded to `parse_ttd_csv` — see its docstring.
     """
     messages = list_ttd_messages(api_key, inbox_id, subject_needle=subject_needle)
+    # A thread pinned by id (TTD_THREAD_ID) is fetched directly: on 2026-11-12
+    # a hand-sent report showed in the console's "All" view but in no listing
+    # the API returned, so the only way to reach it was by its thread id.
+    pinned = os.environ.get("TTD_THREAD_ID", "").strip()
+    if pinned:
+        try:
+            th = _api_get(f"/inboxes/{inbox_id}/threads/{urllib.parse.quote(pinned, safe='')}",
+                          api_key=api_key)
+            tmsgs = _messages_from(th)
+            for tm in tmsgs:
+                tm.setdefault("thread_id", pinned)
+            logger.info("agentmail: pinned thread %s has %d message(s), attachments=%r",
+                        pinned, len(tmsgs),
+                        [a.get("filename") for tm in tmsgs for a in (tm.get("attachments") or [])])
+            # Put the pinned thread's messages first, newest first.
+            messages = sorted(tmsgs, key=_msg_ts, reverse=True) + list(messages or [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("agentmail: pinned thread %s fetch failed: %s", pinned, exc)
     if not messages:
         return pd.DataFrame(), {}
 
@@ -552,9 +699,17 @@ def pull_ttd(
 
         url = extract_ttd_download_url(body)
         if not url:
+            # No link: a report mailed by hand carries the export as an
+            # ATTACHMENT instead (2026-11-12 — Outlook was down, so the TTD
+            # link couldn't be opened and the file was re-sent from Gmail).
+            att_df, att_meta = _report_from_attachment(
+                api_key, inbox_id, m, detail, primary_conv_col=primary_conv_col,
+            )
+            if not att_df.empty:
+                return att_df, att_meta
             logger.warning(
                 "TTD notification message %s has no recognizable download URL "
-                "(subject: %r) — skipping",
+                "or report attachment (subject: %r) — skipping",
                 msg_id, subj,
             )
             continue

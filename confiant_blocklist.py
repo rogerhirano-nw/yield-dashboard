@@ -386,8 +386,7 @@ def record_run(conn: sqlite3.Connection, summary: RunSummary) -> None:
 
 # ── summary email ─────────────────────────────────────────────────────────────
 
-# Brand palette — mirrors confiant_blocklist_weekly_report.py so the daily
-# and weekly emails share one visual identity.
+# Brand palette for the summary email.
 _NW_RED      = "#d72638"
 _NW_GREEN    = "#22c55e"
 _NW_AMBER    = "#f59e0b"
@@ -697,8 +696,8 @@ def _build_email_html(summary: RunSummary) -> str:
         )
         more_html = (
             f"<p style='margin:6px 0 0 0;color:{_NW_MUTED};font-size:12px'>"
-            f"&hellip; and {more} more, ordered by impressions. Full list ships in the weekly RevOps digest "
-            f"and is queryable via the Confiant Alert Log.</p>"
+            f"&hellip; and {more} more, ordered by impressions. The full list is queryable "
+            f"via the Confiant Alert Log.</p>"
             if more > 0 else ""
         )
         return (

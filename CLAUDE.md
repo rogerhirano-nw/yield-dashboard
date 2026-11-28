@@ -1,6 +1,7 @@
 # Claude Code notes for yield-dashboard
 
 See `README.md` for project overview, files, and quickstart.
+**See `docs/handover.md` first** — one page: what runs where, what is still tied to Roger's accounts, and what to do when something is red.
 See `docs/changelog.md` for the dated "what changed when, and why" index (keyed by PR).
 See `docs/seller_comms.md` for seller/AM email templates (Chumba delivery-issue outreach, how to pull LI goals + deal IDs from GAM).
 
@@ -121,6 +122,17 @@ keeps its RLS grants — the daily DROP+recreate is what re-opened RLS on
 SQLite sim seeded with the old schema: 2 old rows + 499 new = 501 rows over
 20 union columns, August values intact.
 
+**When the report can't reach the inbox** (2026-11-12: three hand-sent
+Chumba reports never arrived at agentmail; nothing landed after 15:20 UTC),
+load the downloaded export directly: `python refresh_cache.py
+--mode=ttd-chumba --file=<path.xlsx>` from a machine whose `.env` has
+`DATABASE_URL`. Same parser and same date-merge as the inbox pull, so re-runs
+are idempotent. The inbox scan itself now pages through every match (it used to
+stop at 100), always checks the unauthenticated folder (hand-forwards land
+there), matches the needle case-insensitively, reads an attached `.xlsx`/`.csv`
+when the body has no TTD link, and logs the newest inbox arrivals as
+(time, sender domain, has-needle) — never subjects, the logs are public.
+
 `refresh_cache.py main()` accepts `--mode={all,direct,opensincera}`. Default is `all` (full sweep). Each source has a corresponding `refresh_<source>` function callable individually for ad-hoc work. DV Attention is folded into the full sweep — no `--mode=dv_attention` flag because the agentmail poll is cheap (~3s + however long DV's CSV is to parse).
 
 **How DV metrics join to the dashboard** (Attention / SIVT / GIVT). Two
@@ -197,33 +209,23 @@ For first-deploy seeding of `pmp_last_bid_date` with 90 days of history, use `sc
 | Digest | Script | Workflow | Recipients (var) | Subject |
 |---|---|---|---|---|
 | ~~Betting CPA (Spinfinite, IO1109)~~ **RETIRED** | `betting_daily_update.py` | `.github/workflows/betting_daily_digest.yml` | `BETTING_DIGEST_TO` (var) / `BETTING_DIGEST_CC` (var, optional) | `Newsweek Betting CPA digest — <yesterday>` |
-| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, default roger.hirano@newsweek.com) | `Yield health — ✅ N/N pass (<today>)` / `❌ N of M FAILING (<today>)` |
+| ~~Weekly deal health (zero-bid PMP/PG deals)~~ **RETIRED** | `python -m deal_health` | ~~`.github/workflows/weekly_report.yml`~~ (deleted) | was hard-coded in the workflow (am@, adops@, revops@ + 3 sellers) | `Weekly Deal Health — <date>` |
+| Data health check | `health_check.py` | `.github/workflows/health_check.yml` | `HEALTH_DIGEST_TO` (var, **adops@newsweek.com** since 2026-11-27; code default roger.hirano@newsweek.com) | `Yield health — ✅ all N checks passed (<day>)` / `❌ N of M need attention (<day>)` |
 
 The health check runs after the sweep and verifies prod data invariants: DV
 `line_item_id` hygiene (the ".0" float-suffix canary from #151), DV↔GAM join
 rate ≥90%, per-table freshness (same-day sources must have yesterday's date;
 Pubmatic +1 day, DV may lag 3; OpenSincera's four tables by `_pulled_at`
-within 26h), that the latest `refresh.yml` run succeeded within 26h, and
-**`public RLS hygiene`** — every public table has RLS enabled and no
-anon/authenticated grants, so the Supabase REST API can't reach the cache
-(`docs/supabase_rls_lockdown.sql` is the lockdown; this canaries it against
-drift, since new source tables arrive RLS-off — see the memory note
-`project_yield_dashboard_ops`). **Auto-remediation:** when a *remediable* check fails
-(stale table / failed sweep), the script re-dispatches `refresh.yml` itself,
-waits for it, re-checks everything, and reports the final state — transient
-upstream failures heal hands-free. **RLS-hygiene drift is fixed *in-place*
-instead** — it enables RLS + revokes anon/authenticated grants on the
-offending tables (a sweep can't fix RLS, and re-running it creates the very
-tables that drift), then re-checks. **The sweep re-run goes FIRST, the RLS
-fix second** (2026-07-27): a sweep can DROP+recreate a table whose upstream
-report schema changed, re-opening RLS on it — with the old order the
-in-place fix was undone before the re-check on every run (`ttd_luckyland`,
-recreated daily by a TTD report-schema change, looped ❌ this way). Belt and
-braces, `refresh_cache._lockdown_table` now also enables RLS + revokes
-anon/authenticated *at table creation* in the same transaction as the write
-(the `_safe_replace` drop path, `_refresh_ttd_campaign`'s schema-change
-drop, and first-time creates on those paths) — so recreated tables are born
-locked instead of waiting for the next health check. Code-level failures (id format, join
+within 26h), and that the latest `refresh.yml` run succeeded within 26h.
+The email leads with **plain-English lines, failures first** (each check sets
+`CheckResult.friendly`, e.g. "Magnite by site: data through Fri Nov 27"; table
+names map through `TABLE_LABELS`), with the technical name/detail of every
+check in a "Technical details" section at the end. (A Supabase-only "public RLS
+hygiene" check and the RLS lockdown at table creation were removed 2026-11-28 —
+Azure Postgres has no public REST API to lock down.) **Auto-remediation:** when
+a *remediable* check fails (stale table / failed sweep), the script
+re-dispatches `refresh.yml` itself, waits for it, re-checks everything, and
+reports the final state — transient upstream failures heal hands-free. Code-level failures (id format, join
 rate) are reported as needing a human; a re-pull can't fix those. Disable
 with `HEALTH_AUTO_REMEDIATE=0` or the workflow's `remediate` input.
 **Retry ladder:** seconds-scale blips are retried inside the clients
@@ -240,16 +242,12 @@ sweep re-runs/day — anything still failing after that needs a human, and
 the ❌ email + red Actions run says so. The
 subject carries the verdict, so a ✅ day needs no opening; set repo
 var `HEALTH_DIGEST_ONLY_FAILURES=1` to silence every green email. It is
-triggered by **launchd on Roger's Mac**
-(`~/Library/LaunchAgents/com.newsweek.yield-health-check.plist`, same
-host as the Confiant jobs) firing `gh workflow run health_check.yml` at
-05:45 + 09:45 ET (ET-pinned like the sweep; `RunAtLoad` catches boots
-after missed fires, and redundant fires are free thanks to the
-run-history gate). GitHub-native cron drifts hours late and
-auto-disables after 60 days of repo inactivity, so it is not the
-trigger of record; cron-job.org (`workflow_dispatch` + PAT, like
-`refresh.yml`) is the alternative if the Mac dependency becomes a
-problem. One `schedule:` cron remains (18:00 UTC) as a **dead-man
+triggered by **Azure Logic App `la-sched-yield-health-check`** at
+05:45 + 09:45 ET (since 2026-11-27; see `docs/azure_scheduler.md` — it
+replaced the launchd job on Roger's Mac, `com.newsweek.yield-health-check`;
+redundant fires are free thanks to the run-history gate). GitHub-native cron
+drifts hours late and auto-disables after 60 days of repo inactivity, so it
+is not the trigger of record. One `schedule:` cron remains (18:00 UTC) as a **dead-man
 fallback**: quiet when an earlier run already sent today's verdict, but
 if the Mac is off all day or gh auth breaks it becomes the first run of
 the day and the verdict still goes out — late, which is the tell. The
@@ -265,7 +263,21 @@ pattern for the next CPA-sold flight (outbound send, sub_id join
 contract, segment test design). The data health check intentionally does
 not cover `betting_conversions`.
 
-Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally by cron-job.org via `workflow_dispatch` (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
+**Weekly deal health email is retired** (Roger, 2026-11-16). It mailed the
+sales team every Wednesday at 09:00 ET (cron-job.org → `weekly_report.yml`) a
+list of PMP/PG deals that had bid requests but no bids. The workflow is
+**deleted**, not just disabled, so a stray cron-job.org dispatch gets a 404
+and can't send anything. The `deal_health/` package and its tests are kept as
+the pattern for an Outlook-safe HTML email. **If it is ever revived, fix the
+window first**: its SQL (`deal_health/data.py`) has **no date filter**, and
+`magnite_deal_daily` / `pubmatic_deals` hold scattered days back to May (plus
+Magnite now accumulates one day per pull, so it never stops growing). So "no
+bids in the last 7 days" really meant "no bids on any day still in the
+cache", which inflated request counts and missed deals that bid long ago but
+have since gone dark. The `*_deal_metadata` refreshes it used to run weekly
+are still part of the daily sweep (they feed nothing else today).
+
+**Since 2026-11-28 the health check and sweep alerts send as adops@newsweek.com** through the AdOps Power Automate flow (`adops_mail.py`, secret `MAIL_WEBHOOK_URL`), falling back to agentmail on any error. Temporary: the flow runs on Roger's Outlook connection; the durable path is the reporting@ Graph app (PR #430) once IT consents. Digest scripts share the outbound `POST /v0/inboxes/<inbox_id>/messages/send` pattern from `apple-news/daily_report.py`, triggered externally via `workflow_dispatch` by the Azure Logic Apps scheduler (`docs/azure_scheduler.md`; was cron-job.org until 2026-11-27) (GitHub-native `schedule:` drifts hours late), and support a local dry-run — `python <script> --dry-run` (needs `DATABASE_URL` in env; the flag skips the send only).
 
 ## Dashboard ad-format taxonomy
 **Seven canonical formats** (owner-defined by Roger, 2026-06-12; PRs
@@ -848,7 +860,7 @@ Rules that survive any future restyle:
      **The two cards STACK full-width** (2026-06-23 — was `st.columns(2)`
      side-by-side until the slim-monitor redesign; the `.nw-ttd-wrap .nw-na` rule
      still lifts the shared `.nw-na` 760px cap so each fills the width). **Each is
-     graded against a CPA goal** (`ttd_cpa_goal` setting, default **$150**, editable
+     graded against a CPA goal** (`ttd_cpa_goal` setting, default **$50** — matches the seller-comms CPA report to Ivy, Roger 2026-11-12; was $150 — editable
      in Settings → Direct): the slim row's goal pill + the scorecard CPA hero show
      a `✓ under` (green) / `✗ over` (red) verdict via
      `dl.cpa_goal_delta`, and `_ttd_trend_svg` draws a dashed reference line at the
@@ -983,8 +995,10 @@ they're most fixable — **widen `landing_window_days` to 14 to catch them
 early** (flags ~10). `impressions_1d` is yesterday's delivery; a 7-day
 average would be steadier if pacing is spiky.
 
-## Streamlit Cloud deploy
-**Production deploys from `main`** (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
+## Dashboard deploy (Azure App Service)
+**Production is Azure App Service since 2026-11-27** — https://adops.azurewebsites.net, behind Newsweek's Entra login, deployed from `main` by `.github/workflows/deploy_dashboard_azure.yml`. Runbook: `docs/azure_dashboard.md`. The old Streamlit Community Cloud app (`newsweek.streamlit.app`, Roger's personal account) was **deleted 2026-11-27**; notes below that say "Cloud" now apply to App Service (also UTC, same `st.cache_data` caching).
+
+**Streamlit Cloud history:** production deployed from `main` (since ~2026-05-22). Previously was pinned to `mac-studio`, but that branch is no longer the deploy target. Push to main → Cloud auto-redeploys within ~60s. Don't merge main → mac-studio out of habit unless someone has explicitly re-pointed Cloud back at it.
 
 **The Cloud runtime is UTC — the dashboard's "today" must be Eastern.**
 Streamlit Cloud's container clock is UTC, so a bare `date.today()` /
@@ -1010,8 +1024,7 @@ touches them.
 2026-08-03 — was 6h → 1h on 2026-06-12 on the premise that Pro + Micro
 compute made the egress cap and disk-IO budget moot; Supabase's
 2026-08-03 "depleting its Disk IO Budget" warning disproved the IO half,
-so the TTL went back up to 2h. See `docs/supabase_disk_io.md` for the
-full IO story + the `db_disk_io_report.yml` diagnostic), keyed on
+so the TTL went back up to 2h. (the Supabase-era disk-IO runbook was removed with Supabase), keyed on
 function source — a push that doesn't change those functions
 hot-reloads the script but keeps the old cached frames. So after fixing
 data out-of-band (direct SQL against prod), the dashboard keeps
@@ -1068,34 +1081,43 @@ raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it
   2026-11-02). DV attention comes from the DV emails, because `dv_attention` only
   holds ~8 days. The client logo goes on a transparent background, top right of
   the Summary page.
-- `docs/supabase_disk_io.md` — Supabase Disk IO Budget runbook. **Root cause
-  (2026-10-21): pg_stat_statements query-text bloat** — `to_sql`'s multi-row
-  INSERT batches left 464 MB of text in the view (DB is 89 MB), and Supabase's
-  per-minute metrics scrape spilled ~460 GB/day of temp files reading it. Sweep
-  appends now go through `refresh_cache._to_sql_append` (COPY). **Never add a
-  plain `df.to_sql` to the sweep.** Also covers (from the 2026-08-03 warning): what in this stack spends disk IO, how to
-  measure it (`db_disk_io_report.yml` → `scripts/db_disk_io_report.py`,
-  read-only pg_stat/pg_statio/pg_stat_statements report, optional
-  `vacuum=1` input for a lock-free VACUUM ANALYZE of every public table),
-  and the levers cheapest-first (dashboard TTL, vacuum, sweep-churn
-  conversion, compute upgrade).
-- `docs/confiant_blocklist.md` — Confiant -> GAM Protection brand-safety
-  pipeline. Three jobs that all read/write the same `state.sqlite`:
+- `docs/azure_scheduler.md` — **every timed job** (daily sweep, hourly GAM refresh,
+  health check, seller-comms tracker/reports, apple-news reports) is started by
+  an Azure Logic App per schedule (`la-sched-*`, `infra/scheduler/scheduler.json`)
+  calling GitHub's workflow-dispatch API with a token from Key Vault
+  `nw-adops-sched-kv`. Replaced cron-job.org 2026-11-27.
+- `docs/azure_dashboard.md` — the dashboard on **Azure App Service** (URL, plan in East US 2
+  because Central US has no App Service quota, Entra login, publish-profile deploys, rotation).
+- `docs/azure_db_migration.md` — **moving the cache DB from Supabase to Azure
+  Database for PostgreSQL** (handoff to Newsweek ownership, 2026-11). Switch is
+  one `DATABASE_URL`; the one-off copy workflow was removed after the
+  2026-11-27 cutover. **Supabase is gone (2026-11-28)**: its final export is
+  `supabase/supabase_ltavpsikmmqmracvjtvk_2026-11-28.dump` in Azure storage
+  account `nwadopsyieldarchive`, container `db-archive`.
+- **Never add a plain `df.to_sql` to the sweep** — appends go through
+  `refresh_cache._to_sql_append` (COPY). Multi-row INSERT batches bloated
+  `pg_stat_statements` to 464 MB on the old Supabase DB (2026-10-21) and blew
+  its disk-IO budget; COPY is one constant statement per table.
+- `docs/confiant_blocklist.md` — **RETIRED 2026-11-27** (Roger: "Confiant jobs should be all
+  canceled", ahead of his departure). The launchd jobs on Roger's laptop are unloaded and
+  nothing else schedules them; the scripts stay as reference only — don't re-schedule
+  them without an owner at Newsweek. Was: Confiant -> GAM Protection brand-safety
+  pipeline. Two jobs that read/write the same `state.sqlite` (a third, the
+  weekly email, is retired):
     1. **Daily blocklist push** (`confiant_blocklist.py`, launchd 04:00 ET) —
        pulls Confiant API, pushes per-creative Security-flagged Google
        domains to GAM Protection 28044902 ("Everything") via Playwright.
        Post-run summary email goes to `revops@newsweek.com` via agentmail.
-    2. **Weekly RevOps digest** (`confiant_blocklist_weekly_report.py`,
-       launchd Mon 09:00 ET) — rolls up the past 7 days of pushes,
-       branded layout (KPI tiles, per-day bar chart, issue-type cards),
-       emails RevOps. Layout matches the publisher brand-safety style.
+    2. ~~Weekly RevOps digest~~ **RETIRED** (Roger, 2026-11-24) — script and
+       plist deleted. The installed launchd job on the Mac has to be removed
+       by hand; commands in the doc.
     3. **HRAP seed + SSP forward**
        (`confiant_blocklist_seed_hraps.py` + `confiant_hrap_forward.py`,
        run manually when Confiant ships a periodic notice). HRAP list
        persisted at `data/confiant_hraps.json`; seeder pushes new entries
        to the same Protection in batches of 30; forwarder creates one
        Outlook draft per SSP partner via Microsoft Graph.
-  All four scripts auto-load `~/code/yield-dashboard/.env` via the same
+  The scripts auto-load `~/code/yield-dashboard/.env` via the same
   `_load_dotenv()` helper. **Plist EnvironmentVariables dict must NOT
   redeclare keys as empty `<string></string>`** — `os.environ.setdefault`
   treats them as "already set" and the script silently skips. The first
@@ -1463,10 +1485,9 @@ approve project servers; approval is per-user, stored outside the repo).
 
 | Server | Transport | URL | Auth |
 |---|---|---|---|
-| `supabase` | http | `https://mcp.supabase.com/mcp?project_ref=ltavpsikmmqmracvjtvk` | OAuth in the browser on first use |
 | `beehiiv` | http | `https://mcp.beehiiv.com/mcp` | OAuth in the browser on first use |
 
-Both are **remote HTTP servers with browser OAuth** — no API key goes in the
+It is a **remote HTTP server with browser OAuth** — no API key goes in the
 repo or in `.env`, and neither can be authorized from a headless/cloud session
 (Claude Code on the web, Actions). Authorize them once from an interactive
 local `claude` session (`/mcp`, pick the server, approve in the browser); the
