@@ -5,16 +5,14 @@ account. This moves it to **Azure Database for PostgreSQL – Flexible Server**
 in Newsweek's own Azure subscription. The code is plain SQLAlchemy/psycopg2
 against Postgres, so the switch is **one connection string** (`DATABASE_URL`).
 
-## What is Supabase-specific (and how it behaves on Azure)
-- **RLS hygiene** (health check + `_lockdown_table`) exists only to close
-  Supabase's public REST API. Azure has no such API and no `anon` /
-  `authenticated` roles, so the health check reports it as passing
-  ("not Supabase") and `_lockdown_table`'s RLS enable is a harmless no-op
-  (the app connects as the table owner). `docs/supabase_rls_lockdown.sql`
-  is not needed on Azure.
-- The pooler connect retry in `refresh_cache` is generic and stays.
-- `scripts/db_disk_io_report.py` reads `pg_stat_statements`; enable that
-  extension on Azure (server parameter `azure.extensions`) if you want it.
+## Status
+Done. Cut over 2026-11-27; Supabase project and org deleted 2026-11-28. The
+final Supabase export (pg_dump custom format, public schema, 29 tables) is in
+Azure storage account `nwadopsyieldarchive`, container `db-archive`, blob
+`supabase/supabase_ltavpsikmmqmracvjtvk_2026-11-28.dump` (private, Cool tier,
+30-day soft delete). Restore: `pg_restore --no-owner -d <url> <file>`. The
+Supabase-only pieces (RLS health check + lockdown, disk-IO runbook, the copy
+workflow) were removed from the repo.
 
 ## 1. Server — **created 2026-11-27**
 - **`nw-adops-yield-db.postgres.database.azure.com`**, database `yield`, admin

@@ -2168,7 +2168,7 @@ _load_errors: dict[str, str] = {}  # table → error message, populated by load(
 # 4×/day intraday direct refreshes within ≤2h (the data cadence itself is
 # 3h) and the 05:00 ET sweep well before US business hours. The debug
 # "Clear cache + re-query" button still handles on-demand refresh; see
-# docs/supabase_disk_io.md for the full IO story.
+# the 2026-10 Supabase disk-IO investigation (pre-Azure).
 _CACHE_TTL_SECONDS = 7200
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)

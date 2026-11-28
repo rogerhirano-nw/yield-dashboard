@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from health_check import (CheckResult, _data_day, _eval_freshness,
-                          _eval_rls_hygiene, build_report, should_send)
+from health_check import (CheckResult, _ago, _data_day, _eval_freshness,
+                          build_report, should_send)
 
 TODAY = date(2026, 6, 11)
 
@@ -31,8 +31,9 @@ def test_report_all_pass_verdict_in_subject():
     subject, body, all_ok = build_report(
         [CheckResult("a", True, "fine"), CheckResult("b", True, "fine")], TODAY)
     assert all_ok
-    assert "✅ 2/2 pass" in subject
-    assert "2/2 checks pass" in body
+    assert "✅ all 2 checks passed" in subject
+    assert "(Thu Jun 11)" in subject
+    assert "Everything is up to date." in body
 
 
 def test_report_failure_verdict_and_detail():
@@ -41,8 +42,11 @@ def test_report_failure_verdict_and_detail():
          CheckResult("b", False, "max(date) 2026-06-08 < required 2026-06-10")],
         TODAY)
     assert not all_ok
-    assert "❌ 1 of 2 FAILING" in subject
-    assert "❌ FAIL" in body and "2026-06-08" in body
+    assert "❌ 1 of 2 need attention" in subject
+    assert "❌ b: max(date)" in body and "2026-06-08" in body
+    # failures are listed before the passing checks
+    assert body.index("❌") < body.index("✅")
+    assert "Technical details" in body
 
 
 def test_freshness_failures_are_remediable():
@@ -59,8 +63,8 @@ def test_report_notes_remediation():
         [CheckResult("a", True, "fine")], TODAY,
         remediation="re-ran refresh sweep → success (url); recovered: a")
     assert all_ok
-    assert "auto-remediated" in subject
-    assert "Auto-remediation: re-ran refresh sweep" in body
+    assert "after an automatic fix" in subject
+    assert "Automatic fix tried: re-ran refresh sweep" in body
 
 
 def test_report_still_failing_after_remediation_flags_human():
@@ -68,7 +72,7 @@ def test_report_still_failing_after_remediation_flags_human():
         [CheckResult("a", False, "still stale")], TODAY,
         remediation="re-ran refresh sweep → success (url)")
     assert not all_ok
-    assert "needs a human" in body
+    assert "a person needs to look" in body
 
 
 def test_data_day_rolls_over_after_the_sweep_not_at_midnight():
@@ -86,39 +90,26 @@ def test_should_send_matrix():
     assert not should_send(True, True, None)       # quiet green follow-up
 
 
-def test_rls_hygiene_passes_when_no_offenders():
-    r = _eval_rls_hygiene([])
-    assert r.ok
-    # Must NOT be remediable: the sweep can't enable RLS (it's fixed in-place),
-    # and marking it remediable would dispatch a pointless refresh.
-    assert not r.remediable
-    assert "all public tables" in r.detail.lower()
+def test_freshness_friendly_lines():
+    ok = _eval_freshness("magnite_site_daily fresh", date(2026, 6, 10), 1, TODAY)
+    assert ok.friendly == "Magnite by site: data through Wed Jun 10"
+    bad = _eval_freshness("dv_ivt fresh", date(2026, 6, 5), 3, TODAY)
+    assert bad.friendly == ("DoubleVerify invalid traffic: data stops at Fri Jun 5, "
+                            "should reach Mon Jun 8")
+    empty = _eval_freshness("ttd_chumba fresh", None, 2, TODAY)
+    assert empty.friendly == "Trade Desk (Chumba): no data at all"
 
 
-def test_rls_hygiene_fails_and_lists_each_offender_reason():
-    r = _eval_rls_hygiene([("ttd_luckyland", True, False),
-                           ("dv_ivt", False, True),
-                           ("gam_creatives", True, True)])
-    assert not r.ok
-    assert not r.remediable
-    assert "3 public table(s)" in r.detail
-    assert "ttd_luckyland (RLS off)" in r.detail
-    assert "dv_ivt (anon/authenticated grant)" in r.detail
-    assert "gam_creatives (RLS off, anon/authenticated grant)" in r.detail
+def test_report_uses_friendly_line_when_present():
+    _, body, _ = build_report(
+        [CheckResult("gam_campaigns pulled", True, "last write 0.1h ago (max 26h)",
+                     friendly="GAM direct campaigns: updated 6 minutes ago")], TODAY)
+    assert "✅ GAM direct campaigns: updated 6 minutes ago" in body
+    assert "gam_campaigns pulled" in body  # still in the technical section
 
 
-def test_rls_check_skips_on_plain_postgres():
-    """Azure Postgres has no anon/authenticated roles; the RLS check must pass
-    (not crash on has_table_privilege of a missing role)."""
-    import health_check as hc
-
-    class _Res:
-        def __init__(self, v): self.v = v
-        def scalar(self): return self.v
-        def all(self): raise AssertionError("offender query must not run off Supabase")
-
-    class _Conn:
-        def execute(self, stmt): return _Res(0)
-
-    r = hc._check_rls_hygiene(_Conn())
-    assert r.ok and "not Supabase" in r.detail
+def test_ago_wording():
+    assert _ago(0.1) == "6 minutes ago"
+    assert _ago(1) == "1 hour ago"
+    assert _ago(6.2) == "6 hours ago"
+    assert _ago(72) == "3 days ago"
