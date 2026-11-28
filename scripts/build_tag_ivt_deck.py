@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS tag_ivt_months (
     month            DATE PRIMARY KEY,      -- first of the month
     ga4_pageviews    BIGINT,
     dv_prebid        BIGINT,
-    sivt_display     DOUBLE PRECISION,      -- fraction, 0.0004 = 0.04%
+    sivt_display     DOUBLE PRECISION,      -- fraction: 0.0004 means 0.04 percent
     sivt_video       DOUBLE PRECISION,
     sivt_overall     DOUBLE PRECISION,      -- optional: DV's own overall rate; else weighted
     dv_display_imps  BIGINT,                -- optional: DV post-bid gross, for weighting
