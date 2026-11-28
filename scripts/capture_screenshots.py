@@ -350,6 +350,18 @@ def main() -> int:
 
         browser.close()
 
+    # What the deck builder needs to title the slides without anyone typing it
+    # (scripts/screenshots_auto_spec.py; the dashboard's Tools tab).
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    (out / "manifest.json").write_text(json.dumps({
+        "order_id": str(order_id), "order_name": order_name,
+        "line_item_id": str(args.line_item), "line_item_name": getattr(li, "name", ""),
+        "article_url": args.article_url,
+        "captured": datetime.now(ZoneInfo("America/New_York")).strftime("%-d %b %Y, %-I:%M %p ET"),
+        "shots": sorted(shots), "skipped": skipped,
+    }, indent=2))
+
     print(f"\n{len(shots)} shot(s) -> {out}")
     for s in sorted(shots):
         print(f"  {s}")

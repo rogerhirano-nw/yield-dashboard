@@ -4,6 +4,19 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-28 — Tools tab: name builder, final reports, screenshot decks
+
+The dashboard gets a **Tools** tab so three jobs no longer need GitHub, Claude
+or the SharePoint workbook: a **name builder** for the SOP 1.3 naming standard
+(`dl.taxonomy_name`, flags anything off-standard), **Final report** (order id →
+client workbook; `final_campaign_report.yml` now builds the `.xlsx` itself via
+`scripts/final_report_workbook.py`, which derives the wording from the order
+name) and **Screenshots** (shot list, then line item + article → `.pptx`;
+`capture_screenshots.py` writes a `manifest.json` and
+`scripts/screenshots_auto_spec.py` turns it into the deck spec). The app
+reads the scheduler's GitHub token through a Key Vault reference. Workflows
+gained `run-name`s so the run list says which order each run was for.
+
 ## 2026-11-28 — Campaign final reports: GAM pull + Sky-format workbook (#420)
 
 `final_campaign_report.yml` → `scripts/final_campaign_report.py` pulls an

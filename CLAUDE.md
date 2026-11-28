@@ -1073,6 +1073,21 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- **Tools tab** (`?view=tools`, `tools_tab.py`, 2026-11-28) — three jobs that
+  used to live outside the dashboard, now behind the Newsweek login:
+  **Name builder** (the SOP 1.3 14-field naming standard; logic is
+  `dl.taxonomy_name`, tested — replaces typing names into the SharePoint
+  Taxonomy Standard workbook), **Final report** (dispatches
+  `final_campaign_report.yml`, returns the client `.xlsx`; see
+  `docs/final_report.md`) and **Screenshots** (dispatches
+  `pull_screenshots_source.yml` then `capture_screenshots.yml`, returns the
+  `.pptx`; see `docs/screenshots_document.md`). Dispatch + artifact download go
+  through `gh_actions.py` with app setting `GITHUB_DISPATCH_TOKEN`, a Key Vault
+  reference to the scheduler's token (`docs/azure_dashboard.md`). The workflows
+  are read-only against GAM; anyone who can sign in to the dashboard can start
+  them. `st.tabs` renders all three tabs each rerun, so the run lists are
+  cached 20s (`_recent_runs`) — keep it, or every keystroke in the name builder
+  costs three GitHub calls.
 - `docs/final_report.md` — **campaign final reports** (doc + client Excel
   workbook). The house format is the AppleTv Sky Program F3 report: fill
   `templates/final_report_template.xlsx` with `scripts/build_final_report_xlsx.py`

@@ -8,6 +8,17 @@ design a new one; fill the template.
 
 ## Order id in, doc + workbook out
 
+**From the dashboard (since 2026-11-28):** https://adops.azurewebsites.net →
+**Tools → Final report** → order id → *Build final report*. The workflow now
+also builds the workbook itself (`scripts/final_report_workbook.py`): it
+derives advertiser / campaign (order-name tokens 7 / 8), seller (last token →
+`ae_names`), flight (earliest line start → latest line end), line label
+(canonical format + rendered sizes) and the CTR target (0.10%, 0.30% for
+interstitials), and the form takes an override for each, plus
+*omit measurement* and *revenue*. The `.xlsx` downloads from *Recent runs*
+(artifact `final-report`, kept 90 days). Not automated: the client logo and
+the doc — add them as in steps 2–3.
+
 1. **Pull.** Dispatch `.github/workflows/final_campaign_report.yml` with
    `order=<GAM order id>` (and `end_date` only to cut the window short). It
    runs `scripts/final_campaign_report.py` (read-only) and uploads the

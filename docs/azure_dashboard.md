@@ -24,6 +24,16 @@ which the 2h `st.cache_data` hides.
 - App settings: `DATABASE_URL` (same Azure Postgres URL as the GitHub secret),
   `SCM_DO_BUILD_DURING_DEPLOYMENT=true` (Oryx installs `requirements.txt` on
   deploy), `WEBSITES_PORT=8000`.
+- **Tools tab** (final reports, screenshot decks): app setting
+  `GITHUB_DISPATCH_TOKEN` is a **Key Vault reference**,
+  `@Microsoft.KeyVault(SecretUri=https://nw-adops-sched-kv.vault.azure.net/secrets/github-dispatch-token/)`,
+  the same token the scheduler's Logic Apps use. The web app's system-assigned
+  identity has `get` on that vault, so the token is never copied anywhere.
+  `GITHUB_REPO=rogerhirano-nw/yield-dashboard` (change it when the repo moves).
+  Check it resolves: portal → the app → Environment variables (green tick), or
+  `az rest --method get --url https://management.azure.com/<app id>/config/configreferences/appsettings/GITHUB_DISPATCH_TOKEN?api-version=2022-03-01`
+  → `"status": "Resolved"`. A new token in Key Vault is picked up within 24h,
+  or straight away after a restart.
 - `dashboard.py` reads `st.secrets["DATABASE_URL"]` first and falls back to the
   environment, so no `secrets.toml` is needed on App Service.
 - `.streamlit/config.toml` (theme) ships with the code. Licensed fonts in
@@ -60,6 +70,8 @@ after that it's cached for 2h.
   and put the new value in app setting `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET`.
 - **DB password**: update both the `DATABASE_URL` app setting here and the
   GitHub secret.
+- **GitHub token**: replace Key Vault `github-dispatch-token` (see
+  `docs/azure_scheduler.md`); the scheduler and the Tools tab both read it.
 
 ## Login gotchas (2026-11-27)
 - It was first set up with **classic (v1) auth** (`az webapp auth-classic`):
