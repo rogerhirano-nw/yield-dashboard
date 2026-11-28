@@ -278,6 +278,33 @@ def gam_weights(year: int, through: int):
     return {m: tuple(v) for m, v in w.items()}, df
 
 
+def write_gam_xlsx(df, path: Path, year: int) -> None:
+    """The DV-GAM workbook's GAM columns, one sheet per workbook sheet, in its
+    column order (Ad Exchange · Open Bidding · PMP – PA · Ad server · PMP – PD+PG ·
+    GAM total). Paste into `DV-GAM_discrepancy_report.xlsx`; the DV columns
+    and formulas there stay as they are."""
+    import pandas as pd
+    import tag_ivt_gam_pull as tg
+    heads = {"ad_exchange": "Ad Exchange", "open_bidding": "Open Bidding", "pmp_pa": "PMP – PA",
+             "ad_server": "Ad server", "pmp_pd_pg": "PMP – PD+PG"}
+    with pd.ExcelWriter(path, engine="openpyxl") as xw:
+        for sheet, unit, total in (("inpage display", tg.AD_UNITS["display"], "GAM Total code served count"),
+                                   ("instream video", tg.AD_UNITS["video"], "GAM gross impressions")):
+            part = df[df["ad_unit"] == unit].sort_values("month").copy()
+            if sheet == "instream video":
+                part["gam_total"] = part["ad_exchange"] + part["pmp_pa"] + part["ad_server"]
+            part["Month and year"] = pd.to_datetime(part["month"]).dt.strftime("%b %Y")
+            part = part.rename(columns={**heads, "gam_total": total})
+            part[["Month and year", *heads.values(), total]].to_excel(
+                xw, sheet_name=f"{sheet} {year}", index=False)
+            ws = xw.sheets[f"{sheet} {year}"]
+            for col in "ABCDEFG":
+                ws.column_dimensions[col].width = 18 if col == "A" else 22
+            for row in ws.iter_rows(min_row=2, min_col=2):
+                for c in row:
+                    c.number_format = "#,##0"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     today = datetime.now(ET).date()
@@ -302,10 +329,16 @@ def main() -> int:
     (out / "drive.txt").write_text(drive_note)
     rows = load_rows(e, a.year)
     done = [m for m in rows if complete(rows[m])]
-    weights = {}
-    if done and not a.no_gam:
-        weights, gam_df = gam_weights(a.year, max(done))
+    weights, gam_xlsx = {}, None
+    last_closed = 12 if a.year < today.year else today.month - 1
+    if last_closed >= 1 and not a.no_gam:
+        # GAM columns for the DV-GAM workbook, through the last closed month —
+        # the same definitions as Roger's saved "TAG:" interactive reports
+        # (docs/tag_ivt_monitoring_report.md, step 1); also the SIVT weights.
+        weights, gam_df = gam_weights(a.year, last_closed)
         gam_df.to_csv(out / f"tag_ivt_gam_{a.year}.csv", index=False)
+        gam_xlsx = out / f"TAG_IVT_GAM_columns_{a.year}.xlsx"
+        write_gam_xlsx(gam_df, gam_xlsx, a.year)
     agg = aggregate(rows, weights)
     miss = missing_months(rows, a.year, today)
     deck = out / f"NEWSWEEK_IVT_{a.year}_MONITORING_REPORT.pptx"
@@ -329,6 +362,16 @@ def main() -> int:
                        "file_name": deck.name, "file_bytes": deck.read_bytes(),
                        "summary_md": summary, "note": summary, "status": "ok"})
         print(f"stored {deck.name} (through {through})")
+        if gam_xlsx is not None:
+            cra.store(ce, {"kind": "tag_gam", "order_id": str(a.year), "line_item_id": "",
+                           "order_name": f"TAG IVT GAM columns {a.year}",
+                           "advertiser": "DV-GAM workbook · GAM columns", "campaign": str(a.year),
+                           "start_date": date(a.year, 1, 1),
+                           "end_date": date(a.year, last_closed,
+                                            calendar.monthrange(a.year, last_closed)[1]),
+                           "file_name": gam_xlsx.name, "file_bytes": gam_xlsx.read_bytes(),
+                           "note": f"Jan–{calendar.month_abbr[last_closed]} {a.year}", "status": "ok"})
+            print(f"stored {gam_xlsx.name}")
     return 0
 
 

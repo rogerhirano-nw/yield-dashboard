@@ -440,6 +440,24 @@ def _tag_ivt(engine) -> None:
             c2.download_button(f"⬇ {got[0]}", got[1], file_name=got[0], key=f"tag_dl_{d.id}")
     else:
         st.info(f"No {year} deck built yet. Press Rebuild deck below.")
+    try:
+        with engine.connect() as c:
+            g = c.execute(sa.text("SELECT id, file_name, note FROM campaign_reports "
+                                  "WHERE kind='tag_gam' AND order_id=:y AND status='ok'"),
+                          {"y": str(year)}).first()
+    except Exception:  # noqa: BLE001
+        g = None
+    if g:
+        c1, c2 = st.columns([3, 2])
+        c1.markdown(f"**GAM columns for the DV-GAM workbook** · {g.note or ''}  \n"
+                    "<span style='color:#57564f;font-size:12px'>Same definitions as the "
+                    "saved \"TAG:\" interactive reports in GAM; paste into the workbook.</span>",
+                    unsafe_allow_html=True)
+        gg = st.session_state.get(f"tag_gam_{g.id}")
+        if gg is None and c2.button("Get workbook columns", key=f"tag_gam_get_{g.id}"):
+            gg = st.session_state[f"tag_gam_{g.id}"] = _file(engine, g.id)
+        if gg:
+            c2.download_button(f"⬇ {gg[0]}", gg[1], file_name=gg[0], key=f"tag_gam_dl_{g.id}")
 
     st.markdown("##### Monthly numbers")
     st.caption("SIVT as a percentage (0.04 = 0.04%). DV figures come from the Inventory "
