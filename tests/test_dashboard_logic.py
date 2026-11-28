@@ -1228,3 +1228,46 @@ def test_viewability_mix_adjusted_empty_frame():
     from dashboard_logic import viewability_mix_adjusted
     out = viewability_mix_adjusted(_vw_frame([]), "bidder", ["unit", "device"])
     assert out.empty and "render_gap_pp" in out.columns
+
+
+# ── taxonomy name builder (SOP 1.3) ──────────────────────────────────────
+import dashboard_logic as dl  # noqa: E402
+def _tax(**kw):
+    base = dict(site="Newsweek", deal_type="Direct", vertical="Finance", ssp="NA",
+                dsp="NA", holding="PublicisGroupe", agency="MediaVest", client="CITI",
+                campaign="FY24", geo="US", media_type="Multi", cpm_or_io="SO00687",
+                team="Team-USA", seller="BRobinson")
+    base.update(kw)
+    return base
+
+
+def test_taxonomy_name_sop_examples():
+    name, p = dl.taxonomy_name(_tax())
+    assert name == ("Newsweek_Direct_Finance_NA_NA_PublicisGroupe_MediaVest_CITI_FY24_"
+                    "US_Multi_SO00687_Team-USA_BRobinson") and p == []
+    name, p = dl.taxonomy_name(_tax(deal_type="PD", vertical="Retail", ssp="Magnite",
+                                    dsp="TTD", holding="GroupM", agency="Wavemaker",
+                                    client="DoorDash", campaign="Holiday",
+                                    media_type="Video", cpm_or_io="$16", seller="RShore"))
+    assert name == ("Newsweek_PD_Retail_Magnite_TTD_GroupM_Wavemaker_DoorDash_Holiday_"
+                    "US_Video_$16_Team-USA_RShore") and p == []
+    # the dashboard's own parsers read it back
+    assert dl.pmp_deal_floor(name) == 16.0
+    assert dl.pmp_deal_display_name(name)[0].startswith("DoorDash")
+
+
+def test_taxonomy_name_cleans_and_flags():
+    name, p = dl.taxonomy_name(_tax(holding="", campaign="Spring Sale_2026"))
+    assert "_NA_MediaVest_CITI_Spring-Sale-2026_" in name
+    assert name.count("_") == 13 and p == []
+    _, p = dl.taxonomy_name(_tax(ssp="Magnite", cpm_or_io="$16", geo="US-UK-CA-FR"))
+    assert any("SSP and DSP" in x for x in p)
+    assert any("NetSuite IO" in x for x in p)
+    assert any(x.startswith("Geo") for x in p)
+    _, p = dl.taxonomy_name(_tax(deal_type="PA", ssp="NA", cpm_or_io="SO1"))
+    assert any("needs its SSP" in x for x in p) and any("CPM floor" in x for x in p)
+    _, p = dl.taxonomy_name(_tax(cpm_or_io="SO00687-3"), line_item=True)
+    assert p == []
+    _, p = dl.taxonomy_name(_tax(seller="b robinson", team="USA"))
+    assert any(x.startswith("Seller") for x in p) and any(x.startswith("Team") for x in p)
+    assert dl.taxonomy_name(_tax(geo="EMEA"))[1] == []

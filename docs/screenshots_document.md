@@ -9,6 +9,18 @@ the doc body.
 When someone sends an order id and asks for screenshots, this is the whole job.
 Deliver the `.pptx`; don't stop at raw PNGs or a browser deck.
 
+**From the dashboard (since 2026-11-28):** https://adops.azurewebsites.net →
+**Tools → Screenshots**. Step 1 takes the order (or a line item) and shows the
+shot list inline; step 2 takes a line item + article and returns the finished
+`.pptx` under *Recent runs*. The deck spec is written by
+`scripts/screenshots_auto_spec.py` from the `manifest.json` that
+`capture_screenshots.py` now leaves with the shots: advertiser / campaign from
+order-name tokens 7 / 8, seller through `ae_names`, one slide per `_framed`
+in-context shot, desktop first. Still look at the shots before sending (step 4)
+— the run also uploads the raw `screenshots` artifact for that. Hand-write a
+spec (step 5) only when the deck needs custom titles or several line items in
+one file.
+
 1. **Pull** — `pull_screenshots_source.yml` with `-f order=<id>` (step 1
    below). Read off: advertiser, vertical (token 2 of the order name), line
    item id(s), flight, goal, sizes, IO, and the seller (last token of the order

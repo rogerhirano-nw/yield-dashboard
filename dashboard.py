@@ -229,7 +229,7 @@ _DEFAULT_SETTINGS: dict = {
     # (Chumba) grades against: the CPA hero shows over/under vs this,
     # and the Daily CPA chart draws a dashed reference line at it. $150 per Roger
     # (2026-06-22); editable in Settings → Direct.
-    "ttd_cpa_goal": 150.0,
+    "ttd_cpa_goal": 50.0,
     # Stale-deals "still live" window (PMP signals): a deal stops counting as
     # live (and drops out of Stale deals) once it hasn't appeared in the GAM
     # bid feed for this many days. gam_deal_bid_daily retains ~7 days, so 7 ≈
@@ -2127,12 +2127,13 @@ h1, .stMarkdown h1 { color: var(--text-primary); }
 # with a divider, AND a gear icon button in the header top-right. Both
 # entry points route through st.session_state.active_view.
 # ──────────────────────────────────────────────────────────────────────────
-_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "opensincera", "configure")
+_VIEW_KEYS  = ("campaigns", "site", "dsp", "magnite", "pubmatic", "opensincera", "tools", "configure")
 _VIEW_TITLE = {
     "campaigns":   "Overall performance",
     "site":        "By site / size",
     "dsp":         "By DSP",
     "magnite":     "Magnite deals",
+    "tools":       "Tools",
     "pubmatic":    "Pubmatic deals",
     "opensincera": "OpenSincera",
     "configure":   "Configure",
@@ -2144,6 +2145,7 @@ _NAV_DATA = [
     ("magnite",     "Magnite deals"),
     ("pubmatic",    "Pubmatic deals"),
     ("opensincera", "OpenSincera"),
+    ("tools",       "Tools"),
 ]
 
 if "active_view" not in st.session_state:
@@ -2168,7 +2170,7 @@ _load_errors: dict[str, str] = {}  # table → error message, populated by load(
 # 4×/day intraday direct refreshes within ≤2h (the data cadence itself is
 # 3h) and the 05:00 ET sweep well before US business hours. The debug
 # "Clear cache + re-query" button still handles on-demand refresh; see
-# docs/supabase_disk_io.md for the full IO story.
+# the 2026-10 Supabase disk-IO investigation (pre-Azure).
 _CACHE_TTL_SECONDS = 7200
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
@@ -4676,7 +4678,7 @@ if st.session_state.active_view == "campaigns":
             # collapsed "Priority flights" section below the headline numbers,
             # expandable on demand (the `nw-na--collapsible` modifier opts them
             # out of the desktop force-open).
-            _ttd_goal = float(_cfg.get("ttd_cpa_goal", 150.0) or 150.0)
+            _ttd_goal = float(_cfg.get("ttd_cpa_goal", 50.0) or 50.0)
             st.markdown(
                 '<div class="nw-section-eyebrow">Priority flights · daily monitor'
                 f'<span class="nw-section-sub">1 betting flight · CPA goal ${_ttd_goal:,.0f}</span>'
@@ -7928,6 +7930,11 @@ if st.session_state.active_view == "campaigns":
         # inside the "PMP signals" accordion above (folded in 2026-06); the
         # standalone cards + the archive UI were removed when they moved up.
 
+# ── Tools tab (name builder, final reports, screenshot decks) ────────────────
+if st.session_state.active_view == "tools":
+    import tools_tab
+    tools_tab.render(_cfg)
+
 # ── Settings tab ─────────────────────────────────────────────────────────────
 
 if st.session_state.active_view == "configure":
@@ -8927,7 +8934,7 @@ if st.session_state.active_view == "configure":
                 )
 
             # ── 3a′: TTD acquisition CPA goal — Priority-flights target.
-            _ttd_goal_existing = float(_s.get("ttd_cpa_goal", 150.0) or 150.0)
+            _ttd_goal_existing = float(_s.get("ttd_cpa_goal", 50.0) or 50.0)
             st.markdown(
                 f'<div class="cfg-card-title" style="margin-top:14px">TTD CPA goal</div>'
                 f'<div style="font-size:11px;color:var(--text-secondary);">'
@@ -9334,7 +9341,7 @@ if st.session_state.active_view == "configure":
                     }
 
                 _new_pacing_target = float(_pacing_target_edit) if _pacing_target_edit is not None else 100.0
-                _new_ttd_cpa_goal = float(_ttd_cpa_goal_edit) if _ttd_cpa_goal_edit is not None else 150.0
+                _new_ttd_cpa_goal = float(_ttd_cpa_goal_edit) if _ttd_cpa_goal_edit is not None else 50.0
 
                 _new_status_colors = []
                 for _, r in _status_color_editor.iterrows():

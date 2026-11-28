@@ -13,7 +13,6 @@
 - [ ] Streamlit Cloud (deployed dashboard)
 - [ ] Local dev (`streamlit run dashboard.py`)
 - [ ] `refresh.yml` GitHub Actions log
-- [ ] `weekly_report.yml`
 - [ ] Other:
 
 ## Details

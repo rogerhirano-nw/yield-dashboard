@@ -195,7 +195,12 @@ def test_scan_uses_the_server_side_subject_filter_first(monkeypatch):
 
     assert out == [hit]
     assert "subject=Chumba" in fake.paths[0]
-    assert len(fake.paths) == 1  # no unfiltered fallback needed
+    # no unfiltered fallback on the authenticated side...
+    assert not any("subject=" not in p and "include_unauthenticated" not in p
+                   for p in fake.paths)
+    # ...but the unauthenticated folder is always asked, filtered first
+    assert "include_unauthenticated=true" in fake.paths[1]
+    assert "subject=Chumba" in fake.paths[1]
 
 
 def test_scan_falls_back_to_unfiltered_then_unauthenticated(monkeypatch):
@@ -207,8 +212,9 @@ def test_scan_falls_back_to_unfiltered_then_unauthenticated(monkeypatch):
     out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
 
     assert out == [hit]
-    assert len(fake.paths) == 3
-    assert "include_unauthenticated=true" in fake.paths[-1]
+    # filtered, unfiltered, unauthenticated (match), all-folders, + diagnostic
+    assert len(fake.paths) == 5
+    assert "include_unauthenticated=true" in fake.paths[2]
 
 
 def test_scan_rechecks_the_needle_client_side(monkeypatch):
@@ -261,4 +267,106 @@ def test_a_failing_listing_does_not_abort_the_scan(monkeypatch):
     monkeypatch.setattr(t, "_api_get", flaky)
 
     assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
-    assert calls["n"] == 2
+    # filtered (fails), unfiltered, unauthenticated, all-folders, diagnostic
+    assert calls["n"] == 5
+
+
+def test_a_manual_forward_in_unauthenticated_is_seen_alongside_older_matches(monkeypatch):
+    """2026-11-12: a hand-forwarded fresh report lands in the unauthenticated
+    folder while the authenticated listing still holds older daily forwards.
+    The old fallback-only scan never looked there; both must be returned so
+    the caller's newest-first sort can pick the fresh one."""
+    old = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report"),
+           "id": "old", "sent_at": "2026-11-05T09:54:28Z"}
+    new = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report",
+                  sender="someone@newsweek.com"),
+           "id": "new", "sent_at": "2026-11-12T18:27:00Z"}
+    fake = _FakeInbox({"filtered": [old], "unauthenticated": [new, old]})
+    monkeypatch.setattr(t, "_api_get", fake)
+
+    out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
+
+    assert {m["id"] for m in out} == {"old", "new"}  # merged, deduped
+    assert max(out, key=t._msg_ts)["id"] == "new"
+
+
+def test_scan_follows_next_page_token(monkeypatch):
+    """2026-11-12: a full first page (== limit) hid the fresh report on page 2."""
+    old = {**_msg("FW: Report Available: Newsweek_Chumba Casino_Performance report"),
+           "id": "old", "sent_at": "2026-11-05T09:54:28Z"}
+    new = {**_msg("Chumba report through 11-11", sender="someone@gmail.com"),
+           "id": "new", "sent_at": "2026-11-12T22:27:00Z"}
+    calls = []
+
+    def paged(path, *, api_key, raw=False):
+        calls.append(path)
+        if "page_token=p2" in path:
+            return {"messages": [new]}
+        return {"messages": [old], "next_page_token": "p2"}
+
+    monkeypatch.setattr(t, "_api_get", paged)
+
+    out = t.list_ttd_messages("k", "inbox", subject_needle="Chumba")
+
+    assert max(out, key=t._msg_ts)["id"] == "new"
+    assert any("page_token=p2" in c for c in calls)
+
+
+def test_needle_match_is_case_insensitive(monkeypatch):
+    hit = _msg("chumba report through 11-11", sender="someone@gmail.com")
+    fake = _FakeInbox({"filtered": [hit]})
+    monkeypatch.setattr(t, "_api_get", fake)
+    assert t.list_ttd_messages("k", "inbox", subject_needle="Chumba") == [hit]
+
+
+def test_pull_reads_a_report_attachment_when_the_body_has_no_link(monkeypatch):
+    """2026-11-12: Outlook was down, so the export was re-sent from Gmail as an
+    .xlsx ATTACHMENT with no TTD link in the body. The pull must parse it."""
+    import pandas as pd
+
+    msg = {"id": "m1", "thread_id": "th1", "subject": "Chumba",
+           "sent_at": "2026-11-12T22:29:00Z",
+           "attachments": [{"id": "att1", "filename": "Chumba_report.xlsx"}]}
+    monkeypatch.setattr(t, "list_ttd_messages", lambda *a, **k: [msg])
+    monkeypatch.setattr(t, "get_message_detail", lambda *a, **k: {"text": "see attached"})
+    fetched = {}
+
+    def fake_fetch(api_key, inbox_id, thread_id, att_id):
+        fetched["args"] = (thread_id, att_id)
+        return b"xlsx-bytes"
+
+    monkeypatch.setattr(t, "_fetch_attachment", fake_fetch)
+    monkeypatch.setattr(t, "parse_ttd_csv",
+                        lambda content, **k: pd.DataFrame({"date": ["2026-11-11"]}))
+
+    df, meta = t.pull_ttd("k", "inbox", subject_needle="Chumba")
+
+    assert len(df) == 1
+    assert fetched["args"] == ("th1", "att1")
+    assert meta["message_id"] == "m1"
+
+
+def test_pinned_thread_is_fetched_first(monkeypatch):
+    """TTD_THREAD_ID reaches a report no listing returns (2026-11-12)."""
+    import pandas as pd
+    monkeypatch.setenv("TTD_THREAD_ID", "th-pinned")
+    calls = []
+
+    def api(path, *, api_key, raw=False):
+        calls.append(path)
+        if "/threads/th-pinned" in path and "/attachments/" not in path:
+            return {"messages": [{"message_id": "<m@x>", "subject": "Chumba",
+                                  "timestamp": "2026-11-12T22:29:00Z",
+                                  "attachments": [{"attachment_id": "a1",
+                                                   "filename": "Chumba.xlsx"}]}]}
+        return {"messages": []}
+
+    monkeypatch.setattr(t, "_api_get", api)
+    monkeypatch.setattr(t, "get_message_detail", lambda *a, **k: {"text": ""})
+    monkeypatch.setattr(t, "_fetch_attachment", lambda *a: b"x")
+    monkeypatch.setattr(t, "parse_ttd_csv",
+                        lambda content, **k: pd.DataFrame({"date": ["2026-11-11"]}))
+
+    df, meta = t.pull_ttd("k", "inbox", subject_needle="Chumba")
+
+    assert len(df) == 1 and meta["message_id"] == "<m@x>"

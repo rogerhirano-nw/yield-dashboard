@@ -4,6 +4,67 @@ Chronological record of shipped work. Durable "how it works" detail lives in
 `CLAUDE.md` (the feature/design sections); this file is the "what changed when,
 and why" index, keyed by PR. Newest first.
 
+## 2026-11-28 — Tools tab: name builder, final reports, screenshot decks
+
+The dashboard gets a **Tools** tab so three jobs no longer need GitHub, Claude
+or the SharePoint workbook: a **name builder** for the SOP 1.3 naming standard
+(`dl.taxonomy_name`, flags anything off-standard), **Final report** (order id →
+client workbook; `final_campaign_report.yml` now builds the `.xlsx` itself via
+`scripts/final_report_workbook.py`, which derives the wording from the order
+name) and **Screenshots** (shot list, then line item + article → `.pptx`;
+`capture_screenshots.py` writes a `manifest.json` and
+`scripts/screenshots_auto_spec.py` turns it into the deck spec). The app
+reads the scheduler's GitHub token through a Key Vault reference. Workflows
+gained `run-name`s so the run list says which order each run was for.
+
+## 2026-11-28 — Campaign final reports: GAM pull + Sky-format workbook (#420)
+
+`final_campaign_report.yml` → `scripts/final_campaign_report.py` pulls an
+order's final delivery (flight start → today ET) with Active View and DV
+attention. `scripts/build_final_report_xlsx.py` fills
+`templates/final_report_template.xlsx`, the AppleTv Sky F3 workbook with its
+data blanked, so every client workbook looks the same. First used for American
+Hospital Dubai (4194246183). Fixes found on the way: `dv_attention` only holds
+~8 days, so attention is now read from the DV emails (2 days → 43); the display
+CTR target is 0.10%, not the 0.30% in settings; the client logo sits on a
+transparent background; Excel's warning triangles are suppressed. Runbook:
+`docs/final_report.md`.
+
+## 2026-11-24 — Weekly GAM blocklist email retired
+
+Roger retired the weekly "GAM Blocklist — Weekly Summary" email.
+`confiant_blocklist_weekly_report.py` and its launchd plist are deleted; the
+installed job on the Mac still has to be removed by hand (`launchctl disable` +
+`bootout`). It sent even with nothing to report, and "0 this week" could not be
+told apart from a broken daily job. The daily blocklist job is unchanged.
+Detail: `docs/confiant_blocklist.md`, "Weekly RevOps summary".
+
+## 2026-11-16 — Weekly deal health email retired
+
+Roger retired the Wednesday "Weekly Deal Health" email (zero-bid PMP/PG deals,
+sent to the sales team). `weekly_report.yml` is deleted and its cron-job.org
+entry is removed from `scripts/setup_cronjob_org.py`. The live cron-job.org job
+has to be deleted by hand; until then its dispatch 404s harmlessly. The
+`deal_health/` package is kept. We found it had a gap, so it was never fixed:
+its "last 7 days" SQL had no date filter and was really reading every day left
+in the Magnite/Pubmatic cache (back to May). Detail: CLAUDE.md, "Outbound daily
+digests".
+
+## 2026-11-13 — GAM's own pacing for the cap-tracker card
+
+The seller-comms tracker card showed **169.3%** pacing on AppleTv 7472702553's
+launch day while GAM's UI showed **124%**: seller-comms estimated launch-day
+pacing straight-line by the clock (today's imps ÷ goal/day × hours elapsed),
+and GAM weights its expectation differently. `refresh_gam_delivery_indicator`
+(run with `--mode=gam_hourly`, plus the `gam` and `all` sweeps) now snapshots
+SOAP `LineItem.deliveryIndicator` for the `GAM_HOURLY_LINE_ITEMS` set into
+**`gam_li_delivery_indicator`** (`expected_delivery_pct`, `actual_delivery_pct`,
+`gam_progress_pct` = actual ÷ expected × 100, the GAM UI "Progress" figure;
+`gam_client.gam_progress_pct`, tests in `tests/test_gam_progress.py`). The table
+is replaced each run via `_safe_replace`, so it is born RLS-locked. v1 REST has
+no equivalent field. seller-comms prefers it over its own estimate when the
+snapshot is under 6h old.
+
 ## 2026-11-02 — Magnite API calls cut to one day each
 
 Magnite DV+ (Terence Roney) flagged our reporting calls as querying 30+ days

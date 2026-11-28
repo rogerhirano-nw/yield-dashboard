@@ -1,4 +1,5 @@
 name: Pull Screenshots Document source (any order)
+run-name: "Screenshots plan · ${{ inputs.order && format('order {0}', inputs.order) || format('line item {0}', inputs.line_item) }}"
 
 on:
   workflow_dispatch:

@@ -74,10 +74,11 @@ def _kv_names(client, custom):
     ids = ",".join(str(k) for k in keys)
     for k in _q(ct, "getCustomTargetingKeysByStatement", f"id IN ({ids})"):
         kn[k.id] = k.name
-    for k in keys:
-        for v in _q(ct, "getCustomTargetingValuesByStatement", f"customTargetingKeyId = {k}"):
-            if v.id in vals:
-                vn[v.id] = v.name
+    vl = sorted(vals)
+    for i in range(0, len(vl), 400):
+        ids = ",".join(str(v) for v in vl[i:i + 400])
+        for v in _q(ct, "getCustomTargetingValuesByStatement", f"id IN ({ids})"):
+            vn[v.id] = v.name
     return kn, vn
 
 
@@ -93,8 +94,10 @@ def _print_custom(n, kn, vn, depth=0):
 
 
 def main() -> int:
-    li_id = int(sys.argv[1])
-    client = _client()
+    return inspect(int(sys.argv[1]), _client())
+
+
+def inspect(li_id, client) -> int:
     li_svc = client.GetService("LineItemService", version=V)
     o_svc = client.GetService("OrderService", version=V)
     lica_svc = client.GetService("LineItemCreativeAssociationService", version=V)
@@ -118,6 +121,8 @@ def main() -> int:
     g = li.primaryGoal
     print(f"goal:       {g.goalType}/{g.unitType}/{g.units}   cost {li.costType} "
           f"{li.costPerUnit.currencyCode} {li.costPerUnit.microAmount / 1e6:,.2f}")
+    print(f"created:    {_dt(getattr(li, 'creationDateTime', None))}   "
+          f"modified {_dt(getattr(li, 'lastModifiedDateTime', None))}")
     print(f"env:        {li.environmentType}   rotation {li.creativeRotationType}   "
           f"roadblock {li.roadblockingType}   delivery {li.deliveryRateType}")
     print(f"freq caps:  {[(f.maxImpressions, f.numTimeUnits, f.timeUnit) for f in (li.frequencyCaps or [])]}")
@@ -172,6 +177,11 @@ def main() -> int:
             if s:
                 print(f"  --- {field} ---")
                 print(s)
+        for field in ("thirdPartyImpressionTrackingUrls", "thirdPartyDataDeclaration",
+                      "appliedLabels", "lastModifiedDateTime", "previewUrl"):
+            v = c[field] if field in dir(c) else None
+            if v:
+                print(f"  {field}: {v}")
         vals = getattr(c, "creativeTemplateVariableValues", None) if "creativeTemplateVariableValues" in dir(c) else None
         if vals:
             print(f"  template {getattr(c, 'creativeTemplateId', None)} values:")

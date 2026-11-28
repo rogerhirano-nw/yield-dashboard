@@ -1,4 +1,5 @@
 name: Capture proof-of-placement screenshots
+run-name: "Screenshots · line item ${{ inputs.line_item }}"
 
 on:
   workflow_dispatch:
@@ -37,7 +38,7 @@ jobs:
 
       - name: Install deps
         run: |
-          pip install google-ads-admanager google-auth pandas googleads playwright pillow
+          pip install google-ads-admanager google-auth pandas googleads playwright pillow python-pptx
           playwright install --with-deps chromium
 
       - name: Capture
@@ -52,6 +53,22 @@ jobs:
         run: |
           set -o pipefail
           python scripts/capture_screenshots.py 2>&1 | tee /tmp/output.txt
+
+      - name: Build the client deck (.pptx)
+        if: success()
+        run: |
+          python scripts/screenshots_auto_spec.py /tmp/shots /tmp/shots/spec.json
+          ADV=$(python -c "import json;print(json.load(open('/tmp/shots/spec.json'))['advertiser'])" | tr -d '/\\:*?"<>|')
+          mkdir -p /tmp/deck
+          python scripts/build_screenshots_deck.py /tmp/shots/spec.json "/tmp/deck/${ADV} - Proof of Placement.pptx"
+
+      - name: Upload deck
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deck
+          path: /tmp/deck/
+          if-no-files-found: warn
 
       - name: Upload shots
         if: always()

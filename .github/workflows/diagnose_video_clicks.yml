@@ -1,0 +1,43 @@
+name: Diagnose video clicks (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_items:
+        description: 'Comma-separated GAM line item ids'
+        required: false
+        default: '7415150292'
+      days:
+        description: 'Report window in days'
+        required: false
+        default: '30'
+  push:
+    branches: [claude/trusting-knuth-v5uqmy]
+    paths:
+      - 'scripts/diagnose_video_clicks.py'
+      - '.github/workflows/diagnose_video_clicks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install minimal deps
+        run: pip install google-ads-admanager google-auth pandas googleads requests
+      - name: Diagnose
+        env:
+          GAM_SERVICE_ACCOUNT_JSON: ${{ secrets.GAM_SERVICE_ACCOUNT_JSON }}
+          GAM_NETWORK_ID: ${{ secrets.GAM_NETWORK_ID }}
+          IN_LINE_ITEMS: ${{ inputs.line_items }}
+          IN_DAYS: ${{ inputs.days }}
+        run: |
+          set -o pipefail
+          python scripts/diagnose_video_clicks.py \
+            --line-items "${IN_LINE_ITEMS:-7415150292}" \
+            --days "${IN_DAYS:-30}"
