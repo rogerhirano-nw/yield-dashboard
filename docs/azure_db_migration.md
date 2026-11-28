@@ -73,3 +73,20 @@ not carried over; the next daily sweep re-pulls those windows anyway.
 - Keep Supabase **paused, not deleted**, for 2 weeks as a rollback (swap
   `DATABASE_URL` back). Then delete the project.
 - Remove `AZURE_DATABASE_URL` once `DATABASE_URL` points at Azure.
+
+## Hardening (2026-11-27, after cutover)
+- **Firewall: Azure services only.** The server-creation rule that allowed
+  every address (`0.0.0.0–255.255.255.255`) was replaced by
+  `AllowAllAzureServices` (`0.0.0.0–0.0.0.0`), which admits GitHub-hosted
+  runners and App Service (both run in Azure) but not the open internet.
+  To connect from a laptop, add a rule for its IP and remove it after:
+  `az postgres flexible-server firewall-rule create -g rg-adops-supermetrics-prod -s nw-adops-yield-db -n tmp-<name> --start-ip-address <ip>`.
+  This also cut off Streamlit Community Cloud (not Azure), which was deleted
+  the same day.
+- **Credentials in Key Vault** `nw-adops-sched-kv`: `yield-db-admin-password`
+  (user `yieldadmin`, db `yield`) and `yield-db-url` (the full `DATABASE_URL`
+  used by yield-dashboard, seller-comms and the App Service dashboard). To
+  rotate: reset the password on the server, then update those two secrets,
+  both repos' `DATABASE_URL`, and the App Service setting.
+- **Backups 35 days, storage auto-grow on.** High availability left off
+  (doubles the cost; a few hours' outage is tolerable for this cache).
