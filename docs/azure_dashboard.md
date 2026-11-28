@@ -7,8 +7,8 @@ Newsweek's Azure subscription, behind Newsweek's Microsoft login.
 
 | | |
 |---|---|
-| URL | https://nw-adops-yield-dashboard.azurewebsites.net |
-| Web app | `nw-adops-yield-dashboard` (Linux, Python 3.12) |
+| URL | https://adops.azurewebsites.net |
+| Web app | `adops` (Linux, Python 3.12). The first app, `nw-adops-yield-dashboard`, is kept only until the new address is confirmed, then deleted |
 | Plan | `nw-adops-yield-plan`, **B1**, ~$13/mo, **East US 2** |
 | Resource group | `rg-adops-supermetrics-prod` (sub "SoftCoice CSP - Newsweek Azure") |
 | Database | `nw-adops-yield-db` (Central US) — see `docs/azure_db_migration.md` |
@@ -44,7 +44,7 @@ workflow to `azure/login` with OIDC, and turn basic publishing back off.
 Manual deploy (from a checkout with `az` logged in):
 ```bash
 git archive --format=zip -o /tmp/app.zip origin/main
-az webapp deploy -g rg-adops-supermetrics-prod -n nw-adops-yield-dashboard --src-path /tmp/app.zip --type zip
+az webapp deploy -g rg-adops-supermetrics-prod -n adops --src-path /tmp/app.zip --type zip
 ```
 The CLI often reports a 504 while the build keeps going — check
 `az webapp log deployment list …` (status 4 = success) before retrying.
