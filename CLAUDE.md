@@ -1,6 +1,7 @@
 # Claude Code notes for yield-dashboard
 
 See `README.md` for project overview, files, and quickstart.
+**See `docs/handover.md` first** — one page: what runs where, what is still tied to Roger's accounts, and what to do when something is red.
 See `docs/changelog.md` for the dated "what changed when, and why" index (keyed by PR).
 See `docs/seller_comms.md` for seller/AM email templates (Chumba delivery-issue outreach, how to pull LI goals + deal IDs from GAM).
 
