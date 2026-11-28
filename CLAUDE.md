@@ -1083,6 +1083,13 @@ NULL` for the per-LI grain). The `_COL_PROJECT` note above now only bites if a
 raw DV `load()` is ever reintroduced — the main campaigns path doesn't call it.
 
 ## Subsystems with their own docs
+- `docs/next_app.md` — **the replacement dashboard (FastAPI + React, `next/`)**,
+  live side by side at https://adops-next.azurewebsites.net and being ported
+  view by view (Campaigns → Direct first, 2026-11-28). In-memory tables
+  refreshed from Postgres write counters, per-view data prepared once per
+  refresh, ~25 ms per request. Each ported view must prove parity with the
+  Streamlit one on prod data (`next/scripts/parity_*.py`). New dashboard work
+  goes there, not into `dashboard.py`.
 - **Automatic final reports + screenshot decks** (2026-11-28) —
   `campaign_reports.yml` → `scripts/campaign_reports_auto.py`, daily 07:30 ET
   (Logic App `la-sched-yield-campaign-reports`). **final**: every

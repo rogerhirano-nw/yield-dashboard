@@ -1,0 +1,57 @@
+# Deploy the new dashboard (FastAPI + React, next/) to Azure App Service.
+#
+# Target: https://adops-next.azurewebsites.net (same Entra login as adops),
+# web app `adops-next` on plan `nw-adops-yield-plan`. The React app is built
+# here (Node) and shipped inside the zip as next/web/dist; App Service's Oryx
+# pip-installs requirements.txt and starts
+#   python -m uvicorn next.api.main:app --host 0.0.0.0 --port 8000
+# Auth: publish profile in secret AZURE_NEXT_PUBLISH_PROFILE (this app only).
+# Runbook: docs/next_app.md
+name: Deploy next dashboard to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'next/**'
+      - 'dashboard_logic.py'
+      - 'settings.json'
+      - 'requirements.txt'
+      - '.github/workflows/deploy_next.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-next-azure
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: next/web/package-lock.json }
+      - name: Build the React app
+        working-directory: next/web
+        run: npm ci && npm run build
+      - name: Package source + built web app
+        run: |
+          git archive --format=zip -o app.zip HEAD
+          zip -qr app.zip next/web/dist
+          ls -lh app.zip
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: adops-next
+          publish-profile: ${{ secrets.AZURE_NEXT_PUBLISH_PROFILE }}
+          package: app.zip
+      - name: Wait for the app to come back
+        run: |
+          for i in $(seq 1 40); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 https://adops-next.azurewebsites.net/api/health || true)
+            echo "try $i: $c"
+            case "$c" in 200|302|401) exit 0;; esac
+            sleep 15
+          done
+          echo "app did not come back within 10 minutes"; exit 1
