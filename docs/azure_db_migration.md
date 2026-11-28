@@ -75,14 +75,16 @@ not carried over; the next daily sweep re-pulls those windows anyway.
 - Remove `AZURE_DATABASE_URL` once `DATABASE_URL` points at Azure.
 
 ## Hardening (2026-11-27, after cutover)
-- **Firewall: Azure services only.** The server-creation rule that allowed
-  every address (`0.0.0.0–255.255.255.255`) was replaced by
-  `AllowAllAzureServices` (`0.0.0.0–0.0.0.0`), which admits GitHub-hosted
-  runners and App Service (both run in Azure) but not the open internet.
-  To connect from a laptop, add a rule for its IP and remove it after:
-  `az postgres flexible-server firewall-rule create -g rg-adops-supermetrics-prod -s nw-adops-yield-db -n tmp-<name> --start-ip-address <ip>`.
-  This also cut off Streamlit Community Cloud (not Azure), which was deleted
-  the same day.
+- **Firewall: open to all addresses (password + TLS required).** An
+  "Azure services only" rule was tried on 2026-11-27 and **broke the pipeline**:
+  GitHub-hosted runners do not always connect from Azure address space, so the
+  hourly refresh, the 8 PM tracker and the health check timed out at random.
+  Restored `AllowAll-GitHubRunners` (`0.0.0.0–255.255.255.255`) the same night.
+  The proper hardening is per-run rules: each workflow adds its runner's IP at
+  start and removes it at the end, which needs an Azure service principal with
+  rights on the server (an IT role assignment). Until then, the DB password
+  (Key Vault) and `sslmode=require` are the protection. Streamlit Community
+  Cloud was deleted the same day.
 - **Credentials in Key Vault** `nw-adops-sched-kv`: `yield-db-admin-password`
   (user `yieldadmin`, db `yield`) and `yield-db-url` (the full `DATABASE_URL`
   used by yield-dashboard, seller-comms and the App Service dashboard). To
